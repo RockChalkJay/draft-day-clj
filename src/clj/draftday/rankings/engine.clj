@@ -63,27 +63,49 @@
       :replacement-levels levels
       :profile            profile})))
 
+(defn- scarcity-adjust-vorp
+  "For the Scarcity profile (:scarcity weight), fold tier-cliff x positional-
+  demand into VORP: vorp' = vorp * (1 + w*(tcm*pdm_pos - 1)). Identity when w=0,
+  so every other profile is untouched. Keeps the raw static VORP under
+  :vorp-base for display."
+  [board pdm-map w]
+  (mapv (fn [p]
+          (let [factor (* (double (or (:tcm p) 1.0)) (double (get pdm-map (:position p) 1.0)))]
+            (-> p
+                (assoc :vorp-base (:vorp p))
+                (assoc :vorp (* (double (:vorp p)) (+ 1.0 (* w (- factor 1.0))))))))
+        board))
+
 (defn live-valuation
   "Live layer: Value (VBD->$), Price (:worth, Value scaled by inflation*phase),
-  Bargain (value - worth), plus the tcm/pdm analytical signals. Call after each
-  pick. Returns {:players ... :replacement-levels ... :pdm-map ... :inflation ...
-  :market-heat ...}."
-  [static-result league-state]
-  (let [board       (:players static-result)
-        budget      (ls/initial-cash league-state)
-        total-slots (reduce + 0 (map #(count (:roster %)) (:teams league-state)))
-        valued      (value/calculate-value board budget total-slots)
-        infl        (inflation/auction-inflation valued league-state)
-        heat        (inflation/draft-phase-decay league-state)
-        priced      (value/calculate-price valued (* infl heat)
-                                           (:drafted-player-ids league-state))
-        with-barg   (mapv (fn [p]
-                            (assoc p :bargain
-                                   (if (> (:worth p) 0) (- (:value p) (:worth p)) 0)))
-                          priced)
-        with-signals (tcm/with-tcm with-barg league-state)]
-    {:players            with-signals
-     :replacement-levels (:replacement-levels static-result)
-     :pdm-map            (pdm/calculate-pdm with-barg league-state)
-     :inflation          infl
-     :market-heat        heat}))
+  Bargain (value - worth), plus the tcm/pdm signals. The active :profile applies
+  the scarcity VORP fold and scales inflation sensitivity. Call after each pick.
+  Returns {:players ... :replacement-levels ... :pdm-map ... :inflation ...
+  :market-heat ... :profile ...}."
+  ([static-result league-state] (live-valuation static-result league-state {}))
+  ([static-result league-state {:keys [profile]}]
+   (let [prof        (profiles/resolve-profile (or profile (:profile static-result)))
+         base        (:players static-result)
+         ;; live signals first — the scarcity fold consumes them.
+         with-tcm    (tcm/with-tcm base league-state)
+         pdm         (pdm/calculate-pdm base league-state)
+         board       (scarcity-adjust-vorp with-tcm pdm (:scarcity prof))
+         budget      (ls/initial-cash league-state)
+         total-slots (reduce + 0 (map #(count (:roster %)) (:teams league-state)))
+         valued      (value/calculate-value board budget total-slots)
+         infl        (inflation/auction-inflation valued league-state)
+         heat        (inflation/draft-phase-decay league-state)
+         ;; inflation-sensitivity scales how hard the live market moves Worth.
+         eff-infl    (+ 1.0 (* (:inflation-sensitivity prof) (- (* infl heat) 1.0)))
+         priced      (value/calculate-price valued eff-infl
+                                            (:drafted-player-ids league-state))
+         with-barg   (mapv (fn [p]
+                             (assoc p :bargain
+                                    (if (> (:worth p) 0) (- (:value p) (:worth p)) 0)))
+                           priced)]
+     {:players            with-barg
+      :replacement-levels (:replacement-levels static-result)
+      :pdm-map            pdm
+      :inflation          infl
+      :market-heat        heat
+      :profile            (or profile (:profile static-result))})))
