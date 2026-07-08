@@ -10,6 +10,7 @@
             [draftday.rankings.replacement :as replacement]
             [draftday.rankings.value :as value]
             [draftday.rankings.inflation :as inflation]
+            [draftday.rankings.inflation-index :as idx]
             [draftday.rankings.tcm :as tcm]
             [draftday.rankings.pdm :as pdm]
             [draftday.rankings.league-state :as ls]))
@@ -95,17 +96,25 @@
          valued      (value/calculate-value board budget total-slots)
          infl        (inflation/auction-inflation valued league-state)
          heat        (inflation/draft-phase-decay league-state)
-         ;; inflation-sensitivity scales how hard the live market moves Worth.
-         eff-infl    (+ 1.0 (* (:inflation-sensitivity prof) (- (* infl heat) 1.0)))
-         priced      (value/calculate-price valued eff-infl
+         ;; per-position inflation replaces the single global scalar; reduces to
+         ;; `infl` for positions with no picks. inflation-sensitivity scales how
+         ;; hard the resulting live market moves Worth.
+         pos-infl    (idx/per-position-inflation valued league-state infl)
+         sens        (:inflation-sensitivity prof)
+         infl-fn     (fn [p]
+                       (let [market (* (get pos-infl (:position p) infl) heat)]
+                         (+ 1.0 (* sens (- market 1.0)))))
+         priced      (value/calculate-price valued infl-fn
                                             (:drafted-player-ids league-state))
          with-barg   (mapv (fn [p]
                              (assoc p :bargain
                                     (if (> (:worth p) 0) (- (:value p) (:worth p)) 0)))
                            priced)]
-     {:players            with-barg
-      :replacement-levels (:replacement-levels static-result)
-      :pdm-map            pdm
-      :inflation          infl
-      :market-heat        heat
-      :profile            (or profile (:profile static-result))})))
+     {:players             with-barg
+      :replacement-levels  (:replacement-levels static-result)
+      :pdm-map             pdm
+      :inflation           infl
+      :position-inflation  pos-infl
+      :inflation-index     (idx/inflation-index valued (:picks league-state))
+      :market-heat         heat
+      :profile             (or profile (:profile static-result))})))

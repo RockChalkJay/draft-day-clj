@@ -29,10 +29,16 @@
                      0)))
           board)))
 
+(defn- inflation-for
+  "`inflation` may be a scalar or a per-player fn (for per-position inflation)."
+  [inflation player]
+  (if (fn? inflation) (inflation player) inflation))
+
 (defn calculate-price
   "Live Price (:worth) = 1 + (value - 1) * inflation. At inflation 1 Price equals
   Value; the $1 base keeps min-bid players at $1. Priced only for undrafted skill
-  players with value >= 1; K/DST, drafted, worthless -> $0."
+  players with value >= 1; K/DST, drafted, worthless -> $0. `inflation` is a
+  scalar or a fn of the player (per-position inflation)."
   [board inflation drafted-ids]
   (mapv (fn [p]
           (let [value  (double (or (:value p) 0))
@@ -41,6 +47,6 @@
                             (>= value 1.0))]
             (assoc p :worth
                    (if priced
-                     (to-dollars (+ 1.0 (* (- value 1.0) inflation)))
+                     (to-dollars (+ 1.0 (* (- value 1.0) (inflation-for inflation p))))
                      0))))
         board))
