@@ -17,30 +17,33 @@
 (defn replacement-levels
   "Return {\"QB\" pts \"RB\" pts \"WR\" pts \"TE\" pts}. The replacement index for
   a position is num-teams*starters (+ flex share for RB/WR), clamped to
-  (count pool)-1; the points of the player at that index is the level. Positions
-  with an empty pool are omitted."
-  [board num-teams config]
-  (let [config   (merge default-config config)
-        flex     (flex-share-each num-teams (:flex config))
-        spec     [["QB" (:qb config) 0]
-                  ["RB" (:rb config) flex]
-                  ["WR" (:wr config) flex]
-                  ["TE" (:te config) 0]]]
-    (reduce (fn [acc [pos starters flx]]
-              (let [pool (sort-by :points > (filter #(= (:position %) pos) board))]
-                (if (empty? pool)
-                  acc
-                  (let [idx (min (+ (* num-teams starters) flx) (dec (count pool)))]
-                    (assoc acc pos (double (:points (nth pool idx))))))))
-            {} spec)))
+  (count pool)-1; the score of the player at that index is the level. Positions
+  with an empty pool are omitted. `score-key` (default :points) lets a strategy
+  profile compute levels on profile-adjusted :eff-points."
+  ([board num-teams config] (replacement-levels board num-teams config :points))
+  ([board num-teams config score-key]
+   (let [config (merge default-config config)
+         flex   (flex-share-each num-teams (:flex config))
+         spec   [["QB" (:qb config) 0]
+                 ["RB" (:rb config) flex]
+                 ["WR" (:wr config) flex]
+                 ["TE" (:te config) 0]]]
+     (reduce (fn [acc [pos starters flx]]
+               (let [pool (sort-by score-key > (filter #(= (:position %) pos) board))]
+                 (if (empty? pool)
+                   acc
+                   (let [idx (min (+ (* num-teams starters) flx) (dec (count pool)))]
+                     (assoc acc pos (double (score-key (nth pool idx))))))))
+             {} spec))))
 
 (defn with-vorp
-  "Assoc :vorp = max(0, points - level) for QB/RB/WR/TE; 0 for positions absent
-  from levels (K/DST)."
-  [board levels]
-  (mapv (fn [p]
-          (let [lvl (get levels (:position p))]
-            (assoc p :vorp (if (nil? lvl)
-                             0.0
-                             (max 0.0 (- (double (:points p)) lvl))))))
-        board))
+  "Assoc :vorp = max(0, score - level) for QB/RB/WR/TE; 0 for positions absent
+  from levels (K/DST). `score-key` (default :points) matches replacement-levels."
+  ([board levels] (with-vorp board levels :points))
+  ([board levels score-key]
+   (mapv (fn [p]
+           (let [lvl (get levels (:position p))]
+             (assoc p :vorp (if (nil? lvl)
+                              0.0
+                              (max 0.0 (- (double (score-key p)) lvl))))))
+         board)))

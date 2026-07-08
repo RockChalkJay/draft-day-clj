@@ -4,6 +4,8 @@
   scoring/roster-size config; `live-valuation` (value -> inflation -> worth ->
   bargain, + tcm/pdm signals) recomputes after every pick."
   (:require [draftday.rankings.scoring :as scoring]
+            [draftday.rankings.projections :as projections]
+            [draftday.rankings.profiles :as profiles]
             [draftday.rankings.tiers :as tiers]
             [draftday.rankings.replacement :as replacement]
             [draftday.rankings.value :as value]
@@ -34,23 +36,32 @@
           (group-by :position players)))
 
 (defn static-rankings
-  "Steps 0-2: points -> per-position tiers (expert override + re-anchor) -> vorp.
-  Returns {:players [...] :replacement-levels {...}}. Never mutated by the live
+  "Steps 0-2: points -> floor/ceiling -> profile-adjusted effective points ->
+  per-position tiers (on mean points; expert override + re-anchor) -> replacement
+  + VORP (on effective points). The active :profile re-prices the board by moving
+  effective points toward floor/ceiling. Returns {:players [...]
+  :replacement-levels {...} :profile <keyword-or-map>}. Never mutated by the live
   layer."
   ([board scoring num-teams] (static-rankings board scoring num-teams {}))
-  ([board scoring num-teams {:keys [num-tiers replacement-config]
-                             :or   {num-tiers 5}}]
-   (let [scored     (scoring/with-points board scoring)
+  ([board scoring num-teams {:keys [num-tiers replacement-config profile]
+                             :or   {num-tiers 5 profile profiles/default-profile}}]
+   (let [enriched   (-> (scoring/with-points board scoring)
+                        projections/with-floor-ceiling
+                        (profiles/with-effective-points profile))
+         ;; tiers use mean :points so a position's clusters stay stable across
+         ;; lenses (PDM's elite counts and the badge don't jump when you switch).
          tiered     (mapcat (fn [[_ grp]] (tiers/tiers-by-cliffs grp num-tiers))
-                            (group-by :position scored))
+                            (group-by :position enriched))
          reanchored (->> tiered
                          (map apply-expert-tier)
                          dense-rank-per-position
                          vec)
+         ;; replacement + VORP run on profile-adjusted :eff-points.
          levels     (replacement/replacement-levels reanchored num-teams
-                                                    (or replacement-config {}))]
-     {:players            (replacement/with-vorp reanchored levels)
-      :replacement-levels levels})))
+                                                    (or replacement-config {}) :eff-points)]
+     {:players            (replacement/with-vorp reanchored levels :eff-points)
+      :replacement-levels levels
+      :profile            profile})))
 
 (defn live-valuation
   "Live layer: Value (VBD->$), Price (:worth, Value scaled by inflation*phase),
