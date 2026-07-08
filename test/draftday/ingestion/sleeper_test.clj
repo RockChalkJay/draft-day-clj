@@ -1,0 +1,45 @@
+(ns draftday.ingestion.sleeper-test
+  (:require [clojure.test :refer [deftest is]]
+            [draftday.ingestion.sleeper :as sleeper]
+            [draftday.rankings.scoring :as scoring]))
+
+;; Fixtures shaped exactly like live Sleeper /projections entries.
+(def ^:private sample-entries
+  [{:player_id "9509" :team "ATL"
+    :player {:first_name "Bijan" :last_name "Robinson" :position "RB" :years_exp 3}
+    :stats {:rush_yd 1372.0 :rush_td 9.0 :rec 64.0 :rec_yd 537.0 :rec_td 3.0 :fum_lost 2.0
+            :pts_ppr 324.9 :pts_half_ppr 292.9 :pts_std 260.9 :adp_ppr 1.4}}
+   {:player_id "10211" :team nil
+    :player {:first_name "Camerun" :last_name "Peoples" :position "RB" :years_exp 1}
+    :stats {:adp_ppr 999.0 :gp 0.0}}                       ; no pts_ppr -> excluded
+   {:player_id "ARI" :team "ARI"
+    :player {:first_name "Arizona" :last_name "Cardinals" :position "DEF"}
+    :stats {:sack 40.0 :int 12.0 :pts_ppr 120.0 :pts_std 120.0 :adp_ppr 150.0}}
+   {:player_id "99" :team "X"
+    :player {:first_name "Some" :last_name "Corner" :position "CB"}
+    :stats {:pts_ppr 50.0}}])                              ; non-fantasy pos -> excluded
+
+(deftest universe-filters-and-normalizes
+  (let [u     (sleeper/universe-from-entries sample-entries)
+        by-id (into {} (map (juxt :player-id identity) u))]
+    (is (= 2 (count u)))                                   ; Bijan + ARI only
+    (let [bijan (by-id "9509")]
+      (is (= "RB" (:position bijan)))
+      (is (= "Bijan Robinson" (:player-name bijan)))
+      (is (= 1372.0 (get-in bijan [:stats :rush_yd])))
+      (is (= 1.4 (:sleeper/adp bijan))))
+    (is (= "DST" (:position (by-id "ARI"))))))             ; DEF -> DST
+
+(deftest adp-sentinel-999-becomes-nil
+  (let [entry {:player_id "p" :team "X"
+               :player {:first_name "A" :last_name "B" :position "WR"}
+               :stats {:pts_ppr 100.0 :adp_ppr 999.0 :adp_half_ppr 999.0 :adp_std 999.0
+                       :rec 50.0 :rec_yd 700.0}}]
+    (is (nil? (:sleeper/adp (sleeper/normalize-entry entry))))))
+
+(deftest scoring-engine-matches-sleeper-precomputed
+  ;; Cross-check: our scoring on Sleeper :stats lands near Sleeper's own pts_ppr,
+  ;; validating the stat-key alignment (we don't model every scoring bonus).
+  (let [bijan (sleeper/normalize-entry (first sample-entries))
+        pts   (scoring/player-points bijan (:ppr scoring/presets))]
+    (is (< (Math/abs (- pts 324.9)) 25.0))))
