@@ -13,6 +13,12 @@ pom.xml.asc
 .nrepl-port
 .cpcache/
 
+.calva/
+.clj-kondo/
+.cljs_node_repl/
+.lsp/
+out/
+
 # node / shadow-cljs
 /node_modules/
 /.shadow-cljs/

@@ -4,6 +4,8 @@
   The cache is Transit on disk (data/players_cache.transit); the bundled sample is
   EDN on the classpath (resources/sample_players.edn)."
   (:require [draftday.ingestion.sleeper :as sleeper]
+            [draftday.ingestion.fantasypros :as fantasypros]
+            [draftday.ingestion.merge :as merge]
             [cognitect.transit :as transit]
             [clojure.edn :as edn]
             [clojure.java.io :as io]))
@@ -39,6 +41,17 @@
   (when-let [r (io/resource sample-resource)]
     (edn/read-string (slurp r))))
 
+(defn fetch-enriched-universe
+  "Sleeper universe (rows) left-joined with FantasyPros ECR (columns). FantasyPros
+  is best-effort: on failure the universe is returned un-enriched (the engine
+  falls back to cliff tiers + a default risk spread)."
+  [season]
+  (let [universe (sleeper/fetch-universe season)
+        ecr      (try (fantasypros/fetch-ecr :ppr) (catch Exception _ nil))]
+    (if (seq ecr)
+      (merge/left-join universe (fantasypros/ecr-by-key ecr))
+      universe)))
+
 (defn load-universe
   "Return {:players [...] :source \"live|cache|sample|empty\"}. opts: :refresh
   (bypass fresh cache), :season, :cache-path (defaults to data/...)."
@@ -53,7 +66,7 @@
 
      :else
      (try
-       (let [u (sleeper/fetch-universe (or season (sleeper/current-season)))]
+       (let [u (fetch-enriched-universe (or season (sleeper/current-season)))]
          (write-transit! cache-path u)
          {:players u :source "live"})
        (catch Exception _

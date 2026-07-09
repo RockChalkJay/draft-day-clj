@@ -1,11 +1,15 @@
 (ns draftday.rankings.projections
   "Derive a floor (p10) / ceiling (p90) band around each player's mean projection
   from data we already fetch free: expert-rank disagreement (FantasyPros
-  rank_std / rank_ave, currently unused in the POC) scaled by a per-position
-  historical volatility. Powers the Floor and Ceiling strategy profiles.
+  rank_std) scaled by a per-position historical volatility. Powers the Floor and
+  Ceiling strategy profiles.
 
-  band = k_pos * min(1, rank_std / rank_ave)
+  band = k_pos * min(1, rank_std / STD_SCALE)
   ceiling = mean * (1 + band),  floor = mean * (1 - band)
+
+  rank_std (spread of expert ranks) is used directly rather than divided by
+  rank_ave — the ratio perversely inflates for top players (tiny rank_ave), which
+  would make studs look boom/bust. Raw std tracks real disagreement.
 
   More expert disagreement -> a wider band. When a player has no rank spread
   (e.g. not covered by FantasyPros ECR), a per-position default spread is used so
@@ -18,15 +22,16 @@
 
 (def ^:private default-volatility 0.30)
 (def ^:private default-spread 0.5)
+;; A rank_std of ~10 (experts spread ~10 slots) reads as maximum disagreement.
+(def ^:private std-scale 10.0)
 
 (defn- relative-spread
-  "Expert disagreement as a 0..1 signal (coefficient of variation of expert rank);
-  nil when no usable rank data is present."
+  "Expert disagreement as a 0..1 signal from the spread of expert ranks; nil when
+  no usable rank data is present."
   [player]
-  (let [std (:fantasypros/rank-std player)
-        ave (:fantasypros/rank-ave player)]
-    (when (and (number? std) (number? ave) (pos? ave))
-      (min 1.0 (/ (double std) ave)))))
+  (let [std (:fantasypros/rank-std player)]
+    (when (number? std)
+      (min 1.0 (/ (double std) std-scale)))))
 
 (defn with-floor-ceiling
   "Assoc :floor and :ceiling on each player. Requires :points (run after
