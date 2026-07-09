@@ -1,6 +1,7 @@
 (ns draftday.db
   "app-db shape, the column catalog, and roster/league helpers. No reagent here —
-  pure data + functions so it can be required from events and views alike.")
+  pure data + functions so it can be required from events and views alike."
+  (:require [clojure.string :as str]))
 
 ;; ---- roster / teams ----
 
@@ -14,13 +15,23 @@
 (defn roster-template [roster-cfg]
   (vec (mapcat (fn [[label k]] (repeat (get roster-cfg k 0) label)) roster-order)))
 
-(defn make-teams [num-teams roster-cfg bankroll]
+(defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
+
+(defn make-teams-named
+  "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
+  names; a blank name falls back to the default (\"You\"/\"Team N\")."
+  [names roster-cfg bankroll]
   (let [tmpl (roster-template roster-cfg)]
-    (vec (for [i (range num-teams)]
-           {:team-id (str "t" i)
-            :name    (if (zero? i) "You" (str "Team " (inc i)))
-            :bankroll bankroll
-            :roster  (mapv (fn [p] {:pos p :player-id nil}) tmpl)}))))
+    (vec (map-indexed
+          (fn [i nm]
+            {:team-id  (str "t" i)
+             :name     (if (str/blank? nm) (default-name i) nm)
+             :bankroll bankroll
+             :roster   (mapv (fn [p] {:pos p :player-id nil}) tmpl)})
+          names))))
+
+(defn make-teams [num-teams roster-cfg bankroll]
+  (make-teams-named (map default-name (range num-teams)) roster-cfg bankroll))
 
 (def default-config
   {:num-teams 12 :num-tiers 5 :starting-bankroll 200 :scoring :ppr :roster default-roster})
@@ -91,6 +102,7 @@
      :nominated-id nil
      :bid          ""
      :bid-team     "t0"
+     :modal        nil
      :sort        {:key :worth :dir -1}
      :pos-filter  nil
      :search      ""

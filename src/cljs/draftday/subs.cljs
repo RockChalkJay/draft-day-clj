@@ -5,7 +5,7 @@
 
 ;; ---- simple extracts ----
 (doseq [k [:view :status :source :loading? :profile :config :teams :my-team-id
-           :nominated-id :bid :bid-team :sort :pos-filter :search :columns :drafted :ranked]]
+           :nominated-id :bid :bid-team :sort :pos-filter :search :columns :drafted :ranked :modal]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 (rf/reg-sub :ranked-players :<- [:ranked] (fn [r _] (:players r)))

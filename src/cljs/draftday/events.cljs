@@ -150,6 +150,29 @@
 
 ;; ---- config / Sleeper import ----
 
+;; ---- start-draft modal ----
+
+(rf/reg-event-db :show-modal  (fn [db [_ m]] (assoc db :modal m)))
+(rf/reg-event-db :close-modal (fn [db _] (assoc db :modal nil)))
+
+(rf/reg-event-fx :start-draft [persist]
+  (fn [{:keys [db]} [_ {:keys [num-teams starting-bankroll num-tiers team-names]}]]
+    (let [num-teams (max 2 (min 20 (or num-teams 12)))
+          bankroll  (max 1 (or starting-bankroll 200))
+          num-tiers (max 1 (min 12 (or num-tiers 5)))
+          cfg   (assoc (:config db)
+                       :num-teams num-teams
+                       :starting-bankroll bankroll
+                       :num-tiers num-tiers)
+          teams (db/make-teams-named (take num-teams (concat team-names (repeat "")))
+                                     (:roster cfg) bankroll)]
+      {:db (-> db
+               (assoc :config cfg :teams teams)
+               ;; reset ALL in-progress draft state
+               (assoc :drafted {} :picks [] :nominated-id nil :bid "" :modal nil)
+               (assoc :my-team-id (:team-id (first teams))))
+       :fx [[:dispatch [:recompute]]]})))
+
 (rf/reg-event-fx :apply-config [persist]
   (fn [{:keys [db]} [_ new-cfg]]
     (let [cfg   (merge (:config db) new-cfg)
