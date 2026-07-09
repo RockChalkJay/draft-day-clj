@@ -5,6 +5,7 @@
   EDN on the classpath (resources/sample_players.edn)."
   (:require [draftday.ingestion.sleeper :as sleeper]
             [draftday.ingestion.fantasypros :as fantasypros]
+            [draftday.ingestion.espn :as espn]
             [draftday.ingestion.merge :as merge]
             [cognitect.transit :as transit]
             [clojure.edn :as edn]
@@ -42,15 +43,17 @@
     (edn/read-string (slurp r))))
 
 (defn fetch-enriched-universe
-  "Sleeper universe (rows) left-joined with FantasyPros ECR (columns). FantasyPros
-  is best-effort: on failure the universe is returned un-enriched (the engine
-  falls back to cliff tiers + a default risk spread)."
+  "Sleeper universe (rows) left-joined with enrichment columns: FantasyPros ECR
+  (tiers/variance/bye) and ESPN live auction values. Each enrichment is
+  best-effort — on failure the universe is returned without those columns and the
+  engine falls back gracefully."
   [season]
   (let [universe (sleeper/fetch-universe season)
-        ecr      (try (fantasypros/fetch-ecr :ppr) (catch Exception _ nil))]
-    (if (seq ecr)
-      (merge/left-join universe (fantasypros/ecr-by-key ecr))
-      universe)))
+        ecr      (try (fantasypros/fetch-ecr :ppr) (catch Exception _ nil))
+        espn     (try (espn/fetch season) (catch Exception _ nil))]
+    (cond-> universe
+      (seq ecr)  (merge/left-join (fantasypros/ecr-by-key ecr))
+      (seq espn) (merge/left-join espn))))
 
 (defn load-universe
   "Return {:players [...] :source \"live|cache|sample|empty\"}. opts: :refresh
