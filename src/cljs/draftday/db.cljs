@@ -47,9 +47,9 @@
    {:key :name     :label "Player" :tooltip "Player"                    :default? true}
    {:key :team     :label "Tm"     :tooltip "NFL team"                  :default? true}
    {:key :position :label "Pos"    :tooltip "Position"                  :default? true}
-   {:key :tier     :label "Tier"   :tooltip "Per-position tier (🚨 = live cliff)" :default? true}
    {:key :worth    :label "Worth"  :tooltip "Live auction price (active profile)"  :default? true}
    {:key :value    :label "Value"  :tooltip "Stable VBD dollars"        :default? true}
+   {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($)" :default? true}
    {:key :bargain  :label "Barg"   :tooltip "Value − Worth (green target / red reach)" :default? true}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? true}
    {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? true}
@@ -68,9 +68,9 @@
    :name     :player-name
    :team     :team
    :position :position
-   :tier     :tier
    :worth    :worth
    :value    :value
+   :espn-value :espn/auction-value
    :bargain  :bargain
    :adp      :sleeper/adp
    :proj     :points
@@ -83,6 +83,18 @@
 
 (defn default-columns []
   (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) column-catalog))
+
+(defn reconcile-columns
+  "Reconcile a persisted column config with the current catalog: keep the stored
+  order for keys that still exist, drop unknown keys (e.g. a removed :tier), and
+  append any new catalog columns at their default visibility."
+  [stored]
+  (let [valid   (set (map :key column-catalog))
+        kept    (filterv #(valid (:key %)) (or stored []))
+        present (set (map :key kept))
+        added   (for [c column-catalog :when (not (present (:key c)))]
+                  {:key (:key c) :visible? (boolean (:default? c))})]
+    (vec (concat kept added))))
 
 ;; ---- initial db ----
 

@@ -16,7 +16,8 @@
 (rf/reg-event-fx
  :boot
  (fn [_ _]
-   {:db (merge (db/default-db) (fx/load-persisted))
+   {:db (-> (merge (db/default-db) (fx/load-persisted))
+            (update :columns db/reconcile-columns))   ; drop removed cols, add new ones
     :fx [[:dispatch [:fetch-players]]]}))
 
 (rf/reg-event-fx

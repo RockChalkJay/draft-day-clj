@@ -8,8 +8,9 @@
 (defn- n0 [n] (if (number? n) (js/Math.round n) "–"))
 (defn- n1 [n] (if (number? n) (.toFixed n 1) "–"))
 
-(def ^:private tier-colors {1 "#3ddc97" 2 "#79cf86" 3 "#e2c05a" 4 "#e0955a" 5 "#e06a6a"})
-(defn- tier-color [t] (get tier-colors (min 5 (max 1 (or t 1))) "#8b93a5"))
+(defn- cliff-marker [p]
+  (when (and (:tcm p) (> (:tcm p) 1.1))
+    [:span.badge {:title "Tier cliff — steep drop to the next player"} " 🚨"]))
 
 (defn- divergence-badge
   "🔼 ceiling-play / 🛡 safe-floor when a player's Worth swings notably vs the
@@ -26,14 +27,12 @@
 (defn- cell [k p]
   (case k
     :rank     [:td.num.muted (:rank p)]
-    :name     [:td.name (:player-name p) (divergence-badge p)]
+    :name     [:td.name (:player-name p) (cliff-marker p) (divergence-badge p)]
     :team     [:td.muted (:team p)]
     :position [:td [:span.pill (:position p)]]
-    :tier     (let [t (:tier p)]
-                [:td [:span.tier-badge {:style {:background (tier-color t)}}
-                      t (when (and (:tcm p) (> (:tcm p) 1.1)) " 🚨")]])
     :worth    [:td.num.bold (money (:worth p))]
     :value    [:td.num.muted (money (:value p))]
+    :espn-value [:td.num.muted (money (:espn/auction-value p))]
     :bargain  (let [b (:bargain p)]
                 [:td.num {:class (cond (and (number? b) (pos? b)) "good"
                                        (and (number? b) (neg? b)) "warn")}
@@ -60,8 +59,10 @@
      (:label d)
      [:span.sort-ind (cond (not active?) " ↕" (= -1 (:dir sort)) " ▼" :else " ▲")]]))
 
-(defn- player-row [p cols nominated]
-  [:tr {:class (when (= nominated (:player-id p)) "selected")
+(defn- player-row [p cols nominated color-tier?]
+  [:tr {:class [(when (= nominated (:player-id p)) "selected")
+                ;; tier row-coloring only when filtered to a single position
+                (when color-tier? (str "tier-row-" (min 6 (or (:tier p) 1))))]
         :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
    (for [col cols] (with-meta (cell (:key col) p) {:key (str (:key col))}))])
 
@@ -87,10 +88,12 @@
 ;; ---- board ----
 
 (defn board []
-  (let [players   @(rf/subscribe [:board-players])
-        cols      @(rf/subscribe [:visible-columns])
-        sort      @(rf/subscribe [:sort])
-        nominated @(rf/subscribe [:nominated-id])]
+  (let [players     @(rf/subscribe [:board-players])
+        cols        @(rf/subscribe [:visible-columns])
+        sort        @(rf/subscribe [:sort])
+        nominated   @(rf/subscribe [:nominated-id])
+        ;; color rows by tier only when filtered to a single position
+        color-tier? (some? @(rf/subscribe [:pos-filter]))]
     [:div.board-wrap
      [:div.board-controls [pos-filter] [search-box]]
      [:div.table-scroll
@@ -99,4 +102,4 @@
        [:tbody
         (for [p players]
           ^{:key (:player-id p)}
-          [player-row p cols nominated])]]]]))
+          [player-row p cols nominated color-tier?])]]]]))
