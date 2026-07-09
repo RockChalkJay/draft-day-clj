@@ -94,6 +94,7 @@ table.board td { padding: 6px 10px; border-bottom: 1px solid var(--border); whit
 table.board tbody tr:hover { background: var(--panel2); }
 table.board tbody tr.selected { background: #1d2a44; }
 td.name { font-weight: 600; }
+.badge { font-size: 11px; cursor: help; }
 .pill { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-size: 11px; }
 .tier-badge { color: #0b0e13; border-radius: 6px; padding: 1px 8px; font-weight: 700; font-size: 11px; }
 

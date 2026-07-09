@@ -49,18 +49,35 @@
 (defn- coerce-league-state [ls]
   (update ls :drafted-player-ids set))
 
+(defn- lens-worths
+  "player-id -> Worth under a given profile (for cross-lens divergence badges)."
+  [players scoring num-teams opts league-state profile]
+  (-> (engine/static-rankings players scoring num-teams (assoc opts :profile profile))
+      (engine/live-valuation league-state {:profile profile})
+      :players
+      (->> (into {} (map (juxt :player-id :worth))))))
+
 (defn rankings-handler [req]
   (let [{:keys [scoring num-teams num-tiers replacement-config profile league-state]}
         (read-json-body req)
-        players (:players (universe false))
-        prof    (if (string? profile) (keyword profile) (or profile :balanced))
-        static  (engine/static-rankings players (resolve-scoring scoring) (or num-teams 12)
-                                        {:num-tiers          (or num-tiers 5)
-                                         :replacement-config replacement-config
-                                         :profile            prof})
-        live    (engine/live-valuation static (coerce-league-state league-state) {:profile prof})]
-    (json-response 200 (select-keys live [:players :inflation :inflation-index
-                                          :position-inflation :market-heat :pdm-map :profile]))))
+        players  (:players (universe false))
+        scoring* (resolve-scoring scoring)
+        nt       (or num-teams 12)
+        opts     {:num-tiers (or num-tiers 5) :replacement-config replacement-config}
+        prof     (if (string? profile) (keyword profile) (or profile :balanced))
+        ls       (coerce-league-state league-state)
+        live     (engine/live-valuation
+                  (engine/static-rankings players scoring* nt (assoc opts :profile prof)) ls
+                  {:profile prof})
+        ;; also value under Floor/Ceiling so the client can badge lens-sensitive players
+        floor-w  (lens-worths players scoring* nt opts ls :floor)
+        ceil-w   (lens-worths players scoring* nt opts ls :ceiling)
+        players* (mapv #(assoc % :worth-floor   (get floor-w (:player-id %) 0)
+                                 :worth-ceiling (get ceil-w  (:player-id %) 0))
+                       (:players live))]
+    (json-response 200 (-> (select-keys live [:inflation :inflation-index
+                                              :position-inflation :market-heat :pdm-map :profile])
+                           (assoc :players players*)))))
 
 (def app
   (ring/ring-handler

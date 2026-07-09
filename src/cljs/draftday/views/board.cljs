@@ -11,10 +11,22 @@
 (def ^:private tier-colors {1 "#3ddc97" 2 "#79cf86" 3 "#e2c05a" 4 "#e0955a" 5 "#e06a6a"})
 (defn- tier-color [t] (get tier-colors (min 5 (max 1 (or t 1))) "#8b93a5"))
 
+(defn- divergence-badge
+  "🔼 ceiling-play / 🛡 safe-floor when a player's Worth swings notably vs the
+  active lens (worth-floor/worth-ceiling come from the API)."
+  [p]
+  (let [w  (:worth p) wf (:worth-floor p) wc (:worth-ceiling p)
+        thr (when (number? w) (max 3 (* 0.15 w)))]
+    (cond
+      (and thr (number? wc) (>= (- wc w) thr))
+      [:span.badge.up {:title "Ceiling play — worth more under the Ceiling lens"} " 🔼"]
+      (and thr (number? wf) (>= (- wf w) thr))
+      [:span.badge.safe {:title "Safe floor — worth more under the Floor lens"} " 🛡"])))
+
 (defn- cell [k p]
   (case k
     :rank     [:td.num.muted (:rank p)]
-    :name     [:td.name (:player-name p)]
+    :name     [:td.name (:player-name p) (divergence-badge p)]
     :team     [:td.muted (:team p)]
     :position [:td [:span.pill (:position p)]]
     :tier     (let [t (:tier p)]

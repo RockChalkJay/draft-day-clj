@@ -40,4 +40,6 @@
       (is (= 200 (:status resp)))
       (is (contains? b :inflation))
       (is (= "balanced" (:profile b)))
-      (is (some #(pos? (:worth %)) (:players b))))))
+      (is (some #(pos? (:worth %)) (:players b)))
+      ;; cross-lens worths attached for divergence badges
+      (is (every? #(and (contains? % :worth-floor) (contains? % :worth-ceiling)) (:players b))))))
