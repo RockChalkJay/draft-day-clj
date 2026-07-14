@@ -15,23 +15,48 @@
                  :on-click #(rf/dispatch [:set-profile k])}
         label])]))
 
-(defn- chip [p]
-  [:span.chip {:on-click #(rf/dispatch [:set-nominated (:player-id p)])}
-   (:player-name p) [:b (str " $" (:worth p))]])
+(defn- nominate! [p] (rf/dispatch [:set-nominated (:player-id p)]))
+
+(defn- top5-card [i p]
+  [:div.sugg-card {:on-click #(nominate! p)}
+   [:div.rank (str "#" (inc i))]
+   [:div.pname (:player-name p)]
+   [:div.pmeta (str (:position p) " · " (:team p))]
+   [:div.pprice (str "$" (:worth p))]])
+
+(defn- pos-card [pos players]
+  [:div.pos-card
+   [:h5 pos]
+   (for [p players]
+     ^{:key (:player-id p)}
+     [:div.pos-row {:on-click #(nominate! p)}
+      [:span.pn (:player-name p)]
+      [:span.pv (str "$" (:worth p))]])])
+
+(defn- need-card [{:keys [pos player]}]
+  [:div.need-card {:on-click #(when player (nominate! player))}
+   [:h5 (str pos " (open starter slot)")]
+   (if player
+     [:<>
+      [:div.pname (:player-name player)]
+      [:div.pprice (str "$" (:worth player))]]
+     [:div.muted "—"])])
 
 (defn suggestions []
   (let [top    @(rf/subscribe [:top-overall])
-        by-pos @(rf/subscribe [:top-by-position])]
+        by-pos @(rf/subscribe [:top-by-position])
+        needs  @(rf/subscribe [:best-value-for-needs])]
     [:div.suggestions
-     [:div.sugg-block
+     [:div.sugg-section
       [:h4 "Top 5 Overall"]
-      [:div.chips (for [p top] ^{:key (:player-id p)} [chip p])]]
-     [:div.sugg-cols
-      (for [pos ["QB" "RB" "WR" "TE"]]
-        ^{:key pos}
-        [:div.sugg-block
-         [:h4 pos]
-         [:div.chips (for [p (get by-pos pos)] ^{:key (:player-id p)} [chip p])]])]]))
+      [:div.sugg-row (map-indexed (fn [i p] ^{:key (:player-id p)} [top5-card i p]) top)]]
+     [:div.sugg-section
+      [:h4 "Top 3 Per Position"]
+      [:div.sugg-row (for [pos ["QB" "RB" "WR" "TE"]] ^{:key pos} [pos-card pos (get by-pos pos)])]]
+     (when (seq needs)
+       [:div.sugg-section
+        [:h4 "Best Value For Your Needs"]
+        [:div.sugg-row (for [n needs] ^{:key (:pos n)} [need-card n])]])]))
 
 (defn- nominate-form
   "Form-2 so the bid/team live in local reagent atoms (synchronous updates — no

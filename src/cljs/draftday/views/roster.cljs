@@ -12,17 +12,23 @@
     (get best (:pos slot))))
 
 (defn my-roster []
-  (let [team    @(rf/subscribe [:my-team])
-        by-id   @(rf/subscribe [:players-by-id])
-        drafted @(rf/subscribe [:drafted])
-        best    @(rf/subscribe [:best-worth-by-pos])
-        max-bid @(rf/subscribe [:my-max-bid])]
+  (let [team      @(rf/subscribe [:my-team])
+        by-id     @(rf/subscribe [:players-by-id])
+        drafted   @(rf/subscribe [:drafted])
+        best      @(rf/subscribe [:best-worth-by-pos])
+        max-bid   @(rf/subscribe [:my-max-bid])
+        nominated (get by-id @(rf/subscribe [:nominated-id]))]
     [:div.roster-panel
      [:div.roster-head
       [:h3 "My Roster"]
       [:div.roster-cash
        [:span "Bankroll " [:b (str "$" (:bankroll team))]]
        [:span.muted (str "· max bid $" max-bid)]]]
+     [:div.nom-box
+      (if nominated
+        [:span (:player-name nominated) " "
+         [:span.muted (str (:position nominated) " · " (:team nominated) " · worth $" (:worth nominated))]]
+        [:span.muted "No player currently nominated."])]
      [:table.roster
       [:tbody
        (for [[i slot] (map-indexed vector (:roster team))]

@@ -42,16 +42,14 @@
 (defn- board-view []
   [:div.board-view
    [controls/profile-switcher]
-   [controls/suggestions]
-   [:div.board-layout
-    [:div.board-main
-     [controls/nominate-bar]
-     [:details.col-details
-      [:summary "⚙ Columns"]
-      [columns/column-picker]]
-     [board/board]]
-    [:aside.board-side
-     [roster/my-roster]]]])
+   [:div.top-panels
+    [:div.suggestions-col [controls/suggestions]]
+    [:aside.roster-col [roster/my-roster]]]
+   [controls/nominate-bar]
+   [:details.col-details
+    [:summary "⚙ Columns"]
+    [columns/column-picker]]
+   [board/board]])
 
 (defn app []
   (let [view  @(rf/subscribe [:view])

@@ -96,3 +96,10 @@
     (->> (:roster team)
          (filter #(and (nil? (:player-id %)) (suggestion-positions (:pos %))))
          (map :pos) distinct vec)))
+
+;; best available player for each open starter need (blue "Best Value" cards)
+(rf/reg-sub :best-value-for-needs
+  :<- [:needs]
+  :<- [:top-by-position]
+  (fn [[needs by-pos] _]
+    (mapv (fn [pos] {:pos pos :player (first (get by-pos pos))}) needs)))

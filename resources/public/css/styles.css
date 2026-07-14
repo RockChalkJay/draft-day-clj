@@ -60,8 +60,37 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .profile-switch button.on { color: #0b0e13; background: var(--accent); border-color: var(--accent); font-weight: 700; }
 
 /* ---- suggestions ---- */
-.suggestions { display: grid; grid-template-columns: 1fr 3fr; gap: 12px; margin-bottom: 14px; }
-.sugg-cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+/* suggestions (wide, left) + roster (narrow, right, full height) above the board */
+.top-panels { display: flex; gap: 14px; align-items: stretch; margin-bottom: 14px; }
+.suggestions-col { flex: 1; min-width: 0; }
+.roster-col { flex: 0 0 300px; min-width: 0; }
+
+.suggestions { display: flex; flex-direction: column; gap: 16px; }
+.sugg-section h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+  color: var(--muted); letter-spacing: .05em; }
+.sugg-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.sugg-card, .pos-card, .need-card { flex: 1 1 0; min-width: 150px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.sugg-card { cursor: pointer; }
+.sugg-card:hover, .need-card:hover { border-color: var(--accent); }
+.sugg-card .rank { font-size: 11px; color: var(--muted); }
+.pname { font-weight: 700; }
+.pmeta { font-size: 11px; color: var(--muted); }
+.pprice { color: var(--good); font-weight: 700; margin-top: 2px; }
+
+.pos-card h5, .need-card h5 { margin: 0 0 7px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.pos-card h5 { color: var(--muted); }
+.pos-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; cursor: pointer; }
+.pos-row:hover .pn { color: var(--accent); }
+.pos-row .pn { font-weight: 600; }
+.pos-row .pv { color: var(--good); font-weight: 600; }
+
+.need-card { border-color: var(--accent); cursor: pointer; }
+.need-card h5 { color: var(--accent); }
+
+.nom-box { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; margin-bottom: 10px; font-size: 12px; }
 .sugg-block { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
 .sugg-block h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .05em; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -123,7 +152,7 @@ td.name { font-weight: 600; }
 .board tbody tr.tier-row-6 { background: rgba(139,147,165,.10); }
 
 /* ---- roster panel ---- */
-.roster-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; position: sticky; top: 70px; }
+.roster-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; height: 100%; }
 .roster-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .roster-head h3 { margin: 0; font-size: 14px; }
 .roster-cash b { color: var(--good); }

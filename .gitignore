@@ -17,6 +17,7 @@ pom.xml.asc
 .clj-kondo/
 .cljs_node_repl/
 .lsp/
+.dir-locals.el
 out/
 
 # node / shadow-cljs

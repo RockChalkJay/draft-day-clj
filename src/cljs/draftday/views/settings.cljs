@@ -9,13 +9,15 @@
             :on-change #(on-change (js/parseInt (.. % -target -value) 10))}]])
 
 (defn- sleeper-import []
-  (let [league-id (r/atom "")]
+  (let [league-id (r/atom "1380540443179118592")]
     (fn []
       [:section.settings-card.sleeper
        [:h3 "Import from Sleeper"]
        [:p.muted "Paste a Sleeper league ID to pull its scoring + roster settings."]
        [:div.row
-        [:input {:type "text" :placeholder "League ID" :value @league-id
+        [:input {:type "text" 
+                 :placeholder "League ID" 
+                 :value @league-id
                  :on-change #(reset! league-id (.. % -target -value))}]
         [:button.primary {:on-click #(when (seq @league-id)
                                        (rf/dispatch [:import-sleeper @league-id]))}
