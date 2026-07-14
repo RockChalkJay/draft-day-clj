@@ -1,4 +1,4 @@
-(defproject draftday "0.1.0-SNAPSHOT"
+(defproject draft-day "0.1.0-SNAPSHOT"
   :description "Fantasy football auction draft assistant (auction-focused, VBD)"
   :url "https://github.com/RockChalkJay/draft-day-clj"
   :license {:name "MIT"}
@@ -20,6 +20,6 @@
                  [thheller/shadow-cljs "2.28.18"]
                  [reagent "1.2.0"]
                  [re-frame "1.4.3"]]
-  :main ^:skip-aot draftday.server
+  :main ^:skip-aot draft-day.server
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})
