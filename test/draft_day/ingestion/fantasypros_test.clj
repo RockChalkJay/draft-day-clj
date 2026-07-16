@@ -23,9 +23,5 @@
     (is (= 11 (:bye bijan)))                         ; string -> long
     (is (= "RB1" (:fantasypros/pos-rank bijan)))))
 
-(deftest balanced-object-respects-strings
-  ;; a } inside a string value must not end the object early
-  (is (= "{\"a\":\"x}y\"}" (fp/balanced-object "prefix {\"a\":\"x}y\"} trailing"))))
-
 (deftest parse-returns-nil-without-blob
   (is (nil? (fp/parse-ecr "<html>no ecr here</html>"))))

@@ -7,7 +7,8 @@
   (:require [clojure.string :as str]
             [org.httpkit.client :as http]
             [jsonista.core :as json]
-            [draft-day.ingestion.match :as match]))
+            [draft-day.ingestion.match :as match])
+  (:import [org.jsoup Jsoup]))
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 
@@ -16,53 +17,42 @@
    :half-ppr "https://www.fantasypros.com/nfl/rankings/half-point-ppr-cheatsheets.php"
    :standard "https://www.fantasypros.com/nfl/rankings/consensus-cheatsheets.php"})
 
-(def ^:private user-agent
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
-(defn balanced-object
-  "Return the first brace-balanced {…} substring of s, respecting JSON strings and
-  escapes (so a } inside a string value doesn't end it early)."
-  [s]
-  (when-let [start (str/index-of s "{")]
-    (loop [i start, depth 0, in-str false, esc false]
-      (when (< i (count s))
-        (let [c (.charAt ^String s i)]
-          (cond
-            esc      (recur (inc i) depth in-str false)
-            (= c \\) (recur (inc i) depth in-str true)
-            (= c \") (recur (inc i) depth (not in-str) false)
-            in-str   (recur (inc i) depth in-str false)
-            (= c \{) (recur (inc i) (inc depth) in-str false)
-            (= c \}) (if (= depth 1)
-                       (subs s start (inc i))
-                       (recur (inc i) (dec depth) in-str false))
-            :else    (recur (inc i) depth in-str false)))))))
-
-(defn- ->double [x] (cond (number? x) (double x) 
+(defn- ->int [x] (cond (number? x) (int x)
+                        (string? x) (Integer/parseInt x)))
+(defn- ->double [x] (cond (number? x) (double x)
                           (string? x) (parse-double x)))
-(defn- ->long   [x] (cond (number? x) (long x)   
-                          (string? x) (parse-long x)))
 
 (defn- normalize-player [p]
   (let [name (:player_name p) pos (:player_position_id p)]
     {:key                  (match/key-for name pos)
-     :fantasypros/ecr      (->long (:rank_ecr p))
+     :fantasypros/ecr      (->int (:rank_ecr p))
      :fantasypros/pos-rank (:pos_rank p)
-     :fantasypros/ecr-tier (->long (:tier p))
+     :fantasypros/ecr-tier (->int (:tier p))
      :fantasypros/rank-std (->double (:rank_std p))
      :fantasypros/rank-ave (->double (:rank_ave p))
-     :fantasypros/rank-min (->long (:rank_min p))
-     :fantasypros/rank-max (->long (:rank_max p))
-     :bye                  (->long (:player_bye_week p))}))
+     :fantasypros/rank-min (->int (:rank_min p))
+     :fantasypros/rank-max (->int (:rank_max p))
+     :bye                  (->int (:player_bye_week p))}))
 
 (defn parse-ecr
   "Pure: cheatsheet HTML -> seq of enrichment maps (each with a :key)."
   [html]
-  (when-let [idx (str/index-of html "var ecrData = ")]
-    (when-let [obj (balanced-object (subs html idx))]
-      (->> (:players (json/read-value obj mapper))
-           (map normalize-player)
-           (filter :key)))))
+  (try
+    (let [doc (Jsoup/parse html)
+          scripts (.select doc "script")
+          script (->> scripts
+                      (filter #(str/includes? (.html %) "var ecrData"))
+                      first)]
+      (when script
+        (let [content (.html script)
+              json-match (re-find #"var ecrData = (\{.*)" content)]
+          (when (second json-match)
+            (let [json-str (second json-match)]
+              (->> (:players (json/read-value json-str mapper))
+                   (map normalize-player)
+                   (filter :key)))))))
+    (catch Exception _ nil)))
 
 (defn ecr-by-key
   "Index enrichment maps by :key (dropping the key from the value)."
@@ -74,7 +64,6 @@
   ([] (fetch-ecr :ppr))
   ([scoring]
    (let [url (get cheatsheet-urls scoring (:ppr cheatsheet-urls))
-         {:keys [status body error]} @(http/get url {:timeout 30000
-                                                      :headers {"User-Agent" user-agent}})]
+         {:keys [status body error]} @(http/get url {:timeout 30000})]
      (when (and (not error) (= 200 status))
        (parse-ecr body)))))
