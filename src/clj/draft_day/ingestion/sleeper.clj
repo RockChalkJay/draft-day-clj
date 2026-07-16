@@ -5,9 +5,8 @@
   engine (`rush_yd`, `pass_td`, `rec`, ...). Team defenses use the team abbrev
   as their player_id (e.g. \"ARI\") and Sleeper's \"DEF\" maps to our \"DST\"."
   (:require [org.httpkit.client :as http]
-            [jsonista.core :as json]))
-
-(def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
+            [jsonista.core :as json]
+            [draft-day.json :refer [mapper]]))
 
 (def ^:private base "https://api.sleeper.app")
 (def fantasy-positions ["QB" "RB" "WR" "TE" "K" "DEF"])

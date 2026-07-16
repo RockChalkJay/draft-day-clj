@@ -4,11 +4,10 @@
   (~37MB), so we use the JDK's java.net.http client (http-kit's client chokes on
   a body that large) and keep only players with a real auction value. Best-effort."
   (:require [jsonista.core :as json]
-            [draft-day.ingestion.match :as match])
+            [draft-day.ingestion.match :as match]
+            [draft-day.json :refer [mapper]])
   (:import [java.net.http HttpClient HttpRequest HttpResponse$BodyHandlers]
            [java.net URI]))
-
-(def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 
 (def ^:private position-map {1 "QB" 2 "RB" 3 "WR" 4 "TE" 5 "K" 16 "DST"})
 

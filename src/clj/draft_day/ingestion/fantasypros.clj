@@ -7,10 +7,9 @@
   (:require [clojure.string :as str]
             [org.httpkit.client :as http]
             [jsonista.core :as json]
-            [draft-day.ingestion.match :as match])
+            [draft-day.ingestion.match :as match]
+            [draft-day.json :refer [mapper]])
   (:import [org.jsoup Jsoup]))
-
-(def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 
 (def cheatsheet-urls
   {:ppr      "https://www.fantasypros.com/nfl/rankings/ppr-cheatsheets.php"

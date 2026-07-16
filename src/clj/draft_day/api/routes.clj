@@ -7,9 +7,8 @@
             [jsonista.core :as json]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.rankings.engine :as engine]
-            [draft-day.rankings.scoring :as scoring]))
-
-(def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
+            [draft-day.rankings.scoring :as scoring]
+            [draft-day.json :refer [mapper]]))
 
 (defn- json-response [status body]
   {:status status
