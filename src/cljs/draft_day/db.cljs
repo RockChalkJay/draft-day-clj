@@ -62,6 +62,21 @@
 
 (def columns-by-key (into {} (map (juxt :key identity)) column-catalog))
 
+;; ---- scoring catalog ----
+;; Grouped presentational metadata for the custom scoring editor: each group is
+;; rendered as a section of numeric weight inputs, in this order.
+
+(def scoring-catalog
+  [{:group "Passing"   :stats [[:pass_yd "Pass Yd"] [:pass_td "Pass TD"]
+                               [:pass_int "Pass INT"] [:pass_2pt "Pass 2PT"]]}
+   {:group "Rushing"   :stats [[:rush_yd "Rush Yd"] [:rush_td "Rush TD"] [:rush_2pt "Rush 2PT"]]}
+   {:group "Receiving" :stats [[:rec "Reception"] [:rec_yd "Rec Yd"]
+                               [:rec_td "Rec TD"] [:rec_2pt "Rec 2PT"]]}
+   {:group "Misc"      :stats [[:fum_lost "Fumble Lost"]]}
+   {:group "Kicking"   :stats [[:fgm "FG Made"] [:xpm "XP Made"] [:blk_kick "Blocked Kick"]]}
+   {:group "Defense"   :stats [[:sack "Sack"] [:int "INT"] [:fum_rec "Fumble Rec"]
+                               [:ff "Forced Fumble"] [:def_td "Def/ST TD"] [:safe "Safety"]]}])
+
 (def sort-accessors
   "column key -> fn player -> sortable value. :rank is attached in the sub."
   {:rank     :rank
@@ -105,6 +120,7 @@
      :ranked      nil           ; last /api/rankings response
      :loading?    false
      :status      nil
+     :scoring-presets nil       ; {:presets {...} :stat-keys [...]}, fetched at boot
      :config      cfg
      :profile     :balanced
      :teams       (make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))

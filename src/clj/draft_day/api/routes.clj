@@ -2,10 +2,13 @@
   "Stateless JSON API. The browser owns draft state and sends only the lightweight
   LeagueState + config + profile; the server runs static+live valuation on the
   cached universe and returns the valued board. Also serves the compiled SPA."
-  (:require [reitit.ring :as ring]
+  (:require [clojure.string :as str]
+            [reitit.ring :as ring]
             [reitit.ring.middleware.parameters :as parameters]
             [jsonista.core :as json]
             [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.league-import :as league-import]
+            [draft-day.ingestion.league-import.sleeper]
             [draft-day.rankings.engine :as engine]
             [draft-day.rankings.scoring :as scoring]
             [draft-day.json :refer [mapper]]))
@@ -38,12 +41,29 @@
         {:keys [players source]} (universe refresh?)]
     (json-response 200 {:players players :count (count players) :source source})))
 
+(defn scoring-presets-handler [_]
+  (json-response 200 {:presets scoring/presets :stat-keys scoring/stat-keys}))
+
+(defn league-import-handler [req]
+  (let [{:keys [provider league-id]} (read-json-body req)]
+    (if (str/blank? league-id)
+      (json-response 400 {:error "league-id is required"})
+      (let [{:keys [ok config status error]} (league-import/import-league
+                                               {:provider provider :league-id league-id})]
+        (if ok
+          (json-response 200 config)
+          (json-response status {:error error}))))))
+
 (defn- resolve-scoring [s]
   (cond
-    (map? s)     s
-    (string? s)  (get scoring/presets (keyword s) (:ppr scoring/presets))
-    (keyword? s) (get scoring/presets s (:ppr scoring/presets))
-    :else        (:ppr scoring/presets)))
+    (map? s) s
+
+    (or (string? s) (keyword? s))  
+    (get scoring/presets (keyword s) (:ppr scoring/presets))
+    
+    :else                          
+    (:ppr scoring/presets)))
+
 
 (defn- coerce-league-state [ls]
   (update ls :drafted-player-ids set))
@@ -83,7 +103,9 @@
    (ring/router
     [["/api/health"   {:get  (fn [_] (json-response 200 {:status "ok" :service "draft-day-clj"}))}]
      ["/api/players"  {:get  players-handler}]
-     ["/api/rankings" {:post rankings-handler}]]
+     ["/api/rankings" {:post rankings-handler}]
+     ["/api/scoring/presets" {:get scoring-presets-handler}]
+     ["/api/league/import"   {:post league-import-handler}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})

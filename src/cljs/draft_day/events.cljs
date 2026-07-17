@@ -18,7 +18,17 @@
  (fn [_ _]
    {:db (-> (merge (db/default-db) (fx/load-persisted))
             (update :columns db/reconcile-columns))   ; drop removed cols, add new ones
-    :fx [[:dispatch [:fetch-players]]]}))
+    :fx [[:dispatch [:fetch-players]]
+         [:dispatch [:fetch-scoring-presets]]]}))
+
+(rf/reg-event-fx
+ :fetch-scoring-presets
+ (fn [_ _]
+   {:http {:method :get :url "/api/scoring/presets"
+           :on-success [:scoring-presets-loaded]}}))
+
+(rf/reg-event-db :scoring-presets-loaded
+  (fn [db [_ resp]] (assoc db :scoring-presets resp)))
 
 (rf/reg-event-fx
  :fetch-players
@@ -183,29 +193,39 @@
       {:db (assoc db :config cfg :teams teams)
        :fx [[:dispatch [:recompute]]]})))
 
-(rf/reg-event-fx :import-sleeper
-  (fn [{:keys [db]} [_ league-id]]
-    {:db   (assoc db :status "Importing from Sleeper…")
-     :http {:method :get :url (str "https://api.sleeper.app/v1/league/" league-id)
-            :on-success [:sleeper-loaded] :on-failure [:sleeper-failed]}}))
+(rf/reg-event-fx :select-scoring-preset [persist]
+  (fn [{:keys [db]} [_ preset]]
+    {:db (assoc-in db [:config :scoring] preset)
+     :fx [[:dispatch [:recompute]]]}))
 
-(defn- sleeper->config [data current]
-  (let [s         (:scoring_settings data)
-        positions (:roster_positions data)
-        rec       (or (:rec s) 0)
-        preset    (cond (>= rec 1) :ppr (>= rec 0.5) :half-ppr :else :standard)
-        cnt       (fn [p] (count (filter #(= % p) positions)))
-        known     #{"QB" "RB" "WR" "TE" "K" "DEF" "BN" "FLEX" "WRRB_FLEX" "REC_FLEX"}
-        flex      (+ (cnt "FLEX") (cnt "WRRB_FLEX") (cnt "REC_FLEX"))
-        bench     (+ (cnt "BN") (count (remove known positions)))]
-    {:scoring   preset
-     :num-teams (or (:total_rosters data) (:num-teams current))
-     :roster    {:qb (cnt "QB") :rb (cnt "RB") :wr (cnt "WR") :te (cnt "TE")
-                 :flex flex :k (cnt "K") :dst (cnt "DEF") :bench bench}}))
+(rf/reg-event-fx :enable-custom-scoring [persist]
+  (fn [{:keys [db]} _]
+    (let [scoring (get-in db [:config :scoring])]
+      (if (map? scoring)
+        {}
+        {:db (assoc-in db [:config :scoring]
+                        (get-in db [:scoring-presets :presets scoring]))
+         :fx [[:dispatch [:recompute]]]}))))
 
-(rf/reg-event-fx :sleeper-loaded
-  (fn [{:keys [db]} [_ data]]
-    {:fx [[:dispatch [:apply-config (sleeper->config data (:config db))]]
-          [:dispatch [:set-status (str "✓ Imported \"" (:name data) "\" (" (:season data) ")")]]]}))
+(rf/reg-event-fx :set-scoring-weight [persist]
+  (fn [{:keys [db]} [_ stat-key v]]
+    {:db (assoc-in db [:config :scoring stat-key] v)
+     :fx [[:dispatch [:recompute]]]}))
 
-(rf/reg-event-db :sleeper-failed (fn [db [_ err]] (assoc db :status (str "Sleeper import failed: " err))))
+(rf/reg-event-fx :import-league
+  (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
+    {:db   (assoc db :status "Importing league…")
+     :http {:method :post :url "/api/league/import"
+            :body {:provider provider :league-id league-id}
+            :on-success [:league-import-loaded]
+            :on-failure [:league-import-failed]}}))
+
+(rf/reg-event-fx :league-import-loaded
+  (fn [_ [_ resp]]
+    (if (:error resp)
+      {:fx [[:dispatch [:league-import-failed (:error resp)]]]}
+      {:fx [[:dispatch [:apply-config (select-keys resp [:scoring :roster :num-teams])]]
+            [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]})))
+
+(rf/reg-event-db :league-import-failed
+  (fn [db [_ err]] (assoc db :status (str "League import failed: " err))))

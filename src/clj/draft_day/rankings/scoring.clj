@@ -9,12 +9,12 @@
   error.")
 
 (defn- preset [reception-pts]
-  {:pass_yd 0.04 :pass_td 4.0 :pass_int -2.0
-   :rush_yd 0.1 :rush_td 6.0
-   :rec reception-pts :rec_yd 0.1 :rec_td 6.0
+  {:pass_yd 0.04 :pass_td 4.0 :pass_int -2.0 :pass_2pt 0.0
+   :rush_yd 0.1 :rush_td 6.0 :rush_2pt 0.0
+   :rec reception-pts :rec_yd 0.1 :rec_td 6.0 :rec_2pt 0.0
    :fum_lost -2.0
    ;; kicking
-   :fgm 3.0 :xpm 1.0
+   :fgm 3.0 :xpm 1.0 :blk_kick 0.0
    ;; team defense (linear stats only)
    :sack 1.0 :int 2.0 :fum_rec 2.0 :ff 1.0 :def_td 6.0 :safe 2.0})
 
@@ -22,6 +22,10 @@
   {:standard (preset 0.0)
    :half-ppr (preset 0.5)
    :ppr      (preset 1.0)})
+
+(def stat-keys
+  "Every stat key the custom scoring editor and league import may touch."
+  (vec (keys (:standard presets))))
 
 (defn player-points
   "Σ over the scoring map of (stat weight * player's projected stat), defaulting
