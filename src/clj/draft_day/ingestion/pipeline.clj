@@ -49,6 +49,12 @@
   engine falls back gracefully."
   [season]
   (let [universe (sleeper/fetch-universe season)
+        ;; Deliberate shortcut: the ECR enrichment is baked into this single,
+        ;; scoring-agnostic shared universe at ingestion, but the FantasyPros
+        ;; cheatsheet differs by format (:ppr/:half-ppr/:standard). We always
+        ;; scrape :ppr, so non-PPR leagues get PPR-flavored tiers + rank-spread
+        ;; (the two ECR fields the engine consumes). See README todo for the
+        ;; proper fix (store all three variants, select at ranking time).
         ecr      (try (fantasypros/fetch-ecr :ppr) (catch Exception _ nil))
         espn     (try (espn/fetch season) (catch Exception _ nil))]
     (cond-> universe
