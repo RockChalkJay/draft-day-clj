@@ -14,9 +14,9 @@
        "]};</script></body></html>"))
 
 (deftest parse-extracts-and-types-fields
-  (let [by-key (fp/ecr-by-key (fp/parse-ecr sample-html))
-        bijan  (get by-key (match/key-for "Bijan Robinson" "RB"))]
-    (is (= 2 (count by-key)))
+  (let [idx   (match/by-key (fp/parse-ecr sample-html))
+        bijan (get idx (match/key-for "Bijan Robinson" "RB"))]
+    (is (= 2 (count idx)))
     (is (= 2 (:fantasypros/ecr bijan)))
     (is (= 1 (:fantasypros/ecr-tier bijan)))
     (is (= 1.40 (:fantasypros/rank-std bijan)))     ; string -> double
@@ -25,3 +25,33 @@
 
 (deftest parse-returns-nil-without-blob
   (is (nil? (fp/parse-ecr "<html>no ecr here</html>"))))
+
+;; --- AAV ---
+
+(defn- aav-row [pid v name-cell class]
+  (str "<tr pid='" pid "' v='" v "'" class ">"
+       "<td class='RankCell'></td><td>" name-cell "</td>"
+       "<td class='AlignRight DollarValue AuctionControls'>$" v "</td>"
+       "<td class='RealValue'>" v "</td></tr>"))
+
+(def ^:private sample-aav-html
+  (str "<html><body>"
+       "<table class='ValueTable' id='OverallTable'><tbody>"
+       (aav-row "17298" "31" "Josh Allen (BUF - QB)" " class=' PlayerQB''")
+       (aav-row "0"     "0"  "Zero Value (FA - WR)"   " class=' PlayerWR''")   ; dropped: $0
+       (aav-row "9999"  "2"  "Houston Texans (HOU - DST)" " class=' PlayerDST''")
+       "</tbody></table>"
+       ;; per-position table duplicates the QB row — must dedupe to one entry
+       "<table class='ValueTable' id='QBTable'><tbody>"
+       (aav-row "17298" "31" "Josh Allen (BUF - QB)" " class=' PlayerQB''")
+       "</tbody></table>"
+       "</body></html>"))
+
+(deftest parse-aav-extracts-values-and-dedupes
+  (let [idx (match/by-key (fp/parse-aav sample-aav-html))]
+    (is (= 2 (count idx)))                                          ; $0 dropped, QB deduped
+    (is (= 31.0 (:fantasypros/aav (get idx (match/key-for "Josh Allen" "QB")))))
+    (is (= 2.0  (:fantasypros/aav (get idx (match/key-for "Houston Texans" "DST")))))))
+
+(deftest parse-aav-returns-nil-on-garbage
+  (is (nil? (fp/parse-aav "<html>no table here</html>"))))

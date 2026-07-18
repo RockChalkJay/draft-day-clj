@@ -11,6 +11,8 @@
             [draft-day.ingestion.league-import.sleeper]
             [draft-day.rankings.engine :as engine]
             [draft-day.rankings.scoring :as scoring]
+            [draft-day.rankings.market :as market]
+            [draft-day.rankings.league-state :as ls]
             [draft-day.json :refer [mapper]]))
 
 (defn- json-response [status body]
@@ -91,9 +93,11 @@
         ;; also value under Floor/Ceiling so the client can badge lens-sensitive players
         floor-w  (lens-worths players scoring* nt opts ls :floor)
         ceil-w   (lens-worths players scoring* nt opts ls :ceiling)
-        players* (mapv #(assoc % :worth-floor   (get floor-w (:player-id %) 0)
-                                 :worth-ceiling (get ceil-w  (:player-id %) 0))
-                       (:players live))]
+        players* (-> (mapv #(assoc % :worth-floor   (get floor-w (:player-id %) 0)
+                                     :worth-ceiling (get ceil-w  (:player-id %) 0))
+                           (:players live))
+                     ;; reference market price + edge, scaled to this league's pool
+                     (market/with-market (ls/initial-cash ls)))]
     (json-response 200 (-> (select-keys live [:inflation :inflation-index
                                               :position-inflation :market-heat :pdm-map :profile])
                            (assoc :players players*)))))

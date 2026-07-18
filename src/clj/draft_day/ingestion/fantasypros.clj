@@ -1,9 +1,12 @@
 (ns draft-day.ingestion.fantasypros
-  "Enrichment: FantasyPros expert consensus (ECR). Scrapes the `var ecrData = {…}`
-  JSON blob out of the cheatsheet page — this supplies the expert tier, positional
-  rank, bye week, and (crucially) the rank spread (rank_std) that powers the
-  Floor/Ceiling risk model. Best-effort: a failure degrades the board, never
-  empties it."
+  "Enrichment: FantasyPros. Two independent best-effort scrapes off the same
+  vendor — a failure of either degrades the board, never empties it.
+
+   - ECR (`parse-ecr`): scrapes the `var ecrData = {…}` JSON blob out of the
+     cheatsheet page, supplying expert tier, positional rank, bye week, and
+     (crucially) the rank spread (rank_std) that powers the Floor/Ceiling model.
+   - AAV (`parse-aav`): scrapes FantasyPros' auction-value calculator (the
+     draftwizard `#OverallTable`) for a raw market price per player."
   (:require [clojure.string :as str]
             [org.httpkit.client :as http]
             [jsonista.core :as json]
@@ -53,11 +56,6 @@
                    (filter :key)))))))
     (catch Exception _ nil)))
 
-(defn ecr-by-key
-  "Index enrichment maps by :key (dropping the key from the value)."
-  [players]
-  (into {} (map (juxt :key #(dissoc % :key))) players))
-
 (defn fetch-ecr
   "Network: fetch + parse the cheatsheet for a scoring format. nil on failure."
   ([] (fetch-ecr :ppr))
@@ -66,3 +64,37 @@
          {:keys [status body error]} @(http/get url {:timeout 30000})]
      (when (and (not error) (= 200 status))
        (parse-ecr body)))))
+
+;; --- AAV (auction values) ---
+;; `scoring=PPR` matches the rest of the app's PPR baseline (the ECR scrape above
+;; and ESPN's PPR fallback); the page would otherwise default to Standard. See the
+;; README TODO on making the market sources scoring-aware. `teams`/`tb` fix the
+;; baseline pool (12 * $200 = $2400) that rankings.market normalizes against.
+(def aav-url
+  "https://draftwizard.fantasypros.com/auction/fp_nfl.jsp?scoring=PPR&teams=12&tb=200")
+
+;; "Josh Allen (BUF - QB)" / "Houston Texans (HOU - DST)" -> name + position.
+(def ^:private aav-name-re #"^(.*?)\s*\([A-Z]{2,3}\s*-\s*([A-Z]{1,3})\)\s*$")
+
+(defn parse-aav
+  "Pure: auction-calculator HTML -> seq of {:key :fantasypros/aav}. Each
+  #OverallTable row carries the dollar value in its `v` attribute and the name in
+  its lone class-less <td>; rows without a positive value or a parseable name are
+  dropped."
+  [html]
+  (try
+    (seq (->> (.select (Jsoup/parse html) "table#OverallTable tr[pid]")
+              (keep (fn [row]
+                      (let [v    (->double (.attr row "v"))
+                            cell (some-> (.select row "td:not([class])") .first .text)
+                            [_ name pos] (some->> cell (re-matches aav-name-re))]
+                        (when (and v (pos? v) name pos)
+                          {:key (match/key-for name pos) :fantasypros/aav v}))))))
+    (catch Exception _ nil)))
+
+(defn fetch-aav
+  "Network: fetch + parse the auction-value calculator. nil on failure."
+  []
+  (let [{:keys [status body error]} @(http/get aav-url {:timeout 30000})]
+    (when (and (not error) (= 200 status))
+      (parse-aav body))))

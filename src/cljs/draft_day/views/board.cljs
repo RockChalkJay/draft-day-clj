@@ -33,6 +33,12 @@
     :worth    [:td.num.bold (money (:worth p))]
     :value    [:td.num.muted (money (:value p))]
     :espn-value [:td.num.muted (money (:espn/auction-value p))]
+    :fp-aav   [:td.num.muted (money (:fantasypros/aav p))]
+    :market   [:td.num.muted (money (:market p))]
+    :edge     (let [e (:edge p)]
+                [:td.num {:class (cond (and (number? e) (pos? e)) "good"
+                                       (and (number? e) (neg? e)) "warn")}
+                 (if (and (number? e) (not (zero? e))) (str (when (pos? e) "+") e) "–")])
     :bargain  (let [b (:bargain p)]
                 [:td.num {:class (cond (and (number? b) (pos? b)) "good"
                                        (and (number? b) (neg? b)) "warn")}

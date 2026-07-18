@@ -10,10 +10,14 @@
 (defn- input-stream [s] (java.io.ByteArrayInputStream. (.getBytes ^String s "UTF-8")))
 
 (def ^:private fixture
-  {:players (vec (for [i (range 40)]
-                   {:player-id (str "rb" i) :player-name (str "RB" i) :position "RB"
-                    :stats {:rush_yd (- 2000 (* i 40)) :rush_td (- 12 (* i 0.2))
-                            :rec 40 :rec_yd 300 :rec_td 2}}))
+  {:players (-> (vec (for [i (range 40)]
+                       {:player-id (str "rb" i) :player-name (str "RB" i) :position "RB"
+                        :stats {:rush_yd (- 2000 (* i 40)) :rush_td (- 12 (* i 0.2))
+                                :rec 40 :rec_yd 300 :rec_td 2}}))
+                ;; market sources on the top two RBs; rest have none
+                (assoc-in [0 :espn/auction-value] 40.0)   ; + FP below -> consensus
+                (assoc-in [0 :fantasypros/aav] 60.0)
+                (assoc-in [1 :espn/auction-value] 30.0))  ; ESPN only
    :source "sample"})
 
 (deftest players-endpoint-returns-universe
@@ -43,7 +47,15 @@
       (is (= "balanced" (:profile b)))
       (is (some #(pos? (:worth %)) (:players b)))
       ;; cross-lens worths attached for divergence badges
-      (is (every? #(and (contains? % :worth-floor) (contains? % :worth-ceiling)) (:players b))))))
+      (is (every? #(and (contains? % :worth-floor) (contains? % :worth-ceiling)) (:players b)))
+      ;; market normalized to the 12x$200 = $2400 pool; rb0 = mean(40*1.2, 60*1.0) = 54,
+      ;; rb1 = 30*1.2 = 36; source-less players get nil market + nil edge
+      (let [by-id (into {} (map (juxt :player-id identity)) (:players b))]
+        (is (= 54 (:market (by-id "rb0"))))
+        (is (= 36 (:market (by-id "rb1"))))
+        (is (= (- (:worth (by-id "rb0")) 54) (:edge (by-id "rb0"))))
+        (is (nil? (:market (by-id "rb5"))))
+        (is (nil? (:edge (by-id "rb5"))))))))
 
 (deftest scoring-presets-endpoint-returns-presets-and-stat-keys
   (let [resp (routes/scoring-presets-handler {})

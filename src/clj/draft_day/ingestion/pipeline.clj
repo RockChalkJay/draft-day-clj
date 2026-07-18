@@ -7,6 +7,7 @@
             [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.merge :as merge]
+            [draft-day.ingestion.match :as match]
             [cognitect.transit :as transit]
             [clojure.edn :as edn]
             [clojure.java.io :as io]))
@@ -44,21 +45,23 @@
 
 (defn fetch-enriched-universe
   "Sleeper universe (rows) left-joined with enrichment columns: FantasyPros ECR
-  (tiers/variance/bye) and ESPN live auction values. Each enrichment is
-  best-effort — on failure the universe is returned without those columns and the
-  engine falls back gracefully."
+  (tiers/variance/bye) and AAV (auction values), plus ESPN live auction values.
+  Each enrichment is best-effort — on failure the universe is returned without
+  those columns and the engine falls back gracefully."
   [season]
   (let [universe (sleeper/fetch-universe season)
-        ;; Deliberate shortcut: the ECR enrichment is baked into this single,
-        ;; scoring-agnostic shared universe at ingestion, but the FantasyPros
-        ;; cheatsheet differs by format (:ppr/:half-ppr/:standard). We always
-        ;; scrape :ppr, so non-PPR leagues get PPR-flavored tiers + rank-spread
-        ;; (the two ECR fields the engine consumes). See README todo for the
-        ;; proper fix (store all three variants, select at ranking time).
+        ;; Deliberate shortcut: the FantasyPros enrichments are baked into this
+        ;; single, scoring-agnostic shared universe at ingestion, but they differ
+        ;; by format — the ECR cheatsheet (:ppr/:half-ppr/:standard) and the AAV
+        ;; calculator (scoring param). We always scrape PPR, so non-PPR leagues
+        ;; get PPR-flavored tiers/rank-spread and market prices. See README todo
+        ;; for the proper fix (store all variants, select at ranking time).
         ecr      (try (fantasypros/fetch-ecr :ppr) (catch Exception _ nil))
+        aav      (try (fantasypros/fetch-aav) (catch Exception _ nil))
         espn     (try (espn/fetch season) (catch Exception _ nil))]
     (cond-> universe
-      (seq ecr)  (merge/left-join (fantasypros/ecr-by-key ecr))
+      (seq ecr)  (merge/left-join (match/by-key ecr))
+      (seq aav)  (merge/left-join (match/by-key aav))
       (seq espn) (merge/left-join espn))))
 
 (defn load-universe

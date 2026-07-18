@@ -49,7 +49,10 @@
    {:key :position :label "Pos"    :tooltip "Position"                  :default? true}
    {:key :worth    :label "Worth"  :tooltip "Live auction price (active profile)"  :default? true}
    {:key :value    :label "Value"  :tooltip "Stable VBD dollars"        :default? true}
-   {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($)" :default? true}
+   {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($, raw)" :default? true}
+   {:key :fp-aav   :label "FP$"    :tooltip "FantasyPros auction value ($, raw)" :default? false}
+   {:key :market   :label "Mkt"    :tooltip "Market price — ESPN + FantasyPros consensus, scaled to your league" :default? true}
+   {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? true}
    {:key :bargain  :label "Barg"   :tooltip "Value − Worth (green target / red reach)" :default? true}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? true}
    {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? true}
@@ -86,6 +89,9 @@
    :worth    :worth
    :value    :value
    :espn-value :espn/auction-value
+   :fp-aav   :fantasypros/aav
+   :market   :market
+   :edge     :edge
    :bargain  :bargain
    :adp      :sleeper/adp
    :proj     :points

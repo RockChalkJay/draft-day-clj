@@ -18,3 +18,8 @@
 
 (defn key-for [name position]
   (str (normalize-name name) "_" (str/lower-case (or position ""))))
+
+(defn by-key
+  "Index enrichment maps by :key (dropping the key from the value)."
+  [rows]
+  (into {} (map (juxt :key #(dissoc % :key))) rows))
