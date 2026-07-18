@@ -58,11 +58,13 @@
         ;; for the proper fix (store all variants, select at ranking time).
         ecr      (try (fantasypros/fetch-ecr :ppr) (catch Exception _ nil))
         aav      (try (fantasypros/fetch-aav) (catch Exception _ nil))
+        sleepers (try (fantasypros/fetch-sleepers) (catch Exception _ nil))
         espn     (try (espn/fetch season) (catch Exception _ nil))]
     (cond-> universe
-      (seq ecr)  (merge/left-join (match/by-key ecr))
-      (seq aav)  (merge/left-join (match/by-key aav))
-      (seq espn) (merge/left-join espn))))
+      (seq ecr)      (merge/left-join (match/by-key ecr))
+      (seq aav)      (merge/left-join (match/by-key aav))
+      (seq sleepers) (merge/left-join (match/by-key sleepers))
+      (seq espn)     (merge/left-join espn))))
 
 (defn load-universe
   "Return {:players [...] :source \"live|cache|sample|empty\"}. opts: :refresh

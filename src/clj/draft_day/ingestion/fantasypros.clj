@@ -98,3 +98,36 @@
   (let [{:keys [status body error]} @(http/get aav-url {:timeout 30000})]
     (when (and (not error) (= 200 status))
       (parse-aav body))))
+
+;; --- Sleepers (a per-position boolean list, no numeric value) ---
+;; Scoring-agnostic: FantasyPros publishes one sleeper list per position. We just
+;; mark players who appear on any of them. Position is implied by the page.
+(def sleeper-urls
+  {"QB" "https://www.fantasypros.com/nfl/rankings/qb-sleepers.php"
+   "RB" "https://www.fantasypros.com/nfl/rankings/rb-sleepers.php"
+   "WR" "https://www.fantasypros.com/nfl/rankings/wr-sleepers.php"
+   "TE" "https://www.fantasypros.com/nfl/rankings/te-sleepers.php"})
+
+(defn parse-sleepers
+  "Pure: sleeper-list HTML for one position -> seq of {:key :fantasypros/sleeper?}.
+  Each `tr.player-row` carries the name in an `a.fp-player-link`'s `fp-player-name`
+  attribute; rows without a name (ad/filler rows) are dropped."
+  [html position]
+  (try
+    (seq (->> (.select (Jsoup/parse html) "tr.player-row a.fp-player-link")
+              (keep (fn [a]
+                      (let [name (.attr a "fp-player-name")]
+                        (when-not (str/blank? name)
+                          {:key (match/key-for name position)
+                           :fantasypros/sleeper? true}))))))
+    (catch Exception _ nil)))
+
+(defn fetch-sleepers
+  "Network: fetch + parse every position's sleeper list, concatenated. Each page is
+  best-effort; a failing page contributes nothing. nil when none succeed."
+  []
+  (seq (mapcat (fn [[pos url]]
+                 (let [{:keys [status body error]} @(http/get url {:timeout 30000})]
+                   (when (and (not error) (= 200 status))
+                     (parse-sleepers body pos))))
+               sleeper-urls)))

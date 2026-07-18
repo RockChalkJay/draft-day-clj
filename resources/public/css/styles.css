@@ -143,13 +143,29 @@ td.name { font-weight: 600; }
 .pill { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-size: 11px; }
 
 /* tier row-coloring — active only when the board is filtered to one position.
+   Widely-spaced hues (not a smooth ramp, so adjacent tiers read as different) +
+   a bold solid left-edge stripe that stays crisp regardless of the fill. Fills
+   kept moderate so near-white text stays legible; the stripe carries the signal.
    Kept lower-specificity than the table.board hover/selected rules so those win. */
-.board tbody tr.tier-row-1 { background: rgba(61,220,151,.11); }
-.board tbody tr.tier-row-2 { background: rgba(121,207,134,.10); }
-.board tbody tr.tier-row-3 { background: rgba(226,192,90,.10); }
-.board tbody tr.tier-row-4 { background: rgba(224,149,90,.10); }
-.board tbody tr.tier-row-5 { background: rgba(224,106,106,.10); }
-.board tbody tr.tier-row-6 { background: rgba(139,147,165,.10); }
+.board tbody tr.tier-row-1 { background: rgba(52,226,154,.24); }   /* green   */
+.board tbody tr.tier-row-2 { background: rgba(74,168,255,.24); }   /* blue    */
+.board tbody tr.tier-row-3 { background: rgba(242,197,61,.24); }   /* gold    */
+.board tbody tr.tier-row-4 { background: rgba(245,126,52,.24); }   /* orange  */
+.board tbody tr.tier-row-5 { background: rgba(240,85,95,.26); }    /* red     */
+.board tbody tr.tier-row-6 { background: rgba(176,131,240,.24); }  /* violet  */
+
+.board tbody tr.tier-row-1 td:first-child { border-left: 4px solid #34e29a; }
+.board tbody tr.tier-row-2 td:first-child { border-left: 4px solid #4aa8ff; }
+.board tbody tr.tier-row-3 td:first-child { border-left: 4px solid #f2c53d; }
+.board tbody tr.tier-row-4 td:first-child { border-left: 4px solid #f57e34; }
+.board tbody tr.tier-row-5 td:first-child { border-left: 4px solid #f0555f; }
+.board tbody tr.tier-row-6 td:first-child { border-left: 4px solid #b083f0; }
+
+/* tier key — shown above the board only while filtered to one position */
+.tier-key { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.tier-key-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.tier-key-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+.tier-swatch { width: 16px; height: 10px; border-radius: 3px; display: inline-block; }
 
 /* ---- roster panel ---- */
 .roster-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; height: 100%; }

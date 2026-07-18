@@ -44,24 +44,24 @@
 (def column-catalog
   "Ordered column definitions; :default? seeds initial visibility."
   [{:key :rank     :label "#"      :tooltip "Rank by live Worth"        :default? true}
+   {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert rank"   :default? true}
    {:key :name     :label "Player" :tooltip "Player"                    :default? true}
    {:key :team     :label "Tm"     :tooltip "NFL team"                  :default? true}
+   {:key :bye      :label "Bye"    :tooltip "Bye week"                  :default? true}
    {:key :position :label "Pos"    :tooltip "Position"                  :default? true}
    {:key :worth    :label "Worth"  :tooltip "Live auction price (active profile)"  :default? true}
    {:key :value    :label "Value"  :tooltip "Stable VBD dollars"        :default? true}
-   {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($, raw)" :default? true}
-   {:key :fp-aav   :label "FP$"    :tooltip "FantasyPros auction value ($, raw)" :default? false}
    {:key :market   :label "Mkt"    :tooltip "Market price — ESPN + FantasyPros consensus, scaled to your league" :default? true}
-   {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? true}
+   {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($, raw)" :default? true}
+   {:key :fp-aav   :label "FP$"    :tooltip "FantasyPros auction value ($, raw)" :default? true}
    {:key :bargain  :label "Barg"   :tooltip "Value − Worth (green target / red reach)" :default? true}
-   {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? true}
-   {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? true}
-   {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
-   {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}
-   {:key :vorp     :label "VORP"   :tooltip "Value over replacement"    :default? false}
-   {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert rank"   :default? false}
+   {:key :vorp     :label "VORP"   :tooltip "Value over replacement"    :default? true}
    {:key :inj      :label "Inj"    :tooltip "Injury status"             :default? false}
-   {:key :bye      :label "Bye"    :tooltip "Bye week"                  :default? false}])
+   {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
+   {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
+   {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? false}
+   {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
+   {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}])
 
 (def columns-by-key (into {} (map (juxt :key identity)) column-catalog))
 

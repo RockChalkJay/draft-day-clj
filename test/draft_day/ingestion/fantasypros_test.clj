@@ -55,3 +55,30 @@
 
 (deftest parse-aav-returns-nil-on-garbage
   (is (nil? (fp/parse-aav "<html>no table here</html>"))))
+
+;; --- Sleepers ---
+
+(defn- sleeper-row [pid name]
+  (str "<tr class='mpb-player-" pid " player-row' data-id='" pid "'>"
+       "<td>1</td><td class='player-label'>"
+       "<a href='#' class='fp-player-link fp-id-" pid "' fp-player-name=\"" name "\">"
+       "<span class='full-name'>" name "</span></a> <small class='grey'>BUF</small></td></tr>"))
+
+(def ^:private sample-sleeper-html
+  (str "<html><body><table><tbody>"
+       (sleeper-row "27339" "Denzel Boston")
+       (sleeper-row "12345" "Jalen McMillan")
+       ;; ad/filler row with no player link — must be dropped
+       "<tr class='player-row ad-row'><td>ad</td></tr>"
+       "</tbody></table></body></html>"))
+
+(deftest parse-sleepers-marks-players-by-position
+  (let [idx (match/by-key (fp/parse-sleepers sample-sleeper-html "WR"))]
+    (is (= 2 (count idx)))                                   ; filler row dropped
+    (is (true? (:fantasypros/sleeper? (get idx (match/key-for "Denzel Boston" "WR")))))
+    (is (true? (:fantasypros/sleeper? (get idx (match/key-for "Jalen McMillan" "WR")))))
+    ;; position comes from the argument, so the same name at another pos won't match
+    (is (nil? (get idx (match/key-for "Denzel Boston" "RB"))))))
+
+(deftest parse-sleepers-returns-nil-on-garbage
+  (is (nil? (fp/parse-sleepers "<html>no rows here</html>" "WR"))))

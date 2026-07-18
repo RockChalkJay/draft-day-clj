@@ -5,6 +5,7 @@
 ;; ---- cell formatting ----
 
 (defn- money [n] (if (and (number? n) (pos? n)) (str "$" n) "–"))
+(defn- money0 [n] (if (and (number? n) (pos? n)) (str "$" (js/Math.round n)) "–"))
 (defn- n0 [n] (if (number? n) (js/Math.round n) "–"))
 (defn- n1 [n] (if (number? n) (.toFixed n 1) "–"))
 
@@ -24,15 +25,21 @@
       (and thr (number? wf) (>= (- wf w) thr))
       [:span.badge.safe {:title "Safe floor — worth more under the Floor lens"} " 🛡"])))
 
+(defn- sleeper-badge
+  "💤 when the player is on any FantasyPros positional sleeper list."
+  [p]
+  (when (:fantasypros/sleeper? p)
+    [:span.badge {:title "FantasyPros sleeper"} " 💤"]))
+
 (defn- cell [k p]
   (case k
     :rank     [:td.num.muted (:rank p)]
-    :name     [:td.name (:player-name p) (cliff-marker p) (divergence-badge p)]
+    :name     [:td.name (:player-name p) (cliff-marker p) (divergence-badge p) (sleeper-badge p)]
     :team     [:td.muted (:team p)]
     :position [:td [:span.pill (:position p)]]
     :worth    [:td.num.bold (money (:worth p))]
     :value    [:td.num.muted (money (:value p))]
-    :espn-value [:td.num.muted (money (:espn/auction-value p))]
+    :espn-value [:td.num.muted (money0 (:espn/auction-value p))]
     :fp-aav   [:td.num.muted (money (:fantasypros/aav p))]
     :market   [:td.num.muted (money (:market p))]
     :edge     (let [e (:edge p)]
@@ -72,6 +79,25 @@
         :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
    (for [col cols] (with-meta (cell (:key col) p) {:key (str (:key col))}))])
 
+;; ---- tier key ----
+
+;; Matches the tier-row stripe colors in styles.css.
+(def ^:private tier-stripe-colors
+  {1 "#34e29a" 2 "#4aa8ff" 3 "#f2c53d" 4 "#f57e34" 5 "#f0555f" 6 "#b083f0"})
+
+(defn- tier-key
+  "Legend of the tier stripe colors, showing only the tiers present on the board."
+  [players]
+  (let [tiers (->> players (keep :tier) (map #(min 6 %)) distinct sort)]
+    (when (seq tiers)
+      [:div.tier-key
+       [:span.tier-key-label "Tiers"]
+       (for [t tiers]
+         ^{:key t}
+         [:span.tier-key-item
+          [:i.tier-swatch {:style {:background (get tier-stripe-colors t)}}]
+          (str "T" t)])])))
+
 ;; ---- filters ----
 
 (def ^:private positions ["QB" "RB" "WR" "TE" "K" "DST"])
@@ -102,6 +128,7 @@
         color-tier? (some? @(rf/subscribe [:pos-filter]))]
     [:div.board-wrap
      [:div.board-controls [pos-filter] [search-box]]
+     (when color-tier? [tier-key players])
      [:div.table-scroll
       [:table.board
        [:thead [:tr (for [col cols] ^{:key (:key col)} [header-cell col sort])]]
