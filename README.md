@@ -3,6 +3,9 @@ Fantasy football draft assistant geared towards auction drafts
 
 ## TODO
 
+- **Player budgeting** 
+- **Persistence**
+- **Don't position filter on suggestion cards**
 - **Scoring-aware FantasyPros enrichments (ECR + market price).** The player universe is a
   single, scoring-agnostic shared cache, so the FantasyPros enrichments are scraped once
   with PPR hardcoded (`pipeline.clj`): the ECR cheatsheet (`:ppr`) and the AAV auction
