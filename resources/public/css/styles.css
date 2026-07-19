@@ -113,8 +113,13 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 button.primary { background: var(--accent); color: #0b0e13; border: none; border-radius: 8px; padding: 7px 14px; font-weight: 700; }
 button.primary:disabled { opacity: .4; cursor: not-allowed; }
 
-/* ---- board controls ---- */
-.board-controls { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+/* ---- board controls ----
+   Single row directly above the table: [pos-filter + search] left-aligned
+   flush with the table's left edge, tier-key (when present) flush with the
+   table's right edge. align-items: flex-end keeps every group's bottom edge
+   on the same line, immediately touching the table's top edge. */
+.board-controls { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; margin-bottom: 8px; flex-wrap: nowrap; }
+.filters { display: flex; align-items: flex-end; gap: 10px; }
 .pos-filter button { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
   border-radius: 8px; padding: 5px 10px; margin-right: 4px; }
 .pos-filter button.on { color: var(--text); background: var(--panel2); border-color: var(--accent); }

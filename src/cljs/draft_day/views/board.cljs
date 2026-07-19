@@ -1,11 +1,10 @@
 (ns draft-day.views.board
   (:require [re-frame.core :as rf]
-            [draft-day.db :as db]))
+            [draft-day.db :as db]
+            [draft-day.views.util :as util]))
 
 ;; ---- cell formatting ----
 
-(defn- money [n] (if (and (number? n) (pos? n)) (str "$" n) "–"))
-(defn- money0 [n] (if (and (number? n) (pos? n)) (str "$" (js/Math.round n)) "–"))
 (defn- n0 [n] (if (number? n) (js/Math.round n) "–"))
 (defn- n1 [n] (if (number? n) (.toFixed n 1) "–"))
 
@@ -37,11 +36,11 @@
     :name     [:td.name (:player-name p) (cliff-marker p) (divergence-badge p) (sleeper-badge p)]
     :team     [:td.muted (:team p)]
     :position [:td [:span.pill (:position p)]]
-    :worth    [:td.num.bold (money (:worth p))]
-    :value    [:td.num.muted (money (:value p))]
-    :espn-value [:td.num.muted (money0 (:espn/auction-value p))]
-    :fp-aav   [:td.num.muted (money (:fantasypros/aav p))]
-    :market   [:td.num.muted (money (:market p))]
+    :worth    [:td.num.bold (util/money (:worth p))]
+    :value    [:td.num.muted (util/money (:value p))]
+    :espn-value [:td.num.muted (util/money-rnd (:espn/auction-value p))]
+    :fp-aav   [:td.num.muted (util/money (:fantasypros/aav p))]
+    :market   [:td.num.muted (util/money (:market p))]
     :edge     (let [e (:edge p)]
                 [:td.num {:class (cond (and (number? e) (pos? e)) "good"
                                        (and (number? e) (neg? e)) "warn")}
@@ -77,7 +76,8 @@
                 ;; tier row-coloring only when filtered to a single position
                 (when color-tier? (str "tier-row-" (min 6 (or (:tier p) 1))))]
         :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
-   (for [col cols] (with-meta (cell (:key col) p) {:key (str (:key col))}))])
+   (map (fn [{k :key}] ^{:key k} 
+          [cell k p]) cols)])
 
 ;; ---- tier key ----
 
@@ -127,11 +127,14 @@
         ;; color rows by tier only when filtered to a single position
         color-tier? (some? @(rf/subscribe [:pos-filter]))]
     [:div.board-wrap
-     [:div.board-controls [pos-filter] [search-box]]
-     (when color-tier? [tier-key players])
+     [:div.board-controls
+      [:div.filters [pos-filter] [search-box]]
+      (when color-tier? [tier-key players])]
      [:div.table-scroll
       [:table.board
-       [:thead [:tr (for [col cols] ^{:key (:key col)} [header-cell col sort])]]
+       [:thead [:tr 
+                (map (fn [col] ^{:key (:key col)} 
+                       [header-cell col sort]) cols)]]
        [:tbody
         (for [p players]
           ^{:key (:player-id p)}

@@ -1,6 +1,7 @@
 (ns draft-day.views.controls
   (:require [reagent.core :as r]
-            [re-frame.core :as rf]))
+            [re-frame.core :as rf]
+            [draft-day.views.util :as util]))
 
 (def ^:private profiles
   [[:balanced "Balanced"] [:floor "Floor"] [:ceiling "Ceiling"] [:scarcity "Scarcity"]])
@@ -22,7 +23,7 @@
    [:div.rank (str "#" (inc i))]
    [:div.pname (:player-name p)]
    [:div.pmeta (str (:position p) " · " (:team p))]
-   [:div.pprice (str "$" (:worth p))]])
+   [:div.pprice (util/money (:worth p))]])
 
 (defn- pos-card [pos players]
   [:div.pos-card
@@ -31,7 +32,7 @@
      ^{:key (:player-id p)}
      [:div.pos-row {:on-click #(nominate! p)}
       [:span.pn (:player-name p)]
-      [:span.pv (str "$" (:worth p))]])])
+      [:span.pv (util/money (:worth p))]])])
 
 (defn- need-card [{:keys [pos player]}]
   [:div.need-card {:on-click #(when player (nominate! player))}
@@ -70,22 +71,31 @@
         [:div.nominate-bar
          [:span.nom-name (:player-name p) " "
           [:span.muted (str (:position p) " · " (:team p))]]
-         [:span.nom-hint "Worth " [:b (str "$" (:worth p))]]
-         [:input.bid {:type "number" :placeholder "Bid $" :value @bid :min 1
-                      :on-change #(reset! bid (.. % -target -value))}]
-         [:select {:value @team :on-change #(reset! team (.. % -target -value))}
+         [:span.nom-hint "Worth " [:b (util/money (:worth p))]]
+         [:span.nom-hint "Mkt " [:b (util/money (:market p))]]
+         [:span.nom-hint "ESPN " [:b (util/money-rnd (:espn/auction-value p))]]
+         [:span.nom-hint "FP " [:b (util/money-rnd (:fantasypros/aav p))]]
+         [:input.bid {:type        "number" 
+                      :placeholder "Bid $" 
+                      :value       @bid 
+                      :min         1
+                      :on-change   #(reset! bid (.. % -target -value))}]
+         [:select {:value     @team 
+                   :on-change #(reset! team (.. % -target -value))}
           (for [t teams]
             ^{:key (:team-id t)}
-            [:option {:value (:team-id t)} (str (:name t) " ($" (:bankroll t) ")")])]
+            [:option {:value (:team-id t)} (str (:name t) " (" (util/money (:bankroll t)) ")")])]
          [:button.primary
           {:disabled (or (nil? @bid) (= "" @bid))
-           :on-click #(rf/dispatch [:record-pick {:player-id (:player-id p) :price @bid
-                                                   :team-id @team :position (:position p)}])}
+           :on-click #(rf/dispatch [:record-pick {:player-id (:player-id p) 
+                                                  :price     @bid
+                                                  :team-id   @team 
+                                                  :position  (:position p)}])}
           "Record Pick"]]))))
 
 (defn nominate-bar []
   (let [nominated @(rf/subscribe [:nominated-id])
-        p         (get @(rf/subscribe [:players-by-id]) nominated)]
+        p (get @(rf/subscribe [:players-by-id]) nominated)]
     (if p
       ^{:key nominated} [nominate-form p]
       [:div.nominate-bar [:span.muted "Click a player to nominate…"]])))

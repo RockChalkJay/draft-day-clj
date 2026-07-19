@@ -25,15 +25,15 @@
   "Mean of the player's available normalized source prices, rounded to the
   nearest whole dollar. nil when the player has no source price or the league
   pool is non-positive."
-  [player league-pool]
-  (when (pos? league-pool)
-    (let [prices (keep (fn [[k baseline]]
-                         (let [raw (get player k)]
-                           (when (and (number? raw) (pos? raw))
-                             (normalize raw baseline league-pool))))
-                       source-baselines)]
-      (when (seq prices)
-        (long (Math/rint (/ (reduce + 0.0 prices) (count prices))))))))
+   [player league-pool]
+    (when (pos? league-pool)
+      (let [prices (keep (fn [[k baseline]]
+                           (when-let [raw (get player k)]
+                             (when (pos? raw)
+                               (normalize raw baseline league-pool))))
+                         source-baselines)]
+        (when (seq prices)
+          (Math/round (/ (reduce + prices) (count prices)))))))
 
 (defn edge
   "Worth minus market — positive means the model values the player above the
