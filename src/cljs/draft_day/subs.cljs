@@ -43,17 +43,23 @@
                 :else (* dir (compare va vb)))))
           players)))
 
-(rf/reg-sub :board-players
+;; undrafted, unfiltered by position/search — the pool suggestions/budget
+;; targets draw from, so they don't collapse when the board is filtered.
+(rf/reg-sub :undrafted-players
   :<- [:ranked-players]
   :<- [:drafted]
+  (fn [[players drafted] _]
+    (let [drafted-ids (set (keys drafted))]
+      (remove #(contains? drafted-ids (:player-id %)) players))))
+
+(rf/reg-sub :board-players
+  :<- [:undrafted-players]
   :<- [:sort]
   :<- [:pos-filter]
   :<- [:search]
-  (fn [[players drafted sort pos-filter search] _]
-    (let [drafted-ids (set (keys drafted))
-          q           (str/lower-case (or search ""))
+  (fn [[players sort pos-filter search] _]
+    (let [q           (str/lower-case (or search ""))
           filtered    (->> players
-                           (remove #(contains? drafted-ids (:player-id %)))
                            (filter #(or (nil? pos-filter) (= (:position %) pos-filter)))
                            (filter #(matches-search? % q)))
           ;; live overall rank by Worth (independent of the active sort column)
@@ -74,7 +80,7 @@
 
 ;; best available Worth per position (for MY ROSTER open-slot budget targets)
 (rf/reg-sub :best-worth-by-pos
-  :<- [:board-players]
+  :<- [:undrafted-players]
   (fn [players _]
     (reduce (fn [m p]
               (let [pos (:position p) w (or (:worth p) 0)]
@@ -84,17 +90,19 @@
 ;; ---- suggestions ----
 (def ^:private suggestion-positions #{"QB" "RB" "WR" "TE"})
 
-(rf/reg-sub :top-overall :<- [:board-players]
+(rf/reg-sub :top-overall :<- [:undrafted-players]
   (fn [players _]
     (->> players (filter #(pos? (or (:worth %) 0)))
          (sort-by #(- (:worth %))) (take 5) vec)))
 
-(rf/reg-sub :top-by-position :<- [:board-players]
+(rf/reg-sub :top-by-position :<- [:undrafted-players]
   (fn [players _]
-    (into {} (for [pos ["QB" "RB" "WR" "TE"]]
-               [pos (->> players
-                         (filter #(and (= (:position %) pos) (pos? (or (:worth %) 0))))
-                         (sort-by #(- (:worth %))) (take 3) vec)]))))
+    (into {} (map (fn [pos]
+                    [pos (->> players
+                              (filter #(and (= (:position %) pos) 
+                                            (pos? (or (:worth %) 0))))
+                              (sort-by #(- (:worth %))) (take 3) vec)])
+                  ["QB" "RB" "WR" "TE"]))))
 
 (rf/reg-sub :needs
   :<- [:my-team]
