@@ -41,15 +41,17 @@
 
 (defn- custom-scoring-editor [scoring]
   [:div.scoring-groups
-   (for [{:keys [group stats]} db/scoring-catalog]
-     ^{:key group}
-     [:div.scoring-group
-      [:h4 group]
-      [:div.fields
-       (for [[stat-key label] stats]
-         ^{:key stat-key}
-         [weight-field label (get scoring stat-key 0)
-          #(rf/dispatch [:set-scoring-weight stat-key %])])]])])
+   (map (fn [{:keys [group stats]}]
+          ^{:key group}
+          [:div.scoring-group
+           [:h4 group]
+           [:div.fields
+            (map (fn [[stat-key label]]
+                   ^{:key stat-key}
+                   [weight-field label (get scoring stat-key 0)
+                    #(rf/dispatch [:set-scoring-weight stat-key %])])
+                 stats)]])
+        db/scoring-catalog)])
 
 (defn- scoring-config []
   (let [cfg    @(rf/subscribe [:config])
@@ -78,10 +80,11 @@
     [:section.settings-card
      [:h3 "Roster"]
      [:div.fields
-      (for [[k label] [[:qb "QB"] [:rb "RB"] [:wr "WR"] [:te "TE"]
-                       [:flex "FLEX"] [:k "K"] [:dst "DST"] [:bench "Bench"]]]
-        ^{:key k}
-        [num-field label (get roster k 0) #(set-r k %)])]]))
+      (map (fn [[k label]]
+             ^{:key k}
+             [num-field label (get roster k 0) #(set-r k %)])
+           [[:qb "QB"] [:rb "RB"] [:wr "WR"] [:te "TE"]
+            [:flex "FLEX"] [:k "K"] [:dst "DST"] [:bench "Bench"]])]]))
 
 (defn settings []
   [:div.settings

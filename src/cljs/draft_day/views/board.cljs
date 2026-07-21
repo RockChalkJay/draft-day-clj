@@ -85,6 +85,11 @@
 (def ^:private tier-stripe-colors
   {1 "#34e29a" 2 "#4aa8ff" 3 "#f2c53d" 4 "#f57e34" 5 "#f0555f" 6 "#b083f0"})
 
+(defn- tier-key-item [t]
+  [:span.tier-key-item
+   [:i.tier-swatch {:style {:background (tier-stripe-colors t)}}]
+   (str "T" t)])
+
 (defn- tier-key
   "Legend of the tier stripe colors, showing only the tiers present on the board."
   [players]
@@ -92,24 +97,21 @@
     (when (seq tiers)
       [:div.tier-key
        [:span.tier-key-label "Tiers"]
-       (for [t tiers]
-         ^{:key t}
-         [:span.tier-key-item
-          [:i.tier-swatch {:style {:background (get tier-stripe-colors t)}}]
-          (str "T" t)])])))
+       (map tier-key-item tiers)])))
 
 ;; ---- filters ----
 
 (def ^:private positions ["QB" "RB" "WR" "TE" "K" "DST"])
 
 (defn- pos-filter []
-  (let [active @(rf/subscribe [:pos-filter])]
+  (let [active @(rf/subscribe [:pos-filter])
+        pos-button-fn (fn [pos]
+                        ^{:key pos}
+                        [:button {:class (when (= active pos) "on")
+                                  :on-click #(rf/dispatch [:set-pos-filter pos])} pos])]
     [:div.pos-filter
      [:button {:class (when (nil? active) "on") :on-click #(rf/dispatch [:set-pos-filter nil])} "All"]
-     (for [pos positions]
-       ^{:key pos}
-       [:button {:class (when (= active pos) "on")
-                 :on-click #(rf/dispatch [:set-pos-filter pos])} pos])]))
+     (map pos-button-fn positions)]))
 
 (defn- search-box []
   (let [q @(rf/subscribe [:search])]
@@ -136,6 +138,7 @@
                 (map (fn [col] ^{:key (:key col)} 
                        [header-cell col sort]) cols)]]
        [:tbody
-        (for [p players]
-          ^{:key (:player-id p)}
-          [player-row p cols nominated color-tier?])]]]]))
+        (map (fn [p]
+               ^{:key (:player-id p)}
+               [player-row p cols nominated color-tier?])
+             players)]]]]))

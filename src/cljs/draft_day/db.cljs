@@ -113,8 +113,11 @@
   (let [valid   (set (map :key column-catalog))
         kept    (filterv #(valid (:key %)) (or stored []))
         present (set (map :key kept))
-        added   (for [c column-catalog :when (not (present (:key c)))]
-                  {:key (:key c) :visible? (boolean (:default? c))})]
+        added   (->> column-catalog
+                     (remove #(present (:key %)))
+                     (map (fn [c] 
+                            {:key (:key c) 
+                             :visible? (boolean (:default? c))})))]
     (vec (concat kept added))))
 
 ;; ---- initial db ----

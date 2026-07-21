@@ -31,20 +31,22 @@
         [:span.muted "No player currently nominated."])]
      [:table.roster
       [:tbody
-       (for [[i slot] (map-indexed vector (:roster team))]
-         (let [pid (:player-id slot)
-               p   (get by-id pid)]
-           ^{:key i}
-           [:tr
-            [:td.slot (:pos slot)]
-            [:td.slot-player (if p (:player-name p) [:span.muted "—"])]
-            [:td.slot-budget
-             (if p
-               [:span.paid (str "$" (get-in drafted [pid :price]))]
-               (let [t (budget-target slot best)]
-                 [:span.target (if (and t (pos? t)) (str "~$" t) "$1")]))]
-            [:td.slot-undo
-             (when p [:button.undo {:title "Undo" :on-click #(rf/dispatch [:undo-pick pid])} "↩"])]]))]]]))
+       (map-indexed
+        (fn [i slot]
+          (let [pid (:player-id slot)
+                p   (get by-id pid)]
+            ^{:key i}
+            [:tr
+             [:td.slot (:pos slot)]
+             [:td.slot-player (if p (:player-name p) [:span.muted "—"])]
+             [:td.slot-budget
+              (if p
+                [:span.paid (str "$" (get-in drafted [pid :price]))]
+                (let [t (budget-target slot best)]
+                  [:span.target (if (and t (pos? t)) (str "~$" t) "$1")]))]
+             [:td.slot-undo
+              (when p [:button.undo {:title "Undo" :on-click #(rf/dispatch [:undo-pick pid])} "↩"])]]))
+        (:roster team))]]]))
 
 (defn league-view []
   (let [teams   @(rf/subscribe [:teams])
@@ -52,18 +54,21 @@
         drafted @(rf/subscribe [:drafted])
         my-id   @(rf/subscribe [:my-team-id])]
     [:div.league-grid
-     (for [t teams]
-       ^{:key (:team-id t)}
-       [:div.team-card
-        [:div.team-head
-         (:name t) (when (= (:team-id t) my-id) [:span.you " (You)"])
-         [:span.muted (str " · $" (:bankroll t))]]
-        [:table.roster
-         [:tbody
-          (for [[i slot] (map-indexed vector (:roster t))]
-            (let [p (get by-id (:player-id slot))]
-              ^{:key i}
-              [:tr
-               [:td.slot (:pos slot)]
-               [:td (if p (:player-name p) [:span.muted "—"])]
-               [:td.num.muted (when p (str "$" (get-in drafted [(:player-id slot) :price])))]]))]]])]))
+     (map (fn [t]
+            ^{:key (:team-id t)}
+            [:div.team-card
+             [:div.team-head
+              (:name t) (when (= (:team-id t) my-id) [:span.you " (You)"])
+              [:span.muted (str " · $" (:bankroll t))]]
+             [:table.roster
+              [:tbody
+               (map-indexed
+                (fn [i slot]
+                  (let [p (get by-id (:player-id slot))]
+                    ^{:key i}
+                    [:tr
+                     [:td.slot (:pos slot)]
+                     [:td (if p (:player-name p) [:span.muted "—"])]
+                     [:td.num.muted (when p (str "$" (get-in drafted [(:player-id slot) :price])))]]))
+                (:roster t))]]])
+          teams)]))

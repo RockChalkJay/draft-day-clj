@@ -25,9 +25,9 @@
              k       (min (dec num-tiers) (count nonzero))
              ;; k largest strictly-positive gaps; ties broken by earlier index.
              chosen  (set (take k (sort-by (fn [i] [(- (gaps i)) i]) nonzero)))]
-         (loop [i 0, current 1, acc (transient [])]
-           (if (= i n)
-             (persistent! acc)
-             (recur (inc i)
-                    (if (chosen i) (inc current) current)
-                    (conj! acc (assoc (sorted i) :tier current))))))))))
+         (persistent!
+          (:acc (reduce (fn [{:keys [current acc]} i]
+                          {:current (if (chosen i) (inc current) current)
+                           :acc     (conj! acc (assoc (sorted i) :tier current))})
+                        {:current 1 :acc (transient [])}
+                        (range n)))))))))

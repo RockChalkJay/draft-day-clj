@@ -36,12 +36,13 @@
                    :on-change #(reset! tiers (js/parseInt (.. % -target -value) 10))}]]]
         [:h4 "Team names " [:span.muted "(first is you)"]]
         [:div.team-names
-         (for [i (range @n)]
-           ^{:key i}
-           [:input {:type "text"
-                    :placeholder (if (zero? i) "You" (str "Team " (inc i)))
-                    :value (get @names i "")
-                    :on-change #(swap! names assoc i (.. % -target -value))}])]
+         (map (fn [i]
+                ^{:key i}
+                [:input {:type "text"
+                         :placeholder (if (zero? i) "You" (str "Team " (inc i)))
+                         :value (get @names i "")
+                         :on-change #(swap! names assoc i (.. % -target -value))}])
+              (range @n))]
         [:div.modal-actions
          [:button {:on-click #(rf/dispatch [:close-modal])} "Cancel"]
          [:button.primary

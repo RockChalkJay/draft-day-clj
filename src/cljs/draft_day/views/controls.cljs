@@ -10,11 +10,12 @@
   (let [active @(rf/subscribe [:profile])]
     [:div.profile-switch
      [:span.ps-label "Strategy"]
-     (for [[k label] profiles]
-       ^{:key k}
-       [:button {:class (when (= active k) "on")
-                 :on-click #(rf/dispatch [:set-profile k])}
-        label])]))
+     (map (fn [[k label]]
+            ^{:key k}
+            [:button {:class (when (= active k) "on")
+                      :on-click #(rf/dispatch [:set-profile k])}
+             label])
+          profiles)]))
 
 (defn- nominate! [p] (rf/dispatch [:set-nominated (:player-id p)]))
 
@@ -28,11 +29,12 @@
 (defn- pos-card [pos players]
   [:div.pos-card
    [:h5 pos]
-   (for [p players]
-     ^{:key (:player-id p)}
-     [:div.pos-row {:on-click #(nominate! p)}
-      [:span.pn (:player-name p)]
-      [:span.pv (util/money (:worth p))]])])
+   (map (fn [p]
+          ^{:key (:player-id p)}
+          [:div.pos-row {:on-click #(nominate! p)}
+           [:span.pn (:player-name p)]
+           [:span.pv (util/money (:worth p))]])
+        players)])
 
 (defn- need-card [{:keys [pos player]}]
   [:div.need-card {:on-click #(when player (nominate! player))}
@@ -53,11 +55,13 @@
       [:div.sugg-row (map-indexed (fn [i p] ^{:key (:player-id p)} [top5-card i p]) top)]]
      [:div.sugg-section
       [:h4 "Top 3 Per Position"]
-      [:div.sugg-row (for [pos ["QB" "RB" "WR" "TE"]] ^{:key pos} [pos-card pos (get by-pos pos)])]]
+      [:div.sugg-row (map (fn [pos] ^{:key pos} [pos-card pos (get by-pos pos)])
+                          ["QB" "RB" "WR" "TE"])]]
      (when (seq needs)
        [:div.sugg-section
         [:h4 "Best Value For Your Needs"]
-        [:div.sugg-row (for [n needs] ^{:key (:pos n)} [need-card n])]])]))
+        [:div.sugg-row (map (fn [n] ^{:key (:pos n)} 
+        [need-card n]) needs)]])]))
 
 (defn- nominate-form
   "Form-2 so the bid/team live in local reagent atoms (synchronous updates — no
@@ -82,9 +86,10 @@
                       :on-change   #(reset! bid (.. % -target -value))}]
          [:select {:value     @team 
                    :on-change #(reset! team (.. % -target -value))}
-          (for [t teams]
-            ^{:key (:team-id t)}
-            [:option {:value (:team-id t)} (str (:name t) " (" (util/money (:bankroll t)) ")")])]
+          (map (fn [t]
+                 ^{:key (:team-id t)}
+                 [:option {:value (:team-id t)} (str (:name t) " (" (util/money (:bankroll t)) ")")])
+               teams)]
          [:button.primary
           {:disabled (or (nil? @bid) (= "" @bid))
            :on-click #(rf/dispatch [:record-pick {:player-id (:player-id p) 

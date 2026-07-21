@@ -23,9 +23,10 @@
     [:header.top
      [:div.brand "🏈 Draft Day"]
      [:nav.views
-      (for [[v label] [[:board "Board"] [:league "League"] [:settings "Settings"]]]
-        ^{:key v}
-        [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])} label])]
+      (map (fn [[v label]]
+             ^{:key v}
+             [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])} label])
+           [[:board "Board"] [:league "League"] [:settings "Settings"]])]
      [:div.status status]
      [:div.stats
       [:div.stat {:title "Market inflation × phase decay"}
