@@ -4,8 +4,22 @@ Fantasy football draft assistant geared towards auction drafts
 ## TODO
 
 - **Player budgeting** 
+
 - **Persistence**
+
 - **Don't position filter on suggestion cards**
+
+- **Remove strategy tabs - they don't add value**
+
+- **Injury history not just current health. Color code for serious injury or suspension**
+
+- **Remove the 🚨 for tier cliffs. Postion views with tier coloring accomplish the same thing in a clean way.**
+
+- **Fix tier row color bug**
+
+- **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
+
+
 - **Scoring-aware FantasyPros enrichments (ECR + market price).** The player universe is a
   single, scoring-agnostic shared cache, so the FantasyPros enrichments are scraped once
   with PPR hardcoded (`pipeline.clj`): the ECR cheatsheet (`:ppr`) and the AAV auction
