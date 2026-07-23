@@ -78,14 +78,32 @@
 (rf/reg-sub :my-max-bid :<- [:my-team]
   (fn [team _] (when team (max 1 (- (:bankroll team) (dec (open-slots team)))))))
 
-;; best available Worth per position (for MY ROSTER open-slot budget targets)
-(rf/reg-sub :best-worth-by-pos
-  :<- [:undrafted-players]
-  (fn [players _]
-    (reduce (fn [m p]
-              (let [pos (:position p) w (or (:worth p) 0)]
-                (if (> w (get m pos 0)) (assoc m pos w) m)))
-            {} players)))
+;; Pooled per-bucket availability for MY ROSTER open slots: each open slot in a
+;; budget bucket shows (plan − spent) ÷ open slots, floored. Spend counts against
+;; the bucket of the slot a player actually fills (a WR parked in FLEX charges
+;; FLEX). Buckets with no plan set get no entry, so the column stays blank.
+(rf/reg-sub :budget-avail
+  :<- [:my-team]
+  :<- [:drafted]
+  :<- [:config]
+  (fn [[team drafted cfg] _]
+    (let [plan          (:budget-plan cfg)
+          price-of      (fn [player-id] (get-in drafted [player-id :price] 0))
+          ;; tally spent + open slots per budget bucket
+          bucket-totals (reduce (fn [acc {:keys [pos player-id]}]
+                                  (let [budget (db/slot->budget-key pos)]
+                                    (if player-id
+                                      (update-in acc [budget :spent] (fnil + 0) (price-of player-id))
+                                      (update-in acc [budget :open]  (fnil inc 0)))))
+                                {} (:roster team))]
+      ;; (planned − spent) ÷ open, per bucket that has a plan and open slots
+      (reduce-kv (fn [acc budget {:keys [spent open]}]
+                   (let [planned (get plan budget 0)]
+                     (if (and (pos? planned) 
+                              (pos? (or open 0)))
+                       (assoc acc budget (js/Math.floor (/ (- planned (or spent 0)) open)))
+                       acc)))
+                 {} bucket-totals))))
 
 ;; ---- suggestions ----
 (def ^:private suggestion-positions #{"QB" "RB" "WR" "TE"})

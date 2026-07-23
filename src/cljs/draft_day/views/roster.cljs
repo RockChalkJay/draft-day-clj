@@ -1,21 +1,20 @@
 (ns draft-day.views.roster
-  (:require [re-frame.core :as rf]))
+  (:require [re-frame.core :as rf]
+            [draft-day.db :as db]))
 
-(defn- budget-target
-  "Suggested $ for an open slot: best-available Worth for that slot's position
-  (FLEX = best of RB/WR/TE), $1 for bench/K/DST."
-  [slot best]
-  (case (:pos slot)
-    "FLEX"        (apply max 0 (map #(get best % 0) ["RB" "WR" "TE"]))
-    "BENCH"       nil
-    ("K" "DST")   1
-    (get best (:pos slot))))
+(defn- avail-cell
+  "Open slot: pooled budget still available for its bucket. Blank when the
+  bucket has no plan set; warn-colored once the pool is exhausted."
+  [slot avail]
+  (when-some [a (get avail (db/slot->budget-key (:pos slot)))]
+    [:span.avail {:class (when (<= a 0) "over")}
+     (if (neg? a) (str "−$" (- a)) (str "$" a))]))
 
 (defn my-roster []
   (let [team      @(rf/subscribe [:my-team])
         by-id     @(rf/subscribe [:players-by-id])
         drafted   @(rf/subscribe [:drafted])
-        best      @(rf/subscribe [:best-worth-by-pos])
+        avail     @(rf/subscribe [:budget-avail])
         max-bid   @(rf/subscribe [:my-max-bid])
         nominated (get by-id @(rf/subscribe [:nominated-id]))]
     [:div.roster-panel
@@ -42,8 +41,7 @@
              [:td.slot-budget
               (if p
                 [:span.paid (str "$" (get-in drafted [pid :price]))]
-                (let [t (budget-target slot best)]
-                  [:span.target (if (and t (pos? t)) (str "~$" t) "$1")]))]
+                [avail-cell slot avail])]
              [:td.slot-undo
               (when p [:button.undo {:title "Undo" :on-click #(rf/dispatch [:undo-pick pid])} "↩"])]]))
         (:roster team))]]]))

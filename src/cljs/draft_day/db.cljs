@@ -33,8 +33,23 @@
 (defn make-teams [num-teams roster-cfg bankroll]
   (make-teams-named (map default-name (range num-teams)) roster-cfg bankroll))
 
+;; ---- budget plan ----
+;; The manager's own $ allocation, one bucket per slot type (K and DST share).
+;; Spend is attributed to the bucket of the slot a player fills, so a WR who
+;; lands in FLEX charges the FLEX budget, not the WR budget.
+
+(def budget-order
+  "Ordered [label bucket-key] pairs for the Settings budget editor."
+  [["QB" :qb] ["RB" :rb] ["WR" :wr] ["TE" :te] ["FLEX" :flex] ["K/DST" :kdst] ["Bench" :bench]])
+
+(def slot->budget-key
+  {"QB" :qb "RB" :rb "WR" :wr "TE" :te "FLEX" :flex "K" :kdst "DST" :kdst "BENCH" :bench})
+
+(def default-budget-plan (into {} (map (fn [[_ k]] [k 0])) budget-order))
+
 (def default-config
-  {:num-teams 12 :num-tiers 5 :starting-bankroll 200 :scoring :ppr :roster default-roster})
+  {:num-teams 12 :num-tiers 5 :starting-bankroll 200 :scoring :ppr :roster default-roster
+   :budget-plan default-budget-plan})
 
 ;; ---- board columns ----
 ;; The board is data-driven: :columns is an ordered vector of {:key :visible?},

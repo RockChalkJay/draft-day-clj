@@ -39,6 +39,27 @@
       [num-field "Budget $" (:starting-bankroll cfg) #(rf/dispatch [:apply-config {:starting-bankroll %}])]
       [num-field "Tiers" (:num-tiers cfg) #(rf/dispatch [:apply-config {:num-tiers %}])]]]))
 
+(defn- budget-config []
+  (let [cfg      @(rf/subscribe [:config])
+        plan     (:budget-plan cfg)
+        bankroll (:starting-bankroll cfg)
+        total    (reduce + (map (fn [[_ k]] (get plan k 0)) db/budget-order))
+        over?    (> total bankroll)]
+    [:section.settings-card
+     [:h3 "Budget Plan"]
+     [:p.muted (str "Split your $" bankroll " across positions. "
+                    "My Roster tracks your spend against it live.")]
+     [:div.fields
+      (map (fn [[label k]]
+             ^{:key k}
+             [num-field label (get plan k 0) #(rf/dispatch [:set-position-budget k %])])
+           db/budget-order)]
+     [:div.budget-tally {:class (when over? "over")}
+      "Allocated " [:b (str "$" total)] (str " of $" bankroll)
+      (cond
+        over?              (str " · $" (- total bankroll) " over budget")
+        (< total bankroll) (str " · $" (- bankroll total) " unallocated"))]]))
+
 (defn- custom-scoring-editor [scoring]
   [:div.scoring-groups
    (map (fn [{:keys [group stats]}]
@@ -90,5 +111,6 @@
   [:div.settings
    [sleeper-import]
    [league-config]
+   [budget-config]
    [scoring-config]
    [roster-config]])

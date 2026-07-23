@@ -3,7 +3,7 @@ Fantasy football draft assistant geared towards auction drafts
 
 ## TODO
 
-- **Player budgeting** 
+- ~~Player budgeting~~
 
 - **Persistence**
 
@@ -18,7 +18,6 @@ Fantasy football draft assistant geared towards auction drafts
 - **Fix tier row color bug**
 
 - **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
-
 
 - **Scoring-aware FantasyPros enrichments (ECR + market price).** The player universe is a
   single, scoring-agnostic shared cache, so the FantasyPros enrichments are scraped once

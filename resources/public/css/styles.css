@@ -182,7 +182,8 @@ table.roster td { padding: 4px 6px; border-bottom: 1px solid var(--border); font
 td.slot { color: var(--muted); font-size: 10px; text-transform: uppercase; width: 44px; }
 .slot-budget { text-align: right; }
 .slot-budget .paid { color: var(--good); }
-.slot-budget .target { color: var(--muted); }
+.slot-budget .avail { color: var(--muted); }
+.slot-budget .avail.over { color: var(--warn); }
 .slot-undo { width: 24px; text-align: right; }
 button.undo { background: transparent; border: none; color: var(--muted); }
 button.undo:hover { color: var(--warn); }
@@ -205,3 +206,6 @@ button.undo:hover { color: var(--warn); }
 .field input, .field select { width: 100%; }
 .row { display: flex; gap: 8px; }
 .row input { flex: 1; }
+.budget-tally { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.budget-tally b { color: var(--good); font-weight: 700; }
+.budget-tally.over, .budget-tally.over b { color: var(--warn); }

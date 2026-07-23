@@ -193,6 +193,13 @@
       {:db (assoc db :config cfg :teams teams)
        :fx [[:dispatch [:recompute]]]})))
 
+;; Manager's per-position budget plan — client-only tracking, so no team
+;; rebuild and no :recompute; just persist the :config slice.
+(rf/reg-event-db :set-position-budget [persist]
+  (fn [db [_ bucket v]]
+    (let [v (if (and (number? v) (not (js/isNaN v))) (max 0 v) 0)]
+      (assoc-in db [:config :budget-plan bucket] v))))
+
 (rf/reg-event-fx :select-scoring-preset [persist]
   (fn [{:keys [db]} [_ preset]]
     {:db (assoc-in db [:config :scoring] preset)
