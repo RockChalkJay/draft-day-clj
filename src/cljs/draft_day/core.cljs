@@ -42,7 +42,6 @@
 
 (defn- board-view []
   [:div.board-view
-   [controls/profile-switcher]
    [:div.top-panels
     [:div.suggestions-col [controls/suggestions]]
     [:aside.roster-col [roster/my-roster]]]

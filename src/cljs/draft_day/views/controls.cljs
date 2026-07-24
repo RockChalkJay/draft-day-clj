@@ -3,20 +3,6 @@
             [re-frame.core :as rf]
             [draft-day.views.util :as util]))
 
-(def ^:private profiles
-  [[:balanced "Balanced"] [:floor "Floor"] [:ceiling "Ceiling"] [:scarcity "Scarcity"]])
-
-(defn profile-switcher []
-  (let [active @(rf/subscribe [:profile])]
-    [:div.profile-switch
-     [:span.ps-label "Strategy"]
-     (map (fn [[k label]]
-            ^{:key k}
-            [:button {:class (when (= active k) "on")
-                      :on-click #(rf/dispatch [:set-profile k])}
-             label])
-          profiles)]))
-
 (defn- nominate! [p] (rf/dispatch [:set-nominated (:player-id p)]))
 
 (defn- top5-card [i p]

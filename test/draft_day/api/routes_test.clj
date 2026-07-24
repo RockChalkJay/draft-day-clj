@@ -39,15 +39,12 @@
                   :drafted-player-ids [] :starting-bankroll 200 :picks []}
           req    {:body (input-stream
                          (json/write-value-as-string
-                          {:num-teams 12 :scoring "ppr" :profile "balanced" :league-state ls}))}
+                          {:num-teams 12 :scoring "ppr" :league-state ls}))}
           resp   (routes/rankings-handler req)
           b      (parse resp)]
       (is (= 200 (:status resp)))
       (is (contains? b :inflation))
-      (is (= "balanced" (:profile b)))
       (is (some #(pos? (:worth %)) (:players b)))
-      ;; cross-lens worths attached for divergence badges
-      (is (every? #(and (contains? % :worth-floor) (contains? % :worth-ceiling)) (:players b)))
       ;; market normalized to the 12x$200 = $2400 pool; rb0 = mean(40*1.2, 60*1.0) = 54,
       ;; rb1 = 30*1.2 = 36; source-less players get nil market + nil edge
       (let [by-id (into {} (map (juxt :player-id identity)) (:players b))]

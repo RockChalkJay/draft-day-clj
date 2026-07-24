@@ -4,7 +4,7 @@
             [draft-day.db :as db]))
 
 ;; ---- simple extracts ----
-(doseq [k [:view :status :source :loading? :profile :config :teams :my-team-id
+(doseq [k [:view :status :source :loading? :config :teams :my-team-id
            :nominated-id :bid :bid-team :sort :pos-filter :search :columns :drafted :ranked :modal
            :scoring-presets]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))

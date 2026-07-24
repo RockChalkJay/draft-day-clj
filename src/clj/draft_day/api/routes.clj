@@ -1,7 +1,7 @@
 (ns draft-day.api.routes
   "Stateless JSON API. The browser owns draft state and sends only the lightweight
-  LeagueState + config + profile; the server runs static+live valuation on the
-  cached universe and returns the valued board. Also serves the compiled SPA."
+  LeagueState + config; the server runs static+live valuation on the cached
+  universe and returns the valued board. Also serves the compiled SPA."
   (:require [clojure.string :as str]
             [reitit.ring :as ring]
             [reitit.ring.middleware.parameters :as parameters]
@@ -70,36 +70,20 @@
 (defn- coerce-league-state [ls]
   (update ls :drafted-player-ids set))
 
-(defn- lens-worths
-  "player-id -> Worth under a given profile (for cross-lens divergence badges)."
-  [players scoring num-teams opts league-state profile]
-  (-> (engine/static-rankings players scoring num-teams (assoc opts :profile profile))
-      (engine/live-valuation league-state {:profile profile})
-      :players
-      (->> (into {} (map (juxt :player-id :worth))))))
-
 (defn rankings-handler [req]
-  (let [{:keys [scoring num-teams num-tiers replacement-config profile league-state]}
+  (let [{:keys [scoring num-teams num-tiers replacement-config league-state]}
         (read-json-body req)
         players  (:players (universe false))
         scoring* (resolve-scoring scoring)
         nt       (or num-teams 12)
         opts     {:num-tiers (or num-tiers 5) :replacement-config replacement-config}
-        prof     (if (string? profile) (keyword profile) (or profile :balanced))
         ls       (coerce-league-state league-state)
         live     (engine/live-valuation
-                  (engine/static-rankings players scoring* nt (assoc opts :profile prof)) ls
-                  {:profile prof})
-        ;; also value under Floor/Ceiling so the client can badge lens-sensitive players
-        floor-w  (lens-worths players scoring* nt opts ls :floor)
-        ceil-w   (lens-worths players scoring* nt opts ls :ceiling)
-        players* (-> (mapv #(assoc % :worth-floor   (get floor-w (:player-id %) 0)
-                                     :worth-ceiling (get ceil-w  (:player-id %) 0))
-                           (:players live))
-                     ;; reference market price + edge, scaled to this league's pool
-                     (market/with-market (ls/initial-cash ls)))]
+                  (engine/static-rankings players scoring* nt opts) ls)
+        ;; reference market price + edge, scaled to this league's pool
+        players* (market/with-market (:players live) (ls/initial-cash ls))]
     (json-response 200 (-> (select-keys live [:inflation :inflation-index
-                                              :position-inflation :market-heat :pdm-map :profile])
+                                              :position-inflation :market-heat :pdm-map])
                            (assoc :players players*)))))
 
 (def app

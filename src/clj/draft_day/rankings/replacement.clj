@@ -18,8 +18,8 @@
   "Return {\"QB\" pts \"RB\" pts \"WR\" pts \"TE\" pts}. The replacement index for
   a position is num-teams*starters (+ flex share for RB/WR), clamped to
   (count pool)-1; the score of the player at that index is the level. Positions
-  with an empty pool are omitted. `score-key` (default :points) lets a strategy
-  profile compute levels on profile-adjusted :eff-points."
+  with an empty pool are omitted. `score-key` (default :points) selects the score
+  field to compute levels on."
   ([board num-teams config] (replacement-levels board num-teams config :points))
   ([board num-teams config score-key]
    (let [config (merge default-config config)

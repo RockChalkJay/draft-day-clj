@@ -21,6 +21,8 @@ pom.xml.asc
 .dir-locals.el
 out/
 
+.claude/
+
 # node / shadow-cljs
 /node_modules/
 /.shadow-cljs/

@@ -68,7 +68,6 @@
                     :num-tiers          (get-in db [:config :num-tiers])
                     :scoring            (get-in db [:config :scoring])
                     :replacement-config (replacement-config (get-in db [:config :roster]))
-                    :profile            (:profile db)
                     :league-state       (league-state db)}
              :on-success [:ranked-loaded]}}
      {})))
@@ -93,9 +92,6 @@
              (if (= key k)
                {:key k :dir (- dir)}
                {:key k :dir (if (#{:name :team :position :rank :adp :ecr} k) 1 -1)})))))
-
-(rf/reg-event-fx :set-profile [persist]
-  (fn [{:keys [db]} [_ p]] {:db (assoc db :profile p) :fx [[:dispatch [:recompute]]]}))
 
 ;; ---- columns ----
 

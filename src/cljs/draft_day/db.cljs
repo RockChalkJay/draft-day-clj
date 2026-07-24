@@ -64,7 +64,7 @@
    {:key :team     :label "Tm"     :tooltip "NFL team"                  :default? true}
    {:key :bye      :label "Bye"    :tooltip "Bye week"                  :default? true}
    {:key :position :label "Pos"    :tooltip "Position"                  :default? true}
-   {:key :worth    :label "Worth"  :tooltip "Live auction price (active profile)"  :default? true}
+   {:key :worth    :label "Worth"  :tooltip "Live auction price"        :default? true}
    {:key :value    :label "Value"  :tooltip "Stable VBD dollars"        :default? true}
    {:key :market   :label "Mkt"    :tooltip "Market price — ESPN + FantasyPros consensus, scaled to your league" :default? true}
    {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($, raw)" :default? true}
@@ -146,7 +146,6 @@
      :status      nil
      :scoring-presets nil       ; {:presets {...} :stat-keys [...]}, fetched at boot
      :config      cfg
-     :profile     :balanced
      :teams       (make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
      :my-team-id  "t0"
      :drafted     {}            ; player-id -> {:price :team-id}
@@ -162,4 +161,4 @@
      :columns     (default-columns)}))
 
 ;; slice persisted to localStorage
-(def persist-keys [:config :profile :teams :drafted :picks :columns :my-team-id])
+(def persist-keys [:config :teams :drafted :picks :columns :my-team-id])

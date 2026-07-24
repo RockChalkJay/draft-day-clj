@@ -9,7 +9,7 @@ Fantasy football draft assistant geared towards auction drafts
 
 - **Don't position filter on suggestion cards**
 
-- **Remove strategy tabs - they don't add value**
+- ~~Remove strategy tabs - they don't add value~~
 
 - **Injury history not just current health. Color code for serious injury or suspension**
 

@@ -1,8 +1,8 @@
 (ns draft-day.rankings.projections
   "Derive a floor (p10) / ceiling (p90) band around each player's mean projection
   from data we already fetch free: expert-rank disagreement (FantasyPros
-  rank_std) scaled by a per-position historical volatility. Powers the Floor and
-  Ceiling strategy profiles.
+  rank_std) scaled by a per-position historical volatility. Feeds the Floor/
+  Ceiling projection columns on the board.
 
   band = k_pos * min(1, rank_std / STD_SCALE)
   ceiling = mean * (1 + band),  floor = mean * (1 - band)
