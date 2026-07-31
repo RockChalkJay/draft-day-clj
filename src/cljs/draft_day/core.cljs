@@ -45,7 +45,7 @@
    [:div.top-panels
     [:div.suggestions-col [controls/suggestions]]
     [:aside.roster-col [roster/my-roster]]]
-   [controls/nominate-bar]
+   [controls/nominate-tile]
    [:details.col-details
     [:summary "⚙ Columns"]
     [columns/column-picker]]

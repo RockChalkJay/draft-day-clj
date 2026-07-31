@@ -15,19 +15,13 @@
         by-id     @(rf/subscribe [:players-by-id])
         drafted   @(rf/subscribe [:drafted])
         avail     @(rf/subscribe [:budget-avail])
-        max-bid   @(rf/subscribe [:my-max-bid])
-        nominated (get by-id @(rf/subscribe [:nominated-id]))]
+        max-bid   @(rf/subscribe [:my-max-bid])]
     [:div.roster-panel
      [:div.roster-head
       [:h3 "My Roster"]
       [:div.roster-cash
        [:span "Bankroll " [:b (str "$" (:bankroll team))]]
        [:span.muted (str "· max bid $" max-bid)]]]
-     [:div.nom-box
-      (if nominated
-        [:span (:player-name nominated) " "
-         [:span.muted (str (:position nominated) " · " (:team nominated) " · worth $" (:worth nominated))]]
-        [:span.muted "No player currently nominated."])]
      [:table.roster
       [:tbody
        (map-indexed

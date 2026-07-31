@@ -82,8 +82,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .need-card { border-color: var(--accent); cursor: pointer; }
 .need-card h5 { color: var(--accent); }
 
-.nom-box { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
-  padding: 8px 10px; margin-bottom: 10px; font-size: 12px; }
 .sugg-block { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
 .sugg-block h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .05em; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -95,14 +93,33 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 /* ---- board layout ---- */
 .board-layout { display: grid; grid-template-columns: 1fr 320px; gap: 14px; align-items: start; }
 
-/* ---- nominate bar ---- */
-.nominate-bar { display: flex; align-items: center; gap: 10px; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; flex-wrap: wrap; }
-.nom-name { font-weight: 600; }
-.nom-hint b { color: var(--good); }
-.nominate-bar input, .nominate-bar select, .settings input, .settings select, .search {
+/* ---- on-the-block tile ----
+   The nominated player, headshot and all: the one focal point for bidding. */
+.nom-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px; margin-bottom: 10px; height: 100%; display: flex; flex-direction: column; }
+.nt-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
+.nt-body { display: flex; gap: 16px; align-items: center; flex: 1; }
+/* headshot sits on top of the silhouette; it hides itself on load failure */
+.nt-face { position: relative; flex: 0 0 108px; width: 108px; height: 108px; border-radius: 12px;
+  background: var(--panel2); border: 1px dashed var(--border); overflow: hidden;
+  display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.nt-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.nt-main { flex: 1; min-width: 0; }
+.nt-name { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.nt-meta { color: var(--muted); font-size: 13px; margin: 4px 0 14px; }
+.nt-vals { display: grid; grid-template-columns: repeat(4, auto); gap: 6px 26px; justify-content: start; }
+.nt-val { display: flex; flex-direction: column; }
+.nt-val .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.nt-val .amt { font-size: 18px; font-weight: 700; color: var(--good); font-variant-numeric: tabular-nums; }
+.nt-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--border); width: 50%; margin-right: auto; }
+.nt-actions input, .nt-actions select { background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.nt-actions input.bid { width: 80px; }
+.nt-actions select { flex: 1; min-width: 0; }
+.nt-bid-label { font-size: 14px; font-weight: 600; letter-spacing: .02em; color: var(--text); }
+.settings input, .settings select, .search {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
-.nominate-bar input.bid { width: 90px; }
 button.primary { background: var(--accent); color: #0b0e13; border: none; border-radius: 8px; padding: 7px 14px; font-weight: 700; }
 button.primary:disabled { opacity: .4; cursor: not-allowed; }
 
