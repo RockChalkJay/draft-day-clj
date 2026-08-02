@@ -3,8 +3,8 @@
   vendor — a failure of either degrades the board, never empties it.
 
    - ECR (`parse-ecr`): scrapes the `var ecrData = {…}` JSON blob out of the
-     cheatsheet page, supplying expert tier, positional rank, bye week, and
-     (crucially) the rank spread (rank_std) that powers the Floor/Ceiling model.
+     cheatsheet page, supplying expert tier, positional rank, and (crucially) the
+     rank spread (rank_std) that powers the Floor/Ceiling model.
    - AAV (`parse-aav`): scrapes FantasyPros' auction-value calculator (the
      draftwizard `#OverallTable`) for a raw market price per player."
   (:require [clojure.string :as str]
@@ -34,8 +34,7 @@
      :fantasypros/rank-std (->double (:rank_std p))
      :fantasypros/rank-ave (->double (:rank_ave p))
      :fantasypros/rank-min (->int (:rank_min p))
-     :fantasypros/rank-max (->int (:rank_max p))
-     :bye                  (->int (:player_bye_week p))}))
+     :fantasypros/rank-max (->int (:rank_max p))}))
 
 (defn parse-ecr
   "Pure: cheatsheet HTML -> seq of enrichment maps (each with a :key)."

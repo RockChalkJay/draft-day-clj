@@ -8,12 +8,23 @@
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.merge :as merge]
             [draft-day.ingestion.match :as match]
+            [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
             [clojure.edn :as edn]
             [clojure.java.io :as io]))
 
 (def default-cache-path "data/players_cache.transit")
 (def ^:private sample-resource "sample_players.edn")
+
+(defmacro best-effort
+  "Evaluate body, returning its value; on any exception log it to *err* and
+  return nil. For optional enrichment steps where a failed fetch should degrade
+  gracefully (leave the column absent) rather than abort ingestion."
+  [& body]
+  `(try ~@body
+     (catch Exception e#
+       (log/warn e# "best-effort failed:" (ex-message e#) (ex-data e#))
+       nil)))
 
 (defn- cache-ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_CACHE_TTL_HOURS") "24")))
@@ -44,23 +55,29 @@
     (edn/read-string (slurp r))))
 
 (defn fetch-enriched-universe
-  "Sleeper universe (rows) left-joined with enrichment columns: FantasyPros ECR
-  (tiers/variance/bye) and AAV (auction values), plus ESPN live auction values.
-  Each enrichment is best-effort — on failure the universe is returned without
+  "Sleeper universe (rows) with bye weeks derived from Sleeper's schedule, then
+  left-joined with enrichment columns: FantasyPros ECR (tiers/variance) and AAV
+  (auction values), plus ESPN live auction values. Bye is core (applied first);
+  each enrichment is best-effort — on failure the universe is returned without
   those columns and the engine falls back gracefully."
   [season]
   (let [universe (sleeper/fetch-universe season)
+        ;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
+        ;; :team every player already carries — complete, not just the FantasyPros
+        ;; matches. Best-effort: a failed schedule fetch just leaves :bye nil.
+        byes     (best-effort (sleeper/fetch-byes season))
         ;; Deliberate shortcut: the FantasyPros enrichments are baked into this
         ;; single, scoring-agnostic shared universe at ingestion, but they differ
         ;; by format — the ECR cheatsheet (:ppr/:half-ppr/:standard) and the AAV
         ;; calculator (scoring param). We always scrape PPR, so non-PPR leagues
         ;; get PPR-flavored tiers/rank-spread and market prices. See README todo
         ;; for the proper fix (store all variants, select at ranking time).
-        ecr      (try (fantasypros/fetch-ecr :ppr) (catch Exception _ nil))
-        aav      (try (fantasypros/fetch-aav) (catch Exception _ nil))
-        sleepers (try (fantasypros/fetch-sleepers) (catch Exception _ nil))
-        espn     (try (espn/fetch season) (catch Exception _ nil))]
+        ecr      (best-effort (fantasypros/fetch-ecr :ppr))
+        aav      (best-effort (fantasypros/fetch-aav))
+        sleepers (best-effort (fantasypros/fetch-sleepers))
+        espn     (best-effort (espn/fetch season))]
     (cond-> universe
+      (seq byes)     (sleeper/assoc-byes byes)
       (seq ecr)      (merge/left-join (match/by-key ecr))
       (seq aav)      (merge/left-join (match/by-key aav))
       (seq sleepers) (merge/left-join (match/by-key sleepers))

@@ -7,6 +7,11 @@
   :source-paths ["src/clj" "src/cljs"]
   :test-paths ["test"]
   :dependencies [[org.clojure/clojure "1.12.0"]
+                 [org.clojure/tools.logging "1.3.0"]
+                 ;; SLF4J binding so tools.logging actually emits (slf4j-api
+                 ;; arrives via shadow-cljs/directory-watcher; without a binding
+                 ;; it NOPs). slf4j-simple logs WARN+ to stderr.
+                 [org.slf4j/slf4j-simple "1.7.36"]
                  ;; --- backend web (http-kit serves + fetches) ---
                  [http-kit "2.8.0"]
                  [metosin/reitit "0.7.2"]

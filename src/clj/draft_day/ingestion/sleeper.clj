@@ -4,7 +4,8 @@
   object (name/position/team), and a stats map whose keys match the scoring
   engine (`rush_yd`, `pass_td`, `rec`, ...). Team defenses use the team abbrev
   as their player_id (e.g. \"ARI\") and Sleeper's \"DEF\" maps to our \"DST\"."
-  (:require [org.httpkit.client :as http]
+  (:require [clojure.set :as set]
+            [org.httpkit.client :as http]
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]))
 
@@ -75,3 +76,54 @@
   "Network: the normalized player universe for a season (defaults to current)."
   ([] (fetch-universe (current-season)))
   ([season] (universe-from-entries (fetch-projections season))))
+
+;; ---- bye weeks (derived from the regular-season schedule) ----
+;; Sleeper carries no bye field on players; a team's bye is simply the one
+;; regular-season week it has no game. Keyed by the team abbrev that every
+;; player (and team defense) already carries as :team.
+
+
+(defn schedule->byes
+  "Pure: regular-season schedule games -> {team-abbrev bye-week}. Each game is
+  `{:home \"ATL\" :away \"TB\" :week 1 ...}`; a team's bye is the single week in
+  1..(max week) it appears in no game. Teams without exactly one missing week are
+  omitted (they simply keep :bye nil)."
+  [games]
+  (let [weeks     (keep :week games)
+        all-weeks (set (range 1 (inc (apply max 0 weeks))))
+        played    (reduce (fn [acc {:keys [home away week]}]
+                            (cond-> acc
+                              home (update home (fnil conj #{}) week)
+                              away (update away (fnil conj #{}) week)))
+                          {} games)]
+    (into {} (keep (fn [[team wks]]
+                     (let [missing (set/difference all-weeks wks)]
+                       (when (= 1 (count missing))
+                         [team (first missing)]))))
+          played)))
+
+(defn assoc-byes
+  "Pure: set each player's :bye from a {team-abbrev bye-week} map, keyed on :team.
+  Players with an unknown/nil team keep their existing :bye."
+  [universe byes]
+  (mapv (fn [p] 
+          (if-let [b (get byes (:team p))] 
+            (assoc p :bye b) 
+            p)) universe))
+
+(defn- schedule-url [season]
+  (str base "/schedule/nfl/regular/" season))
+
+(defn fetch-schedule
+  "Network: raw regular-season schedule games for a season (throws on failure)."
+  [season]
+  (let [{:keys [status body error]} @(http/get (schedule-url season) {:timeout 30000})]
+    (cond
+      error          (throw (ex-info "Sleeper schedule fetch failed" {:status status :error error}))
+      (= 200 status) (json/read-value body mapper)
+      :else          (throw (ex-info "Sleeper schedule non-200" {:status status})))))
+
+(defn fetch-byes
+  "Network: {team-abbrev bye-week} for a season (defaults to current)."
+  ([] (fetch-byes (current-season)))
+  ([season] (schedule->byes (fetch-schedule season))))

@@ -20,7 +20,7 @@
     (is (= 2 (:fantasypros/ecr bijan)))
     (is (= 1 (:fantasypros/ecr-tier bijan)))
     (is (= 1.40 (:fantasypros/rank-std bijan)))     ; string -> double
-    (is (= 11 (:bye bijan)))                         ; string -> long
+    (is (nil? (:bye bijan)))                          ; bye now comes from Sleeper, not FantasyPros
     (is (= "RB1" (:fantasypros/pos-rank bijan)))))
 
 (deftest parse-returns-nil-without-blob

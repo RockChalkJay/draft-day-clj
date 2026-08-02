@@ -43,3 +43,31 @@
   (let [bijan (sleeper/normalize-entry (first sample-entries))
         pts   (scoring/player-points bijan (:ppr scoring/presets))]
     (is (< (Math/abs (- pts 324.9)) 25.0))))
+
+;; ---- bye derivation from the schedule ----
+
+;; Three teams over a 3-week season, each missing exactly one week (its bye):
+;; ATL byes wk1, TB byes wk2, GB byes wk3.
+(def ^:private sample-games
+  [{:home "TB"  :away "GB"  :week 1}                       ; ATL idle -> bye 1
+   {:home "GB"  :away "ATL" :week 2}                       ; TB idle  -> bye 2
+   {:home "ATL" :away "TB"  :week 3}])                     ; GB idle  -> bye 3
+
+(deftest schedule-derives-bye-per-team
+  (let [byes (sleeper/schedule->byes sample-games)]
+    (is (= {"ATL" 1 "TB" 2 "GB" 3} byes))))
+
+(deftest schedule-omits-teams-without-a-single-bye
+  ;; A team that plays every week (no missing week) gets no entry.
+  (let [byes (sleeper/schedule->byes
+              (conj sample-games {:home "ATL" :away "GB" :week 1}))] ; ATL now plays wk1 too
+    (is (not (contains? byes "ATL")))                       ; 0 missing weeks -> omitted
+    (is (= 2 (byes "TB")))))
+
+(deftest assoc-byes-keys-on-team
+  (let [universe [{:player-id "1" :team "ATL" :bye nil}
+                  {:player-id "2" :team "GB"  :bye nil}
+                  {:player-id "3" :team nil   :bye nil}]   ; free agent -> stays nil
+        result   (into {} (map (juxt :player-id :bye))
+                       (sleeper/assoc-byes universe {"ATL" 1 "GB" 3}))]
+    (is (= {"1" 1 "2" 3 "3" nil} result))))
