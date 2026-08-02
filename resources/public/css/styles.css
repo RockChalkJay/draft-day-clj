@@ -52,43 +52,36 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .modal-actions button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; }
 .modal-actions button.primary { background: var(--accent); color: #0b0e13; border: none; font-weight: 700; }
 
-/* ---- suggestions ---- */
-/* suggestions (wide, left) + roster (narrow, right, full height) above the board */
-.top-panels { display: flex; gap: 14px; align-items: stretch; margin-bottom: 14px; }
-.suggestions-col { flex: 1; min-width: 0; }
+/* ---- three-panel row above the board: Watch List | On the block | My Roster ---- */
+.three-panels { display: flex; gap: 14px; align-items: stretch; margin-bottom: 12px; }
+.watchlist-col { flex: 0 0 320px; min-width: 0; }
+.tile-col { flex: 1 1 0; min-width: 0; }
 .roster-col { flex: 0 0 300px; min-width: 0; }
 
-.suggestions { display: flex; flex-direction: column; gap: 16px; }
-.sugg-section h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
-  color: var(--muted); letter-spacing: .05em; }
-.sugg-row { display: flex; gap: 10px; flex-wrap: wrap; }
-
-.sugg-card, .pos-card, .need-card { flex: 1 1 0; min-width: 150px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
-.sugg-card { cursor: pointer; }
-.sugg-card:hover, .need-card:hover { border-color: var(--accent); }
-.sugg-card .rank { font-size: 11px; color: var(--muted); }
-.pname { font-weight: 700; }
-.pmeta { font-size: 11px; color: var(--muted); }
-.pprice { color: var(--good); font-weight: 700; margin-top: 2px; }
-
-.pos-card h5, .need-card h5 { margin: 0 0 7px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-.pos-card h5 { color: var(--muted); }
-.pos-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; cursor: pointer; }
-.pos-row:hover .pn { color: var(--accent); }
-.pos-row .pn { font-weight: 600; }
-.pos-row .pv { color: var(--good); font-weight: 600; }
-
-.need-card { border-color: var(--accent); cursor: pointer; }
-.need-card h5 { color: var(--accent); }
-
-.sugg-block { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
-.sugg-block h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .05em; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { background: var(--panel2); border: 1px solid var(--border); border-radius: 999px;
-  padding: 4px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
-.chip:hover { border-color: var(--accent); }
-.chip b { color: var(--good); }
+/* ---- watch list ----
+   Deliberately shaped like the My Roster box: dense rows, no chrome of its own.
+   Players are added from the board's ★; a row click puts one on the block. */
+.watchlist-panel { background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px; height: 100%; }
+.watchlist-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.watchlist-head h3 { margin: 0; font-size: 14px; }
+.w-count { font-size: 11px; color: var(--muted); }
+.watchlist { display: flex; flex-direction: column; }
+.w-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px;
+  border-bottom: 1px solid var(--border); cursor: pointer; }
+.w-row:last-child { border-bottom: none; }
+.w-row:hover { background: var(--panel2); }
+.w-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-pos { color: var(--muted); font-weight: 400; font-size: 10px; text-transform: uppercase; margin-left: 5px; }
+/* hook for the deferred shared-bye conflict badge */
+.w-warn { color: var(--warn); margin-left: 5px; }
+.w-worth { color: var(--good); font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
+.w-mkt { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; width: 34px; text-align: right; }
+.w-remove { background: none; border: none; color: var(--muted); font-size: 14px;
+  line-height: 1; padding: 0 2px; cursor: pointer; }
+.w-remove:hover { color: var(--warn); }
+.w-empty { color: var(--muted); font-size: 12px; padding: 6px 4px; }
 
 /* ---- board layout ---- */
 .board-layout { display: grid; grid-template-columns: 1fr 320px; gap: 14px; align-items: start; }
@@ -96,7 +89,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 /* ---- on-the-block tile ----
    The nominated player, headshot and all: the one focal point for bidding. */
 .nom-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  padding: 14px; margin-bottom: 10px; height: 100%; display: flex; flex-direction: column; }
+  padding: 14px; height: 100%; display: flex; flex-direction: column; }
 .nt-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
 .nt-body { display: flex; gap: 16px; align-items: center; flex: 1; }
 /* headshot sits on top of the silhouette; it hides itself on load failure */
@@ -153,7 +146,15 @@ table.board th.sorted { color: var(--accent); }
 table.board td { padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 table.board tbody tr:hover { background: var(--panel2); }
 table.board tbody tr.selected { background: #1d2a44; }
-td.name { font-weight: 600; }
+td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.star-btn { background: none; border: none; cursor: pointer; font-size: 15px;
+  line-height: 1; padding: 0; flex: 0 0 auto; }
+.star-btn.off, .star-btn.star-off { color: var(--muted); opacity: .5; display: inline-block; }
+.star-btn.off:hover, .star-btn.star-off:hover { opacity: 1; color: var(--accent); }
+.star-btn.on, .star-btn.star-on { color: var(--accent); display: inline-block; }
+/* Slightly scale the filled star so it visually matches the outline glyph size */
+.star-btn.star-on { transform: scale(1.08); transform-origin: center; transition: transform .12s ease; }
+.star-btn.star-on:hover { transform: scale(1.12); }
 .badge { font-size: 11px; cursor: help; }
 .pill { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-size: 11px; }
 

@@ -151,6 +151,7 @@
      :drafted     {}            ; player-id -> {:price :team-id}
      :picks       []            ; [{:player-id :position :price :team-id}]
      :nominated-id nil
+     :watchlist    #{}          ; player-ids the manager is tracking
      :bid          ""
      :bid-team     "t0"
      :modal        nil
@@ -161,4 +162,4 @@
      :columns     (default-columns)}))
 
 ;; slice persisted to localStorage
-(def persist-keys [:config :teams :drafted :picks :columns :my-team-id])
+(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist])

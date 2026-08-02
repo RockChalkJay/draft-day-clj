@@ -3,52 +3,6 @@
             [re-frame.core :as rf]
             [draft-day.views.util :as util]))
 
-(defn- nominate! [p] (rf/dispatch [:set-nominated (:player-id p)]))
-
-(defn- top5-card [i p]
-  [:div.sugg-card {:on-click #(nominate! p)}
-   [:div.rank (str "#" (inc i))]
-   [:div.pname (:player-name p)]
-   [:div.pmeta (str (:position p) " · " (:team p))]
-   [:div.pprice (util/money (:worth p))]])
-
-(defn- pos-card [pos players]
-  [:div.pos-card
-   [:h5 pos]
-   (map (fn [p]
-          ^{:key (:player-id p)}
-          [:div.pos-row {:on-click #(nominate! p)}
-           [:span.pn (:player-name p)]
-           [:span.pv (util/money (:worth p))]])
-        players)])
-
-(defn- need-card [{:keys [pos player]}]
-  [:div.need-card {:on-click #(when player (nominate! player))}
-   [:h5 (str pos " (open starter slot)")]
-   (if player
-     [:<>
-      [:div.pname (:player-name player)]
-      [:div.pprice (str "$" (:worth player))]]
-     [:div.muted "—"])])
-
-(defn suggestions []
-  (let [top    @(rf/subscribe [:top-overall])
-        by-pos @(rf/subscribe [:top-by-position])
-        needs  @(rf/subscribe [:best-value-for-needs])]
-    [:div.suggestions
-     [:div.sugg-section
-      [:h4 "Top 5 Overall"]
-      [:div.sugg-row (map-indexed (fn [i p] ^{:key (:player-id p)} [top5-card i p]) top)]]
-     [:div.sugg-section
-      [:h4 "Top 3 Per Position"]
-      [:div.sugg-row (map (fn [pos] ^{:key pos} [pos-card pos (get by-pos pos)])
-                          ["QB" "RB" "WR" "TE"])]]
-     (when (seq needs)
-       [:div.sugg-section
-        [:h4 "Best Value For Your Needs"]
-        [:div.sugg-row (map (fn [n] ^{:key (:pos n)} 
-        [need-card n]) needs)]])]))
-
 (defn- silhouette []
   [:svg {:width 64 :height 64 :view-box "0 0 24 24" :fill "none"
          :stroke "currentColor" :stroke-width 1.4}
@@ -120,4 +74,4 @@
        [:div.nt-label "On the block"]
        [:div.nt-body
         [:div.nt-face [silhouette]]
-        [:div.nt-main [:div.muted "Click a player to nominate…"]]]])))
+        [:div.nt-main [:div.muted "Click a player or watch-list entry to nominate…"]]]])))

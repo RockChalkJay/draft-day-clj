@@ -18,10 +18,22 @@
   (when (:fantasypros/sleeper? p)
     [:span.badge {:title "FantasyPros sleeper"} " 💤"]))
 
+(defn- star-toggle
+  "Adds/removes the player from the watch list. Stops propagation so starring
+  a row doesn't also nominate them."
+  [p]
+  (let [on? (contains? @(rf/subscribe [:watch-set]) (:player-id p))]
+    [:button.star-btn {:class    (if on? "star-on" "star-off")
+                       :title    (if on? "On watch list" "Add to watch list")
+                       :on-click (fn [e]
+                                   (.stopPropagation e)
+                                   (rf/dispatch [:watch-toggle (:player-id p)]))}
+     (if on? "⭐" "☆")]))
+
 (defn- cell [k p]
   (case k
     :rank     [:td.num.muted (:rank p)]
-    :name     [:td.name (:player-name p) (cliff-marker p) (sleeper-badge p)]
+    :name     [:td.name [star-toggle p] (:player-name p) (cliff-marker p) (sleeper-badge p)]
     :team     [:td.muted (:team p)]
     :position [:td [:span.pill (:position p)]]
     :worth    [:td.num.bold (util/money (:worth p))]

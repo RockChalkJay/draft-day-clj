@@ -84,6 +84,17 @@
 (rf/reg-event-db :set-bid-team  (fn [db [_ v]] (assoc db :bid-team v)))
 (rf/reg-event-db :set-status    (fn [db [_ s]] (assoc db :status s)))
 
+;; ---- watch list ----
+;; Client-only tracking state: it feeds no valuation input, so these persist
+;; but deliberately skip :recompute (same as :set-position-budget).
+
+(rf/reg-event-db :watch-toggle [persist]
+  (fn [db [_ id]]
+    (update db :watchlist #(if (contains? % id) (disj % id) (conj % id)))))
+
+(rf/reg-event-db :watch-remove [persist]
+  (fn [db [_ id]] (update db :watchlist disj id)))
+
 (rf/reg-event-db
  :set-sort
  (fn [db [_ k]]

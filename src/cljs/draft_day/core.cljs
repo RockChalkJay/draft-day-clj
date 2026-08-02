@@ -7,6 +7,7 @@
             [draft-day.views.board :as board]
             [draft-day.views.controls :as controls]
             [draft-day.views.roster :as roster]
+            [draft-day.views.watchlist :as watchlist]
             [draft-day.views.columns :as columns]
             [draft-day.views.settings :as settings]
             [draft-day.views.modal :as modal]))
@@ -42,10 +43,10 @@
 
 (defn- board-view []
   [:div.board-view
-   [:div.top-panels
-    [:div.suggestions-col [controls/suggestions]]
+   [:div.three-panels
+    [:div.watchlist-col [watchlist/watchlist-panel]]
+    [:div.tile-col [controls/nominate-tile]]
     [:aside.roster-col [roster/my-roster]]]
-   [controls/nominate-tile]
    [:details.col-details
     [:summary "⚙ Columns"]
     [columns/column-picker]]

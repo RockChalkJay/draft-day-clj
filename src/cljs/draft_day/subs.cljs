@@ -6,7 +6,7 @@
 ;; ---- simple extracts ----
 (doseq [k [:view :status :source :loading? :config :teams :my-team-id
            :nominated-id :bid :bid-team :sort :pos-filter :search :columns :drafted :ranked :modal
-           :scoring-presets]]
+           :scoring-presets :watchlist]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
@@ -105,33 +105,20 @@
                        acc)))
                  {} bucket-totals))))
 
-;; ---- suggestions ----
-(def ^:private suggestion-positions #{"QB" "RB" "WR" "TE"})
+;; ---- watch list ----
 
-(rf/reg-sub :top-overall :<- [:undrafted-players]
-  (fn [players _]
-    (->> players (filter #(pos? (or (:worth %) 0)))
-         (sort-by #(- (:worth %))) (take 5) vec)))
+;; The raw set, for the board's star membership test.
+(rf/reg-sub :watch-set :<- [:watchlist] (fn [w _] (or w #{})))
 
-(rf/reg-sub :top-by-position :<- [:undrafted-players]
-  (fn [players _]
-    (into {} (map (fn [pos]
-                    [pos (->> players
-                              (filter #(and (= (:position %) pos) 
-                                            (pos? (or (:worth %) 0))))
-                              (sort-by #(- (:worth %))) (take 3) vec)])
-                  ["QB" "RB" "WR" "TE"]))))
-
-(rf/reg-sub :needs
-  :<- [:my-team]
-  (fn [team _]
-    (->> (:roster team)
-         (filter #(and (nil? (:player-id %)) (suggestion-positions (:pos %))))
-         (map :pos) distinct vec)))
-
-;; best available player for each open starter need (blue "Best Value" cards)
-(rf/reg-sub :best-value-for-needs
-  :<- [:needs]
-  :<- [:top-by-position]
-  (fn [[needs by-pos] _]
-    (mapv (fn [pos] {:pos pos :player (first (get by-pos pos))}) needs)))
+;; Watched players, richest first. Drafted players fall out here rather than
+;; through an event, so a pick (or its undo) is reflected automatically.
+(rf/reg-sub :watchlist-players
+  :<- [:players-by-id]
+  :<- [:watchlist]
+  :<- [:drafted]
+  (fn [[by-id watchlist drafted] _]
+    (->> watchlist
+         (remove #(contains? drafted %))
+         (keep by-id)
+         (sort-by #(- (or (:worth %) 0)))
+         vec)))
