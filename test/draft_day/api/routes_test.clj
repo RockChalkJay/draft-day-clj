@@ -3,7 +3,8 @@
             [jsonista.core :as json]
             [draft-day.api.routes :as routes]
             [draft-day.ingestion.pipeline :as pipeline]
-            [draft-day.ingestion.league-import :as league-import]))
+            [draft-day.ingestion.league-import :as league-import]
+            [draft-day.rankings.scoring :as scoring]))
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 (defn- parse [resp] (json/read-value (:body resp) mapper))
@@ -73,7 +74,7 @@
 (deftest league-import-endpoint-failure
   (with-redefs [league-import/import-league
                 (fn [_] {:ok false :status 404 :error "Sleeper league not found"})]
-    (let [req  {:body (input-stream (json/write-value-as-string {:provider "sleeper" :league-id "bogus"}))}
+    (let [req  {:body (input-stream (json/write-value-as-string {:provider "sleeper" :league-id "999999"}))}
           resp (routes/league-import-handler req)
           b    (parse resp)]
       (is (= 404 (:status resp)))
@@ -83,3 +84,31 @@
   (let [req  {:body (input-stream (json/write-value-as-string {:provider "sleeper" :league-id ""}))}
         resp (routes/league-import-handler req)]
     (is (= 400 (:status resp)))))
+
+;; ---- input-validation / hardening regressions ----
+
+(deftest resolve-scoring-bounds-custom-map
+  ;; a custom {stat weight} map is trimmed to known stat keys, so an oversized
+  ;; client map can't amplify per-player scoring; presets/garbage fall back sanely
+  (is (= {:rec 1.0 :pass_td 4.0}
+         (routes/resolve-scoring {:rec 1.0 :pass_td 4.0 :bogus 99 :evil 1000})))
+  (is (= (:ppr scoring/presets) (routes/resolve-scoring "ppr")))
+  (is (= (:ppr scoring/presets) (routes/resolve-scoring nil))))
+
+(deftest rankings-endpoint-rejects-malformed-league-state
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] fixture)]
+    (let [req  {:body (input-stream
+                       (json/write-value-as-string
+                        {:num-teams 12 :scoring "ppr" :league-state "not-a-map"}))}
+          resp (routes/rankings-handler req)]
+      (is (= 400 (:status resp))))))
+
+(deftest league-import-endpoint-rejects-nonnumeric-league-id
+  (let [req  {:body (input-stream
+                     (json/write-value-as-string
+                      {:provider "sleeper" :league-id "1/../evil"}))}
+        resp (routes/league-import-handler req)
+        b    (parse resp)]
+    (is (= 400 (:status resp)))
+    (is (= "league-id must be numeric" (:error b)))))

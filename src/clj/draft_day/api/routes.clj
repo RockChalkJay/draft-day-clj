@@ -47,18 +47,30 @@
   (json-response 200 {:presets scoring/presets :stat-keys scoring/stat-keys}))
 
 (defn league-import-handler [req]
-  (let [{:keys [provider league-id]} (read-json-body req)]
-    (if (str/blank? league-id)
+  (let [{:keys [provider league-id]} (read-json-body req)
+        league-id (str league-id)]
+    (cond
+      (str/blank? league-id)
       (json-response 400 {:error "league-id is required"})
-      (let [{:keys [ok config status error]} (league-import/import-league
-                                               {:provider provider :league-id league-id})]
+
+      (not (re-matches #"\d+" league-id))
+      (json-response 400 {:error "league-id must be numeric"})
+
+      :else
+      (let [{:keys [ok config status error]}
+            (league-import/import-league {:provider provider :league-id league-id})]
         (if ok
           (json-response 200 config)
           (json-response status {:error error}))))))
 
-(defn- resolve-scoring [s]
+(defn resolve-scoring
+  "Coerce the request's scoring field into a scoring config. A preset keyword or
+  string resolves to its preset map; a custom {stat weight} map is bounded to
+  known stat keys so an oversized client map can't amplify per-player scoring;
+  anything else falls back to PPR."
+  [s]
   (cond
-    (map? s) s
+    (map? s) (select-keys s scoring/stat-keys)
 
     (or (string? s) (keyword? s))  
     (get scoring/presets (keyword s) (:ppr scoring/presets))
@@ -71,20 +83,22 @@
   (update ls :drafted-player-ids set))
 
 (defn rankings-handler [req]
-  (let [{:keys [scoring num-teams num-tiers replacement-config league-state]}
-        (read-json-body req)
-        players  (:players (universe false))
-        scoring* (resolve-scoring scoring)
-        nt       (or num-teams 12)
-        opts     {:num-tiers (or num-tiers 5) :replacement-config replacement-config}
-        ls       (coerce-league-state league-state)
-        live     (engine/live-valuation
-                  (engine/static-rankings players scoring* nt opts) ls)
-        ;; reference market price + edge, scaled to this league's pool
-        players* (market/with-market (:players live) (ls/initial-cash ls))]
-    (json-response 200 (-> (select-keys live [:inflation :inflation-index
-                                              :position-inflation :market-heat :pdm-map])
-                           (assoc :players players*)))))
+  (try
+    (let [{:keys [scoring num-teams num-tiers replacement-config league-state]}
+          (read-json-body req)
+          players  (:players (universe false))
+          scoring* (resolve-scoring scoring)
+          nt       (or num-teams 12)
+          opts     {:num-tiers (or num-tiers 5) :replacement-config replacement-config}
+          ls       (coerce-league-state league-state)
+          live     (engine/live-valuation
+                    (engine/static-rankings players scoring* nt opts) ls)
+          ;; reference market price + edge, scaled to this league's pool
+          players* (market/with-market (:players live) (ls/initial-cash ls))]
+      (json-response 200 (-> (select-keys live [:inflation :inflation-index :market-heat])
+                             (assoc :players players*))))
+    (catch Exception e
+      (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
 (def app
   (ring/ring-handler
