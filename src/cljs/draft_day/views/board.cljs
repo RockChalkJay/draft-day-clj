@@ -13,10 +13,12 @@
     [:span.badge {:title "Tier cliff — steep drop to the next player"} " 🚨"]))
 
 (defn- sleeper-badge
-  "💤 when the player is on any FantasyPros positional sleeper list."
+  "The 💤 emoji, CSS-`filter` tinted toward turquoise. The emoji font paints its
+  own colors and ignores CSS `color`, so a hue-rotate/saturate/brightness filter
+  is the only way to shift the actual glyph — approximate, not an exact color."
   [p]
   (when (:fantasypros/sleeper? p)
-    [:span.badge {:title "FantasyPros sleeper"} " 💤"]))
+    [:span.sleeper-z {:title "FantasyPros sleeper"} " 💤"]))
 
 (defn- star-toggle
   "Adds/removes the player from the watch list. Stops propagation so starring

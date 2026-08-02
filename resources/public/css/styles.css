@@ -157,6 +157,11 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .star-btn.star-on:hover { transform: scale(1.12); }
 .badge { font-size: 11px; cursor: help; }
 .pill { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-size: 11px; }
+.sleeper-z { margin-left: 3px; cursor: help; font-size: 12px;
+  vertical-align: middle; display: inline-block;
+  /* 💤 is a color-emoji glyph that ignores CSS `color`; keep its original blue
+     hue but brighten it for contrast on the dark board. */
+  filter: brightness(3); }
 
 /* tier row-coloring — active only when the board is filtered to one position.
    Widely-spaced hues (not a smooth ramp, so adjacent tiers read as different) +

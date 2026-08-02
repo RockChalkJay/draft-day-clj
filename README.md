@@ -7,7 +7,7 @@ Fantasy football draft assistant geared towards auction drafts
 
 - **Persistence**
 
-- **Don't position filter on suggestion cards**
+- ~~Don't position filter on suggestion cards~~
 
 - ~~Remove strategy tabs - they don't add value~~
 
