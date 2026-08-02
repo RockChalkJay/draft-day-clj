@@ -43,9 +43,9 @@ The server is intentionally stateless about the draft: the only server-side stat
 **Rankings engine** (`draft_day/rankings/`) is a numbered pipeline, split into a static half (computed once per scoring/roster config) and a live half (recomputed after every pick), orchestrated by `engine.clj`:
 
 - `static-rankings`: `scoring` (stat line -> points) -> `projections` (floor/ceiling band from expert-rank disagreement) -> `tiers` (cliff detection per position) -> `replacement` (replacement level + VORP)
-- `live-valuation`: `tcm` (tier-cliff multiplier, live/undrafted-only) + `pdm` (positional demand multiplier) -> `value` (VBD -> stable salary-cap dollars) -> `inflation` / `inflation-index` (conserving inflation + per-position live market + phase decay) -> `worth`/`bargain` (Value scaled by live inflation, minus Worth)
+- `live-valuation`: `value` (VBD -> stable salary-cap dollars) -> `inflation` / `inflation-index` (conserving inflation + per-position live market + phase decay) -> `worth`/`bargain` (Value scaled by live inflation, minus Worth). It also assocs a per-player `tcm` (tier-cliff multiplier, live/undrafted-only) — a display-only board signal, *not* an input to Value or Worth.
 
-Valuation is hardwired to the Balanced weighting; there is no user-selectable strategy profile (the feature was removed — effective points equal raw points, VORP is not scarcity-adjusted, and inflation-sensitivity is fixed at 1.0).
+Valuation is hardwired to the Balanced weighting; there is no user-selectable strategy profile (the feature was removed — effective points equal raw points, VORP is not scarcity-adjusted, and inflation-sensitivity is fixed at 1.0). The positional-demand multiplier (PDM) that once rode alongside was removed too: it was computed on every pick but never fed Value or Worth.
 
 **API** (`api/routes.clj`): `GET /api/players` returns the cached universe; `POST /api/rankings` takes scoring/roster config + `league-state` and returns the fully valued board; `GET /api/scoring/presets` returns the named scoring presets plus `scoring/stat-keys` (the full set of stat keys the custom scoring editor and league import may touch); `POST /api/league/import` takes `{:provider :league-id}` and proxies to `league-import/import-league`. Also serves the compiled SPA from `resources/public`.
 

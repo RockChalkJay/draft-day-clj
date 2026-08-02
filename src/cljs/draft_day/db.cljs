@@ -140,9 +140,7 @@
 (defn default-db []
   (let [cfg default-config]
     {:players     []            ; raw universe from /api/players
-     :source      nil
      :ranked      nil           ; last /api/rankings response
-     :loading?    false
      :status      nil
      :scoring-presets nil       ; {:presets {...} :stat-keys [...]}, fetched at boot
      :config      cfg
@@ -152,8 +150,6 @@
      :picks       []            ; [{:player-id :position :price :team-id}]
      :nominated-id nil
      :watchlist    #{}          ; player-ids the manager is tracking
-     :bid          ""
-     :bid-team     "t0"
      :modal        nil
      :sort        {:key :worth :dir -1}
      :pos-filter  nil

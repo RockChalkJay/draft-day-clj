@@ -33,7 +33,7 @@
 (rf/reg-event-fx
  :fetch-players
  (fn [{:keys [db]} [_ refresh?]]
-   {:db   (assoc db :loading? true :status "Loading players…")
+   {:db   (assoc db :status "Loading players…")
     :http {:method :get
            :url (str "/api/players" (when refresh? "?refresh=true"))
            :on-success [:players-loaded]
@@ -42,11 +42,11 @@
 (rf/reg-event-fx
  :players-loaded
  (fn [{:keys [db]} [_ resp]]
-   {:db (assoc db :players (:players resp) :source (:source resp) :loading? false
+   {:db (assoc db :players (:players resp)
                :status (str (:count resp) " players · " (:source resp)))
     :fx [[:dispatch [:recompute]]]}))
 
-(rf/reg-event-db :load-failed (fn [db [_ err]] (assoc db :loading? false :status (str "Load failed: " err))))
+(rf/reg-event-db :load-failed (fn [db [_ err]] (assoc db :status (str "Load failed: " err))))
 
 ;; ---- rankings recompute ----
 
@@ -80,8 +80,6 @@
 (rf/reg-event-db :set-search    (fn [db [_ q]] (assoc db :search q)))
 (rf/reg-event-db :set-pos-filter (fn [db [_ p]] (assoc db :pos-filter (if (= p (:pos-filter db)) nil p))))
 (rf/reg-event-db :set-nominated (fn [db [_ id]] (assoc db :nominated-id id)))
-(rf/reg-event-db :set-bid       (fn [db [_ v]] (assoc db :bid v)))
-(rf/reg-event-db :set-bid-team  (fn [db [_ v]] (assoc db :bid-team v)))
 (rf/reg-event-db :set-status    (fn [db [_ s]] (assoc db :status s)))
 
 ;; ---- watch list ----
@@ -146,7 +144,7 @@
                (assoc :teams teams)
                (update :drafted assoc player-id {:price price :team-id team-id})
                (update :picks conj {:player-id player-id :position position :price price :team-id team-id})
-               (assoc :nominated-id nil :bid ""))
+               (assoc :nominated-id nil))
        :fx [[:dispatch [:recompute]]]})))
 
 (rf/reg-event-fx :undo-pick [persist]
@@ -187,7 +185,7 @@
       {:db (-> db
                (assoc :config cfg :teams teams)
                ;; reset ALL in-progress draft state
-               (assoc :drafted {} :picks [] :nominated-id nil :bid "" :modal nil)
+               (assoc :drafted {} :picks [] :nominated-id nil :modal nil)
                (assoc :my-team-id (:team-id (first teams))))
        :fx [[:dispatch [:recompute]]]})))
 

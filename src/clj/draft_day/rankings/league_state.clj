@@ -1,6 +1,6 @@
 (ns draft-day.rankings.league-state
   "Minimal in-memory snapshot of a draft in progress, enough to drive the live
-  valuation pieces (tcm/pdm/inflation/worth). Plain maps — the browser owns this
+  valuation pieces (tcm/inflation/worth). Plain maps — the browser owns this
   state and re-sends it on every call.
 
   Shape:

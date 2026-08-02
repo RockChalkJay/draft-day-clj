@@ -28,3 +28,11 @@
   (let [m (idx/per-position-inflation [{:player-id "a" :position "RB" :value 40}] {} 0.9)]
     (is (= 0.9 (m "RB")))
     (is (= 0.9 (m "WR")))))
+
+(deftest per-position-inflation-clamped-to-band
+  ;; extreme overpay/underpay runs can't push a position outside [POS-MIN, POS-MAX]
+  (let [board [{:player-id "r1" :position "RB" :value 40}]]
+    (is (= 1.6 ((idx/per-position-inflation
+                 board {:picks [{:player-id "r1" :position "RB" :price 500}]} 1.0) "RB")))
+    (is (= 0.6 ((idx/per-position-inflation
+                 board {:picks [{:player-id "r1" :position "RB" :price 0}]} 1.0) "RB")))))

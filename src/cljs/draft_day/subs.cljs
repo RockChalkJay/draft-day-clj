@@ -4,9 +4,9 @@
             [draft-day.db :as db]))
 
 ;; ---- simple extracts ----
-(doseq [k [:view :status :source :loading? :config :teams :my-team-id
-           :nominated-id :bid :bid-team :sort :pos-filter :search :columns :drafted :ranked :modal
-           :scoring-presets :watchlist]]
+(doseq [k [:view :status :config :teams :my-team-id
+           :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
+           :watchlist]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
@@ -20,7 +20,7 @@
   (fn [r _] (into {} (map (juxt :player-id identity)) (:players r))))
 
 (rf/reg-sub :market :<- [:ranked]
-  (fn [r _] (select-keys r [:inflation :inflation-index :market-heat :position-inflation :pdm-map])))
+  (fn [r _] (select-keys r [:inflation :inflation-index :market-heat])))
 
 (rf/reg-sub :visible-columns :<- [:columns]
   (fn [cols _] (filterv :visible? cols)))
@@ -43,8 +43,8 @@
                 :else (* dir (compare va vb)))))
           players)))
 
-;; undrafted, unfiltered by position/search — the pool suggestions/budget
-;; targets draw from, so they don't collapse when the board is filtered.
+;; undrafted, unfiltered by position/search — the pool the board and watch list
+;; draw from, so they don't collapse when the board is filtered by pos/search.
 (rf/reg-sub :undrafted-players
   :<- [:ranked-players]
   :<- [:drafted]

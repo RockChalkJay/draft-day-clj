@@ -85,7 +85,6 @@
           priced  (filter #(pos? (:value %)) players)]
       (is (every? #(and (contains? % :value) (contains? % :worth)
                         (contains? % :bargain) (contains? % :tcm)) players))
-      (is (some? (:pdm-map live)))
       (is (some? (:inflation live)))
       (testing "at draft start inflation ~1.0, so Price == Value and Bargain == 0"
         (is (< (Math/abs (double (- (:inflation live) 1.0))) 0.05))
@@ -170,4 +169,16 @@
         live1  (engine/live-valuation static {:teams [(team "t0" 200.0 ["RB"])] :drafted-player-ids #{}})
         live2  (engine/live-valuation static {:teams [(team "t0" 100.0 ["RB"])] :drafted-player-ids #{"rb0"}})]
     (is (not (contains? (first (:players static)) :worth)))       ; static frame untouched
-    (is (= (count (:players live1)) (count (:players live2))))))
+    (is (= (count (:players live1)) (count (:players live2))))
+    (testing "static-derived fields carry through unchanged regardless of live
+              draft state — the static frame is reused, not recomputed"
+      (let [by-id #(into {} (map (juxt :player-id identity)) (:players %))
+            l1    (by-id live1)
+            l2    (by-id live2)]
+        (is (every? (fn [id] (= (select-keys (l1 id) [:points :vorp :tier])
+                                (select-keys (l2 id) [:points :vorp :tier])))
+                    (keys l1)))))
+    (testing "live-valuation is idempotent for a fixed league-state"
+      (let [again (engine/live-valuation
+                   static {:teams [(team "t0" 200.0 ["RB"])] :drafted-player-ids #{}})]
+        (is (= (:players live1) (:players again)))))))

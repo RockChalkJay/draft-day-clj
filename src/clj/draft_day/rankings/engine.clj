@@ -2,7 +2,7 @@
   "Static/live orchestration — the core answer to 'some of this is live state,
   some isn't'. `static-rankings` (points -> tiers -> vorp) computes once per
   scoring/roster-size config; `live-valuation` (value -> inflation -> worth ->
-  bargain, + tcm/pdm signals) recomputes after every pick."
+  bargain, + the tcm display signal) recomputes after every pick."
   (:require [draft-day.rankings.scoring :as scoring]
             [draft-day.rankings.projections :as projections]
             [draft-day.rankings.tiers :as tiers]
@@ -11,7 +11,6 @@
             [draft-day.rankings.inflation :as inflation]
             [draft-day.rankings.inflation-index :as idx]
             [draft-day.rankings.tcm :as tcm]
-            [draft-day.rankings.pdm :as pdm]
             [draft-day.rankings.league-state :as ls]))
 
 (defn- apply-expert-tier
@@ -57,13 +56,12 @@
 
 (defn live-valuation
   "Live layer: Value (VBD->$), Price (:worth, Value scaled by inflation*phase),
-  Bargain (value - worth), plus the tcm/pdm signals. Call after each pick.
-  Returns {:players ... :replacement-levels ... :pdm-map ... :inflation ...
-  :market-heat ...}."
+  Bargain (value - worth), plus the per-player :tcm cliff display signal. Call
+  after each pick. Returns {:players ... :replacement-levels ... :inflation ...
+  :inflation-index ... :market-heat ...}."
   [static-result league-state]
   (let [base        (:players static-result)
          board       (tcm/with-tcm base league-state)
-         pdm         (pdm/calculate-pdm base league-state)
          budget      (ls/initial-cash league-state)
          total-slots (reduce + 0 (map #(count (:roster %)) (:teams league-state)))
          valued      (value/calculate-value board budget total-slots)
@@ -81,8 +79,6 @@
                            priced)]
      {:players             with-barg
       :replacement-levels  (:replacement-levels static-result)
-      :pdm-map             pdm
       :inflation           infl
-      :position-inflation  pos-infl
       :inflation-index     (idx/inflation-index valued (:picks league-state))
       :market-heat         heat}))

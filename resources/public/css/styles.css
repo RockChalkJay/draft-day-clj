@@ -83,9 +83,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .w-remove:hover { color: var(--warn); }
 .w-empty { color: var(--muted); font-size: 12px; padding: 6px 4px; }
 
-/* ---- board layout ---- */
-.board-layout { display: grid; grid-template-columns: 1fr 320px; gap: 14px; align-items: start; }
-
 /* ---- on-the-block tile ----
    The nominated player, headshot and all: the one focal point for bidding. */
 .nom-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
@@ -149,9 +146,9 @@ table.board tbody tr.selected { background: #1d2a44; }
 td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .star-btn { background: none; border: none; cursor: pointer; font-size: 15px;
   line-height: 1; padding: 0; flex: 0 0 auto; }
-.star-btn.off, .star-btn.star-off { color: var(--muted); opacity: .5; display: inline-block; }
-.star-btn.off:hover, .star-btn.star-off:hover { opacity: 1; color: var(--accent); }
-.star-btn.on, .star-btn.star-on { color: var(--accent); display: inline-block; }
+.star-btn.star-off { color: var(--muted); opacity: .5; display: inline-block; }
+.star-btn.star-off:hover { opacity: 1; color: var(--accent); }
+.star-btn.star-on { color: var(--accent); display: inline-block; }
 /* Slightly scale the filled star so it visually matches the outline glyph size */
 .star-btn.star-on { transform: scale(1.08); transform-origin: center; transition: transform .12s ease; }
 .star-btn.star-on:hover { transform: scale(1.12); }
