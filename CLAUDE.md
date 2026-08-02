@@ -32,7 +32,7 @@ Env vars the ingestion pipeline reads: `DRAFTDAY_OFFLINE=1` forces the bundled s
 
 `src/clj` is the backend, `src/cljs` is the frontend SPA; `src/cljs` is also on the backend's classpath (see `project.clj` comment) purely so shadow-cljs can find it via `:lein true`.
 
-The server is intentionally stateless about the draft: the only server-side state is a shared, in-memory `players` universe cache (an atom in `api/routes.clj`). All draft-in-progress state (teams, picks, bankrolls) lives in the browser's re-frame db and is round-tripped as a `league-state` map on every `POST /api/rankings` call. This means the rankings engine is a pure function of `(players, scoring, roster-config, league-state, profile)` — no session state to reconcile server-side.
+The server is intentionally stateless about the draft: the only server-side state is a shared, in-memory `players` universe cache (an atom in `api/routes.clj`). All draft-in-progress state (teams, picks, bankrolls) lives in the browser's re-frame db and is round-tripped as a `league-state` map on every `POST /api/rankings` call. This means the rankings engine is a pure function of `(players, scoring, roster-config, league-state)` — no session state to reconcile server-side.
 
 ### Backend: ingestion -> rankings engine -> API
 
@@ -42,10 +42,10 @@ The server is intentionally stateless about the draft: the only server-side stat
 
 **Rankings engine** (`draft_day/rankings/`) is a numbered pipeline, split into a static half (computed once per scoring/roster config) and a live half (recomputed after every pick), orchestrated by `engine.clj`:
 
-- `static-rankings`: `scoring` (stat line -> points) -> `projections` (floor/ceiling band from expert-rank disagreement) -> `profiles` (blend effective points toward floor/ceiling per active strategy profile) -> `tiers` (cliff detection per position) -> `replacement` (replacement level + VORP)
-- `live-valuation`: `tcm` (tier-cliff multiplier, live/undrafted-only) + `pdm` (positional demand multiplier) -> scarcity-adjust VORP (Scarcity profile only) -> `value` (VBD -> stable salary-cap dollars) -> `inflation` / `inflation-index` (conserving inflation + per-position live market + phase decay) -> `worth`/`bargain` (Value scaled by live inflation, minus Worth)
+- `static-rankings`: `scoring` (stat line -> points) -> `projections` (floor/ceiling band from expert-rank disagreement) -> `tiers` (cliff detection per position) -> `replacement` (replacement level + VORP)
+- `live-valuation`: `tcm` (tier-cliff multiplier, live/undrafted-only) + `pdm` (positional demand multiplier) -> `value` (VBD -> stable salary-cap dollars) -> `inflation` / `inflation-index` (conserving inflation + per-position live market + phase decay) -> `worth`/`bargain` (Value scaled by live inflation, minus Worth)
 
-Strategy **profiles** (`profiles.clj`) are named `{:risk :ceiling :scarcity :inflation-sensitivity}` weight vectors (e.g. Balanced, Floor, Ceiling, Scarcity) — the engine is profile-agnostic; adding a profile is "add a vector," not an engine change. `api/routes.clj` additionally computes Floor/Ceiling worths per player (`lens-worths`) so the client can badge players whose valuation is sensitive to the active lens.
+Valuation is hardwired to the Balanced weighting; there is no user-selectable strategy profile (the feature was removed — effective points equal raw points, VORP is not scarcity-adjusted, and inflation-sensitivity is fixed at 1.0).
 
 **API** (`api/routes.clj`): `GET /api/players` returns the cached universe; `POST /api/rankings` takes scoring/roster config + `league-state` and returns the fully valued board; `GET /api/scoring/presets` returns the named scoring presets plus `scoring/stat-keys` (the full set of stat keys the custom scoring editor and league import may touch); `POST /api/league/import` takes `{:provider :league-id}` and proxies to `league-import/import-league`. Also serves the compiled SPA from `resources/public`.
 
