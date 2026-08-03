@@ -160,6 +160,22 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
      hue but brighten it for contrast on the dark board. */
   filter: brightness(3); }
 
+/* Bye-week conflict on an undrafted board player, relative to my roster.
+   Clash (two starters would share the bye) slowly pulses red; caution (a lone
+   starter on that bye with no bench cover) is a static amber. */
+@keyframes bye-pulse {
+  0%, 100% { color: inherit; }
+  50%      { color: var(--warn); }
+}
+.board tbody td.bye-clash { font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) {
+  .board tbody td.bye-clash { animation: bye-pulse 1.8s ease-in-out infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board tbody td.bye-clash { color: var(--warn); }
+}
+.board tbody td.bye-caution { color: #e0a72e; font-weight: 600; }
+
 /* tier row-coloring — active only when the board is filtered to one position.
    Widely-spaced hues (not a smooth ramp, so adjacent tiers read as different) +
    a bold solid left-edge stripe that stays crisp regardless of the fill. Fills

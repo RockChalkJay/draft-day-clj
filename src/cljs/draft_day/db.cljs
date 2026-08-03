@@ -33,6 +33,59 @@
 (defn make-teams [num-teams roster-cfg bankroll]
   (make-teams-named (map default-name (range num-teams)) roster-cfg bankroll))
 
+;; ---- bye-week conflict detection ----
+;; Only dedicated position slots (not FLEX/BENCH) drive the board's bye-conflict
+;; indicator: two starters at the same position on the same bye is the costly
+;; mistake, and a bench player at that position on a different bye is the cover.
+
+(def dedicated-positions
+  "Starting-slot labels that map to a single position (everything but FLEX/BENCH).
+  Only these participate in bye-conflict detection."
+  #{"QB" "RB" "WR" "TE" "K" "DST"})
+
+(defn roster-exposure
+  "My roster split for bye-conflict detection, resolving each filled slot's player
+  through `by-id`:
+    :starters         [{:position :bye}…] — filled dedicated slots (FLEX excluded)
+    :bench            [{:position :bye}…] — filled BENCH slots (the cover pool)
+    :open-start-slots #{slot-label…}      — unfilled dedicated slots
+  FLEX slots are ignored entirely."
+  [team by-id]
+  (reduce (fn [acc {:keys [pos player-id]}]
+            (let [entry (fn [] (let [p (get by-id player-id)]
+                                 {:position (:position p) :bye (:bye p)}))]
+              (cond
+                (and player-id (dedicated-positions pos)) (update acc :starters conj (entry))
+                (and player-id (= pos "BENCH"))           (update acc :bench conj (entry))
+                (and (nil? player-id) (dedicated-positions pos)) (update acc :open-start-slots conj pos)
+                :else acc)))
+          {:starters [] :bench [] :open-start-slots #{}}
+          (:roster team)))
+
+(defn bye-conflict
+  "Severity of drafting a `position`/`bye` player onto my roster, judged on the
+  roster as it would be *after* the pick. Both severities require that I already
+  start a player at this position+bye, so nothing fires on a first pick:
+    :clash   (red)   — two or more starters would share this position+bye
+    :caution (amber) — I already start one here and have no bench cover that week,
+                       and this pick wouldn't create a second starter
+    nil              — no meaningful conflict (or `bye` unknown)
+  `exposure` is the map from `roster-exposure`. FLEX is not considered."
+  [position bye {:keys [starters bench open-start-slots]}]
+  (when bye
+    (let [cand-starter?   (contains? open-start-slots position)
+          on-bye          (count (filter #(and (= (:position %) position)
+                                               (= (:bye %) bye))
+                                         starters))
+          starters-on-bye (cond-> on-bye cand-starter? inc)
+          cover?          (boolean (some #(and (= (:position %) position)
+                                               (not= (:bye %) bye))
+                                         bench))]
+      (cond
+        (>= starters-on-bye 2)             :clash
+        (and (pos? on-bye) (not cover?))   :caution
+        :else                              nil))))
+
 ;; ---- budget plan ----
 ;; The manager's own $ allocation, one bucket per slot type (K and DST share).
 ;; Spend is attributed to the bucket of the slot a player fills, so a WR who

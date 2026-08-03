@@ -73,6 +73,12 @@
 (rf/reg-sub :my-team :<- [:teams] :<- [:my-team-id]
   (fn [[teams id] _] (first (filter #(= (:team-id %) id) teams))))
 
+;; My roster's bye exposure (starters/bench/open dedicated slots), used by the
+;; board to flag undrafted players whose position+bye would clash. Recomputes
+;; after every pick/undo since it derives from :teams and :ranked.
+(rf/reg-sub :my-bye-exposure :<- [:my-team] :<- [:players-by-id]
+  (fn [[team by-id] _] (db/roster-exposure team by-id)))
+
 (defn- open-slots [team] (count (filter #(nil? (:player-id %)) (:roster team))))
 
 (rf/reg-sub :my-max-bid :<- [:my-team]
