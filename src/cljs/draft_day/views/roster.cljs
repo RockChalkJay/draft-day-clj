@@ -15,14 +15,18 @@
         by-id     @(rf/subscribe [:players-by-id])
         drafted   @(rf/subscribe [:drafted])
         avail     @(rf/subscribe [:budget-avail])
-        max-bid   @(rf/subscribe [:my-max-bid])]
+        uncovered @(rf/subscribe [:my-uncovered-starters])]
     [:div.roster-panel
      [:div.roster-head
-      [:h3 "My Roster"]
-      [:div.roster-cash
-       [:span "Bankroll " [:b (str "$" (:bankroll team))]]
-       [:span.muted (str "· max bid $" max-bid)]]]
+      [:h3 "My Roster"]]
      [:table.roster
+      [:thead
+       [:tr
+        [:th.slot "Slot"]
+        [:th "Player"]
+        [:th.slot-bye "Bye"]
+        [:th.slot-budget "$"]
+        [:th.slot-undo]]]
       [:tbody
        (map-indexed
         (fn [i slot]
@@ -32,6 +36,10 @@
             [:tr
              [:td.slot (:pos slot)]
              [:td.slot-player (if p (:player-name p) [:span.muted "—"])]
+             [:td.slot-bye {:class (when (contains? uncovered pid) "bye-uncovered")
+                            :title (when (contains? uncovered pid)
+                                     (str "No bench " (:position p) " covers bye " (:bye p)))}
+              (when p (or (:bye p) "–"))]
              [:td.slot-budget
               (if p
                 [:span.paid (str "$" (get-in drafted [pid :price]))]

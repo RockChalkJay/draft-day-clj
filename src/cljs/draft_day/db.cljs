@@ -34,57 +34,70 @@
   (make-teams-named (map default-name (range num-teams)) roster-cfg bankroll))
 
 ;; ---- bye-week conflict detection ----
-;; Only dedicated position slots (not FLEX/BENCH) drive the board's bye-conflict
-;; indicator: two starters at the same position on the same bye is the costly
-;; mistake, and a bench player at that position on a different bye is the cover.
+;; Staged by draft phase. Only QB/RB/WR/TE matter (K/DST are streamed weekly, so
+;; bye stacking there is a non-issue; FLEX is ignored too):
+;;  - while the starting lineup is still filling, the board pulses a candidate's
+;;    Bye red if I already start that same position on that bye week;
+;;  - once every starting slot is filled, the board goes quiet and My Roster marks
+;;    a starter's bye amber when no bench player at that position covers the week.
 
-(def dedicated-positions
-  "Starting-slot labels that map to a single position (everything but FLEX/BENCH).
-  Only these participate in bye-conflict detection."
-  #{"QB" "RB" "WR" "TE" "K" "DST"})
+(def conflict-positions
+  "Positions whose bye stacking matters — QB/RB/WR/TE only (K/DST streamed, FLEX
+  ignored). Only these drive the red board pulse and the amber roster marker."
+  #{"QB" "RB" "WR" "TE"})
 
 (defn roster-exposure
   "My roster split for bye-conflict detection, resolving each filled slot's player
   through `by-id`:
-    :starters         [{:position :bye}…] — filled dedicated slots (FLEX excluded)
-    :bench            [{:position :bye}…] — filled BENCH slots (the cover pool)
-    :open-start-slots #{slot-label…}      — unfilled dedicated slots
-  FLEX slots are ignored entirely."
+    :starters       [{:player-id :position :bye}…] — filled QB/RB/WR/TE slots
+    :bench          [{:position :bye}…]            — filled BENCH slots (cover pool)
+    :open-non-bench count                          — unfilled non-BENCH slots
+  A filled FLEX/K/DST slot is ignored; an unfilled one still counts toward
+  `:open-non-bench`, so `lineup-full? = (zero? open-non-bench)`."
   [team by-id]
   (reduce (fn [acc {:keys [pos player-id]}]
-            (let [entry (fn [] (let [p (get by-id player-id)]
-                                 {:position (:position p) :bye (:bye p)}))]
-              (cond
-                (and player-id (dedicated-positions pos)) (update acc :starters conj (entry))
-                (and player-id (= pos "BENCH"))           (update acc :bench conj (entry))
-                (and (nil? player-id) (dedicated-positions pos)) (update acc :open-start-slots conj pos)
-                :else acc)))
-          {:starters [] :bench [] :open-start-slots #{}}
+            (cond
+              (and player-id (conflict-positions pos))
+              (let [p (get by-id player-id)]
+                (update acc :starters conj {:player-id player-id :position (:position p) :bye (:bye p)}))
+
+              (and player-id (= pos "BENCH"))
+              (let [p (get by-id player-id)]
+                (update acc :bench conj {:position (:position p) :bye (:bye p)}))
+
+              (and (nil? player-id) (not= pos "BENCH"))
+              (update acc :open-non-bench inc)
+
+              :else acc))
+          {:starters [] :bench [] :open-non-bench 0}
           (:roster team)))
 
-(defn bye-conflict
-  "Severity of drafting a `position`/`bye` player onto my roster, judged on the
-  roster as it would be *after* the pick. Both severities require that I already
-  start a player at this position+bye, so nothing fires on a first pick:
-    :clash   (red)   — two or more starters would share this position+bye
-    :caution (amber) — I already start one here and have no bench cover that week,
-                       and this pick wouldn't create a second starter
-    nil              — no meaningful conflict (or `bye` unknown)
-  `exposure` is the map from `roster-exposure`. FLEX is not considered."
-  [position bye {:keys [starters bench open-start-slots]}]
-  (when bye
-    (let [cand-starter?   (contains? open-start-slots position)
-          on-bye          (count (filter #(and (= (:position %) position)
-                                               (= (:bye %) bye))
-                                         starters))
-          starters-on-bye (cond-> on-bye cand-starter? inc)
-          cover?          (boolean (some #(and (= (:position %) position)
-                                               (not= (:bye %) bye))
-                                         bench))]
-      (cond
-        (>= starters-on-bye 2)             :clash
-        (and (pos? on-bye) (not cover?))   :caution
-        :else                              nil))))
+(defn board-bye-clash?
+  "Phase B board signal: true when an undrafted `position`/`bye` player should
+  pulse red — the starting lineup isn't full yet and I already start a player at
+  the same position on the same bye week (same-position only)."
+  [position bye {:keys [starters open-non-bench]}]
+  (boolean
+   (and bye
+        (pos? open-non-bench)
+        (some #(and (= (:position %) position) (= (:bye %) bye)) starters))))
+
+(defn uncovered-starter-ids
+  "Roster signal: the set of starter `:player-id`s whose bye week has no bench
+  cover — shown throughout the draft (the moment a starter lacks cover), not only
+  once the lineup is full. Cover is a bench player at the same position on a
+  *different* bye; each starter needs its own. Per position+bye group the first
+  `covers` starters are covered and the rest are uncovered (`max 0, starters−covers`).
+  A single bench body covers starters across different bye weeks freely — the
+  shortfall only bites within one week."
+  [{:keys [starters bench]}]
+  (->> (group-by (juxt :position :bye) starters)
+       (mapcat (fn [[[position bye] grp]]
+                 (let [covers (count (filter #(and (= (:position %) position)
+                                                   (not= (:bye %) bye))
+                                             bench))]
+                   (map :player-id (drop covers grp)))))
+       set))
 
 ;; ---- budget plan ----
 ;; The manager's own $ allocation, one bucket per slot type (K and DST share).

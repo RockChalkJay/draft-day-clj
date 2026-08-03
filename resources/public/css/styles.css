@@ -160,9 +160,11 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
      hue but brighten it for contrast on the dark board. */
   filter: brightness(3); }
 
-/* Bye-week conflict on an undrafted board player, relative to my roster.
-   Clash (two starters would share the bye) slowly pulses red; caution (a lone
-   starter on that bye with no bench cover) is a static amber. */
+/* Bye-week conflict indicators, relative to my roster.
+   Board (while the lineup fills): an undrafted player whose position+bye already
+   matches one of my starters slowly pulses its Bye red.
+   My Roster (once the lineup is full): a starter whose bye has no bench cover
+   shows its Bye amber. */
 @keyframes bye-pulse {
   0%, 100% { color: inherit; }
   50%      { color: var(--warn); }
@@ -174,7 +176,8 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 @media (prefers-reduced-motion: reduce) {
   .board tbody td.bye-clash { color: var(--warn); }
 }
-.board tbody td.bye-caution { color: #e0a72e; font-weight: 600; }
+.roster td.slot-bye { color: var(--muted); text-align: right; font-size: 12px; }
+.roster td.slot-bye.bye-uncovered { color: #e0a72e; font-weight: 600; }
 
 /* tier row-coloring — active only when the board is filtered to one position.
    Widely-spaced hues (not a smooth ramp, so adjacent tiers read as different) +
@@ -208,7 +211,11 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .roster-cash b { color: var(--good); }
 table.roster { width: 100%; border-collapse: collapse; }
 table.roster td { padding: 4px 6px; border-bottom: 1px solid var(--border); font-size: 12px; }
-td.slot { color: var(--muted); font-size: 10px; text-transform: uppercase; width: 44px; }
+table.roster th { padding: 2px 6px; border-bottom: 1px solid var(--border);
+  color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .04em; text-align: left; }
+table.roster th.slot-bye, table.roster th.slot-budget { text-align: right; }
+td.slot, th.slot { color: var(--muted); font-size: 10px; text-transform: uppercase; width: 44px; }
 .slot-budget { text-align: right; }
 .slot-budget .paid { color: var(--good); }
 .slot-budget .avail { color: var(--muted); }

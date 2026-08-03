@@ -73,11 +73,16 @@
 (rf/reg-sub :my-team :<- [:teams] :<- [:my-team-id]
   (fn [[teams id] _] (first (filter #(= (:team-id %) id) teams))))
 
-;; My roster's bye exposure (starters/bench/open dedicated slots), used by the
-;; board to flag undrafted players whose position+bye would clash. Recomputes
-;; after every pick/undo since it derives from :teams and :ranked.
+;; My roster's bye exposure (starters/bench/open non-bench slot count). Drives the
+;; board's red pulse and the roster's amber marker. Recomputes after every
+;; pick/undo since it derives from :teams and :ranked.
 (rf/reg-sub :my-bye-exposure :<- [:my-team] :<- [:players-by-id]
   (fn [[team by-id] _] (db/roster-exposure team by-id)))
+
+;; Starter player-ids whose bye week has no bench cover, once the lineup is full
+;; (empty before that). Colors the My Roster Bye column amber.
+(rf/reg-sub :my-uncovered-starters :<- [:my-bye-exposure]
+  (fn [exposure _] (db/uncovered-starter-ids exposure)))
 
 (defn- open-slots [team] (count (filter #(nil? (:player-id %)) (:roster team))))
 

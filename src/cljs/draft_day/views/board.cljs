@@ -58,15 +58,12 @@
     :vorp     [:td.num (n0 (:vorp p))]
     :ecr      [:td.num (or (:fantasypros/ecr p) "–")]
     :inj      [:td (or (:sleeper/injury-status p) "–")]
-    :bye      (let [severity (db/bye-conflict (:position p) (:bye p)
-                                              @(rf/subscribe [:my-bye-exposure]))]
-                [:td {:class (case severity :clash "bye-clash" :caution "bye-caution" nil)
-                      :title (case severity
-                               :clash   (str "Bye clash — drafting this " (:position p)
-                                             " puts two starters on bye " (:bye p))
-                               :caution (str "You'd start a lone " (:position p) " on bye "
-                                             (:bye p) " with no bench cover that week")
-                               nil)}
+    :bye      (let [clash? (db/board-bye-clash? (:position p) (:bye p)
+                                                @(rf/subscribe [:my-bye-exposure]))]
+                [:td {:class (when clash? "bye-clash")
+                      :title (when clash?
+                               (str "Bye clash — you already start a " (:position p)
+                                    " on bye " (:bye p)))}
                  (or (:bye p) "–")])
     [:td "–"]))
 
