@@ -1,6 +1,7 @@
 (ns draft-day.views.controls
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
+            [draft-day.db :as db]
             [draft-day.views.util :as util]))
 
 (defn- silhouette []
@@ -22,6 +23,21 @@
 (defn- val-cell [label amount]
   [:div.nt-val [:span.lbl label] [:span.amt amount]])
 
+(defn- bye-tag
+  "The nominated player's bye, colored like the board: red pulse when drafting
+  would stack a starter's bye, green when it would cover an uncovered starter."
+  [p]
+  (when-let [b (:bye p)]
+    (let [exp   @(rf/subscribe [:my-bye-exposure])
+          pos   (:position p)
+          clash? (db/board-bye-clash? pos b exp)
+          cover? (and (not clash?) (db/covers-starter? pos b exp))]
+      [:span " · Bye "
+       [:span {:class (cond clash? "bye-clash" cover? "bye-cover")
+               :title (cond clash? (str "You already start a " pos " on bye " b)
+                            cover? (str "Covers one of your uncovered " pos " starters"))}
+        b]])))
+
 (defn- nominate-form
   "Form-2 so the bid/team live in local reagent atoms (synchronous updates — no
   dropped keystrokes on a fast controlled input). Keyed on the player so it
@@ -37,8 +53,7 @@
           [face p]
           [:div.nt-main
            [:div.nt-name (:player-name p)]
-           [:div.nt-meta (str (:position p) " · " (:team p)
-                              (when-let [b (:bye p)] (str " · Bye " b)))]
+           [:div.nt-meta (:position p) " · " (:team p) [bye-tag p]]
            [:div.nt-vals
             [val-cell "Worth" (util/money (:worth p))]
             [val-cell "Mkt" (util/money (:market p))]

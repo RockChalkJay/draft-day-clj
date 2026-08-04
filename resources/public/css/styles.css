@@ -160,22 +160,23 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
      hue but brighten it for contrast on the dark board. */
   filter: brightness(3); }
 
-/* Bye-week conflict indicators, relative to my roster.
-   Board (while the lineup fills): an undrafted player whose position+bye already
-   matches one of my starters slowly pulses its Bye red.
-   My Roster (once the lineup is full): a starter whose bye has no bench cover
-   shows its Bye amber. */
+/* Bye-week conflict indicators, relative to my roster. Used on the board's Bye
+   cell and the "On the block" tile.
+   .bye-clash — drafting would stack a starter's bye: slowly pulses red.
+   .bye-cover — would cover an uncovered starter's bye: green.
+   My Roster marks an uncovered starter's own bye amber (.bye-uncovered). */
 @keyframes bye-pulse {
   0%, 100% { color: inherit; }
   50%      { color: var(--warn); }
 }
-.board tbody td.bye-clash { font-weight: 600; }
+.bye-clash { font-weight: 600; }
 @media (prefers-reduced-motion: no-preference) {
-  .board tbody td.bye-clash { animation: bye-pulse 1.8s ease-in-out infinite; }
+  .bye-clash { animation: bye-pulse 1.8s ease-in-out infinite; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .board tbody td.bye-clash { color: var(--warn); }
+  .bye-clash { color: var(--warn); }
 }
+.bye-cover { color: var(--good); font-weight: 600; }
 .roster td.slot-bye { color: var(--muted); text-align: right; font-size: 12px; }
 .roster td.slot-bye.bye-uncovered { color: #e0a72e; font-weight: 600; }
 

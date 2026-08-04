@@ -99,6 +99,22 @@
                    (map :player-id (drop covers grp)))))
        set))
 
+(defn covers-starter?
+  "True when a candidate at `position`/`bye` would cover one of my currently
+  *uncovered* starters — same position, a *different* bye (so it plays that
+  starter's bye week). Pairs the tile's green signal with the roster's amber.
+
+  `bye-coverage` is the roster bye coverage summary returned by
+  `roster-exposure` (starters/bench/open-non-bench)."
+  [position bye bye-coverage]
+  (boolean
+   (and bye
+        (let [uncovered (uncovered-starter-ids bye-coverage)]
+          (some #(and (contains? uncovered (:player-id %))
+                      (= (:position %) position)
+                      (not= (:bye %) bye))
+                (:starters bye-coverage))))))
+
 ;; ---- budget plan ----
 ;; The manager's own $ allocation, one bucket per slot type (K and DST share).
 ;; Spend is attributed to the bucket of the slot a player fills, so a WR who
