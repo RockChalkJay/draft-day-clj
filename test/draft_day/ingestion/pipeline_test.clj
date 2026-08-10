@@ -35,7 +35,7 @@
   (with-redefs [pipeline/offline? (constantly false)
                 ;; The chain is about which source wins, not about enrichment;
                 ;; stubbing it keeps the test off the network entirely.
-                pipeline/enrich-universe (fn [_season universe] universe)]
+                pipeline/enrich-universe (fn [_season universe] {:players universe :sources {}})]
     (let [path    (tmp "chain")
           fixture (universe-fixture 120)]
       (.delete (io/file path))
@@ -58,7 +58,7 @@
 
 (deftest universe-is-stamped-with-its-provenance
   (with-redefs [pipeline/offline? (constantly false)
-                pipeline/enrich-universe (fn [_ u] u)
+                pipeline/enrich-universe (fn [_ u] {:players u :sources {}})
                 pipeline/now-iso (constantly "2026-08-09T12:00:00Z")
                 sleeper/fetch-universe (fn [& _] (universe-fixture 120))]
     (let [path (tmp "stamp")]
@@ -102,7 +102,7 @@
 
 (deftest a-stale-cache-still-beats-the-sample
   (with-redefs [pipeline/offline? (constantly false)
-                pipeline/enrich-universe (fn [_ u] u)]
+                pipeline/enrich-universe (fn [_ u] {:players u :sources {}})]
     (let [path    (tmp "stale")
           fixture (universe-fixture 120)]
       (.delete (io/file path))

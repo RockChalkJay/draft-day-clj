@@ -101,10 +101,48 @@
     (sequential? x) {:schema-version 0 :players (vec x)}
     :else           nil))
 
+(def hit-rate-floor
+  "Below this share of a position's *published* rows landing on a universe
+  player, the join is broken rather than the source being thin."
+  0.80)
+
+(defn log-enrichment!
+  "One line per source, plus a warning for any position whose published rows
+  mostly failed to land. Warning on coverage instead would be pure noise: the
+  FantasyPros auction list covers ~150 players by design, so it is *supposed*
+  to leave most of the board untouched."
+  [label {:keys [ok? rows matched hit-rate coverage by-position]}]
+  (if-not ok?
+    (log/warn (format "%s: unavailable, columns omitted" label))
+    (do
+      (log/info (format "%s: %d rows -> %d matched (%.0f%% of rows, %.0f%% of board)"
+                        label rows matched (* 100.0 hit-rate) (* 100.0 coverage)))
+      (doseq [[pos {:keys [n rows matched]}] (sort by-position)
+              :when (and (pos? rows) (< (/ (double matched) rows) hit-rate-floor))]
+        (log/warn
+         (format "%s: %s published %d row(s), only %d landed (board has %d)"
+                 label pos rows matched n))))))
+
+(defn apply-enrichment
+  "Left-join one best-effort enrichment source onto the accumulating universe,
+  recording its match report under `label`. A nil source means the fetch failed
+  (see `best-effort`) and is reported as unavailable — distinct from a source
+  that answered and simply matched nothing, which is a join bug, not an outage."
+  [acc label by-key]
+  (if (nil? by-key)
+    (do (log-enrichment! label {:ok? false})
+        (assoc-in acc [:sources label] {:ok? false}))
+    (let [{:keys [players report]} (merge/left-join-report (:players acc) by-key)
+          report (assoc report :ok? true)]
+      (log-enrichment! label report)
+      (-> acc
+          (assoc :players players)
+          (assoc-in [:sources label] report)))))
+
 (defn enrich-universe
   "Left-join the best-effort enrichment columns onto an already-validated
-  universe. Split out from the fetch so the validation gate below reads as the
-  gate it is."
+  universe, returning `{:players :sources}`. Split out from the fetch so the
+  validation gate below reads as the gate it is."
   [season universe]
   (let [;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
         ;; :team every player already carries — complete, not just the FantasyPros
@@ -120,12 +158,18 @@
         aav      (best-effort (fantasypros/fetch-aav))
         sleepers (best-effort (fantasypros/fetch-sleepers))
         espn     (best-effort (espn/fetch season))]
-    (cond-> universe
-      (seq byes)     (sleeper/assoc-byes byes)
-      (seq ecr)      (merge/left-join (match/by-key ecr))
-      (seq aav)      (merge/left-join (match/by-key aav))
-      (seq sleepers) (merge/left-join (match/by-key sleepers))
-      (seq espn)     (merge/left-join espn))))
+    ;; Byes join on :team rather than a name key, so they get a row count but
+    ;; none of the match-rate machinery — reporting them as a 0% join would be
+    ;; a lie, not a diagnostic.
+    (log/info (format ":sleeper/byes: %d team bye weeks" (count byes)))
+    (-> {:players (cond-> universe (seq byes) (sleeper/assoc-byes byes))
+         :sources {:sleeper/byes (if (seq byes)
+                                   {:ok? true :rows (count byes)}
+                                   {:ok? false})}}
+        (apply-enrichment :fantasypros/ecr      (some-> ecr match/by-key))
+        (apply-enrichment :fantasypros/aav      (some-> aav match/by-key))
+        (apply-enrichment :fantasypros/sleepers (some-> sleepers match/by-key))
+        (apply-enrichment :espn                 espn))))
 
 (defn fetch-enriched-universe
   "The live universe: Sleeper rows, id-validated, then enriched.
@@ -140,8 +184,7 @@
     (validate/log-report! "sleeper universe" report)
     (when (validate/systemic-failure? report)
       (throw (ex-info "player universe failed validation" report)))
-    {:players    (enrich-universe season players)
-     :validation report}))
+    (assoc (enrich-universe season players) :validation report)))
 
 (defn sample-universe
   "The bundled fallback as an envelope. It carries no `:fetched-at` — it is a
@@ -168,11 +211,12 @@
   [season cache-path]
   (try
     (let [season' (or season (sleeper/current-season))
-          {:keys [players validation]} (fetch-enriched-universe season')
+          {:keys [players validation sources]} (fetch-enriched-universe season')
           env {:schema-version schema-version
                :season         season'
                :fetched-at     (now-iso)
                :validation     validation
+               :sources        sources
                :players        players}]
       (write-transit! cache-path env)
       (assoc env :source "live"))
