@@ -108,3 +108,71 @@
              (dp-row "2" "00-0035229" "T.J. Hockenson" "TE")])]
     (is (= "00-0031687" (get xw (match/key-for "LeVeon Bell" "RB"))))
     (is (= "00-0035229" (get xw (match/key-for "TJ Hockenson" "TE"))))))
+
+;; ---- the pinned snapshot ----
+
+(defn snap-row [m]
+  (merge {"sleeper_id" "1" "gsis_id" "00-0000001" "name" "A Player"
+          "position" "RB" "fantasypros_id" "NA" "espn_id" "NA" "pfr_id" "NA"
+          "draft_year" "NA" "draft_round" "NA" "draft_pick" "NA"
+          "draft_ovr" "NA" "birthdate" ""}
+         m))
+
+(deftest blank-and-na-are-both-absent
+  (is (= "x" (ids/blank->nil " x ")))
+  (is (nil? (ids/blank->nil "NA")))
+  (is (nil? (ids/blank->nil "")))
+  (is (nil? (ids/blank->nil "   ")))
+  (is (nil? (ids/blank->nil nil))))
+
+(deftest parse-long-field-handles-dynastyprocess-floats
+  (is (= 2018 (ids/parse-long-field "2018.0")))
+  (is (= 7 (ids/parse-long-field "7")))
+  (is (nil? (ids/parse-long-field "NA")))
+  (is (nil? (ids/parse-long-field nil)))
+  (is (nil? (ids/parse-long-field "not a number"))))
+
+(deftest snapshot-row-projects-only-what-is-present
+  (testing "a row with no sleeper id is dropped — it is unreachable"
+    (is (nil? (ids/snapshot-row (snap-row {"sleeper_id" "NA"})))))
+
+  (testing "absent columns are omitted rather than stored as nil"
+    (is (= {:sleeper "1" :gsis "00-0000001" :name "A Player" :position "RB"}
+           (ids/snapshot-row (snap-row {})))))
+
+  (testing "ids and draft capital carry through"
+    (is (= {:sleeper "4984" :gsis "00-0034857" :fantasypros "17298"
+            :espn "3918298" :pfr "AlleJo02" :name "Josh Allen" :position "QB"
+            :draft-year 2018 :draft-round 1 :draft-pick 7 :draft-overall 7
+            :birth-year 1996}
+           (ids/snapshot-row
+            (snap-row {"sleeper_id" "4984" "gsis_id" "00-0034857"
+                       "fantasypros_id" "17298" "espn_id" "3918298"
+                       "pfr_id" "AlleJo02" "name" "Josh Allen"
+                       "position" "QB" "draft_year" "2018.0"
+                       "draft_round" "1.0" "draft_pick" "7.0"
+                       "draft_ovr" "7.0" "birthdate" "1996-05-21"}))))))
+
+(deftest rows-to-snapshot-dedupes-on-sleeper-id
+  (let [out (ids/rows->snapshot-rows
+             [(snap-row {"sleeper_id" "1" "name" "First"})
+              (snap-row {"sleeper_id" "1" "name" "Shadow"})
+              (snap-row {"sleeper_id" "2" "name" "Other"})
+              (snap-row {"sleeper_id" "NA" "name" "Unreachable"})])]
+    (is (= ["First" "Other"] (mapv :name out))
+        "first wins, so a refresh cannot reorder its way into a new mapping")))
+
+(deftest snapshot-crosswalk-skips-rows-without-gsis
+  (is (= {"1" "00-0000001"}
+         (ids/snapshot-crosswalk [{:sleeper "1" :gsis "00-0000001"}
+                                  {:sleeper "ARI"}]))))
+
+(deftest committed-snapshot-is-internally-consistent
+  (let [{:keys [schema-version n rows]} (ids/load-snapshot)]
+    (is (= ids/snapshot-schema-version schema-version))
+    (is (= n (count rows)) ":n must describe the rows it ships with")
+    (is (> (count rows) 4000) "a truncated snapshot would silently thin the join")
+    (is (every? :sleeper rows) "sleeper id is the join key; every row needs one")
+    (is (= (count rows) (count (distinct (map :sleeper rows))))
+        "a duplicate sleeper id would make derivation order-dependent")
+    (is (> (count (ids/snapshot-crosswalk rows)) 4000))))

@@ -26,11 +26,22 @@
   come from differs by caller — the app reads a pinned snapshot committed under
   resources/ so derivation stays offline and reproducible, while the benchmark
   harness fetches the current file live. Same builders, two vintages."
-  (:require [clojure.string :as str]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
             [draft-day.ingestion.match :as match]))
 
 (def playerids-url
   "https://github.com/dynastyprocess/data/raw/master/files/db_playerids.csv")
+
+(def snapshot-resource
+  "The pinned crosswalk the app derives ids from. Committed rather than fetched
+  so derivation is pure, offline and identical between runs — and so the data
+  survives DynastyProcess itself going away. Refreshed deliberately by
+  `draft-day.tools.refresh-player-ids`, never as a side effect of ingestion."
+  "player_ids.edn")
+
+(def snapshot-schema-version 1)
 
 (defn clean-gsis
   "Trim a GSIS id, returning nil for blank. Sleeper emits leading whitespace."
@@ -220,6 +231,76 @@
   (fn [sleeper-id gsis-field]
     (or (clean-gsis gsis-field)
         (get xwalk (some-> sleeper-id str str/trim)))))
+
+;; ---- the pinned snapshot ----
+
+(defn blank->nil
+  "Trim, treating DynastyProcess's literal \"NA\" as absent."
+  [s]
+  (let [t (some-> s str str/trim)]
+    (when-not (or (str/blank? t) (= "NA" t)) t)))
+
+(defn parse-long-field
+  "DynastyProcess writes integers as floats (\"2018.0\"); nil when absent."
+  [s]
+  (when-let [t (blank->nil s)]
+    (try (long (Double/parseDouble t)) (catch Exception _ nil))))
+
+(defn snapshot-row
+  "Pure: one DynastyProcess CSV row -> the projected crosswalk row, or nil when
+  it carries no Sleeper id. Sleeper is the join key — the app's universe is the
+  Sleeper universe, so a row we cannot reach from a Sleeper id is dead weight."
+  [r]
+  (when-let [sleeper (blank->nil (get r "sleeper_id"))]
+    (let [birth (blank->nil (get r "birthdate"))]
+      (into {}
+            (remove (comp nil? val))
+            {:sleeper       sleeper
+             :gsis          (blank->nil (get r "gsis_id"))
+             :fantasypros   (blank->nil (get r "fantasypros_id"))
+             :espn          (blank->nil (get r "espn_id"))
+             :pfr           (blank->nil (get r "pfr_id"))
+             :name          (blank->nil (get r "name"))
+             :position      (blank->nil (get r "position"))
+             :draft-year    (parse-long-field (get r "draft_year"))
+             :draft-round   (parse-long-field (get r "draft_round"))
+             :draft-pick    (parse-long-field (get r "draft_pick"))
+             :draft-overall (parse-long-field (get r "draft_ovr"))
+             :birth-year    (when (re-find #"^\d{4}" (str birth))
+                              (parse-long-field (subs birth 0 4)))}))))
+
+(defn rows->snapshot-rows
+  "Pure: DynastyProcess rows -> projected rows, deduped on `:sleeper` (first
+  wins) so the snapshot can never contain two mappings for one key."
+  [rows]
+  (->> rows
+       (keep snapshot-row)
+       (reduce (fn [{:keys [seen out] :as acc} r]
+                 (if (seen (:sleeper r))
+                   acc
+                   {:seen (conj seen (:sleeper r)) :out (conj out r)}))
+               {:seen #{} :out []})
+       :out))
+
+(defn snapshot-crosswalk
+  "Pure: snapshot rows -> {sleeper-id gsis-id}, skipping rows with no GSIS id
+  (rookies not yet in the file, and every team defense, which the NFL never
+  issues a player id for)."
+  [rows]
+  (into {} (keep (fn [{:keys [sleeper gsis]}] (when gsis [sleeper gsis]))) rows))
+
+(defn read-snapshot
+  "Read the pinned snapshot from the classpath; nil when absent."
+  [resource]
+  (when-let [r (io/resource resource)]
+    (edn/read-string (slurp r))))
+
+(def load-snapshot
+  "Memoized: the pinned snapshot envelope, or an empty one when not committed
+  yet. Callers must degrade to the Sleeper id rather than fail — an absent
+  snapshot means unresolved ids, never a broken board."
+  (memoize (fn [] (or (read-snapshot snapshot-resource)
+                      {:schema-version snapshot-schema-version :rows []}))))
 
 (defn coverage
   "Diagnostic: how many of `entries` resolve, and via which path. `entries` is a
