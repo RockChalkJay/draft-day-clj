@@ -1,8 +1,8 @@
-(ns draft-day.benchmark.ids-test
+(ns draft-day.ingestion.player-ids-test
   "The id bridge is load-bearing: untrimmed Sleeper-only joins reach ~28%
   coverage, trim + crosswalk reaches ~99%. Both halves are tested."
   (:require [clojure.test :refer [deftest is testing]]
-            [draft-day.benchmark.sources.ids :as ids]
+            [draft-day.ingestion.player-ids :as ids]
             [draft-day.ingestion.match :as match]))
 
 (defn dp-row

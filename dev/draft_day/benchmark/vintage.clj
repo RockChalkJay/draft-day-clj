@@ -37,6 +37,7 @@
             [draft-day.rankings.scoring :as scoring]
             [draft-day.benchmark.sources.ffcalculator :as ffc]
             [draft-day.benchmark.sources.ids :as ids]
+            [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.benchmark.sources.nflverse :as nflverse]
             [draft-day.benchmark.sources.sleeper :as sleeper]
             [draft-day.ingestion.match :as match]))
@@ -166,7 +167,7 @@
    (let [players    (sleeper/players season)
          xwalk      (ids/crosswalk)
          name-xwalk (ids/name-resolver season)
-         resolve-id (ids/resolver xwalk)
+         resolve-id (player-ids/resolver xwalk)
          outcomes   (nflverse/outcomes season)
          usage      (prior-usage season)
          ffc-adp    (when (= adp-source :ffc) (ffc/adp-by-gsis season name-xwalk))
@@ -202,7 +203,7 @@
   ([season] (assemble-from-fp-archive season {}))
   ([season {:keys [pool-size] :or {pool-size 200}}]
    (let [name-xwalk (ids/name-resolver season)
-         resolve-fp (ids/fp-resolver (ids/fp-crosswalk) name-xwalk)
+         resolve-fp (player-ids/fp-resolver (ids/fp-crosswalk) name-xwalk)
          outcomes   (nflverse/outcomes season)
          usage      (prior-usage season)
          adp        (ffc/adp-by-gsis season name-xwalk)
