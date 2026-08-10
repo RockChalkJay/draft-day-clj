@@ -3,7 +3,7 @@
   some isn't'. `static-rankings` (points -> tiers -> vorp) computes once per
   scoring/roster-size config; `live-valuation` (value -> inflation -> worth ->
   bargain, + the tcm display signal) recomputes after every pick."
-  (:require [draft-day.rankings.scoring :as scoring]
+  (:require [draft-day.rankings.model :as model]
             [draft-day.rankings.projections :as projections]
             [draft-day.rankings.tiers :as tiers]
             [draft-day.rankings.replacement :as replacement]
@@ -37,11 +37,15 @@
 (defn static-rankings
   "Steps 0-2: points -> floor/ceiling -> per-position tiers (on mean points;
   expert override + re-anchor) -> replacement + VORP (on points). Returns
-  {:players [...] :replacement-levels {...}}. Never mutated by the live layer."
+  {:players [...] :replacement-levels {...}}. Never mutated by the live layer.
+
+  Opts :model (default :points, the raw scored projection) and :weights select
+  which `rankings.model` produces :points; every later stage is indifferent to
+  the choice. See `draft-day.rankings.model`."
   ([board scoring num-teams] (static-rankings board scoring num-teams {}))
-  ([board scoring num-teams {:keys [num-tiers replacement-config]
-                             :or   {num-tiers 5}}]
-   (let [enriched   (-> (scoring/with-points board scoring)
+  ([board scoring num-teams {:keys [num-tiers replacement-config model weights]
+                             :or   {num-tiers 5 model :points}}]
+   (let [enriched   (-> (model/score-board model {:scoring scoring :weights weights} board)
                         projections/with-floor-ceiling)
          tiered     (mapcat (fn [[_ grp]] (tiers/tiers-by-cliffs grp num-tiers))
                             (group-by :position enriched))

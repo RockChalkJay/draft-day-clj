@@ -27,4 +27,8 @@
                  [re-frame "1.4.3"]]
   :main ^:skip-aot draft-day.server
   :target-path "target/%s"
-  :profiles {:uberjar {:aot :all}})
+  ;; `dev/` holds research harnesses (auction replay, rankings benchmark) that are
+  ;; not part of the shipped app. Leiningen activates :dev by default for
+  ;; run/test/repl, so they are available without `with-profile`; :uberjar stays clean.
+  :profiles {:dev     {:source-paths ["dev"]}
+             :uberjar {:aot :all}})

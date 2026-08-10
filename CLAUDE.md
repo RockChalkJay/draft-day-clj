@@ -26,6 +26,14 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home
 
 Env vars the ingestion pipeline reads: `DRAFTDAY_OFFLINE=1` forces the bundled sample universe (no network calls — useful for tests/dev); `DRAFTDAY_CACHE_TTL_HOURS` controls the disk-cache freshness window (default 24).
 
+Research harnesses (Leiningen `:dev` profile, `dev/` on the source path — active by default for `repl`/`test`/`run`, so no `with-profile` needed):
+- `lein run -m draft-day.benchmark.report -- --help` — score a `rankings.model` against real historical outcomes; see `dev/draft_day/benchmark/report.clj` for flags (`--models`, `--seasons`, `--compare`, `--power-report`, `--simulate`, etc.)
+- `lein run -m draft-day.replay.report` — replay a real historical auction draft and compare Worth's picks against what was actually paid
+
+## Not the shipped app
+
+`dev/` (`draft_day.benchmark.*`, `draft_day.replay.*`) and their tests under `test/draft_day/benchmark/` are a research harness for validating ranking formulas against real outcomes before they ship — not part of the deployed API or SPA. Local caches live under `data/benchmark_cache/` and `data/replay_cache/` (gitignored, re-fetchable). See `dev/draft_day/benchmark/core.clj`, `.../report.clj`, and `.../vintage.clj` docstrings for the harness's own architecture (vintage/leakage gating, paired season-block-bootstrapped statistics, draft-simulation metric); it's involved enough to warrant reading those directly rather than duplicating here.
+
 ## Architecture
 
 ### Split and statelessness
@@ -42,8 +50,10 @@ The server is intentionally stateless about the draft: the only server-side stat
 
 **Rankings engine** (`draft_day/rankings/`) is a numbered pipeline, split into a static half (computed once per scoring/roster config) and a live half (recomputed after every pick), orchestrated by `engine.clj`:
 
-- `static-rankings`: `scoring` (stat line -> points) -> `projections` (floor/ceiling band from expert-rank disagreement) -> `tiers` (cliff detection per position) -> `replacement` (replacement level + VORP)
+- `static-rankings`: `model` (stat line -> `:points`, via `rankings/model.clj`) -> `projections` (floor/ceiling band from expert-rank disagreement) -> `tiers` (cliff detection per position) -> `replacement` (replacement level + VORP)
 - `live-valuation`: `value` (VBD -> stable salary-cap dollars) -> `inflation` / `inflation-index` (conserving inflation + per-position live market + phase decay) -> `worth`/`bargain` (Value scaled by live inflation, minus Worth). It also assocs a per-player `tcm` (tier-cliff multiplier, live/undrafted-only) — a display-only board signal, *not* an input to Value or Worth.
+
+The scoring step is a multimethod dispatch (`rankings/model.clj`'s `score-board`, keyed on a `:model` keyword — `:points` by default, plain `scoring/with-points`) rather than a hardcoded call, so a candidate formula validated in the benchmark harness (see below) ships by passing a different keyword into `static-rankings`, not by porting code out of the harness. `rankings/model/blend.clj` registers the ADP/ECR-blended and rookie-capital variants used there; none are wired to the live API today.
 
 Valuation is hardwired to the Balanced weighting; there is no user-selectable strategy profile (the feature was removed — effective points equal raw points, VORP is not scarcity-adjusted, and inflation-sensitivity is fixed at 1.0). The positional-demand multiplier (PDM) that once rode alongside was removed too: it was computed on every pick but never fed Value or Worth.
 

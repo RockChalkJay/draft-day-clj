@@ -31,3 +31,7 @@ out/
 
 # local data cache (bundled sample is committed)
 /data/players_cache.transit
+# research-harness caches: derived, re-fetchable, and large (~100MB once a
+# benchmark sweep has pulled every season from every source)
+/data/benchmark_cache/
+/data/replay_cache/
