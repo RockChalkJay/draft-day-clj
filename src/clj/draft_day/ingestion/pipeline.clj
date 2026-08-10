@@ -139,6 +139,14 @@
           (assoc :players players)
           (assoc-in [:sources label] report)))))
 
+(def enrichment-source-labels
+  "Every source `enrich-universe` reports on. The bundled sample is expected to
+  carry all of them; when a new one is added here and the sample is not
+  recaptured, its column renders blank offline with nothing to say the column
+  is structurally absent rather than merely unmatched. That is exactly what
+  happened when the FantasyPros AAV and sleepers joins were introduced."
+  [:sleeper/byes :fantasypros/ecr :fantasypros/aav :fantasypros/sleepers :espn])
+
 (defn enrich-universe
   "Left-join the best-effort enrichment columns onto an already-validated
   universe, returning `{:players :sources}`. Split out from the fetch so the
@@ -187,12 +195,21 @@
     (assoc (enrich-universe season players) :validation report)))
 
 (defn sample-universe
-  "The bundled fallback as an envelope. It carries no `:fetched-at` — it is a
-  committed artifact, so its age is the repo's, not a fetch's."
+  "The bundled fallback as an envelope.
+
+  A sample captured by `draft-day.tools.snapshot` carries its own stamp — the
+  season, when it was captured, and which enrichment sources contributed. The
+  original hand-captured sample is a bare vector with no stamp at all, so it
+  honestly reports schema 0 and nil provenance rather than borrowing the
+  current version and claiming to be something it is not."
   []
-  (merge {:schema-version schema-version :season nil :fetched-at nil
-          :source "sample"}
-         (checked "sample" (load-sample))))
+  (let [env (or (cached->universe (load-sample)) {:players []})]
+    (merge {:schema-version (:schema-version env)
+            :season         (:season env)
+            :fetched-at     (:captured-at env)
+            :sources        (:sources env)
+            :source         "sample"}
+           (checked "sample" (:players env)))))
 
 (defn cached-universe
   "The disk cache as an envelope, or nil when absent, empty or written by a

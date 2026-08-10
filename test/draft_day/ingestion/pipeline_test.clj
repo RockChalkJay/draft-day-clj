@@ -24,9 +24,56 @@
     (is (not (pipeline/cache-fresh? path 24)))))     ; missing file -> not fresh
 
 (deftest bundled-sample-loads
-  (let [s (pipeline/load-sample)]
-    (is (seq s))
-    (is (every? :player-id s))))
+  (let [{:keys [players]} (pipeline/cached->universe (pipeline/load-sample))]
+    (is (seq players))
+    (is (every? :player-id players))))
+
+(deftest sample-universe-reads-both-shapes
+  (testing "a stamped sample reports its own provenance"
+    (with-redefs [pipeline/load-sample
+                  (constantly {:schema-version 1
+                               :season 2026
+                               :captured-at "2026-08-09T00:00:00Z"
+                               :sources {:espn {:ok? true}}
+                               :players [{:player-id "1"}]})]
+      (let [u (pipeline/sample-universe)]
+        (is (= "sample" (:source u)))
+        (is (= 2026 (:season u)))
+        (is (= "2026-08-09T00:00:00Z" (:fetched-at u)))
+        (is (= {:espn {:ok? true}} (:sources u)))
+        (is (= [{:player-id "1"}] (:players u))))))
+
+  (testing "the legacy bare vector admits it has no provenance"
+    (with-redefs [pipeline/load-sample (constantly [{:player-id "1"}])]
+      (let [u (pipeline/sample-universe)]
+        (is (= "sample" (:source u)))
+        (is (= 0 (:schema-version u)) "schema 0 — it predates versioning")
+        (is (nil? (:season u)))
+        (is (nil? (:fetched-at u)))
+        (is (= [{:player-id "1"}] (:players u))))))
+
+  (testing "a missing sample degrades to an empty universe, not an exception"
+    (with-redefs [pipeline/load-sample (constantly nil)]
+      (is (= [] (:players (pipeline/sample-universe)))))))
+
+(deftest sample-claims-match-its-contents
+  ;; Guards the failure that produced this work: an enrichment source is added
+  ;; to the pipeline, the fixture is never recaptured, and its column renders
+  ;; blank offline forever with nothing to say the column is absent by
+  ;; construction. Once the sample is recaptured with a stamp, any source it
+  ;; claims must actually be present in the rows.
+  (let [{:keys [players sources]} (pipeline/cached->universe
+                                   (pipeline/load-sample))
+        column-key {:fantasypros/ecr      :fantasypros/ecr
+                    :fantasypros/aav      :fantasypros/aav
+                    :fantasypros/sleepers :fantasypros/sleeper?
+                    :espn                 :espn/auction-value
+                    :sleeper/byes         :bye}]
+    (doseq [[label {:keys [ok?]}] sources
+            :let [k (column-key label)]
+            :when (and ok? k)]
+      (is (some k players)
+          (format "sample claims %s but no row carries %s" label k)))))
 
 (deftest resolution-chain
   ;; `offline?` reads DRAFTDAY_OFFLINE at call time, so without this the whole
