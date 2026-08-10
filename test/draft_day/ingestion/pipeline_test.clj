@@ -2,6 +2,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
             [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.sleeper :as sleeper]))
 
 (defn- tmp [name] (str (System/getProperty "java.io.tmpdir") "/dd-" name ".transit"))
@@ -35,22 +36,26 @@
                                :season 2026
                                :captured-at "2026-08-09T00:00:00Z"
                                :sources {:espn {:ok? true}}
-                               :players [{:player-id "1"}]})]
+                               :players [{:player-id "99999999"}]})]
       (let [u (pipeline/sample-universe)]
         (is (= "sample" (:source u)))
         (is (= 2026 (:season u)))
         (is (= "2026-08-09T00:00:00Z" (:fetched-at u)))
         (is (= {:espn {:ok? true}} (:sources u)))
-        (is (= [{:player-id "1"}] (:players u))))))
+        (is (= [{:player-id "99999999" :ids {:sleeper "99999999"}}]
+               (:players u))
+            "an id absent from the snapshot is left exactly as it was"))))
 
   (testing "the legacy bare vector admits it has no provenance"
-    (with-redefs [pipeline/load-sample (constantly [{:player-id "1"}])]
+    (with-redefs [pipeline/load-sample (constantly [{:player-id "99999999"}])]
       (let [u (pipeline/sample-universe)]
         (is (= "sample" (:source u)))
         (is (= 0 (:schema-version u)) "schema 0 — it predates versioning")
         (is (nil? (:season u)))
         (is (nil? (:fetched-at u)))
-        (is (= [{:player-id "1"}] (:players u))))))
+        (is (= [{:player-id "99999999" :ids {:sleeper "99999999"}}]
+               (:players u))
+            "an id absent from the snapshot is left exactly as it was"))))
 
   (testing "a missing sample degrades to an empty universe, not an exception"
     (with-redefs [pipeline/load-sample (constantly nil)]
@@ -90,12 +95,13 @@
       (with-redefs [sleeper/fetch-universe (fn [& _] fixture)]
         (let [r (pipeline/load-universe {:refresh true :cache-path path})]
           (is (= "live" (:source r)))
-          (is (= fixture (:players r)))))
+          (is (= (mapv :player-id fixture) (mapv :player-id (:players r))))
+          (is (every? :ids (:players r)) "anchoring attaches the crosswalk")))
       ;; fetch down -> stale cache preferred over sample
       (with-redefs [sleeper/fetch-universe (fn [& _] (throw (ex-info "down" {})))]
         (let [r (pipeline/load-universe {:refresh true :cache-path path})]
           (is (= "cache" (:source r)))
-          (is (= fixture (:players r)))))
+          (is (= (mapv :player-id fixture) (mapv :player-id (:players r))))))
       ;; fetch down + no cache -> bundled sample
       (.delete (io/file path))
       (with-redefs [sleeper/fetch-universe (fn [& _] (throw (ex-info "down" {})))]
@@ -168,3 +174,18 @@
     (let [r (pipeline/load-universe {:refresh true :cache-path (tmp "unused")})]
       (is (= "sample" (:source r)))
       (is (seq (:players r))))))
+
+(deftest every-universe-id-belongs-to-exactly-one-space
+  ;; The invariant that lets :player-id mix GSIS ids, team abbreviations and
+  ;; Sleeper fallbacks without prefixing any of them. Runs against the real
+  ;; bundled universe, which is how the one malformed GSIS id was found.
+  (let [players (:players (pipeline/sample-universe))]
+    (is (seq players))
+    (doseq [p players]
+      (is (player-ids/id-space (:player-id p))
+          (format "%s (%s) has id %s, which is in no known id space"
+                  (:player-name p) (:position p) (pr-str (:player-id p)))))
+    (is (every? player-ids/anchor-consistent? players)
+        "player-id must always equal the best member of its own :ids envelope")
+    (is (= (count players) (count (distinct (map :player-id players))))
+        "anchoring must not collide two players onto one id")))

@@ -22,7 +22,7 @@
   {:birth-year 2003, :draft-overall 187, :draft-pick 6, :draft-round 6, :draft-year 2026, :espn "4685246", :fantasypros "24362", :gsis "00-0041096", :name "Kaytron Allen", :pfr "AlleKa01", :position "RB", :sleeper "13405"}
   {:birth-year 2002, :draft-year 2026, :espn "4685489", :fantasypros "25394", :gsis "00-0040959", :name "Jaydn Ott", :position "RB", :sleeper "13419"}
   {:birth-year 2003, :draft-overall 198, :draft-pick 17, :draft-round 6, :draft-year 2026, :espn "4832846", :fantasypros "28084", :gsis "00-0041104", :name "Demond Claiborne", :pfr "ClaiDe00", :position "RB", :sleeper "13347"}
-  {:birth-year 2003, :draft-overall 53, :draft-pick 22, :draft-round 4, :draft-year 2026, :espn "4686658", :fantasypros "28108", :gsis "WAS569019", :name "Mike Washington Jr.", :pfr "WashMi21", :position "RB", :sleeper "13305"}
+  {:birth-year 2003, :draft-overall 53, :draft-pick 22, :draft-round 4, :draft-year 2026, :espn "4686658", :fantasypros "28108", :name "Mike Washington Jr.", :pfr "WashMi21", :position "RB", :sleeper "13305"}
   {:birth-year 2002, :draft-year 2026, :espn "4688835", :fantasypros "25387", :gsis "00-0040998", :name "Roman Hemby", :pfr "HembRo00", :position "RB", :sleeper "13416"}
   {:birth-year 2004, :draft-year 2026, :espn "5089535", :fantasypros "28110", :name "Desmond Reid", :position "RB", :sleeper "13327"}
   {:birth-year 2001, :draft-overall 90, :draft-pick 26, :draft-round 3, :draft-year 2026, :espn "4696044", :fantasypros "28401", :gsis "00-0041052", :name "Kaelon Black", :pfr "BlacKa00", :position "RB", :sleeper "13414"}
@@ -6350,7 +6350,7 @@
   {:birth-year 2000, :draft-year 0, :espn "4426364", :fantasypros "23137", :gsis "00-0039316", :name "Baylor Cupp", :pfr "CuppBa00", :position "TE", :sleeper "12256"}
   {:birth-year 1990, :draft-year 0, :name "Andrew Jordan", :position "TE", :sleeper "1962"}
   {:birth-year 1971, :draft-year 0, :name "Kurt Warner", :position "QB", :sleeper "7"}
-  {:birth-year 1972, :draft-overall 173, :draft-round 7, :draft-year 0, :espn "2514269", :fantasypros "14343", :gsis "HAR447512", :name "Johnnie Harris", :pfr "HarrJo24", :position "S", :sleeper "2578"}
+  {:birth-year 1972, :draft-overall 173, :draft-round 7, :draft-year 0, :espn "2514269", :fantasypros "14343", :name "Johnnie Harris", :pfr "HarrJo24", :position "S", :sleeper "2578"}
   {:birth-year 1977, :draft-year 0, :espn "3504", :gsis "00-0019536", :name "Shayne Graham", :pfr "grahasha01", :position "PK", :sleeper "758"}
   {:birth-year 1980, :draft-year 0, :espn "4260", :fantasypros "9563", :gsis "00-0020679", :name "Shaun Hill", :position "QB", :sleeper "686"}
   {:birth-year 1981, :draft-year 0, :espn "6044", :gsis "00-0022581", :name "Stevonne Smith", :pfr "LoefCu20", :position "WR", :sleeper "115"}

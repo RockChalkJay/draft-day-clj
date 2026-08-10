@@ -22,6 +22,7 @@
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.merge :as merge]
             [draft-day.ingestion.match :as match]
+            [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.validate :as validate]
             [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
@@ -182,13 +183,18 @@
 (defn fetch-enriched-universe
   "The live universe: Sleeper rows, id-validated, then enriched.
 
-  Ids are validated before any enrichment runs — it fails fast, and the
-  enrichments left-join by name key so they could not repair a bad id anyway. A
-  systemic failure throws, which `load-universe` catches into the stale-cache
+  Ids are anchored first, then validated, then enriched. That order matters:
+  anchoring rewrites `:player-id`, so validating afterwards is what catches two
+  Sleeper ids resolving to one GSIS id — a collision that would silently drop a
+  player from the board. Enrichment comes last because it joins by name key and
+  could not repair a bad id anyway.
+
+  A systemic failure throws, which `load-universe` catches into the stale-cache
   branch: serving last night's board beats serving a structurally broken one."
   [season]
-  (let [{:keys [players report]} (validate/validate-universe
-                                  (sleeper/fetch-universe season))]
+  (let [anchored (player-ids/attach-ids (sleeper/fetch-universe season)
+                                        (player-ids/pinned-index))
+        {:keys [players report]} (validate/validate-universe anchored)]
     (validate/log-report! "sleeper universe" report)
     (when (validate/systemic-failure? report)
       (throw (ex-info "player universe failed validation" report)))
@@ -209,7 +215,11 @@
             :fetched-at     (:captured-at env)
             :sources        (:sources env)
             :source         "sample"}
-           (checked "sample" (:players env)))))
+           ;; Anchored on read so offline dev and tests share the live id
+           ;; space; a sample captured after anchoring shipped already carries
+           ;; :ids and passes straight through.
+           (checked "sample" (player-ids/attach-ids
+                              (:players env) (player-ids/pinned-index))))))
 
 (defn cached-universe
   "The disk cache as an envelope, or nil when absent, empty or written by a

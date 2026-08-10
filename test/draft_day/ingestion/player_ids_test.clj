@@ -176,3 +176,88 @@
     (is (= (count rows) (count (distinct (map :sleeper rows))))
         "a duplicate sleeper id would make derivation order-dependent")
     (is (> (count (ids/snapshot-crosswalk rows)) 4000))))
+
+;; ---- the anchor ----
+
+(def ^:private index
+  {"4984" {:sleeper "4984" :gsis "00-0034857" :fantasypros "17298"
+           :espn "3918298" :pfr "AlleJo02"}})
+
+(deftest attach-ids-anchors-on-gsis-when-resolvable
+  (let [[p] (ids/attach-ids [{:player-id "4984" :player-name "Josh Allen"
+                              :position "QB"}]
+                            index)]
+    (is (= "00-0034857" (:player-id p)))
+    (is (= {:sleeper "4984" :gsis "00-0034857" :fantasypros "17298"
+            :espn "3918298" :pfr "AlleJo02"}
+           (:ids p)))
+    (is (ids/anchor-consistent? p))))
+
+(deftest attach-ids-leaves-defenses-on-their-team-abbreviation
+  (let [[p] (ids/attach-ids [{:player-id "ARI" :player-name "Arizona Cardinals"
+                              :position "DST"}]
+                            index)]
+    (is (= "ARI" (:player-id p))
+        "the NFL issues no player id for a defense; this is not a gap to close")
+    (is (= {:sleeper "ARI" :team "ARI"} (:ids p)))
+    (is (ids/anchor-consistent? p))))
+
+(deftest attach-ids-keeps-the-sleeper-id-when-unresolvable
+  (let [[p] (ids/attach-ids [{:player-id "99999" :player-name "Some UDFA"
+                              :position "WR"}]
+                            index)]
+    (is (= "99999" (:player-id p)))
+    (is (= {:sleeper "99999"} (:ids p)))
+    (is (ids/anchor-consistent? p))))
+
+(deftest attach-ids-is-identity-on-player-id-without-a-snapshot
+  ;; The no-network guarantee: if the snapshot were missing entirely, ids must
+  ;; degrade to exactly what they were before, never to something new.
+  (let [universe [{:player-id "4984" :position "QB"}
+                  {:player-id "ARI" :position "DST"}]
+        out      (ids/attach-ids universe {})]
+    (is (= (mapv :player-id universe) (mapv :player-id out)))
+    (is (every? ids/anchor-consistent? out))
+    (is (every? #(contains? (:ids %) :sleeper) out))))
+
+(deftest id-spaces-are-disjoint
+  (testing "each shape belongs to exactly one space"
+    (is (= :gsis (ids/id-space "00-0034857")))
+    (is (= :team (ids/id-space "ARI")))
+    (is (= :sleeper (ids/id-space "4984"))))
+
+  (testing "no value is claimed by two spaces — what makes bare ids safe"
+    (doseq [id ["00-0034857" "ARI" "LAR" "4984" "13269"]]
+      (is (= 1 (count (filter some?
+                              [(when (re-matches #"00-\d{7}" id) :gsis)
+                               (when (re-matches #"[A-Z]{2,4}" id) :team)
+                               (when (re-matches #"\d+" id) :sleeper)])))
+          (str id " should match exactly one id space")))))
+
+(deftest committed-snapshot-cannot-collide-two-players-onto-one-id
+  ;; Two Sleeper ids resolving to one GSIS id would silently drop a player from
+  ;; the board, so the pinned data must not contain that.
+  (let [xw    (ids/snapshot-crosswalk (:rows (ids/load-snapshot)))
+        gsis  (vals xw)
+        dupes (->> gsis frequencies (filter (fn [[_ c]] (> c 1))) (map key))]
+    (is (empty? dupes)
+        (str "gsis ids mapped from more than one sleeper id: "
+             (pr-str (take 5 dupes))))))
+
+(deftest malformed-gsis-ids-never-become-anchors
+  (testing "the format is checked, not just non-blankness"
+    (is (ids/gsis-id? "00-0034857"))
+    (is (not (ids/gsis-id? "WAS569019"))
+        "DynastyProcess files a PFR-shaped id here for at least one player")
+    (is (not (ids/gsis-id? "00-123")))
+    (is (not (ids/gsis-id? nil))))
+
+  (testing "such a row is projected without a gsis, so it falls back cleanly"
+    (is (nil? (:gsis (ids/snapshot-row (snap-row {"gsis_id" "WAS569019"})))))))
+
+(deftest every-committed-gsis-id-is-well-formed
+  ;; Adopting a malformed id as :player-id would put a value in the key space
+  ;; that belongs to no id space at all, which is what makes bare ids unsafe.
+  (let [bad (remove ids/gsis-id? (vals (ids/snapshot-crosswalk
+                                        (:rows (ids/load-snapshot)))))]
+    (is (empty? bad) (str "malformed gsis ids: " (pr-str (take 5 bad))))))

@@ -246,6 +246,17 @@
   (when-let [t (blank->nil s)]
     (try (long (Double/parseDouble t)) (catch Exception _ nil))))
 
+(defn gsis-id?
+  "True for a well-formed GSIS id (\"00-0034857\").
+
+  DynastyProcess occasionally files something else in that column — Mike
+  Washington carries \"WAS569019\" — and adopting one as `:player-id` would put
+  a value in the key space that belongs to no id space at all, breaking the
+  disjointness that lets ids stay unprefixed. A malformed id is also useless on
+  its own terms: nothing keyed by GSIS could ever match it."
+  [s]
+  (boolean (and s (re-matches #"00-\d{7}" (str s)))))
+
 (defn snapshot-row
   "Pure: one DynastyProcess CSV row -> the projected crosswalk row, or nil when
   it carries no Sleeper id. Sleeper is the join key — the app's universe is the
@@ -256,7 +267,8 @@
       (into {}
             (remove (comp nil? val))
             {:sleeper       sleeper
-             :gsis          (blank->nil (get r "gsis_id"))
+             :gsis          (let [g (blank->nil (get r "gsis_id"))]
+                              (when (gsis-id? g) g))
              :fantasypros   (blank->nil (get r "fantasypros_id"))
              :espn          (blank->nil (get r "espn_id"))
              :pfr           (blank->nil (get r "pfr_id"))
@@ -301,6 +313,83 @@
   snapshot means unresolved ids, never a broken board."
   (memoize (fn [] (or (read-snapshot snapshot-resource)
                       {:schema-version snapshot-schema-version :rows []}))))
+
+(defn snapshot-index
+  "Pure: snapshot rows -> {sleeper-id row}."
+  [rows]
+  (into {} (map (juxt :sleeper identity)) rows))
+
+(def pinned-index
+  "Memoized index over the committed snapshot."
+  (memoize (fn [] (snapshot-index (:rows (load-snapshot))))))
+
+(defn id-space
+  "Which value space an id belongs to: :gsis, :team, :sleeper, or nil.
+
+  The three are disjoint by format — GSIS always starts \"00-\" and contains a
+  hyphen, team abbreviations are short and alphabetic, Sleeper ids are numeric
+  — which is what lets `:player-id` mix them with no prefix. Encoding
+  provenance into the key string would be redundant with `:ids` and would turn
+  every comparison into a parse. Disjointness is asserted in tests rather than
+  assumed."
+  [id]
+  (let [s (str id)]
+    (cond
+      (re-matches #"00-\d{7}" s)  :gsis
+      (re-matches #"[A-Z]{2,4}" s) :team
+      (re-matches #"\d+" s)        :sleeper)))
+
+(defn attach-ids
+  "Set the canonical `:player-id` and attach the `:ids` crosswalk envelope.
+
+  The anchor is a pure function of (Sleeper id, position, pinned snapshot):
+
+    DST                    -> the team abbreviation, exactly as Sleeper already
+                              keys it. The NFL issues GSIS ids to players, and
+                              a team defense is a fantasy construct, so there is
+                              nothing to resolve — not a gap a fresher snapshot
+                              closes.
+    resolvable             -> the GSIS id
+    everything else        -> the Sleeper id, unchanged
+
+  No name matching and no season term, deliberately. `pick-candidate` is
+  season-aware, so routing the anchor through it would let a January rollover
+  silently re-resolve a colliding name and change an existing player's id. The
+  only thing that can move an id here is a snapshot mapping change, which the
+  refresh tool refuses to write silently.
+
+  `:ids` travels into saved drafts, which is what makes a future change of
+  anchor a local upgrade over data already held rather than a data-loss event.
+
+  Idempotent: a player already carrying `:ids` has been anchored and is passed
+  through untouched. Without that, re-anchoring a cached universe would look up
+  a GSIS id in a Sleeper-keyed index, miss, and overwrite a correct envelope
+  with `{:sleeper <the gsis id>}`."
+  [universe index]
+  (mapv (fn [p]
+          (let [sid (:player-id p)]
+            (cond
+              (:ids p) p
+
+              (= "DST" (:position p))
+              (assoc p :ids {:sleeper sid :team sid})
+
+              :else
+              (let [{:keys [gsis fantasypros espn pfr]} (get index sid)]
+                (assoc p
+                       :player-id (or gsis sid)
+                       :ids (cond-> {:sleeper sid}
+                              gsis        (assoc :gsis gsis)
+                              fantasypros (assoc :fantasypros fantasypros)
+                              espn        (assoc :espn espn)
+                              pfr         (assoc :pfr pfr)))))))
+        universe))
+
+(defn anchor-consistent?
+  "The invariant `attach-ids` establishes: the canonical id is always the best
+  available member of its own crosswalk, never something computed elsewhere."
+  [{:keys [player-id ids]}]
+  (= player-id (or (:gsis ids) (:team ids) (:sleeper ids))))
 
 (defn coverage
   "Diagnostic: how many of `entries` resolve, and via which path. `entries` is a
