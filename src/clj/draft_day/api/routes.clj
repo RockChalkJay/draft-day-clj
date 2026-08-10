@@ -40,8 +40,14 @@
 
 (defn players-handler [req]
   (let [refresh? (= "true" (get-in req [:query-params "refresh"]))
-        {:keys [players source]} (universe refresh?)]
-    (json-response 200 {:players players :count (count players) :source source})))
+        {:keys [players source] :as u} (universe refresh?)]
+    ;; :players/:count/:source stay top-level for existing clients; :universe is
+    ;; the provenance (season, fetched-at, what validation dropped) that makes
+    ;; "cache" a checkable claim rather than an unfalsifiable one.
+    (json-response 200 {:players  players
+                        :count    (count players)
+                        :source   source
+                        :universe (dissoc u :players)})))
 
 (defn scoring-presets-handler [_]
   (json-response 200 {:presets scoring/presets :stat-keys scoring/stat-keys}))
