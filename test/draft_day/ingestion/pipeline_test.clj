@@ -6,6 +6,14 @@
 
 (defn- tmp [name] (str (System/getProperty "java.io.tmpdir") "/dd-" name ".transit"))
 
+(defn universe-fixture
+  "A universe big enough to clear validate's systemic-failure floor, so the
+  chain tests exercise the real gate rather than a disabled one."
+  [n]
+  (mapv (fn [i] {:player-id (str "p" i) :player-name (str "Player " i)
+                 :position "RB" :stats {} :sleeper/pts-ppr 100.0})
+        (range n)))
+
 (deftest transit-roundtrip-and-freshness
   (let [path (tmp "roundtrip")
         data [{:player-id "a" :position "RB" :stats {:rush_yd 100.0} :sleeper/adp 1.4}]]
@@ -24,9 +32,12 @@
   ;; `offline?` reads DRAFTDAY_OFFLINE at call time, so without this the whole
   ;; chain short-circuits to the sample in any shell that exports it — which
   ;; CLAUDE.md recommends for dev.
-  (with-redefs [pipeline/offline? (constantly false)]
+  (with-redefs [pipeline/offline? (constantly false)
+                ;; The chain is about which source wins, not about enrichment;
+                ;; stubbing it keeps the test off the network entirely.
+                pipeline/enrich-universe (fn [_season universe] universe)]
     (let [path    (tmp "chain")
-          fixture [{:player-id "x" :position "RB" :stats {} :sleeper/pts-ppr 100.0}]]
+          fixture (universe-fixture 120)]
       (.delete (io/file path))
       ;; live success writes the cache
       (with-redefs [sleeper/fetch-universe (fn [& _] fixture)]

@@ -8,6 +8,7 @@
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.merge :as merge]
             [draft-day.ingestion.match :as match]
+            [draft-day.ingestion.validate :as validate]
             [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
             [clojure.edn :as edn]
@@ -54,15 +55,20 @@
   (when-let [r (io/resource sample-resource)]
     (edn/read-string (slurp r))))
 
-(defn fetch-enriched-universe
-  "Sleeper universe (rows) with bye weeks derived from Sleeper's schedule, then
-  left-joined with enrichment columns: FantasyPros ECR (tiers/variance) and AAV
-  (auction values), plus ESPN live auction values. Bye is core (applied first);
-  each enrichment is best-effort — on failure the universe is returned without
-  those columns and the engine falls back gracefully."
-  [season]
-  (let [universe (sleeper/fetch-universe season)
-        ;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
+(defn checked
+  "Validate a universe from a branch with nowhere better to fall back to (cache,
+  bundled sample): drop unusable rows and log them, but never throw."
+  [label rows]
+  (let [{:keys [players report]} (validate/validate-universe (or rows []))]
+    (validate/log-report! label report)
+    players))
+
+(defn enrich-universe
+  "Left-join the best-effort enrichment columns onto an already-validated
+  universe. Split out from the fetch so the validation gate below reads as the
+  gate it is."
+  [season universe]
+  (let [;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
         ;; :team every player already carries — complete, not just the FantasyPros
         ;; matches. Best-effort: a failed schedule fetch just leaves :bye nil.
         byes     (best-effort (sleeper/fetch-byes season))
@@ -83,6 +89,21 @@
       (seq sleepers) (merge/left-join (match/by-key sleepers))
       (seq espn)     (merge/left-join espn))))
 
+(defn fetch-enriched-universe
+  "The live universe: Sleeper rows, id-validated, then enriched.
+
+  Ids are validated before any enrichment runs — it fails fast, and the
+  enrichments left-join by name key so they could not repair a bad id anyway. A
+  systemic failure throws, which `load-universe` catches into the stale-cache
+  branch: serving last night's board beats serving a structurally broken one."
+  [season]
+  (let [{:keys [players report]} (validate/validate-universe
+                                  (sleeper/fetch-universe season))]
+    (validate/log-report! "sleeper universe" report)
+    (when (validate/systemic-failure? report)
+      (throw (ex-info "player universe failed validation" report)))
+    (enrich-universe season players)))
+
 (defn load-universe
   "Return {:players [...] :source \"live|cache|sample|empty\"}. opts: :refresh
   (bypass fresh cache), :season, :cache-path (defaults to data/...)."
@@ -90,10 +111,10 @@
   ([{:keys [refresh season cache-path] :or {cache-path default-cache-path}}]
    (cond
      (offline?)
-     {:players (or (load-sample) []) :source "sample"}
+     {:players (checked "sample" (load-sample)) :source "sample"}
 
      (and (not refresh) (cache-fresh? cache-path (cache-ttl-hours)))
-     {:players (read-transit cache-path) :source "cache"}
+     {:players (checked "cache" (read-transit cache-path)) :source "cache"}
 
      :else
      (try
@@ -101,6 +122,10 @@
          (write-transit! cache-path u)
          {:players u :source "live"})
        (catch Exception _
-         (or (when-let [c (read-transit cache-path)] {:players c :source "cache"})   ; stale > fake
-             (when-let [s (load-sample)] {:players s :source "sample"})
+         ;; stale > fake, but only if the stale copy still validates — a cache
+         ;; that drops to nothing is worse than the sample, not better.
+         (or (when-let [c (seq (checked "cache" (read-transit cache-path)))]
+               {:players (vec c) :source "cache"})
+             (when-let [s (seq (checked "sample" (load-sample)))]
+               {:players (vec s) :source "sample"})
              {:players [] :source "empty"}))))))
