@@ -107,10 +107,17 @@
            [[:qb "QB"] [:rb "RB"] [:wr "WR"] [:te "TE"]
             [:flex "FLEX"] [:k "K"] [:dst "DST"] [:bench "Bench"]])]]))
 
+(defn- danger-zone []
+  [:section.settings-card.danger-zone
+   [:h3 "Danger Zone"]
+   [:p.muted "Force the server to drop its cached player data and re-fetch live prices from Sleeper, FantasyPros and ESPN. Does not affect your draft or league settings."]
+   [:button.danger {:on-click #(rf/dispatch [:show-modal :reset-cache])} "Reset Player Cache"]])
+
 (defn settings []
   [:div.settings
    [sleeper-import]
    [league-config]
    [budget-config]
    [scoring-config]
-   [roster-config]])
+   [roster-config]
+   [danger-zone]])

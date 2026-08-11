@@ -71,6 +71,12 @@
     (with-open [in (io/input-stream path)]
       (transit/read (transit/reader in :json)))))
 
+(defn delete-cache!
+  "Remove the on-disk cache file, if present. A no-op when already absent."
+  [path]
+  (let [f (io/file path)]
+    (when (.exists f) (.delete f))))
+
 (defn cache-fresh? [path ttl-hours]
   (let [f (io/file path)]
     (and (.exists f)

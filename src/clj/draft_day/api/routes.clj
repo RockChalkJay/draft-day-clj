@@ -49,6 +49,11 @@
                         :source   source
                         :universe (dissoc u :players)})))
 
+(defn cache-reset-handler [_]
+  (pipeline/delete-cache! pipeline/default-cache-path)
+  (reset-universe!)
+  (json-response 200 {:status "ok"}))
+
 (defn scoring-presets-handler [_]
   (json-response 200 {:presets scoring/presets :stat-keys scoring/stat-keys}))
 
@@ -111,6 +116,7 @@
    (ring/router
     [["/api/health"   {:get  (fn [_] (json-response 200 {:status "ok" :service "draft-day-clj"}))}]
      ["/api/players"  {:get  players-handler}]
+     ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
      ["/api/scoring/presets" {:get scoring-presets-handler}]
      ["/api/league/import"   {:post league-import-handler}]]

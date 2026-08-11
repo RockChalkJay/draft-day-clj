@@ -251,3 +251,18 @@
 
 (rf/reg-event-db :league-import-failed
   (fn [db [_ err]] (assoc db :status (str "League import failed: " err))))
+
+;; ---- cache reset ----
+
+(rf/reg-event-fx
+ :reset-cache
+ (fn [{:keys [db]} _]
+   {:db   (assoc db :status "Resetting player cache…" :modal nil)
+    :http {:method :post :url "/api/cache/reset"
+           :on-success [:cache-reset-done]
+           :on-failure [:load-failed]}}))
+
+(rf/reg-event-fx
+ :cache-reset-done
+ (fn [_ _]
+   {:fx [[:dispatch [:fetch-players true]]]}))

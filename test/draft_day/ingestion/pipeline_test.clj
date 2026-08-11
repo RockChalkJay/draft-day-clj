@@ -24,6 +24,14 @@
     (.delete (io/file path))
     (is (not (pipeline/cache-fresh? path 24)))))     ; missing file -> not fresh
 
+(deftest delete-cache-removes-the-file-and-is-idempotent
+  (let [path (tmp "delete")]
+    (pipeline/write-transit! path {:players []})
+    (is (.exists (io/file path)))
+    (pipeline/delete-cache! path)
+    (is (not (.exists (io/file path))))
+    (is (nil? (pipeline/delete-cache! path)))))
+
 (deftest bundled-sample-loads
   (let [{:keys [players]} (pipeline/cached->universe (pipeline/load-sample))]
     (is (seq players))

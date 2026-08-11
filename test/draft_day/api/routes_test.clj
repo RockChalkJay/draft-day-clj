@@ -34,6 +34,21 @@
       (is (= 40 (:count b)))
       (is (= "sample" (:source b))))))
 
+(deftest cache-reset-endpoint-clears-memory-and-disk
+  (routes/reset-universe!)
+  (let [calls (atom 0) deleted (atom nil)]
+    (with-redefs [pipeline/load-universe (fn [& _] (swap! calls inc) fixture)
+                  pipeline/delete-cache! (fn [path] (reset! deleted path))]
+      (routes/players-handler {:query-params {}})   ; seed the in-memory cache
+      (is (= 1 @calls))
+      (let [resp (routes/cache-reset-handler {})
+            b    (parse resp)]
+        (is (= 200 (:status resp)))
+        (is (= "ok" (:status b)))
+        (is (= pipeline/default-cache-path @deleted)))
+      (routes/players-handler {:query-params {}})   ; proves the atom was cleared
+      (is (= 2 @calls)))))
+
 (deftest players-endpoint-reports-universe-provenance
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe (fn [& _] fixture)]

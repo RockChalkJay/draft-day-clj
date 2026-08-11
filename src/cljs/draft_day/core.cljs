@@ -63,7 +63,9 @@
         :settings [settings/settings]
         [board-view])]
      (when (= modal :start-draft)
-       [modal/start-draft-modal])]))
+       [modal/start-draft-modal])
+     (when (= modal :reset-cache)
+       [modal/reset-cache-modal])]))
 
 (defonce root (rdomc/create-root (.getElementById js/document "app")))
 

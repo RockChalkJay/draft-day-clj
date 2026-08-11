@@ -50,3 +50,13 @@
                                     {:num-teams @n :starting-bankroll @budget :num-tiers @tiers
                                      :team-names (mapv (fn [i] (get @names i "")) (range @n))}])}
           "Start Draft (resets picks)"]]]])))
+
+(defn reset-cache-modal []
+  [:div.modal-overlay
+   {:on-click #(when (= (.-target %) (.-currentTarget %)) (rf/dispatch [:close-modal]))}
+   [:div.modal
+    [:h2 "Reset Player Cache"]
+    [:p.muted "Clears the cached player data on the server and re-fetches live prices and rankings from Sleeper, FantasyPros and ESPN. Your draft picks, teams and settings are untouched."]
+    [:div.modal-actions
+     [:button {:on-click #(rf/dispatch [:close-modal])} "Cancel"]
+     [:button.danger {:on-click #(rf/dispatch [:reset-cache])} "Reset Cache"]]]])

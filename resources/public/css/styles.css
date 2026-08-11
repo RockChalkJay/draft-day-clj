@@ -112,6 +112,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
   background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
 button.primary { background: var(--accent); color: #0b0e13; border: none; border-radius: 8px; padding: 7px 14px; font-weight: 700; }
 button.primary:disabled { opacity: .4; cursor: not-allowed; }
+button.danger { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 7px 14px; font-weight: 700; }
+button.danger:hover { background: var(--warn); color: #0b0e13; }
 
 /* ---- board controls ----
    Single row directly above the table: [pos-filter + search] left-aligned
@@ -235,8 +237,10 @@ button.undo:hover { color: var(--warn); }
 .settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 .settings-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .settings-card.sleeper { border-color: var(--accent); }
+.settings-card.danger-zone { border-color: var(--warn); }
 .settings-card h3 { margin: 0 0 10px; font-size: 14px; }
 .settings-card.sleeper h3 { color: var(--accent); }
+.settings-card.danger-zone h3 { color: var(--warn); }
 .fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .field span { color: var(--muted); }
