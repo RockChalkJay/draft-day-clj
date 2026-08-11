@@ -19,6 +19,10 @@
                 (assoc-in [0 :espn/auction-value] 40.0)   ; + FP below -> consensus
                 (assoc-in [0 :fantasypros/aav] 60.0)
                 (assoc-in [1 :espn/auction-value] 30.0))  ; ESPN only
+   :schema-version 1
+   :season 2026
+   :fetched-at "2026-08-09T12:00:00Z"
+   :validation {:n 40 :kept 40 :dropped-blank-id 0 :dropped-duplicate 0}
    :source "sample"})
 
 (deftest players-endpoint-returns-universe
@@ -29,6 +33,20 @@
       (is (= 200 (:status resp)))
       (is (= 40 (:count b)))
       (is (= "sample" (:source b))))))
+
+(deftest players-endpoint-reports-universe-provenance
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] fixture)]
+    (let [b (parse (routes/players-handler {:query-params {}}))]
+      (is (= {:schema-version 1
+              :season 2026
+              :fetched-at "2026-08-09T12:00:00Z"
+              :source "sample"
+              :validation {:n 40 :kept 40 :dropped-blank-id 0
+                           :dropped-duplicate 0}}
+             (:universe b)))
+      (is (nil? (get-in b [:universe :players]))
+          "the rows are not duplicated into the provenance block"))))
 
 (deftest rankings-endpoint-values-the-board
   (routes/reset-universe!)

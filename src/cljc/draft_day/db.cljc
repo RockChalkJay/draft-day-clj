@@ -1,8 +1,7 @@
 (ns draft-day.db
   "app-db shape, the column catalog, and roster/league helpers. No reagent here —
   pure data + functions so it can be required from events and views alike."
-  (:require [clojure.string :as str]
-            [draft-day.rankings.tiers :as tiers]))
+  (:require [clojure.string :as str]))
 
 ;; ---- roster / teams ----
 
@@ -103,15 +102,18 @@
 (defn covers-starter?
   "True when a candidate at `position`/`bye` would cover one of my currently
   *uncovered* starters — same position, a *different* bye (so it plays that
-  starter's bye week). Pairs the tile's green signal with the roster's amber."
-  [position bye exposure]
+  starter's bye week). Pairs the tile's green signal with the roster's amber.
+
+  `bye-coverage` is the roster bye coverage summary returned by
+  `roster-exposure` (starters/bench/open-non-bench)."
+  [position bye bye-coverage]
   (boolean
    (and bye
-        (let [uncovered (uncovered-starter-ids exposure)]
+        (let [uncovered (uncovered-starter-ids bye-coverage)]
           (some #(and (contains? uncovered (:player-id %))
                       (= (:position %) position)
                       (not= (:bye %) bye))
-                (:starters exposure))))))
+                (:starters bye-coverage))))))
 
 ;; ---- budget plan ----
 ;; The manager's own $ allocation, one bucket per slot type (K and DST share).
@@ -128,7 +130,7 @@
 (def default-budget-plan (into {} (map (fn [[_ k]] [k 0])) budget-order))
 
 (def default-config
-  {:num-teams 12 :starting-bankroll 200 :scoring :ppr :roster default-roster
+  {:num-teams 12 :num-tiers 5 :starting-bankroll 200 :scoring :ppr :roster default-roster
    :budget-plan default-budget-plan})
 
 ;; ---- board columns ----
@@ -136,27 +138,15 @@
 ;; so a column can be hidden/shown and drag-reordered. Rendering + sort accessors
 ;; live in views.board keyed by :key.
 
-;; A column may also carry a :tier spec (see draft-day.rankings.tiers), which is
-;; what the board bands rows by while that column is the one sorted on. Specs
-;; resolve against a scope: :position when the board is filtered to one position,
-;; :overall when it is not.
-
 (def column-catalog
   "Ordered column definitions; :default? seeds initial visibility."
   [{:key :rank     :label "#"      :tooltip "Rank by live Worth"        :default? true}
-   {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert rank"   :default? true
-    ;; FantasyPros publishes both tierings; read whichever matches the scope.
-    :tier {:source :field
-           :field  {:overall  :fantasypros/ecr-tier    ; overall cheatsheet
-                    :position :fantasypros/pos-tier}}} ; per-position cheatsheets
+   {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert rank"   :default? true}
    {:key :name     :label "Player" :tooltip "Player"                    :default? true}
    {:key :team     :label "Tm"     :tooltip "NFL team"                  :default? true}
    {:key :bye      :label "Bye"    :tooltip "Bye week"                  :default? true}
    {:key :position :label "Pos"    :tooltip "Position"                  :default? true}
-   {:key :worth    :label "Worth"  :tooltip "Live auction price"        :default? true
-    ;; Fixed dollar cuts rather than derived ones, so a band means the same money
-    ;; in either scope. `pos?` leaves the $0 tail (and all of K/DST) unstriped.
-    :tier {:source :breaks :breaks [60 40 25 15 8 3] :value? pos?}}
+   {:key :worth    :label "Worth"  :tooltip "Live auction price"        :default? true}
    {:key :value    :label "Value"  :tooltip "Stable VBD dollars"        :default? true}
    {:key :market   :label "Mkt"    :tooltip "Market price — ESPN + FantasyPros consensus, scaled to your league" :default? true}
    {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($, raw)" :default? true}
@@ -209,14 +199,6 @@
    :inj      :sleeper/injury-status
    :bye      :bye})
 
-(defn tier-spec
-  "The sorted column's :tier spec resolved for `scope`, or nil when that column
-  doesn't band in that scope. The measurement defaults to the accessor the column
-  already sorts by, so there's no second source of truth."
-  [col-key scope bankroll]
-  (tiers/resolve-spec (:tier (columns-by-key col-key)) scope
-                      (get sort-accessors col-key) bankroll))
-
 (defn default-columns []
   (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) column-catalog))
 
@@ -234,6 +216,44 @@
                             {:key (:key c) 
                              :visible? (boolean (:default? c))})))]
     (vec (concat kept added))))
+
+;; ---- player-id migration ----
+;; :player-id used to be Sleeper's id verbatim; it is now the GSIS id wherever
+;; one resolves. Draft state saved before that change is keyed by the old value,
+;; so it is remapped once the universe arrives — the crosswalk needed to do it
+;; rides on each player as :ids, which is the whole reason that envelope exists.
+
+(defn sleeper->player-id
+  "{sleeper-id canonical-player-id} from a loaded universe.
+
+  Ids that were never remapped (team defenses, players absent from the pinned
+  crosswalk) map to themselves, so applying this to already-migrated state is a
+  no-op. That is what makes it safe to run on every load rather than gating it
+  behind a version stamp."
+  [players]
+  (into {}
+        (keep (fn [p] (when-let [s (get-in p [:ids :sleeper])]
+                        [s (:player-id p)])))
+        players))
+
+(defn remap-draft-ids
+  "Rewrite every player-id held in draft state through `xwalk`.
+
+  An id with no entry is left exactly as it was. An unknown id is not evidence
+  that it is wrong — the universe may simply be a stale cache or the offline
+  sample — and dropping a pick would destroy a real record of what a manager
+  paid."
+  [db xwalk]
+  (let [->id  #(get xwalk % %)
+        slot  (fn [s] (cond-> s (:player-id s) (update :player-id ->id)))]
+    (-> db
+        (update :drafted #(into {} (map (fn [[k v]] [(->id k) v])) %))
+        (update :picks #(mapv (fn [p] (update p :player-id ->id)) %))
+        (update :watchlist #(into #{} (map ->id) %))
+        (update :nominated-id #(some-> % ->id))
+        (update :teams
+                (fn [teams]
+                  (mapv (fn [t] (update t :roster #(mapv slot %))) teams))))))
 
 ;; ---- initial db ----
 

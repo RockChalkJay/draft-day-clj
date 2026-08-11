@@ -8,7 +8,7 @@ SPA — that scores a ranking model (or two, head-to-head) against real
 historical draft outcomes, gated against post-hoc leakage.
 
 ```
-lein run -m draft-day.benchmark.report -- --help
+lein run -m draft-day.benchmark.report --help
 ```
 
 Some flags to start with:
@@ -30,7 +30,7 @@ registered models.
 Example:
 
 ```
-lein run -m draft-day.benchmark.report -- --compare points points+adp --simulate
+lein run -m draft-day.benchmark.report --compare points points+adp --simulate
 ```
 
 See the docstrings in `dev/draft_day/benchmark/core.clj`, `report.clj`, and

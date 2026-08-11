@@ -1,6 +1,7 @@
 (ns draft-day.benchmark.biography-test
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.benchmark.sources.ids :as ids]
+            [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.benchmark.vintage :as vintage]))
 
 (defn dp-row [gsis {:keys [year round pick ovr birth]}]
@@ -13,7 +14,7 @@
    "birthdate"   (or birth "NA")})
 
 (deftest biography-parses-draft-capital-and-birth-year
-  (let [b (ids/biography-from-rows
+  (let [b (player-ids/biography-from-rows
            [(dp-row "00-1" {:year "2023" :round "1" :pick "8" :ovr "8" :birth "2002-01-11"})])]
     (is (= {:draft-year 2023 :draft-round 1 :draft-pick 8 :draft-overall 8 :birth-year 2002}
            (get b "00-1")))))
@@ -21,11 +22,11 @@
 (deftest biography-treats-NA-as-absent
   ;; DynastyProcess writes the literal string "NA"; counting it as present would
   ;; produce draft capital of 0, which reads as the first overall pick.
-  (let [b (ids/biography-from-rows [(dp-row "00-2" {})])]
+  (let [b (player-ids/biography-from-rows [(dp-row "00-2" {})])]
     (is (nil? (get b "00-2")))))
 
 (deftest biography-keeps-partial-records
-  (let [b (ids/biography-from-rows [(dp-row "00-3" {:birth "1995-06-02"})])]
+  (let [b (player-ids/biography-from-rows [(dp-row "00-3" {:birth "1995-06-02"})])]
     (is (= {:birth-year 1995} (get b "00-3")))
     (is (nil? (:draft-overall (get b "00-3"))))))
 

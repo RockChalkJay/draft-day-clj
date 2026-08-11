@@ -1,10 +1,10 @@
-(ns draft-day.benchmark.identity-test
+(ns draft-day.ingestion.player-ids-names-test
   "Name collisions silently resolved to the WRONG player, who then had no
   nflverse outcome row and scored zero realized points — penalising whichever
   model ranked the real player highly. Three productive 2023 receivers were
   affected. Each failure mode is pinned here."
   (:require [clojure.test :refer [deftest is testing]]
-            [draft-day.benchmark.sources.ids :as ids]
+            [draft-day.ingestion.player-ids :as ids]
             [draft-day.ingestion.match :as match]))
 
 (defn row [gsis name pos year]

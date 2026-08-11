@@ -4,7 +4,9 @@
   :license {:name "MIT"}
   :min-lein-version "2.9.0"
   ;; src/cljs is on the classpath so shadow-cljs (:lein true) can find CLJS sources.
-  :source-paths ["src/clj" "src/cljs"]
+  ;; src/cljc holds code both halves share — db shape and draft persistence logic —
+  ;; which also makes it reachable from `lein test` on the JVM.
+  :source-paths ["src/clj" "src/cljc" "src/cljs"]
   :test-paths ["test"]
   :dependencies [[org.clojure/clojure "1.12.0"]
                  [org.clojure/tools.logging "1.3.0"]
