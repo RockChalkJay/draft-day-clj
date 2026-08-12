@@ -1,7 +1,7 @@
 (ns draft-day.benchmark.nflverse-test
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.benchmark.sources.nflverse :as nflverse]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (defn row
   "An nflverse stats_player_reg row. Only the columns under test are set; the

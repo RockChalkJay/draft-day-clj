@@ -1,7 +1,7 @@
 (ns draft-day.rankings.value-test
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.rankings.value :as value]
-            [draft-day.rankings.scoring :as scoring]
+            [draft-day.scoring :as scoring]
             [draft-day.rankings.league-state :as ls]
             [draft-day.rankings.engine :as engine]))
 

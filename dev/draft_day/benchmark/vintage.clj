@@ -34,7 +34,7 @@
             [draft-day.benchmark.sources.fantasypros-ecr :as fp-ecr]
             [draft-day.benchmark.sources.fftoday :as fftoday]
             [draft-day.replay.metrics :as replay-metrics]
-            [draft-day.rankings.scoring :as scoring]
+            [draft-day.scoring :as scoring]
             [draft-day.benchmark.sources.ffcalculator :as ffc]
             [draft-day.benchmark.sources.ids :as ids]
             [draft-day.ingestion.player-ids :as player-ids]

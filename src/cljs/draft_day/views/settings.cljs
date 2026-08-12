@@ -3,17 +3,38 @@
             [re-frame.core :as rf]
             [draft-day.db :as db]))
 
+(defn- numeric-field
+  "A number input that keeps what you typed until you leave it.
+
+  Binding a controlled input straight to the parsed value cannot hold an
+  intermediate `-`, `0.` or empty string — the round-trip through app-db rewrites
+  the DOM mid-keystroke, and parsing those yields NaN. A NaN weight used to
+  serialize as null and 400 the rankings call, blanking the board. So local state
+  holds the raw text, only a successful parse is dispatched, and blur re-syncs the
+  field with whatever app-db actually holds."
+  [_label _value _opts]
+  (let [raw (r/atom nil)]
+    (fn [label value {:keys [step min-v parse on-change]}]
+      [:label.field
+       [:span label]
+       [:input (cond-> {:type      "number"
+                        :step      step
+                        :value     (if (some? @raw) @raw (str value))
+                        :on-change (fn [e]
+                                     (let [s (.. e -target -value)
+                                           v (parse s)]
+                                       (reset! raw s)
+                                       (when-not (js/isNaN v) (on-change v))))
+                        :on-blur   (fn [_] (reset! raw nil))}
+                 min-v (assoc :min min-v))]])))
+
 (defn- num-field [label value on-change]
-  [:label.field
-   [:span label]
-   [:input {:type "number" :value value :min 0
-            :on-change #(on-change (js/parseInt (.. % -target -value) 10))}]])
+  [numeric-field label value
+   {:step "1" :min-v 0 :parse #(js/parseInt % 10) :on-change on-change}])
 
 (defn- weight-field [label value on-change]
-  [:label.field
-   [:span label]
-   [:input {:type "number" :value value :step "0.01"
-            :on-change #(on-change (js/parseFloat (.. % -target -value)))}]])
+  [numeric-field label value
+   {:step "0.01" :parse js/parseFloat :on-change on-change}])
 
 (defn- sleeper-import []
   (let [league-id (r/atom "1380540443179118592")]

@@ -1,4 +1,4 @@
-(ns draft-day.rankings.scoring
+(ns draft-day.scoring
   "Piece 0: configurable scoring -> a single :points value per player.
 
   A player carries its projected stat line under :stats {stat-key value}. A
@@ -6,7 +6,13 @@
   is simply Σ(stat * weight). Using Sleeper's stat keys (`pass_yd`, `rush_td`,
   `rec`, ...) means the league's Sleeper scoring_settings map in directly, and a
   position that lacks a stat (a TE has no :pass_yd) contributes 0 — never an
-  error.")
+  error.
+
+  Shared cljc rather than backend-only (the `db.cljc` precedent) because the
+  frontend needs `presets` and `stat-keys` synchronously: seeding the custom
+  scoring editor from an async `/api/scoring/presets` fetch meant a manager who
+  picked Custom before it landed got a nil scoring config and a Settings page
+  that threw. One definition, both sides, no fetch.")
 
 (defn- preset [reception-pts]
   {:pass_yd 0.04 :pass_td 4.0 :pass_int -2.0 :pass_2pt 0.0
@@ -27,15 +33,37 @@
   "Every stat key the custom scoring editor and league import may touch."
   (vec (keys (:standard presets))))
 
+(defn usable-weight
+  "`x` as a number we can safely multiply by, or 0.0.
+
+  Anything unusable costs that one stat its contribution rather than taking the
+  whole board down. This matters because a cleared input box in the custom
+  scoring editor sends NaN, which `JSON.stringify` writes as null: the previous
+  `(zero? weight)` threw on it, surfaced as an HTTP 400, and blanked the board."
+  [x]
+  (if (and (number? x)
+           #?(:clj  (let [d (double x)]
+                      (not (or (Double/isNaN d) (Double/isInfinite d))))
+              :cljs (js/isFinite x)))
+    (double x)
+    0.0))
+
+(defn scores-anything?
+  "True when at least one weight can actually move a player's points. An empty
+  or all-zero config is not a league, it is a board where everyone is worth $0."
+  [scoring]
+  (boolean (some #(not (zero? (usable-weight %))) (vals scoring))))
+
 (defn player-points
   "Σ over the scoring map of (stat weight * player's projected stat), defaulting
   missing stats to 0."
   [player scoring]
   (let [stats (:stats player)]
     (reduce-kv (fn [acc stat weight]
-                 (if (zero? weight)
-                   acc
-                   (+ acc (* weight (double (get stats stat 0))))))
+                 (let [w (usable-weight weight)]
+                   (if (zero? w)
+                     acc
+                     (+ acc (* w (usable-weight (get stats stat 0)))))))
                0.0 scoring)))
 
 (defn with-points

@@ -4,7 +4,7 @@
             [draft-day.api.routes :as routes]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.league-import :as league-import]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 (defn- parse [resp] (json/read-value (:body resp) mapper))
@@ -87,13 +87,6 @@
         (is (= (- (:worth (by-id "rb0")) 54) (:edge (by-id "rb0"))))
         (is (nil? (:market (by-id "rb5"))))
         (is (nil? (:edge (by-id "rb5"))))))))
-
-(deftest scoring-presets-endpoint-returns-presets-and-stat-keys
-  (let [resp (routes/scoring-presets-handler {})
-        b    (parse resp)]
-    (is (= 200 (:status resp)))
-    (is (= #{:standard :half-ppr :ppr} (set (keys (:presets b)))))
-    (is (seq (:stat-keys b)))))
 
 (deftest league-import-endpoint-success
   (with-redefs [league-import/import-league

@@ -12,7 +12,7 @@
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
 ;; otherwise the active preset keyword itself (:standard/:half-ppr/:ppr).
 (rf/reg-sub :scoring-mode :<- [:config]
-  (fn [cfg _] (let [s (:scoring cfg)] (if (map? s) :custom s))))
+  (fn [cfg _] (let [s (:scoring cfg)] (cond (map? s) :custom (keyword? s) s :else :ppr))))
 
 (rf/reg-sub :ranked-players :<- [:ranked] (fn [r _] (:players r)))
 

@@ -1,7 +1,7 @@
 (ns draft-day.ingestion.sleeper-test
   (:require [clojure.test :refer [deftest is]]
             [draft-day.ingestion.sleeper :as sleeper]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 ;; Fixtures shaped exactly like live Sleeper /projections entries.
 (def ^:private sample-entries

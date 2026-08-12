@@ -1,7 +1,7 @@
 (ns draft-day.benchmark.fftoday-test
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.benchmark.sources.fftoday :as fftoday]
-            [draft-day.rankings.scoring :as scoring])
+            [draft-day.scoring :as scoring])
   (:import [org.jsoup Jsoup]))
 
 (defn table-html

@@ -2,7 +2,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.rankings.model :as model]
             [draft-day.rankings.model.blend]      ; register the candidate models
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (defn wr [id yards adp]
   {:player-id id :position "WR" :stats {:rec_yd yards} :adp adp})

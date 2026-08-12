@@ -1,7 +1,8 @@
 (ns draft-day.db
   "app-db shape, the column catalog, and roster/league helpers. No reagent here —
   pure data + functions so it can be required from events and views alike."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [draft-day.scoring :as scoring]))
 
 ;; ---- roster / teams ----
 
@@ -199,6 +200,28 @@
    :inj      :sleeper/injury-status
    :bye      :bye})
 
+(defn reconcile-config
+  "Reconcile a persisted config with the current shape: drop keys the app no
+  longer has, fill in ones added since the blob was written, and when :scoring is
+  a custom map, give it a 0 for any stat key it predates.
+
+  localStorage carries no schema stamp, so — exactly like `reconcile-columns` —
+  every shape the app has ever persisted has to be repairable in place. A blob
+  written before :scoring existed (or one poisoned by the old
+  `:enable-custom-scoring` race, which could store nil) otherwise reaches the
+  Settings page as a nil scoring config and throws."
+  [stored]
+  (let [cfg (merge default-config stored)
+        s   (:scoring cfg)]
+    (-> cfg
+        (select-keys (keys default-config))
+        (assoc :roster      (merge default-roster (:roster cfg))
+               :budget-plan (merge default-budget-plan (:budget-plan cfg))
+               :scoring     (cond
+                              (map? s) (merge (zipmap scoring/stat-keys (repeat 0)) s)
+                              (contains? scoring/presets s) s
+                              :else (:scoring default-config))))))
+
 (defn default-columns []
   (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) column-catalog))
 
@@ -261,8 +284,10 @@
   (let [cfg default-config]
     {:players     []            ; raw universe from /api/players
      :ranked      nil           ; last /api/rankings response
+     :recompute-seq 0           ; newest /api/rankings request; older replies are dropped
      :status      nil
-     :scoring-presets nil       ; {:presets {...} :stat-keys [...]}, fetched at boot
+     :universe-status nil       ; "N players · source", restored after a recompute error
+     :recompute-error? false
      :config      cfg
      :teams       (make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
      :my-team-id  "t0"

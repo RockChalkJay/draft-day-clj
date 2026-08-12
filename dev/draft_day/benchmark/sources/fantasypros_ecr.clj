@@ -13,7 +13,7 @@
   years before Fantasy Football Calculator's ADP begins).
 
   THE COST: a rank cannot be re-scored under a league's custom rules. Every other
-  source here yields a stat line that `rankings.scoring` re-prices; this one does
+  source here yields a stat line that `draft-day.scoring` re-prices; this one does
   not. So `:ecr` is a scoring-agnostic baseline, useful for the long view and for
   testing rank-based ideas over fifteen seasons, and never a substitute for the
   projection path on the seasons where that exists.

@@ -1,6 +1,6 @@
-(ns draft-day.rankings.scoring-test
+(ns draft-day.scoring-test
   (:require [clojure.test :refer [deftest is]]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (deftest presets-has-exactly-three-keys
   (is (= #{:standard :half-ppr :ppr} (set (keys scoring/presets)))))

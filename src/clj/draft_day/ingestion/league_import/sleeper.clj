@@ -5,7 +5,7 @@
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.league-import :as league-import]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (defn- league-url [league-id]
   (str "https://api.sleeper.app/v1/league/" league-id))

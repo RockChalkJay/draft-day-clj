@@ -13,11 +13,35 @@
                  (clj->js (cond-> {:method  (name (or method :get))
                                    :headers {"Content-Type" "application/json"}}
                             body (assoc :body (js/JSON.stringify (clj->js body))))))
-       (.then (fn [resp] (.json resp)))
-       (.then (fn [j] (when on-success
-                        (rf/dispatch (conj on-success (js->clj j :keywordize-keys true))))))
+       ;; Carry resp.ok alongside the parsed body: a 4xx whose body is JSON used
+       ;; to be dispatched as success, so an API error landed in :ranked and the
+       ;; whole board rendered blank with nothing to explain it.
+       (.then (fn [resp]
+                (.then (.json resp)
+                       (fn [j] [(.-ok resp) (js->clj j :keywordize-keys true)]))))
+       (.then (fn [[ok? body]]
+                (cond
+                  (and ok? on-success)       (rf/dispatch (conj on-success body))
+                  (and (not ok?) on-failure) (rf/dispatch (conj on-failure
+                                                               (or (:error body) "request failed"))))))
        (.catch (fn [err] (when on-failure
                            (rf/dispatch (conj on-failure (str err)))))))))
+
+;; Coalesce a burst of dispatches of the same event into one. Every keystroke in
+;; the custom scoring editor changes a weight, and each change re-ranks the whole
+;; universe server-side; without this a three-character edit fires three
+;; full-board POSTs whose responses can land out of order.
+(defonce ^:private debounce-timers (atom {}))
+
+(rf/reg-fx
+ :debounce
+ (fn [{:keys [id event ms] :or {ms 250}}]
+   (when-let [t (get @debounce-timers id)] (js/clearTimeout t))
+   (swap! debounce-timers assoc id
+          (js/setTimeout (fn []
+                           (swap! debounce-timers dissoc id)
+                           (rf/dispatch event))
+                         ms))))
 
 (rf/reg-fx
  :persist!

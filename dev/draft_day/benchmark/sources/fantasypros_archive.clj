@@ -74,7 +74,7 @@
 ;; ---- parsing ----
 
 (def stat-for
-  "(column group, sub-header) -> the Sleeper stat key `rankings.scoring` speaks.
+  "(column group, sub-header) -> the Sleeper stat key `draft-day.scoring` speaks.
   Pairs with no entry (ATT, CMP, FPTS) are simply not scored: FPTS especially is
   FantasyPros' own scoring, and the whole point is to re-score the raw line under
   the league's rules."
