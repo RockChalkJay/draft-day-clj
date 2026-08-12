@@ -1,8 +1,13 @@
 (ns draft-day.rankings.tcm
   "Piece 3: Tier-Cliff Multiplier (live). Recomputed over the UNDRAFTED subset so
-  cliff urgency stays honest as players leave the board.")
+  cliff urgency stays honest as players leave the board."
+  (:require [draft-day.rankings.tiers :as tiers]))
 
-(def DROP-THRESHOLD 0.10)
+(def DROP-THRESHOLD
+  "Higher than `tiers/DROP-THRESHOLD` because this one is measured across two
+  roster slots rather than one: it asks 'if I pass, what is still here when it is
+  my turn again?', so the same steepness shows up as a bigger number."
+  0.10)
 
 (defn- tcm-for-position
   "Seq of [player-id tcm] for one position's undrafted players: compare each
@@ -18,7 +23,7 @@
        (let [cur    (pts i)
              below2 (when (< (+ i 2) n) (pts (+ i 2)))
              tcm    (if (and below2 (> cur 0.0))
-                      (let [drop (/ (- cur below2) cur)]
+                      (let [drop (tiers/relative-drop cur below2)]
                         (if (> drop DROP-THRESHOLD) (+ 1.0 drop) 1.0))
                       1.0)]
          [(:player-id p) tcm]))

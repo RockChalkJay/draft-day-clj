@@ -57,8 +57,7 @@
      [:h3 "League"]
      [:div.fields
       [num-field "Teams" (:num-teams cfg) #(rf/dispatch [:apply-config {:num-teams %}])]
-      [num-field "Budget $" (:starting-bankroll cfg) #(rf/dispatch [:apply-config {:starting-bankroll %}])]
-      [num-field "Tiers" (:num-tiers cfg) #(rf/dispatch [:apply-config {:num-tiers %}])]]]))
+      [num-field "Budget $" (:starting-bankroll cfg) #(rf/dispatch [:apply-config {:starting-bankroll %}])]]]))
 
 (defn- budget-config []
   (let [cfg      @(rf/subscribe [:config])

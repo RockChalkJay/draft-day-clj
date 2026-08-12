@@ -92,7 +92,7 @@
 
 (defn rankings-handler [req]
   (try
-    (let [{:keys [scoring num-teams num-tiers replacement-config league-state]}
+    (let [{:keys [scoring num-teams replacement-config league-state]}
           (read-json-body req)
           scoring* (resolve-scoring scoring)]
       ;; An empty or all-zero custom map is not a league — it scores every player
@@ -102,7 +102,7 @@
         (json-response 400 {:error "scoring config has no non-zero weights"})
         (let [players  (:players (universe false))
               nt       (or num-teams 12)
-              opts     {:num-tiers (or num-tiers 5) :replacement-config replacement-config}
+              opts     {:replacement-config replacement-config}
               ls       (coerce-league-state league-state)
               live     (engine/live-valuation
                         (engine/static-rankings players scoring* nt opts) ls)

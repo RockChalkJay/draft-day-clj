@@ -131,7 +131,7 @@
 (def default-budget-plan (into {} (map (fn [[_ k]] [k 0])) budget-order))
 
 (def default-config
-  {:num-teams 12 :num-tiers 5 :starting-bankroll 200 :scoring :ppr :roster default-roster
+  {:num-teams 12 :starting-bankroll 200 :scoring :ppr :roster default-roster
    :budget-plan default-budget-plan})
 
 ;; ---- board columns ----
@@ -157,6 +157,7 @@
    {:key :inj      :label "Inj"    :tooltip "Injury status"             :default? false}
    {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
+   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros expert tier (PPR reference — does not follow your scoring)" :default? false}
    {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? false}
    {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
    {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}])
@@ -197,6 +198,7 @@
    :floor    :floor
    :vorp     :vorp
    :ecr      :fantasypros/ecr
+   :fp-tier  :fantasypros/ecr-tier
    :inj      :sleeper/injury-status
    :bye      :bye})
 

@@ -75,7 +75,7 @@
 (def ^:private std-roster (into ["RB" "RB" "WR" "WR" "QB" "TE" "FLEX"] (repeat 8 "BENCH")))
 
 (deftest end-to-end-static-then-live
-  (let [static (engine/static-rankings (synthetic-board) (:ppr scoring/presets) 12 {:num-tiers 5})]
+  (let [static (engine/static-rankings (synthetic-board) (:ppr scoring/presets) 12)]
     (is (every? #(and (contains? % :points) (contains? % :tier) (contains? % :vorp))
                 (:players static)))
     (let [state  {:teams (mapv #(team (str "t" %) 200.0 std-roster) (range 12))
@@ -112,24 +112,47 @@
       (is (every? #(>= (:bargain %) 0) ap))
       (is (some #(pos? (:bargain %)) ap)))))
 
-(deftest expert-tiers-adopted-and-reanchored-per-position
-  ;; FantasyPros' tier is *overall*; adopted expert tiers are dense-ranked within
-  ;; each position so the best cluster -> tier 1. QBs qb0..qb13 are in descending
-  ;; points order, so index < 7 == top-7 by points.
-  (let [board  (mapv (fn [p]
-                       (if (= "QB" (:position p))
-                         (let [i (Integer/parseInt (subs (:player-id p) 2))]
-                           (assoc p :fantasypros/ecr-tier (if (< i 7) 4 5)))
-                         p))
-                     (synthetic-board))
-        static (engine/static-rankings board (:ppr scoring/presets) 12 {:num-tiers 5})
+(deftest the-expert-tier-does-not-override-the-computed-one
+  ;; It used to. :fantasypros/ecr-tier is scraped PPR-only and covers most of the
+  ;; board, so adopting it made Tier the one column that did not move when the
+  ;; league's scoring did — and it is an *overall* tier, so dense-ranking it
+  ;; alongside per-position cliff tiers merged two different scales into one
+  ;; number. The expert tier still rides along for the :fp-tier column.
+  (let [board   (mapv (fn [p]
+                        (if (= "QB" (:position p))
+                          (assoc p :fantasypros/ecr-tier 9)
+                          p))
+                      (synthetic-board))
+        static  (engine/static-rankings board (:ppr scoring/presets) 12)
         out-qbs (filter #(= "QB" (:position %)) (:players static))]
-    (is (= #{1 2} (set (map :tier out-qbs))))       ; re-anchored, 4/5 split kept
-    (let [top7 (set (map :player-id (take 7 (sort-by :points > out-qbs))))]
-      (is (= top7 (set (map :player-id (filter #(= 1 (:tier %)) out-qbs))))))
-    (let [rbs (filter #(= "RB" (:position %)) (:players static))]
-      (is (= 1 (reduce min (map :tier rbs))))       ; positions w/o expert tier keep cliffs
-      (is (<= (reduce max (map :tier rbs)) 5)))))
+    (is (= 1 (reduce min (map :tier out-qbs)))
+        "every position starts at tier 1, not at whatever FantasyPros said")
+    (is (every? #(= 9 (:fantasypros/ecr-tier %)) out-qbs)
+        "the expert tier is carried through untouched")
+    (is (apply <= (map :tier (sort-by :points > out-qbs)))
+        "tier only ever worsens as points fall")))
+
+(deftest unpriced-positions-still-get-a-tier-floor
+  ;; K and DST are absent from the replacement-levels map on purpose (it is what
+  ;; makes them price at $0), but tiering their whole pool shattered them: kicker
+  ;; points are small enough that a 2-point drop down the tail is a 20% drop, and
+  ;; 44 kickers came out as 12 tiers of mostly one. One of each starts, so the
+  ;; num-teams-th best is the floor.
+  ;; k0..k29 at 300, 291, 282, … (300 - 9i)
+  (let [ks (mapv (fn [i] {:player-id (str "k" i) :position "K" :points (- 300.0 (* i 9))})
+                 (range 30))]
+    (is (= 255.0 (engine/tier-floor ks nil 5)) "the 6th best, matching a 1-starter position")
+    (is (= 39.0 (engine/tier-floor ks nil 100)) "clamps to the worst when the pool is short")
+    (is (= 42.0 (engine/tier-floor ks 42.0 5)) "a real replacement level always wins")))
+
+(deftest tiers-are-cut-from-points-so-they-follow-scoring
+  (let [board (synthetic-board)
+        tiers-under (fn [s]
+                      (into {} (map (juxt :player-id :tier))
+                            (:players (engine/static-rankings board s 12))))]
+    (is (not= (tiers-under (:standard scoring/presets))
+              (tiers-under (:ppr scoring/presets)))
+        "reception scoring reshapes where the cliffs fall")))
 
 (deftest worth-sags-as-rosters-fill-even-at-par
   ;; 4 teams x 6 slots = 24; draft the top 18 by value at par, round-robin, so

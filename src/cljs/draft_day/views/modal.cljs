@@ -13,7 +13,6 @@
         teams  @(rf/subscribe [:teams])
         n      (r/atom (:num-teams cfg))
         budget (r/atom (:starting-bankroll cfg))
-        tiers  (r/atom (:num-tiers cfg))
         names  (r/atom (mapv :name teams))]
     (fn []
       [:div.modal-overlay
@@ -31,9 +30,7 @@
          [:label.field [:span "Budget $"]
           [:input {:type "number" :min 1 :value @budget
                    :on-change #(reset! budget (js/parseInt (.. % -target -value) 10))}]]
-         [:label.field [:span "Tiers"]
-          [:input {:type "number" :min 1 :value @tiers
-                   :on-change #(reset! tiers (js/parseInt (.. % -target -value) 10))}]]]
+]
         [:h4 "Team names " [:span.muted "(first is you)"]]
         [:div.team-names
          (map (fn [i]
@@ -47,7 +44,7 @@
          [:button {:on-click #(rf/dispatch [:close-modal])} "Cancel"]
          [:button.primary
           {:on-click #(rf/dispatch [:start-draft
-                                    {:num-teams @n :starting-bankroll @budget :num-tiers @tiers
+                                    {:num-teams @n :starting-bankroll @budget
                                      :team-names (mapv (fn [i] (get @names i "")) (range @n))}])}
           "Start Draft (resets picks)"]]]])))
 

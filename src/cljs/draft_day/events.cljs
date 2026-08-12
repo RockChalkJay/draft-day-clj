@@ -75,7 +75,6 @@
        {:db   (assoc db :recompute-seq n)
         :http {:method :post :url "/api/rankings"
                :body {:num-teams          (get-in db [:config :num-teams])
-                      :num-tiers          (get-in db [:config :num-tiers])
                       :scoring            (get-in db [:config :scoring])
                       :replacement-config (replacement-config (get-in db [:config :roster]))
                       :league-state       (league-state db)}
@@ -200,14 +199,12 @@
 (rf/reg-event-db :close-modal (fn [db _] (assoc db :modal nil)))
 
 (rf/reg-event-fx :start-draft [persist]
-  (fn [{:keys [db]} [_ {:keys [num-teams starting-bankroll num-tiers team-names]}]]
+  (fn [{:keys [db]} [_ {:keys [num-teams starting-bankroll team-names]}]]
     (let [num-teams (max 2 (min 20 (or num-teams 12)))
           bankroll  (max 1 (or starting-bankroll 200))
-          num-tiers (max 1 (min 12 (or num-tiers 5)))
           cfg   (assoc (:config db)
                        :num-teams num-teams
-                       :starting-bankroll bankroll
-                       :num-tiers num-tiers)
+                       :starting-bankroll bankroll)
           teams (db/make-teams-named (take num-teams (concat team-names (repeat "")))
                                      (:roster cfg) bankroll)]
       {:db (-> db
