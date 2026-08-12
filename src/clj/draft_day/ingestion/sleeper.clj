@@ -16,6 +16,12 @@
 (defn- canon-pos [pos] (if (= pos "DEF") "DST" pos))
 
 ;; Stat keys carried into :stats for the scoring engine (skill + kicking/defense).
+;; NOT the whole payload: Sleeper also projects first downs (:rec_fd on 474 players,
+;; :rush_fd on 376, :pass_fd on 77), position reception premiums (:bonus_rec_te/_wr/_rb),
+;; the FG distance buckets that exist (:fgm_40_49 :fgm_50p :fgm_yds :fgmiss_40_49
+;; :fgmiss_50p :xpmiss), :pass_int_td, :pr_td, :def_kr_td, :pts_allow_0 and
+;; :yds_allow_0_100. Dropping them is why a PPFD or TE-premium league imports lossy —
+;; see the coverage-gap section in the README.
 (def ^:private stat-keys
   [:pass_yd :pass_td :pass_int :pass_2pt
    :rush_yd :rush_td :rush_2pt
