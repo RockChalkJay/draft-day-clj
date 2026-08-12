@@ -65,12 +65,20 @@
        (parse-ecr body)))))
 
 ;; --- AAV (auction values) ---
-;; `scoring=PPR` matches the rest of the app's PPR baseline (the ECR scrape above
-;; and ESPN's PPR fallback); the page would otherwise default to Standard. See the
-;; README TODO on making the market sources scoring-aware. `teams`/`tb` fix the
-;; baseline pool (12 * $200 = $2400) that rankings.market normalizes against.
-(def aav-url
-  "https://draftwizard.fantasypros.com/auction/fp_nfl.jsp?scoring=PPR&teams=12&tb=200")
+
+(def aav-scoring-params
+  "The calculator's `scoring` parameter per format. Exactly these three spellings
+  work: anything it does not recognize (\"HALF-PPR\", \"0.5\") silently serves
+  Standard, which is how a typo here would become a wrong market price rather
+  than an error."
+  {:standard "STD" :half-ppr "HALF" :ppr "PPR"})
+
+(defn aav-url
+  "`teams`/`tb` fix the baseline pool (12 * $200 = $2400) that rankings.market
+  normalizes against."
+  [fmt]
+  (str "https://draftwizard.fantasypros.com/auction/fp_nfl.jsp?scoring="
+       (get aav-scoring-params fmt "PPR") "&teams=12&tb=200"))
 
 ;; "Josh Allen (BUF - QB)" / "Houston Texans (HOU - DST)" -> name + position.
 (def ^:private aav-name-re #"^(.*?)\s*\([A-Z]{2,3}\s*-\s*([A-Z]{1,3})\)\s*$")
@@ -92,11 +100,13 @@
     (catch Exception _ nil)))
 
 (defn fetch-aav
-  "Network: fetch + parse the auction-value calculator. nil on failure."
-  []
-  (let [{:keys [status body error]} @(http/get aav-url {:timeout 30000})]
-    (when (and (not error) (= 200 status))
-      (parse-aav body))))
+  "Network: fetch + parse the auction-value calculator for a scoring format.
+  nil on failure."
+  ([] (fetch-aav :ppr))
+  ([fmt]
+   (let [{:keys [status body error]} @(http/get (aav-url fmt) {:timeout 30000})]
+     (when (and (not error) (= 200 status))
+       (parse-aav body)))))
 
 ;; --- Sleepers (a per-position boolean list, no numeric value) ---
 ;; Scoring-agnostic: FantasyPros publishes one sleeper list per position. We just

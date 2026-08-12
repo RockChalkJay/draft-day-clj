@@ -48,6 +48,27 @@
     (double x)
     0.0))
 
+(def formats
+  "The scoring formats outside vendors publish against, in reception order.
+  FantasyPros' ECR and auction calculator and Sleeper's ADP all vary by these."
+  [:standard :half-ppr :ppr])
+
+(def ^:private half-ppr-cutoff 0.25)
+(def ^:private ppr-cutoff 0.75)
+
+(defn format-of
+  "The published format closest to this scoring config.
+
+  Vendor columns are published per format and a custom config does not name one,
+  but receptions are what actually separate the three — so the :rec weight picks
+  the nearest. A custom 0.4-per-catch league reads as half-PPR; a 1.5-per-catch
+  TE-premium league reads as PPR."
+  [scoring]
+  (let [rec (usable-weight (:rec scoring))]
+    (cond (< rec half-ppr-cutoff) :standard
+          (< rec ppr-cutoff)      :half-ppr
+          :else                   :ppr)))
+
 (defn scores-anything?
   "True when at least one weight can actually move a player's points. An empty
   or all-zero config is not a league, it is a board where everyone is worth $0."

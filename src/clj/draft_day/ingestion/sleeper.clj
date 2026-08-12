@@ -24,16 +24,31 @@
    :fgm :xpm
    :sack :int :fum_rec :ff :def_td :safe :blk_kick])
 
+(def adp-keys
+  "Sleeper publishes ADP per scoring format, and they diverge hard — Amon-Ra St.
+  Brown went 8.1 PPR against 16.8 standard for 2026. Collapsing them to one
+  PPR-preferred number meant the ADP column ignored the league's scoring, so all
+  three are carried and `rankings.vendor` picks one per request."
+  {:standard :adp_std :half-ppr :adp_half_ppr :ppr :adp_ppr})
+
 (defn- adp
-  "First real ADP (Sleeper uses 999 as a 'no ADP' sentinel), preferring PPR."
-  [stats]
-  (some (fn [k] (let [v (get stats k)]
-                  (when (and (number? v) (< v 999)) (double v))))
-        [:adp_ppr :adp_half_ppr :adp_std]))
+  "One format's ADP, or nil (Sleeper uses 999 as its 'no ADP' sentinel)."
+  [stats k]
+  (let [v (get stats k)]
+    (when (and (number? v) (< v 999)) (double v))))
+
+(defn adp-by-format [stats]
+  (into {} (keep (fn [[fmt k]] (when-let [v (adp stats k)] [fmt {:sleeper/adp v}])))
+        adp-keys))
 
 (defn normalize-entry
   "Sleeper projection entry -> a universe player map, or nil if it is not a
-  projectable, fantasy-relevant player (must have pts_ppr and a fantasy position)."
+  projectable, fantasy-relevant player.
+
+  The `pts_ppr` gate is a projectability check, not a scoring choice: Sleeper
+  sets it for anyone it projects at all, so its absence means there is no
+  projection to score under *any* config. The number itself is not carried —
+  `:points` is always computed from `:stats` under the league's own weights."
   [{:keys [player_id player stats team]}]
   (let [pos (:position player)]
     (when (and stats (:pts_ppr stats) (fantasy-position-set pos))
@@ -44,10 +59,7 @@
        :bye                   nil
        :stats                 (into {} (keep (fn [k] (when-let [v (get stats k)] [k (double v)]))
                                              stat-keys))
-       :sleeper/adp           (adp stats)
-       :sleeper/pts-ppr       (:pts_ppr stats)
-       :sleeper/pts-half-ppr  (:pts_half_ppr stats)
-       :sleeper/pts-std       (:pts_std stats)
+       :vendor/by-format      (adp-by-format stats)
        :sleeper/injury-status (:injury_status player)
        :sleeper/years-exp     (:years_exp player)})))
 

@@ -26,6 +26,13 @@
   [n d]
   (if (pos? d) (/ (double n) d) 0.0))
 
+(defn deep-merge
+  "merge, recursing into nested maps. The format-scoped columns all live under
+  `:vendor/by-format`, so six separate joins (ECR and AAV x three formats) have
+  to accumulate there instead of each clobbering the last."
+  [a b]
+  (if (and (map? a) (map? b)) (merge-with deep-merge a b) b))
+
 (defn left-join-report
   "Like `left-join`, but also reports what the join actually accomplished:
 
@@ -62,7 +69,7 @@
               (into (set (keys universe-by-pos)) (keys rows-by-pos)))
         matched (reduce + 0 (vals matched-by-pos))]
     {:players (mapv (fn [[p k]]
-                      (if-let [ext (get enrichment-by-key k)] (merge p ext) p))
+                      (if-let [ext (get enrichment-by-key k)] (deep-merge p ext) p))
                     keyed)
      :report
      {:rows        (count enrichment-by-key)

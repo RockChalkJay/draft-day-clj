@@ -8,7 +8,8 @@
   [{:player_id "9509" :team "ATL"
     :player {:first_name "Bijan" :last_name "Robinson" :position "RB" :years_exp 3}
     :stats {:rush_yd 1372.0 :rush_td 9.0 :rec 64.0 :rec_yd 537.0 :rec_td 3.0 :fum_lost 2.0
-            :pts_ppr 324.9 :pts_half_ppr 292.9 :pts_std 260.9 :adp_ppr 1.4}}
+            :pts_ppr 324.9 :pts_half_ppr 292.9 :pts_std 260.9
+            :adp_ppr 1.4 :adp_half_ppr 2.6 :adp_std 4.1}}
    {:player_id "10211" :team nil
     :player {:first_name "Camerun" :last_name "Peoples" :position "RB" :years_exp 1}
     :stats {:adp_ppr 999.0 :gp 0.0}}                       ; no pts_ppr -> excluded
@@ -27,7 +28,13 @@
       (is (= "RB" (:position bijan)))
       (is (= "Bijan Robinson" (:player-name bijan)))
       (is (= 1372.0 (get-in bijan [:stats :rush_yd])))
-      (is (= 1.4 (:sleeper/adp bijan))))
+      ;; ADP is carried per format rather than collapsed to a PPR-preferred
+      ;; number; the three diverge enough to matter (Amon-Ra St. Brown was 8.1
+      ;; PPR against 16.8 standard for 2026).
+      (is (= {:ppr       {:sleeper/adp 1.4}
+              :half-ppr  {:sleeper/adp 2.6}
+              :standard  {:sleeper/adp 4.1}}
+             (:vendor/by-format bijan))))
     (is (= "DST" (:position (by-id "ARI"))))))             ; DEF -> DST
 
 (deftest adp-sentinel-999-becomes-nil
@@ -35,7 +42,14 @@
                :player {:first_name "A" :last_name "B" :position "WR"}
                :stats {:pts_ppr 100.0 :adp_ppr 999.0 :adp_half_ppr 999.0 :adp_std 999.0
                        :rec 50.0 :rec_yd 700.0}}]
-    (is (nil? (:sleeper/adp (sleeper/normalize-entry entry))))))
+    (is (= {} (:vendor/by-format (sleeper/normalize-entry entry))))))
+
+(deftest a-format-missing-its-adp-simply-has-none
+  (let [entry {:player_id "p" :team "X"
+               :player {:first_name "A" :last_name "B" :position "WR"}
+               :stats {:pts_ppr 100.0 :adp_ppr 12.0 :adp_std 999.0 :rec 50.0}}]
+    (is (= {:ppr {:sleeper/adp 12.0}}
+           (:vendor/by-format (sleeper/normalize-entry entry))))))
 
 (deftest scoring-engine-matches-sleeper-precomputed
   ;; Cross-check: our scoring on Sleeper :stats lands near Sleeper's own pts_ppr,

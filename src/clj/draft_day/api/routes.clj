@@ -12,6 +12,7 @@
             [draft-day.rankings.engine :as engine]
             [draft-day.scoring :as scoring]
             [draft-day.rankings.market :as market]
+            [draft-day.rankings.vendor :as vendor]
             [draft-day.rankings.league-state :as ls]
             [draft-day.json :refer [mapper]]))
 
@@ -100,7 +101,7 @@
       ;; plausible-looking board of zeroes.
       (if-not (scoring/scores-anything? scoring*)
         (json-response 400 {:error "scoring config has no non-zero weights"})
-        (let [players  (:players (universe false))
+        (let [players  (vendor/for-scoring (:players (universe false)) scoring*)
               nt       (or num-teams 12)
               opts     {:replacement-config replacement-config}
               ls       (coerce-league-state league-state)
