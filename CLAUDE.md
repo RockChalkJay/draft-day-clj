@@ -18,6 +18,7 @@ Backend (Leiningen, `project.clj`):
 Frontend (shadow-cljs, `:lein true` so it shells to `lein` for the JVM/classpath):
 - `npx shadow-cljs watch app` (or `npm run watch`) — dev build with hot reload, served alongside `resources/public` on port 8280
 - `npx shadow-cljs release app` (or `npm run release`) — production build
+- `npm test` (`shadow-cljs compile test && node out/node-tests.js`) — the `:node-test` build, covering the cljs-only namespaces (`events`/`fx`/`subs`) that `lein test` cannot reach. `src/cljc` is covered by `lein test` instead, so cljs tests are only worth writing for genuinely browser-side behaviour.
 
 **JAVA_HOME gotcha**: Homebrew's JDK is keg-only and not on PATH. `lein` finds Java fine, but `shadow-cljs` needs it exported first:
 ```

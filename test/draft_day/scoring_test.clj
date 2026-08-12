@@ -12,6 +12,28 @@
   (let [player {:stats {:rec 10.0 :some-unknown-stat 999.0}}]
     (is (= 10.0 (scoring/player-points player (:ppr scoring/presets))))))
 
+(deftest every-stat-key-actually-scores
+  ;; 13 of the 21 keys had no test that they move :points at all — every kicking
+  ;; and every team-defense key among them. A key that drifted from Sleeper's
+  ;; spelling would score silently as zero, which is indistinguishable on the
+  ;; board from a player who simply does not accumulate that stat.
+  (let [all-ones (zipmap scoring/stat-keys (repeat 1.0))]
+    (doseq [k scoring/stat-keys]
+      (is (= 3.0 (scoring/player-points {:stats {k 3.0}} all-ones))
+          (str k " does not reach :points")))))
+
+(deftest every-preset-weight-is-applied-as-written
+  (doseq [[fmt preset] scoring/presets
+          [k w] preset
+          :when (not (zero? w))]
+    (is (= (* 2.0 w) (scoring/player-points {:stats {k 2.0}} preset))
+        (str fmt " " k))))
+
+(deftest only-the-reception-weight-separates-the-presets
+  (doseq [k (remove #{:rec} scoring/stat-keys)]
+    (is (apply = (map #(get % k) (vals scoring/presets)))
+        (str k " differs between presets"))))
+
 (deftest stat-keys-covers-every-preset-key
   (is (= (set scoring/stat-keys) (set (keys (:ppr scoring/presets)))))
   (is (every? (set scoring/stat-keys) [:pass_2pt :rush_2pt :rec_2pt :blk_kick])))

@@ -3,6 +3,7 @@
   board's red pulse, My Roster's amber marker and the persisted column layout,
   and until db moved to cljc none of them could be reached from the JVM."
   (:require [clojure.test :refer [deftest is testing]]
+            [draft-day.scoring :as scoring]
             [draft-day.db :as db]))
 
 ;; ---- roster / teams ----
@@ -270,3 +271,49 @@
                                   (db/sleeper->player-id universe))]
     (is (= {"unknown" {:price 7}} (:drafted after)))
     (is (= ["unknown"] (mapv :player-id (:picks after))))))
+
+;; ---- scoring config ----
+
+(deftest the-custom-editor-can-reach-every-stat-key
+  ;; scoring-catalog and stat-keys are two independent literals. A key in one and
+  ;; not the other is invisible either way round: a league import could set a
+  ;; weight the editor cannot show, or the editor could offer a weight the scoring
+  ;; engine ignores.
+  (is (= (set scoring/stat-keys)
+         (set (mapcat (fn [g] (map first (:stats g))) db/scoring-catalog)))))
+
+(deftest the-editor-labels-every-stat-it-offers
+  (doseq [{:keys [group stats]} db/scoring-catalog]
+    (is (seq group))
+    (doseq [[k label] stats]
+      (is (keyword? k))
+      (is (and (string? label) (seq label)) (str k " has no label")))))
+
+(deftest unprojected-stats-are-real-stat-keys
+  (is (every? (set scoring/stat-keys) db/unprojected-stats)))
+
+(deftest reconcile-config-repairs-what-localstorage-may-hold
+  (testing "a blob written before a key existed gets the current default"
+    (is (= (:starting-bankroll db/default-config)
+           (:starting-bankroll (db/reconcile-config {:num-teams 10})))))
+
+  (testing "a key the app has since dropped does not survive"
+    (is (not (contains? (db/reconcile-config {:num-tiers 5}) :num-tiers))))
+
+  (testing "nil scoring — which the old enable-custom-scoring race could store —
+            becomes the default rather than reaching Settings and throwing"
+    (is (= (:scoring db/default-config) (:scoring (db/reconcile-config {:scoring nil})))))
+
+  (testing "a custom map predating a stat key gains it at zero, not as a hole"
+    (let [s (:scoring (db/reconcile-config {:scoring {:rec 1.0}}))]
+      (is (= 1.0 (:rec s)))
+      (is (= (set scoring/stat-keys) (set (keys s))))
+      (is (zero? (:pass_td s)))))
+
+  (testing "a preset keyword is left alone, and junk falls back"
+    (is (= :half-ppr (:scoring (db/reconcile-config {:scoring :half-ppr}))))
+    (is (= (:scoring db/default-config) (:scoring (db/reconcile-config {:scoring :bogus})))))
+
+  (testing "partial nested maps are filled rather than replaced"
+    (is (= (:bench db/default-roster) (:bench (:roster (db/reconcile-config {:roster {:qb 2}})))))
+    (is (= 2 (:qb (:roster (db/reconcile-config {:roster {:qb 2}})))))))

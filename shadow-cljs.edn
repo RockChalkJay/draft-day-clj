@@ -1,10 +1,15 @@
 ;; Classpath + CLJS deps come from project.clj (:lein true), so this file only
 ;; describes the build. `npx shadow-cljs` shells out to `lein` for the JVM,
 ;; which sidesteps the keg-only Homebrew JDK not being on PATH.
+;; `test` runs the cljs-only namespaces (events/subs/fx) that `lein test` cannot
+;; reach; everything under src/clj and src/cljc is covered there instead.
 {:lein true
  :dev-http {8280 "resources/public"}
  :builds
- {:app {:target     :browser
-        :output-dir "resources/public/js"
-        :asset-path "/js"
-        :modules    {:main {:init-fn draft-day.core/init}}}}}
+ {:app  {:target     :browser
+         :output-dir "resources/public/js"
+         :asset-path "/js"
+         :modules    {:main {:init-fn draft-day.core/init}}}
+  :test {:target    :node-test
+         :output-to "out/node-tests.js"
+         :ns-regexp "-test$"}}}
