@@ -242,3 +242,14 @@ button.undo:hover { color: var(--warn); }
 .budget-tally { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .budget-tally b { color: var(--good); font-weight: 700; }
 .budget-tally.over, .budget-tally.over b { color: var(--warn); }
+
+/* Settings: scoring rules we cannot model, and weights nothing can respond to. */
+.scoring-warning { margin: 10px 0 4px; padding: 10px 12px; border-radius: 6px;
+                   background: rgba(240,85,95,.10); border: 1px solid rgba(240,85,95,.35); }
+.scoring-warning p { margin: 4px 0 6px; font-size: 12px; }
+.scoring-warning code { display: block; font-size: 11px; line-height: 1.5;
+                        color: var(--muted); word-break: break-word; }
+.field.unprojected { opacity: .55; }
+.field.unprojected input { cursor: not-allowed; }
+.not-projected { margin-left: 6px; font-size: 9px; font-style: normal;
+                 text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }

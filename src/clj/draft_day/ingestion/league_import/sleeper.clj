@@ -34,10 +34,27 @@
     {:qb (cnt "QB") :rb (cnt "RB") :wr (cnt "WR") :te (cnt "TE")
      :flex flex :k (cnt "K") :dst (cnt "DEF") :bench bench}))
 
+(defn unsupported-scoring
+  "The league's own scoring rules that this app cannot score, sorted.
+
+  `select-keys` against `scoring/stat-keys` silently drops everything else, and a
+  real league carries a lot of it: FG distance buckets (Sleeper never emits a
+  bare `fgm`, so an imported league loses field goals outright), DST
+  points-allowed and yards-allowed tiers, yardage and long-play bonuses, TE
+  premium. One live league dropped 65 of its 85 rules. Reporting a bare success
+  hands back a config that looks complete and scores differently from the league
+  it came from, so the import says what it could not take."
+  [scoring-settings]
+  (->> (apply dissoc scoring-settings scoring/stat-keys)
+       (keep (fn [[k v]] (when (and (number? v) (not (zero? v))) (name k))))
+       sort
+       vec))
+
 (defmethod league-import/normalize-league :sleeper
   [_ raw]
-  {:scoring   (select-keys (:scoring_settings raw) scoring/stat-keys)
-   :roster    (roster-config (:roster_positions raw))
-   :num-teams (:total_rosters raw)
-   :name      (:name raw)
-   :season    (:season raw)})
+  {:scoring             (select-keys (:scoring_settings raw) scoring/stat-keys)
+   :unsupported-scoring (unsupported-scoring (:scoring_settings raw))
+   :roster              (roster-config (:roster_positions raw))
+   :num-teams           (:total_rosters raw)
+   :name                (:name raw)
+   :season              (:season raw)})

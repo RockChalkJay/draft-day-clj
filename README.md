@@ -56,3 +56,20 @@ paired season-block-bootstrapped statistics, the draft-simulation metric).
 - **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
 
 - ~~Scoring-aware FantasyPros enrichments (ECR + market price)~~
+
+## Known scoring coverage gaps
+
+Draft Day scores a flat stat line — `Σ(projected stat × weight)` over the ~21 keys in
+`draft-day.scoring/stat-keys`. Two limits follow, and both are surfaced in the app rather
+than left to be discovered mid-draft:
+
+- **Conditional rules are not modelled.** Yardage and long-play bonuses, FG distance
+  buckets, DST points-allowed and yards-allowed tiers, TE premium. A Sleeper import lists
+  exactly what it could not apply (one real league: 54 of 74 rules), because a config that
+  looks complete but scores differently is worse than one that admits its gaps.
+- **Four modelled weights have nothing to act on.** Sleeper's projections never carry
+  `fgm`, `ff`, `def_td` or `safe`, so kickers are projected on extra points alone and team
+  defenses on sacks/interceptions/fumble recoveries alone. The custom scoring editor shows
+  those four as "not projected" instead of offering an editable box that cannot change any
+  player's points. Neither position is priced (both value at $0), so this reaches the Proj
+  column and nothing downstream of it.

@@ -1,5 +1,6 @@
 (ns draft-day.views.settings
-  (:require [reagent.core :as r]
+  (:require [clojure.string :as str]
+            [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.db :as db]))
 
@@ -80,6 +81,17 @@
         over?              (str " · $" (- total bankroll) " over budget")
         (< total bankroll) (str " · $" (- bankroll total) " unallocated"))]]))
 
+(def ^:private unprojected-note
+  "Sleeper publishes no projection for this stat, so a weight here cannot change any player's points.")
+
+(defn- unprojected-field
+  "Shows the weight — an imported league may well set it — but will not pretend
+  it is editable, because nothing in the projections can respond to it."
+  [label value]
+  [:label.field.unprojected {:title unprojected-note}
+   [:span label [:i.not-projected "not projected"]]
+   [:input {:type "number" :value (str value) :disabled true :read-only true}]])
+
 (defn- custom-scoring-editor [scoring]
   [:div.scoring-groups
    (map (fn [{:keys [group stats]}]
@@ -89,10 +101,25 @@
            [:div.fields
             (map (fn [[stat-key label]]
                    ^{:key stat-key}
-                   [weight-field label (get scoring stat-key 0)
-                    #(rf/dispatch [:set-scoring-weight stat-key %])])
+                   (if (contains? db/unprojected-stats stat-key)
+                     [unprojected-field label (get scoring stat-key 0)]
+                     [weight-field label (get scoring stat-key 0)
+                      #(rf/dispatch [:set-scoring-weight stat-key %])]))
                  stats)]])
         db/scoring-catalog)])
+
+(defn- import-warning
+  "What the last league import could not apply. An import that quietly drops most
+  of a league's rules while reporting success is the failure this exists to
+  prevent."
+  []
+  (let [{:keys [unsupported-scoring]} @(rf/subscribe [:import-report])]
+    (when (seq unsupported-scoring)
+      [:div.scoring-warning
+       [:b (str (count unsupported-scoring) " scoring rules were not applied.")]
+       [:p.muted "Draft Day scores a flat stat line, so these are not modelled and
+                  your board will differ from your league where they matter:"]
+       [:code (str/join ", " unsupported-scoring)]])))
 
 (defn- scoring-config []
   (let [cfg    @(rf/subscribe [:config])
@@ -111,6 +138,7 @@
        [:option {:value "half-ppr"} "Half PPR"]
        [:option {:value "ppr"} "PPR"]
        [:option {:value "custom"} "Custom"]]]
+     [import-warning]
      (when (= mode :custom)
        [custom-scoring-editor (:scoring cfg)])]))
 

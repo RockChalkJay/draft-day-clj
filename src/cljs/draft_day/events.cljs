@@ -271,7 +271,10 @@
 (rf/reg-event-fx :league-import-loaded
   (fn [_ [_ resp]]
     {:fx [[:dispatch [:apply-config (select-keys resp [:scoring :roster :num-teams])]]
+          [:dispatch [:set-import-report (select-keys resp [:name :season :unsupported-scoring])]]
           [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]}))
+
+(rf/reg-event-db :set-import-report (fn [db [_ r]] (assoc db :import-report r)))
 
 (rf/reg-event-db :league-import-failed
   (fn [db [_ err]] (assoc db :status (str "League import failed: " err))))
