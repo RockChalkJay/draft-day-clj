@@ -45,7 +45,11 @@
     ;; :players/:count/:source stay top-level for existing clients; :universe is
     ;; the provenance (season, fetched-at, what validation dropped) that makes
     ;; "cache" a checkable claim rather than an unfalsifiable one.
-    (json-response 200 {:players  players
+    ;;
+    ;; The per-format vendor bundle is stripped rather than flattened: there is
+    ;; no league here to pick a format for, and the client reads the flat vendor
+    ;; columns off /api/rankings anyway.
+    (json-response 200 {:players  (vendor/without-bundle players)
                         :count    (count players)
                         :source   source
                         :universe (dissoc u :players)})))

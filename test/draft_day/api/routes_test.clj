@@ -34,6 +34,23 @@
       (is (= 40 (:count b)))
       (is (= "sample" (:source b))))))
 
+(deftest players-endpoint-does-not-ship-the-per-format-bundle
+  ;; There is no league on this endpoint to pick a format for, and the client
+  ;; reads the flat vendor columns off /api/rankings — so shipping all three
+  ;; formats of every vendor column just triples the biggest payload we serve.
+  (routes/reset-universe!)
+  (let [bundled (update fixture :players
+                        (fn [ps] (mapv #(assoc % :vendor/by-format
+                                               {:ppr {:sleeper/adp 1.0}
+                                                :half-ppr {:sleeper/adp 2.0}
+                                                :standard {:sleeper/adp 3.0}})
+                                       ps)))]
+    (with-redefs [pipeline/load-universe (fn [& _] bundled)]
+      (let [b (parse (routes/players-handler {:query-params {}}))]
+        (is (= 40 (:count b)) "every row is still there")
+        (is (every? #(nil? (:vendor/by-format %)) (:players b)))
+        (is (not (re-find #"by-format" (:body (routes/players-handler {:query-params {}})))))))))
+
 (deftest cache-reset-endpoint-clears-memory-and-disk
   (routes/reset-universe!)
   (let [calls (atom 0) deleted (atom nil)]
