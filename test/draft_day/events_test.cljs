@@ -5,17 +5,35 @@
   (:require [cljs.test :refer [deftest is testing use-fixtures]]
             [re-frame.core :as rf]
             [re-frame.db :as rdb]
+            [re-frame.registrar :as registrar]
             [draft-day.db :as db]
+            [draft-day.fx]
             [draft-day.scoring :as scoring]
             [draft-day.events]))
 
 (defonce captured (atom {}))
 
-;; Stand in for the real side effects: node has no fetch target and no
-;; localStorage, and we want to see what was *requested* rather than wait on it.
-(rf/reg-fx :http     (fn [r] (swap! captured update :http conj r)))
-(rf/reg-fx :persist! (fn [r] (swap! captured update :persist conj r)))
-(rf/reg-fx :debounce (fn [r] (swap! captured update :debounce conj r)))
+(def ^:private stubs
+  "Stand in for the real side effects: node has no fetch target and no
+  localStorage, and we want to see what was *requested* rather than wait on it."
+  {:http     (fn [r] (swap! captured update :http conj r))
+   :persist! (fn [r] (swap! captured update :persist conj r))
+   :debounce (fn [r] (swap! captured update :debounce conj r))})
+
+(defonce ^:private real-fx
+  ;; Captured at load, before any stub is registered, so the fixture can put the
+  ;; real handlers back. Every `-test` namespace compiles into one node bundle,
+  ;; so a stub left registered here would silently disarm these effects for
+  ;; whatever namespace is added next.
+  (into {} (map (juxt identity #(registrar/get-handler :fx %))) (keys stubs)))
+
+(defn- swap-fx!
+  "Replace the :fx handlers in `m`, clearing first so re-frame has nothing to
+  warn about overwriting."
+  [m]
+  (doseq [[id f] m]
+    (rf/clear-fx id)
+    (when f (rf/reg-fx id f))))
 
 (defn- loaded-db
   "app-db as it stands once players have arrived — :recompute is a no-op before
@@ -27,8 +45,10 @@
 
 (use-fixtures :each
   {:before (fn []
+             (swap-fx! stubs)
              (reset! captured {:http [] :persist [] :debounce []})
-             (reset! rdb/app-db (loaded-db)))})
+             (reset! rdb/app-db (loaded-db)))
+   :after  (fn [] (swap-fx! real-fx))})
 
 (defn- scoring-now [] (get-in @rdb/app-db [:config :scoring]))
 (defn- last-http [] (last (:http @captured)))
