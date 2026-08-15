@@ -21,12 +21,16 @@
   points are small enough that a 2-point drop down the tail is a 20% drop, and
   tiering the whole pool split 44 kickers into 12 tiers of mostly one. Exactly
   one of each starts, so the num-teams-th best is the same boundary the priced
-  positions get."
-  [grp level num-teams]
+  positions get.
+
+  `sorted` is the position group already in descending :points order. It used to
+  sort a second copy of the group for itself; handing the same vector to
+  `tiers-by-cliffs` leaves one real sort per position, since the defensive sort
+  there costs a linear pass on input that is already ordered."
+  [sorted level num-teams]
   (or level
-      (let [pool (vec (sort-by :points > grp))]
-        (when (seq pool)
-          (double (or (:points (pool (min num-teams (dec (count pool))))) 0))))))
+      (when (seq sorted)
+        (double (:points (nth sorted (min num-teams (dec (count sorted)))))))))
 
 (defn static-rankings
   "Steps 0-2: points -> floor/ceiling -> replacement level -> per-position tiers
@@ -57,8 +61,9 @@
          levels   (replacement/replacement-levels enriched num-teams
                                                   (or replacement-config {}) :points)
          tiered   (into [] (mapcat (fn [[pos grp]]
-                                     (tiers/tiers-by-cliffs
-                                      grp (tier-floor grp (get levels pos) num-teams))))
+                                     (let [sorted (vec (sort-by :points > grp))]
+                                       (tiers/tiers-by-cliffs
+                                        sorted (tier-floor sorted (get levels pos) num-teams)))))
                         (group-by :position enriched))]
      {:players            (replacement/with-vorp tiered levels :points)
       :replacement-levels levels})))
