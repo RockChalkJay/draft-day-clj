@@ -1,18 +1,40 @@
 (ns draft-day.subs
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
-            [draft-day.db :as db]))
+            [draft-day.db :as db]
+            [draft-day.scoring :as scoring]))
 
 ;; ---- simple extracts ----
 (doseq [k [:view :status :config :teams :my-team-id
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
-           :watchlist :import-report]]
+           :watchlist :import-report :universe]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
 ;; otherwise the active preset keyword itself (:standard/:half-ppr/:ppr).
 (rf/reg-sub :scoring-mode :<- [:config]
   (fn [cfg _] (let [s (:scoring cfg)] (cond (map? s) :custom (keyword? s) s :else :ppr))))
+
+(rf/reg-sub :scoring-format :<- [:config]
+  (fn [cfg _]
+    (let [s (:scoring cfg)]
+      (scoring/format-of (if (map? s) s (get scoring/presets s (:ppr scoring/presets)))))))
+
+(rf/reg-sub :vendor-gaps
+  :<- [:scoring-format]
+  :<- [:universe]
+  ;; FantasyPros is scraped once per scoring format, and each scrape is
+  ;; independently best-effort — so the standard cheatsheet can fail while PPR
+  ;; succeeds, and the cache is then served for a day with market prices for
+  ;; some leagues and not others. Only this league's format matters here, which
+  ;; is why the check cannot live server-side: the universe is shared.
+  (fn [[fmt universe] _]
+    (let [labels {(keyword "fantasypros" (str "ecr-" (name fmt))) "expert ranks"
+                  (keyword "fantasypros" (str "aav-" (name fmt))) "auction values"}]
+      (into [] (keep (fn [[label what]]
+                       (when (false? (:ok? (get-in universe [:sources label])))
+                         what)))
+            labels))))
 
 (rf/reg-sub :ranked-players :<- [:ranked] (fn [r _] (:players r)))
 

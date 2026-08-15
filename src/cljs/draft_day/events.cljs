@@ -45,6 +45,7 @@
          status   (str (:count resp) " players · " (:source resp))]
      (cond-> {:db (assoc migrated
                          :players players
+                         :universe (:universe resp)
                          :status status
                          :universe-status status)
               :fx [[:dispatch [:recompute]]]}

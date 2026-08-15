@@ -131,6 +131,19 @@
                   your board will differ from your league where they matter:"]
        [:code (str/join ", " unsupported-scoring)]])))
 
+(defn- vendor-gap-warning
+  "What FantasyPros did not publish *for this league's format*. Each of the six
+  scrapes is independently best-effort and the cache is served for a day, so a
+  standard league can silently be pricing off ESPN alone while a PPR league in
+  the same universe sees the full consensus."
+  []
+  (let [gaps @(rf/subscribe [:vendor-gaps])]
+    (when (seq gaps)
+      [:div.scoring-warning
+       [:b (str "FantasyPros " (str/join " and " gaps) " are missing for your scoring format.")]
+       [:p.muted "The board still values every player, but market prices lean on
+                  ESPN alone until the next cache refresh."]])))
+
 (defn- scoring-config []
   (let [cfg    @(rf/subscribe [:config])
         mode   @(rf/subscribe [:scoring-mode])
@@ -149,6 +162,7 @@
        [:option {:value "ppr"} "PPR"]
        [:option {:value "custom"} "Custom"]]]
      [import-warning]
+     [vendor-gap-warning]
      (when (= mode :custom)
        [custom-scoring-editor (:scoring cfg)])]))
 
