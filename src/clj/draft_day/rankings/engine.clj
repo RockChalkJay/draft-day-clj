@@ -38,11 +38,13 @@
   between them is free.
 
   :tier is deliberately computed here rather than taken from
-  :fantasypros/ecr-tier, which used to override it. That tier is scraped PPR-only
-  and covers ~75% of the board, so Tier was the one board column that did not
-  move when the league's scoring did — and dense-ranking expert *overall* tiers
-  (1-16) together with computed *per-position* tiers made the two scales one
-  incoherent number. The expert tier is still shipped for the :fp-tier column.
+  :fantasypros/ecr-tier, which used to override it. That tier covers ~75% of the
+  board, so adopting it left a quarter of the players untiered — and dense-ranking
+  expert *overall* tiers (1-16) together with computed *per-position* tiers made
+  the two scales one incoherent number. (It is no longer PPR-only: ingestion
+  scrapes all three cheatsheets and `rankings.vendor` picks the league's format,
+  so the expert tier does follow the league's scoring now. The two reasons above
+  are what still rule it out.) It is still shipped for the :fp-tier column.
 
   Opts :model (default :points, the raw scored projection) and :weights select
   which `rankings.model` produces :points; every later stage is indifferent to

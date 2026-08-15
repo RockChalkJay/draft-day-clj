@@ -157,7 +157,7 @@
    {:key :inj      :label "Inj"    :tooltip "Injury status"             :default? false}
    {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
-   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros expert tier (PPR reference — does not follow your scoring)" :default? false}
+   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros expert tier — one overall tier, not the board's per-position tier; blank where FantasyPros has no match" :default? false}
    {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? false}
    {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
    {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}])

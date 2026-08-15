@@ -113,11 +113,12 @@
       (is (some #(pos? (:bargain %)) ap)))))
 
 (deftest the-expert-tier-does-not-override-the-computed-one
-  ;; It used to. :fantasypros/ecr-tier is scraped PPR-only and covers most of the
-  ;; board, so adopting it made Tier the one column that did not move when the
-  ;; league's scoring did — and it is an *overall* tier, so dense-ranking it
-  ;; alongside per-position cliff tiers merged two different scales into one
-  ;; number. The expert tier still rides along for the :fp-tier column.
+  ;; It used to. :fantasypros/ecr-tier covers most of the board but not all of
+  ;; it, so adopting it left the rest untiered — and it is an *overall* tier, so
+  ;; dense-ranking it alongside per-position cliff tiers merged two different
+  ;; scales into one number. (It is format-scoped now, so "it ignores your
+  ;; scoring" is no longer one of the reasons.) The expert tier still rides along
+  ;; for the :fp-tier column.
   (let [board   (mapv (fn [p]
                         (if (= "QB" (:position p))
                           (assoc p :fantasypros/ecr-tier 9)
