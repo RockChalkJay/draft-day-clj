@@ -146,6 +146,22 @@
   (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db) {:players []}])
   (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db))))
 
+;; ---- which way a column opens ----
+
+(deftest a-rank-shaped-column-opens-best-first
+  ;; FP T sorted the wrong way round: it is a tier, so 1 is the best number, but
+  ;; it opened descending and put tier 16 on top of the board.
+  (doseq [k [:name :team :position :rank :adp :ecr :fp-tier]]
+    (rf/dispatch-sync [:set-sort k])
+    (is (= {:key k :dir 1} (:sort @rdb/app-db)) (str k " opens ascending")))
+  (doseq [k [:worth :value :vorp :bargain]]
+    (rf/dispatch-sync [:set-sort k])
+    (is (= {:key k :dir -1} (:sort @rdb/app-db)) (str k " opens descending")))
+  (testing "and clicking the same header again flips it"
+    (rf/dispatch-sync [:set-sort :fp-tier])
+    (rf/dispatch-sync [:set-sort :fp-tier])
+    (is (= {:key :fp-tier :dir -1} (:sort @rdb/app-db)))))
+
 ;; ---- a config change made before the universe lands is not lost ----
 
 (deftest a-scoring-change-with-no-players-yet-is-picked-up-on-load
