@@ -56,13 +56,14 @@
     (catch Exception _ nil)))
 
 (defn fetch-ecr
-  "Network: fetch + parse the cheatsheet for a scoring format. nil on failure."
-  ([] (fetch-ecr :ppr))
-  ([scoring]
-   (let [url (get cheatsheet-urls scoring (:ppr cheatsheet-urls))
-         {:keys [status body error]} @(http/get url {:timeout 30000})]
-     (when (and (not error) (= 200 status))
-       (parse-ecr body)))))
+  "Network: fetch + parse the cheatsheet for a scoring format. nil on failure.
+  The format is required on purpose — defaulting it is how PPR got baked into a
+  universe shared by every league."
+  [scoring]
+  (let [url (get cheatsheet-urls scoring (:ppr cheatsheet-urls))
+        {:keys [status body error]} @(http/get url {:timeout 30000})]
+    (when (and (not error) (= 200 status))
+      (parse-ecr body))))
 
 ;; --- AAV (auction values) ---
 
@@ -101,12 +102,11 @@
 
 (defn fetch-aav
   "Network: fetch + parse the auction-value calculator for a scoring format.
-  nil on failure."
-  ([] (fetch-aav :ppr))
-  ([fmt]
-   (let [{:keys [status body error]} @(http/get (aav-url fmt) {:timeout 30000})]
-     (when (and (not error) (= 200 status))
-       (parse-aav body)))))
+  nil on failure. Format required, for the reason `fetch-ecr` gives."
+  [fmt]
+  (let [{:keys [status body error]} @(http/get (aav-url fmt) {:timeout 30000})]
+    (when (and (not error) (= 200 status))
+      (parse-aav body))))
 
 ;; --- Sleepers (a per-position boolean list, no numeric value) ---
 ;; Scoring-agnostic: FantasyPros publishes one sleeper list per position. We just
