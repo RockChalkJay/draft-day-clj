@@ -82,29 +82,87 @@
 
 ;; ---- tier colors ----
 
-;; A green-to-red sweep across however many tiers a position turns out to have,
-;; rather than six fixed CSS classes with everything past tier 6 clamped into the
-;; same color. The ramp carries the ordering (tier 1 best, last tier is the
-;; below-replacement tail) and the count now comes from the data, so the palette
-;; has to follow it. Custom properties do the work; styles.css consumes them.
+;; The one thing this palette has to do is make *adjacent* tiers look different,
+;; since that is the boundary a manager reads a group off of. A smooth hue sweep
+;; cannot, because it divides one fixed perceptual budget across however many
+;; tiers a position turns out to have: the old green-to-red HSL ramp left
+;; neighbouring fills on the 6-tier RB board 6.4 dE2000 apart — rgb(24,57,29) vs
+;; (40,57,29) vs (56,57,29), three shades of one dark green — and a 7th tier
+;; would have squeezed them further.
+;;
+;; So the two jobs are split. The hue ramp carries only the *ordering* (green =
+;; tier 1, red = the below-replacement tail), and banding carries the
+;; *separation*: consecutive tiers alternate between a pale, lightly-washed fill
+;; and a deep, saturated one, which holds neighbours ~11 dE2000 apart no matter
+;; how many tiers there are. Colors are OKLCH so equal hue steps look equal;
+;; sRGB hue is badly compressed through green-to-yellow, which is exactly where
+;; the old ramp went muddy. Fills stay dark enough to keep body text past 8:1.
+;;
+;; Custom properties do the work; styles.css consumes them.
 
-(defn tier-hue [t n]
-  (let [span (max 1 (dec n))]
-    (- 150.0 (* 150.0 (/ (dec (max 1 t)) (double span))))))
+(def ^:private tier-chroma 0.14)
+(def tier-hue-best 150.0)
+(def tier-hue-worst 22.0)
+
+;; The alternating bands. :pale is a bright color laid on thin, :deep a dimmer
+;; one laid on thick — they differ in lightness *and* in strength, so a pair
+;; stays apart even where the two hues are close.
+(def ^:private tier-bands
+  {:pale {:l 0.84 :alpha 0.20}
+   :deep {:l 0.62 :alpha 0.42}})
+
+(defn tier-hue
+  "Hue for 1-indexed tier `t` of `n`, ramping green (best) to red (worst)."
+  [t n]
+  (let [span (max 1 (dec n))
+        f    (/ (dec (max 1 t)) (double span))]
+    (+ tier-hue-best (* (- tier-hue-worst tier-hue-best) f))))
+
+(defn tier-band
+  "Which of the two alternating bands tier `t` sits in. Tier 1 is pale, so the
+  best tier is also the brightest."
+  [t]
+  (if (odd? (max 1 t)) :pale :deep))
+
+(defn tier-color
+  "Full-strength color for tier `t` of `n` — the row's left stripe and its
+  legend swatch."
+  [t n]
+  (let [{:keys [l]} (tier-bands (tier-band t))]
+    (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) ")")))
+
+(defn tier-fill
+  "Row background for tier `t` of `n`: `tier-color` laid over the board at the
+  band's strength."
+  [t n]
+  (let [{:keys [l alpha]} (tier-bands (tier-band t))]
+    (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) " / " alpha ")")))
 
 (defn- tier-style [t n]
-  (let [h (tier-hue t n)]
-    {"--tier-bg"   (str "hsla(" h ", 68%, 55%, .20)")
-     "--tier-line" (str "hsl(" h ", 68%, 60%)")}))
+  {"--tier-bg"   (tier-fill t n)
+   "--tier-line" (tier-color t n)})
 
-(defn- player-row [p cols nominated color-tier? n-tiers]
+(defn- player-row [p cols nominated color-tier? n-tiers tier-start?]
   [:tr (cond-> {:class [(when (= nominated (:player-id p)) "selected")
                         ;; tier row-coloring only when filtered to a single position
-                        (when color-tier? "tier-row")]
+                        (when color-tier? "tier-row")
+                        (when (and color-tier? tier-start?) "tier-start")]
                 :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
          color-tier? (assoc :style (tier-style (or (:tier p) 1) n-tiers)))
    (map (fn [{k :key}] ^{:key k}
           [cell k p]) cols)])
+
+(defn tier-starts
+  "For each row, whether it opens a new tier — i.e. its tier differs from the row
+  above it. Drives the rule drawn across a tier boundary.
+
+  Read off the rendered order rather than off the tier numbers, because the two
+  are not the same thing: the board is sorted by whichever column the manager
+  clicked, and sorting by Bye or Team interleaves tiers. The first row never
+  opens a tier; the header's own bottom border already closes the top."
+  [players]
+  (map (fn [p prev] (and (some? prev) (not= (:tier p) (:tier prev))))
+       players (cons nil players)))
 
 ;; ---- tier key ----
 
@@ -118,7 +176,7 @@
        (map (fn [t]
               ^{:key t}
               [:span.tier-key-item
-               [:i.tier-swatch {:style {:background (str "hsl(" (tier-hue t n-tiers) ", 68%, 60%)")}}]
+               [:i.tier-swatch {:style {:background (tier-color t n-tiers)}}]
                (str "T" t)])
             tiers)])))
 
@@ -162,7 +220,7 @@
                 (map (fn [col] ^{:key (:key col)} 
                        [header-cell col sort]) cols)]]
        [:tbody
-        (map (fn [p]
+        (map (fn [p tier-start?]
                ^{:key (:player-id p)}
-               [player-row p cols nominated color-tier? n-tiers])
-             players)]]]]))
+               [player-row p cols nominated color-tier? n-tiers tier-start?])
+             players (tier-starts players))]]]]))
