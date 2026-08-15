@@ -29,8 +29,7 @@
                                    (swap! names resize v)))}]]
          [:label.field [:span "Budget $"]
           [:input {:type "number" :min 1 :value @budget
-                   :on-change #(reset! budget (js/parseInt (.. % -target -value) 10))}]]
-]
+                   :on-change #(reset! budget (js/parseInt (.. % -target -value) 10))}]]]
         [:h4 "Team names " [:span.muted "(first is you)"]]
         [:div.team-names
          (map (fn [i]

@@ -12,20 +12,28 @@
   the DOM mid-keystroke, and parsing those yields NaN. A NaN weight used to
   serialize as null and 400 the rankings call, blanking the board. So local state
   holds the raw text, only a successful parse is dispatched, and blur re-syncs the
-  field with whatever app-db actually holds."
+  field with whatever app-db actually holds.
+
+  What you typed only outranks app-db while app-db still holds what this field
+  put there. `sent` is the last value dispatched from here, so a value that moved
+  for any other reason — a league import, a reset — shows through immediately
+  rather than waiting for the field to lose focus."
   [_label _value _opts]
-  (let [raw (r/atom nil)]
+  (let [raw  (r/atom nil)
+        sent (r/atom nil)]
     (fn [label value {:keys [step min-v parse on-change]}]
       [:label.field
        [:span label]
        [:input (cond-> {:type      "number"
                         :step      step
-                        :value     (if (some? @raw) @raw (str value))
+                        :value     (if (and (some? @raw) (= value @sent)) @raw (str value))
                         :on-change (fn [e]
                                      (let [s (.. e -target -value)
                                            v (parse s)]
                                        (reset! raw s)
-                                       (when-not (js/isNaN v) (on-change v))))
+                                       (when-not (js/isNaN v)
+                                         (reset! sent v)
+                                         (on-change v))))
                         :on-blur   (fn [_] (reset! raw nil))}
                  min-v (assoc :min min-v))]])))
 
@@ -99,12 +107,14 @@
           [:div.scoring-group
            [:h4 group]
            [:div.fields
+            ;; The key rides on each branch's vector, not on the `if` — metadata
+            ;; on a special form is dropped at compile time, which left every row
+            ;; keyless and reconciled by index.
             (map (fn [[stat-key label]]
-                   ^{:key stat-key}
                    (if (contains? db/unprojected-stats stat-key)
-                     [unprojected-field label (get scoring stat-key 0)]
-                     [weight-field label (get scoring stat-key 0)
-                      #(rf/dispatch [:set-scoring-weight stat-key %])]))
+                     ^{:key stat-key} [unprojected-field label (get scoring stat-key 0)]
+                     ^{:key stat-key} [weight-field label (get scoring stat-key 0)
+                                       #(rf/dispatch [:set-scoring-weight stat-key %])]))
                  stats)]])
         db/scoring-catalog)])
 
