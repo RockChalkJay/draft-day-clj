@@ -6,13 +6,13 @@
 ;; ---- simple extracts ----
 (doseq [k [:view :status :config :teams :my-team-id
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
-           :watchlist]]
+           :watchlist :import-report]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
 ;; otherwise the active preset keyword itself (:standard/:half-ppr/:ppr).
 (rf/reg-sub :scoring-mode :<- [:config]
-  (fn [cfg _] (let [s (:scoring cfg)] (if (map? s) :custom s))))
+  (fn [cfg _] (let [s (:scoring cfg)] (cond (map? s) :custom (keyword? s) s :else :ppr))))
 
 (rf/reg-sub :ranked-players :<- [:ranked] (fn [r _] (:players r)))
 

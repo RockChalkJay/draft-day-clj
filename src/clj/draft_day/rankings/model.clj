@@ -14,7 +14,7 @@
   `:points` is the baseline and the shipped default — raw scored projection,
   i.e. exactly what the board did before this seam existed."
   (:require [clojure.string :as str]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (defmulti score-board
   "Assoc :points on every player. `ctx` carries at least :scoring (the league's

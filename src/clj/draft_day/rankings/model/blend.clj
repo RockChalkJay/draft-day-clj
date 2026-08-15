@@ -30,7 +30,7 @@
   differences is the entire reason the harness exists. Treat them as the starting
   hypothesis, not a result, and override via ctx :weights."
   (:require [draft-day.rankings.model :as model]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (def default-weights
   "Per-position {:points w :adp w}, falling back to :default. Projection-heavy

@@ -112,6 +112,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
   background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
 button.primary { background: var(--accent); color: #0b0e13; border: none; border-radius: 8px; padding: 7px 14px; font-weight: 700; }
 button.primary:disabled { opacity: .4; cursor: not-allowed; }
+button.danger { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 7px 14px; font-weight: 700; }
+button.danger:hover { background: var(--warn); color: #0b0e13; }
 
 /* ---- board controls ----
    Single row directly above the table: [pos-filter + search] left-aligned
@@ -185,19 +187,11 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
    a bold solid left-edge stripe that stays crisp regardless of the fill. Fills
    kept moderate so near-white text stays legible; the stripe carries the signal.
    Kept lower-specificity than the table.board hover/selected rules so those win. */
-.board tbody tr.tier-row-1 { background: rgba(52,226,154,.24); }   /* green   */
-.board tbody tr.tier-row-2 { background: rgba(74,168,255,.24); }   /* blue    */
-.board tbody tr.tier-row-3 { background: rgba(242,197,61,.24); }   /* gold    */
-.board tbody tr.tier-row-4 { background: rgba(245,126,52,.24); }   /* orange  */
-.board tbody tr.tier-row-5 { background: rgba(240,85,95,.26); }    /* red     */
-.board tbody tr.tier-row-6 { background: rgba(176,131,240,.24); }  /* violet  */
-
-.board tbody tr.tier-row-1 td:first-child { border-left: 4px solid #34e29a; }
-.board tbody tr.tier-row-2 td:first-child { border-left: 4px solid #4aa8ff; }
-.board tbody tr.tier-row-3 td:first-child { border-left: 4px solid #f2c53d; }
-.board tbody tr.tier-row-4 td:first-child { border-left: 4px solid #f57e34; }
-.board tbody tr.tier-row-5 td:first-child { border-left: 4px solid #f0555f; }
-.board tbody tr.tier-row-6 td:first-child { border-left: 4px solid #b083f0; }
+/* Tier stripes are driven by --tier-bg/--tier-line, set inline per row: how many
+   tiers a position has comes from its cliff structure, so a fixed set of classes
+   would cap the count instead of following it. See views/board.cljs. */
+.board tbody tr.tier-row { background: var(--tier-bg); }
+.board tbody tr.tier-row td:first-child { border-left: 4px solid var(--tier-line); }
 
 /* tier key — shown above the board only while filtered to one position */
 .tier-key { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -235,8 +229,10 @@ button.undo:hover { color: var(--warn); }
 .settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 .settings-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .settings-card.sleeper { border-color: var(--accent); }
+.settings-card.danger-zone { border-color: var(--warn); }
 .settings-card h3 { margin: 0 0 10px; font-size: 14px; }
 .settings-card.sleeper h3 { color: var(--accent); }
+.settings-card.danger-zone h3 { color: var(--warn); }
 .fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .field span { color: var(--muted); }
@@ -246,3 +242,14 @@ button.undo:hover { color: var(--warn); }
 .budget-tally { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .budget-tally b { color: var(--good); font-weight: 700; }
 .budget-tally.over, .budget-tally.over b { color: var(--warn); }
+
+/* Settings: scoring rules we cannot model, and weights nothing can respond to. */
+.scoring-warning { margin: 10px 0 4px; padding: 10px 12px; border-radius: 6px;
+                   background: rgba(240,85,95,.10); border: 1px solid rgba(240,85,95,.35); }
+.scoring-warning p { margin: 4px 0 6px; font-size: 12px; }
+.scoring-warning code { display: block; font-size: 11px; line-height: 1.5;
+                        color: var(--muted); word-break: break-word; }
+.field.unprojected { opacity: .55; }
+.field.unprojected input { cursor: not-allowed; }
+.not-projected { margin-left: 6px; font-size: 9px; font-style: normal;
+                 text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }

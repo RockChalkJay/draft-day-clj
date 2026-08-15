@@ -1,7 +1,7 @@
 (ns draft-day.ingestion.league-import-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [draft-day.ingestion.league-import :as league-import]
-            [draft-day.ingestion.league-import.sleeper]))
+            [draft-day.ingestion.league-import.sleeper :as sleeper-import]))
 
 (def ^:private raw-league
   {:name "Dynasty Dynasts" :season "2026" :total_rosters 10
@@ -45,3 +45,25 @@
     (is (not ok))
     (is (= 400 status))
     (is (= "Unknown league provider" error))))
+
+(deftest an-import-reports-the-rules-it-could-not-apply
+  ;; Silently keeping 20 of 85 rules and reporting success hands back a config
+  ;; that looks complete and scores differently from the real league. One live
+  ;; league dropped every FG distance bucket (Sleeper never emits a bare `fgm`,
+  ;; so kickers lost field goals outright), all DST points-allowed tiers and
+  ;; every yardage bonus.
+  (let [dropped (sleeper-import/unsupported-scoring
+                 {:rec 1.0 :rec_yd 0.1                    ; modelled
+                  :fgm_0_19 3.0 :fgm_50p 5.0              ; not modelled
+                  :bonus_rec_te 0.5 :pts_allow_0 10.0
+                  :def_st_ff 0.0                          ; present but off
+                  :pass_2pt 2.0})]                        ; modelled
+    (is (= ["bonus_rec_te" "fgm_0_19" "fgm_50p" "pts_allow_0"] dropped))
+    (is (not-any? #{"rec" "rec_yd" "pass_2pt"} dropped)
+        "rules we do score are not reported as dropped")
+    (is (not-any? #{"def_st_ff"} dropped)
+        "a rule the league has switched off costs it nothing"))
+
+  (testing "a league with nothing exotic reports nothing"
+    (is (= [] (sleeper-import/unsupported-scoring {:rec 1.0 :rush_yd 0.1})))
+    (is (= [] (sleeper-import/unsupported-scoring nil)))))

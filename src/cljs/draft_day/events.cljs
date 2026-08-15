@@ -1,6 +1,7 @@
 (ns draft-day.events
   (:require [re-frame.core :as rf]
             [draft-day.db :as db]
+            [draft-day.scoring :as scoring]
             [draft-day.fx :as fx]))
 
 ;; Persist a whitelisted slice to localStorage after any mutating event.
@@ -17,18 +18,9 @@
  :boot
  (fn [_ _]
    {:db (-> (merge (db/default-db) (fx/load-persisted))
-            (update :columns db/reconcile-columns))   ; drop removed cols, add new ones
-    :fx [[:dispatch [:fetch-players]]
-         [:dispatch [:fetch-scoring-presets]]]}))
-
-(rf/reg-event-fx
- :fetch-scoring-presets
- (fn [_ _]
-   {:http {:method :get :url "/api/scoring/presets"
-           :on-success [:scoring-presets-loaded]}}))
-
-(rf/reg-event-db :scoring-presets-loaded
-  (fn [db [_ resp]] (assoc db :scoring-presets resp)))
+            (update :columns db/reconcile-columns)    ; drop removed cols, add new ones
+            (update :config db/reconcile-config))     ; repair a config from an older shape
+    :fx [[:dispatch [:fetch-players]]]}))
 
 (rf/reg-event-fx
  :fetch-players
@@ -49,10 +41,12 @@
    (let [players  (:players resp)
          migrated (db/remap-draft-ids db (db/sleeper->player-id players))
          slice    (select-keys migrated db/persist-keys)
-         changed? (not= (select-keys db db/persist-keys) slice)]
+         changed? (not= (select-keys db db/persist-keys) slice)
+         status   (str (:count resp) " players · " (:source resp))]
      (cond-> {:db (assoc migrated
                          :players players
-                         :status (str (:count resp) " players · " (:source resp)))
+                         :status status
+                         :universe-status status)
               :fx [[:dispatch [:recompute]]]}
        changed? (assoc :persist! slice)))))
 
@@ -72,17 +66,40 @@
 (rf/reg-event-fx
  :recompute
  (fn [{:keys [db]} _]
-   (if (seq (:players db))
-     {:http {:method :post :url "/api/rankings"
-             :body {:num-teams          (get-in db [:config :num-teams])
-                    :num-tiers          (get-in db [:config :num-tiers])
-                    :scoring            (get-in db [:config :scoring])
-                    :replacement-config (replacement-config (get-in db [:config :roster]))
-                    :league-state       (league-state db)}
-             :on-success [:ranked-loaded]}}
-     {})))
+   ;; No players yet means the universe is still in flight; :players-loaded
+   ;; dispatches :recompute once it lands, so a config change made in the
+   ;; meantime is picked up rather than lost.
+   (if-not (seq (:players db))
+     {}
+     (let [n (inc (:recompute-seq db 0))]
+       {:db   (assoc db :recompute-seq n)
+        :http {:method :post :url "/api/rankings"
+               :body {:num-teams          (get-in db [:config :num-teams])
+                      :scoring            (get-in db [:config :scoring])
+                      :replacement-config (replacement-config (get-in db [:config :roster]))
+                      :league-state       (league-state db)}
+               :on-success [:ranked-loaded n]
+               :on-failure [:recompute-failed]}}))))
 
-(rf/reg-event-db :ranked-loaded (fn [db [_ resp]] (assoc db :ranked resp)))
+(rf/reg-event-db :ranked-loaded
+  (fn [db [_ n resp]]
+    ;; Overlapping requests can answer out of order, and each one re-ranks the
+    ;; whole universe, so latency varies. Only the newest may write the board —
+    ;; otherwise a slow reply computed under the previous scoring config wins and
+    ;; stays there until something else triggers a recompute.
+    (if-not (= n (:recompute-seq db))
+      db
+      (cond-> (assoc db :ranked resp)
+        ;; Clear only an error this handler's own failure path put up; other
+        ;; flows (a league import's "✓ Imported …") own the status line too.
+        (:recompute-error? db)
+        (assoc :status (:universe-status db) :recompute-error? false)))))
+
+(rf/reg-event-db :recompute-failed
+  (fn [db [_ err]]
+    ;; Leave :ranked alone — the previous board is stale but readable, which
+    ;; beats blanking it. The status line is what says it is stale.
+    (assoc db :status (str "Rankings update failed: " err) :recompute-error? true)))
 
 ;; ---- UI state ----
 
@@ -182,14 +199,12 @@
 (rf/reg-event-db :close-modal (fn [db _] (assoc db :modal nil)))
 
 (rf/reg-event-fx :start-draft [persist]
-  (fn [{:keys [db]} [_ {:keys [num-teams starting-bankroll num-tiers team-names]}]]
+  (fn [{:keys [db]} [_ {:keys [num-teams starting-bankroll team-names]}]]
     (let [num-teams (max 2 (min 20 (or num-teams 12)))
           bankroll  (max 1 (or starting-bankroll 200))
-          num-tiers (max 1 (min 12 (or num-tiers 5)))
           cfg   (assoc (:config db)
                        :num-teams num-teams
-                       :starting-bankroll bankroll
-                       :num-tiers num-tiers)
+                       :starting-bankroll bankroll)
           teams (db/make-teams-named (take num-teams (concat team-names (repeat "")))
                                      (:roster cfg) bankroll)]
       {:db (-> db
@@ -199,6 +214,8 @@
                (assoc :my-team-id (:team-id (first teams))))
        :fx [[:dispatch [:recompute]]]})))
 
+;; Debounced for the same reason as :set-scoring-weight — the League and Roster
+;; fields dispatch this per keystroke, and each one re-ranks the whole universe.
 (rf/reg-event-fx :apply-config [persist]
   (fn [{:keys [db]} [_ new-cfg]]
     (let [cfg   (merge (:config db) new-cfg)
@@ -206,7 +223,7 @@
                   (db/make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
                   (:teams db))]
       {:db (assoc db :config cfg :teams teams)
-       :fx [[:dispatch [:recompute]]]})))
+       :debounce {:id :recompute :event [:recompute]}})))
 
 ;; Manager's per-position budget plan — client-only tracking, so no team
 ;; rebuild and no :recompute; just persist the :config slice.
@@ -220,19 +237,26 @@
     {:db (assoc-in db [:config :scoring] preset)
      :fx [[:dispatch [:recompute]]]}))
 
+;; Seeded from the shared preset table rather than a fetched one: picking Custom
+;; before an async /api/scoring/presets reply landed used to write nil into the
+;; config, which the server read as PPR and the Settings page died on.
 (rf/reg-event-fx :enable-custom-scoring [persist]
   (fn [{:keys [db]} _]
-    (let [scoring (get-in db [:config :scoring])]
-      (if (map? scoring)
+    (let [s (get-in db [:config :scoring])]
+      (if (map? s)
         {}
         {:db (assoc-in db [:config :scoring]
-                        (get-in db [:scoring-presets :presets scoring]))
+                       (get scoring/presets s (:ppr scoring/presets)))
          :fx [[:dispatch [:recompute]]]}))))
 
 (rf/reg-event-fx :set-scoring-weight [persist]
   (fn [{:keys [db]} [_ stat-key v]]
-    {:db (assoc-in db [:config :scoring stat-key] v)
-     :fx [[:dispatch [:recompute]]]}))
+    ;; `usable-weight` is the same guard the server applies, so a NaN from a
+    ;; cleared input box can never reach the request body — it used to serialize
+    ;; as null, 400 the rankings call, and blank the board until localStorage was
+    ;; cleared by hand. Debounced because each edit re-ranks the whole universe.
+    {:db (assoc-in db [:config :scoring stat-key] (scoring/usable-weight v))
+     :debounce {:id :recompute :event [:recompute]}}))
 
 (rf/reg-event-fx :import-league
   (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
@@ -242,12 +266,30 @@
             :on-success [:league-import-loaded]
             :on-failure [:league-import-failed]}}))
 
+;; A failed import now arrives at :league-import-failed, because the :http effect
+;; routes any non-2xx there; this handler only ever sees a real config.
 (rf/reg-event-fx :league-import-loaded
   (fn [_ [_ resp]]
-    (if (:error resp)
-      {:fx [[:dispatch [:league-import-failed (:error resp)]]]}
-      {:fx [[:dispatch [:apply-config (select-keys resp [:scoring :roster :num-teams])]]
-            [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]})))
+    {:fx [[:dispatch [:apply-config (select-keys resp [:scoring :roster :num-teams])]]
+          [:dispatch [:set-import-report (select-keys resp [:name :season :unsupported-scoring])]]
+          [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]}))
+
+(rf/reg-event-db :set-import-report (fn [db [_ r]] (assoc db :import-report r)))
 
 (rf/reg-event-db :league-import-failed
   (fn [db [_ err]] (assoc db :status (str "League import failed: " err))))
+
+;; ---- cache reset ----
+
+(rf/reg-event-fx
+ :reset-cache
+ (fn [{:keys [db]} _]
+   {:db   (assoc db :status "Resetting player cache…" :modal nil)
+    :http {:method :post :url "/api/cache/reset"
+           :on-success [:cache-reset-done]
+           :on-failure [:load-failed]}}))
+
+(rf/reg-event-fx
+ :cache-reset-done
+ (fn [_ _]
+   {:fx [[:dispatch [:fetch-players true]]]}))

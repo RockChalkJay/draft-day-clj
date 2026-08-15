@@ -21,7 +21,7 @@
             [draft-day.benchmark.vintage :as vintage]
             [draft-day.rankings.model :as model]
             [draft-day.rankings.model.blend]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (def default-seasons [2021 2022 2023 2024 2025])
 

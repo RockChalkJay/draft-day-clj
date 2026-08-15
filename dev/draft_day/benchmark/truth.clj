@@ -3,7 +3,7 @@
 
   The answer key is not 'PPR points'. It is 'points *this* league would have
   awarded', which is why nflverse rows are mapped onto the Sleeper stat keys
-  `rankings.scoring` speaks and then run through the very same
+  `draft-day.scoring` speaks and then run through the very same
   `scoring/player-points` the live board uses. Scoring the truth with a fixed PPR
   constant would validate a league nobody in this app is playing in, and would
   quietly hide any bug in custom scoring — the exact thing worth testing.
@@ -13,7 +13,7 @@
   unpredictable — prior-year to next-year rank correlation is about +0.07), so
   per-game is the fairer read on whether a model understood the player. Report
   both; do not average them into one number that means neither."
-  (:require [draft-day.rankings.scoring :as scoring]))
+  (:require [draft-day.scoring :as scoring]))
 
 (defn realized-points
   "Points the league's scoring config would have awarded for a realized season."

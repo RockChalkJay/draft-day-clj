@@ -10,8 +10,9 @@
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.sleeper]
             [draft-day.rankings.engine :as engine]
-            [draft-day.rankings.scoring :as scoring]
+            [draft-day.scoring :as scoring]
             [draft-day.rankings.market :as market]
+            [draft-day.rankings.vendor :as vendor]
             [draft-day.rankings.league-state :as ls]
             [draft-day.json :refer [mapper]]))
 
@@ -49,8 +50,10 @@
                         :source   source
                         :universe (dissoc u :players)})))
 
-(defn scoring-presets-handler [_]
-  (json-response 200 {:presets scoring/presets :stat-keys scoring/stat-keys}))
+(defn cache-reset-handler [_]
+  (pipeline/delete-cache! pipeline/default-cache-path)
+  (reset-universe!)
+  (json-response 200 {:status "ok"}))
 
 (defn league-import-handler [req]
   (let [{:keys [provider league-id]} (read-json-body req)
@@ -78,10 +81,10 @@
   (cond
     (map? s) (select-keys s scoring/stat-keys)
 
-    (or (string? s) (keyword? s))  
+    (or (string? s) (keyword? s))
     (get scoring/presets (keyword s) (:ppr scoring/presets))
-    
-    :else                          
+
+    :else
     (:ppr scoring/presets)))
 
 
@@ -90,19 +93,24 @@
 
 (defn rankings-handler [req]
   (try
-    (let [{:keys [scoring num-teams num-tiers replacement-config league-state]}
+    (let [{:keys [scoring num-teams replacement-config league-state]}
           (read-json-body req)
-          players  (:players (universe false))
-          scoring* (resolve-scoring scoring)
-          nt       (or num-teams 12)
-          opts     {:num-tiers (or num-tiers 5) :replacement-config replacement-config}
-          ls       (coerce-league-state league-state)
-          live     (engine/live-valuation
-                    (engine/static-rankings players scoring* nt opts) ls)
-          ;; reference market price + edge, scaled to this league's pool
-          players* (market/with-market (:players live) (ls/initial-cash ls))]
-      (json-response 200 (-> (select-keys live [:inflation :inflation-index :market-heat])
-                             (assoc :players players*))))
+          scoring* (resolve-scoring scoring)]
+      ;; An empty or all-zero custom map is not a league — it scores every player
+      ;; 0.0 and prices the whole board at $0. Say so rather than returning a
+      ;; plausible-looking board of zeroes.
+      (if-not (scoring/scores-anything? scoring*)
+        (json-response 400 {:error "scoring config has no non-zero weights"})
+        (let [players  (vendor/for-scoring (:players (universe false)) scoring*)
+              nt       (or num-teams 12)
+              opts     {:replacement-config replacement-config}
+              ls       (coerce-league-state league-state)
+              live     (engine/live-valuation
+                        (engine/static-rankings players scoring* nt opts) ls)
+              ;; reference market price + edge, scaled to this league's pool
+              players* (market/with-market (:players live) (ls/initial-cash ls))]
+          (json-response 200 (-> (select-keys live [:inflation :inflation-index :market-heat])
+                                 (assoc :players players*))))))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
@@ -111,8 +119,8 @@
    (ring/router
     [["/api/health"   {:get  (fn [_] (json-response 200 {:status "ok" :service "draft-day-clj"}))}]
      ["/api/players"  {:get  players-handler}]
+     ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
-     ["/api/scoring/presets" {:get scoring-presets-handler}]
      ["/api/league/import"   {:post league-import-handler}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes

@@ -57,6 +57,7 @@
     :floor    [:td.num.muted (n0 (:floor p))]
     :vorp     [:td.num (n0 (:vorp p))]
     :ecr      [:td.num (or (:fantasypros/ecr p) "–")]
+    :fp-tier  [:td.num.muted (or (:fantasypros/ecr-tier p) "–")]
     :inj      [:td (or (:sleeper/injury-status p) "–")]
     :bye      (let [clash? (db/board-bye-clash? (:position p) (:bye p)
                                                 @(rf/subscribe [:my-bye-exposure]))]
@@ -79,33 +80,47 @@
      (:label d)
      [:span.sort-ind (cond (not active?) " ↕" (= -1 (:dir sort)) " ▼" :else " ▲")]]))
 
-(defn- player-row [p cols nominated color-tier?]
-  [:tr {:class [(when (= nominated (:player-id p)) "selected")
-                ;; tier row-coloring only when filtered to a single position
-                (when color-tier? (str "tier-row-" (min 6 (or (:tier p) 1))))]
-        :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
-   (map (fn [{k :key}] ^{:key k} 
+;; ---- tier colors ----
+
+;; A green-to-red sweep across however many tiers a position turns out to have,
+;; rather than six fixed CSS classes with everything past tier 6 clamped into the
+;; same color. The ramp carries the ordering (tier 1 best, last tier is the
+;; below-replacement tail) and the count now comes from the data, so the palette
+;; has to follow it. Custom properties do the work; styles.css consumes them.
+
+(defn tier-hue [t n]
+  (let [span (max 1 (dec n))]
+    (- 150.0 (* 150.0 (/ (dec (max 1 t)) (double span))))))
+
+(defn- tier-style [t n]
+  (let [h (tier-hue t n)]
+    {"--tier-bg"   (str "hsla(" h ", 68%, 55%, .20)")
+     "--tier-line" (str "hsl(" h ", 68%, 60%)")}))
+
+(defn- player-row [p cols nominated color-tier? n-tiers]
+  [:tr (cond-> {:class [(when (= nominated (:player-id p)) "selected")
+                        ;; tier row-coloring only when filtered to a single position
+                        (when color-tier? "tier-row")]
+                :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
+         color-tier? (assoc :style (tier-style (or (:tier p) 1) n-tiers)))
+   (map (fn [{k :key}] ^{:key k}
           [cell k p]) cols)])
 
 ;; ---- tier key ----
 
-;; Matches the tier-row stripe colors in styles.css.
-(def ^:private tier-stripe-colors
-  {1 "#34e29a" 2 "#4aa8ff" 3 "#f2c53d" 4 "#f57e34" 5 "#f0555f" 6 "#b083f0"})
-
-(defn- tier-key-item [t]
-  [:span.tier-key-item
-   [:i.tier-swatch {:style {:background (tier-stripe-colors t)}}]
-   (str "T" t)])
-
 (defn- tier-key
-  "Legend of the tier stripe colors, showing only the tiers present on the board."
-  [players]
-  (let [tiers (->> players (keep :tier) (map #(min 6 %)) distinct sort)]
+  "Legend of the tier stripe colors, showing every tier present on the board."
+  [players n-tiers]
+  (let [tiers (->> players (keep :tier) distinct sort)]
     (when (seq tiers)
       [:div.tier-key
        [:span.tier-key-label "Tiers"]
-       (map tier-key-item tiers)])))
+       (map (fn [t]
+              ^{:key t}
+              [:span.tier-key-item
+               [:i.tier-swatch {:style {:background (str "hsl(" (tier-hue t n-tiers) ", 68%, 60%)")}}]
+               (str "T" t)])
+            tiers)])))
 
 ;; ---- filters ----
 
@@ -135,11 +150,12 @@
         sort        @(rf/subscribe [:sort])
         nominated   @(rf/subscribe [:nominated-id])
         ;; color rows by tier only when filtered to a single position
-        color-tier? (some? @(rf/subscribe [:pos-filter]))]
+        color-tier? (some? @(rf/subscribe [:pos-filter]))
+        n-tiers     (reduce max 1 (keep :tier players))]
     [:div.board-wrap
      [:div.board-controls
       [:div.filters [pos-filter] [search-box]]
-      (when color-tier? [tier-key players])]
+      (when color-tier? [tier-key players n-tiers])]
      [:div.table-scroll
       [:table.board
        [:thead [:tr 
@@ -148,5 +164,5 @@
        [:tbody
         (map (fn [p]
                ^{:key (:player-id p)}
-               [player-row p cols nominated color-tier?])
+               [player-row p cols nominated color-tier? n-tiers])
              players)]]]]))

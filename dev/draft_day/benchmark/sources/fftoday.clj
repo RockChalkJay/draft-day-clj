@@ -44,7 +44,7 @@
        "&PosID=" pos-id "&LeagueID=1&cur_page=" page))
 
 (def stat-for
-  "(column group, column header) -> the Sleeper stat key `rankings.scoring`
+  "(column group, column header) -> the Sleeper stat key `draft-day.scoring`
   speaks. Cmp and Att are not scored; FPts is FFToday's own scoring and is
   deliberately dropped so the line re-prices under the league's rules."
   {["PASSING" "YDS"]   :pass_yd

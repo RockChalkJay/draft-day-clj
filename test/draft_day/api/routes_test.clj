@@ -4,7 +4,7 @@
             [draft-day.api.routes :as routes]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.league-import :as league-import]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 (defn- parse [resp] (json/read-value (:body resp) mapper))
@@ -33,6 +33,21 @@
       (is (= 200 (:status resp)))
       (is (= 40 (:count b)))
       (is (= "sample" (:source b))))))
+
+(deftest cache-reset-endpoint-clears-memory-and-disk
+  (routes/reset-universe!)
+  (let [calls (atom 0) deleted (atom nil)]
+    (with-redefs [pipeline/load-universe (fn [& _] (swap! calls inc) fixture)
+                  pipeline/delete-cache! (fn [path] (reset! deleted path))]
+      (routes/players-handler {:query-params {}})   ; seed the in-memory cache
+      (is (= 1 @calls))
+      (let [resp (routes/cache-reset-handler {})
+            b    (parse resp)]
+        (is (= 200 (:status resp)))
+        (is (= "ok" (:status b)))
+        (is (= pipeline/default-cache-path @deleted)))
+      (routes/players-handler {:query-params {}})   ; proves the atom was cleared
+      (is (= 2 @calls)))))
 
 (deftest players-endpoint-reports-universe-provenance
   (routes/reset-universe!)
@@ -72,13 +87,6 @@
         (is (= (- (:worth (by-id "rb0")) 54) (:edge (by-id "rb0"))))
         (is (nil? (:market (by-id "rb5"))))
         (is (nil? (:edge (by-id "rb5"))))))))
-
-(deftest scoring-presets-endpoint-returns-presets-and-stat-keys
-  (let [resp (routes/scoring-presets-handler {})
-        b    (parse resp)]
-    (is (= 200 (:status resp)))
-    (is (= #{:standard :half-ppr :ppr} (set (keys (:presets b)))))
-    (is (seq (:stat-keys b)))))
 
 (deftest league-import-endpoint-success
   (with-redefs [league-import/import-league
@@ -130,3 +138,92 @@
         b    (parse resp)]
     (is (= 400 (:status resp)))
     (is (= "league-id must be numeric" (:error b)))))
+
+;; ---- scoring reaches the board, and malformed configs do not blank it ----
+
+(defn- rankings [scoring]
+  (routes/rankings-handler
+   {:body (input-stream
+           (json/write-value-as-string
+            {:num-teams 12 :scoring scoring
+             :league-state {:teams (vec (repeat 12 {:bankroll 200.0
+                                                    :roster (vec (repeat 15 {:pos "BENCH"}))}))
+                            :drafted-player-ids [] :starting-bankroll 200 :picks []}}))}))
+
+(defn- worth-of [s] (into {} (map (juxt :player-id :worth)) (:players (parse (rankings s)))))
+
+(deftest the-same-league-state-under-two-scorings-values-differently
+  (routes/reset-universe!)
+  ;; Reception volume has to *vary* for reception scoring to move dollars — see
+  ;; the test below for why the shared fixture cannot show this.
+  (let [u (assoc fixture :players
+                 (vec (for [i (range 40)]
+                        {:player-id (str "rb" i) :player-name (str "RB" i) :position "RB"
+                         :stats {:rush_yd (- 1500 (* i 30)) :rush_td (- 12 (* i 0.2))
+                                 :rec (* i 3) :rec_yd (* i 25) :rec_td 1}})))]
+    (with-redefs [pipeline/load-universe (fn [& _] u)]
+      (is (not= (worth-of "standard") (worth-of "ppr"))))))
+
+(deftest a-scoring-change-flat-across-the-pool-does-not-move-dollars
+  ;; Not a bug — the invariant behind it. Value is a share of a fixed money pool
+  ;; split by VORP, and VORP is points minus replacement's points. Give all 40
+  ;; fixture RBs the same 40 catches and PPR lifts every one of them by 40,
+  ;; replacement included, so every share is exactly where it was. Worth changes
+  ;; when a scoring rule changes players *relative to each other*, which is what
+  ;; makes the previous test's varying fixture necessary rather than incidental.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] fixture)]
+    (is (= (worth-of "standard") (worth-of "ppr")))
+    (is (not= (into {} (map (juxt :player-id :points)) (:players (parse (rankings "standard"))))
+              (into {} (map (juxt :player-id :points)) (:players (parse (rankings "ppr")))))
+        "the projections themselves still move")))
+
+(deftest a-null-weight-does-not-take-the-board-down
+  ;; Clearing a box in the custom scoring editor sends NaN, which JSON.stringify
+  ;; writes as null. That used to throw on (zero? nil), return a 400, and — since
+  ;; the frontend read any JSON body as success — blank the whole board.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] fixture)]
+    (let [resp (rankings (assoc (:ppr scoring/presets) :rec nil))
+          b    (parse resp)]
+      (is (= 200 (:status resp)))
+      (is (= 40 (count (:players b))))
+      (is (= (into {} (map (juxt :player-id :worth)) (:players (parse (rankings "standard"))))
+             (into {} (map (juxt :player-id :worth)) (:players b)))
+          "an unusable weight costs that one stat, which is exactly standard scoring here"))))
+
+(deftest a-config-that-cannot-score-anything-is-rejected
+  ;; It used to return 200 and a board where every player was worth $0, which
+  ;; reads as a valuation rather than as a broken config.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] fixture)]
+    (doseq [s [{} {:rec 0.0 :rec_yd 0.0} {:rec nil}]]
+      (let [resp (rankings s)]
+        (is (= 400 (:status resp)) (pr-str s))
+        (is (re-find #"non-zero" (:error (parse resp))))))))
+
+(deftest a-legacy-num-tiers-key-is-simply-ignored
+  ;; Persisted configs written before the tier count became automatic still send
+  ;; it; an unknown key must not fail the request.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] fixture)]
+    (let [resp (routes/rankings-handler
+                {:body (input-stream
+                        (json/write-value-as-string
+                         {:num-teams 12 :num-tiers 5 :scoring "ppr"
+                          :league-state {:teams (vec (repeat 12 {:bankroll 200.0 :roster []}))
+                                         :drafted-player-ids [] :starting-bankroll 200 :picks []}}))})]
+      (is (= 200 (:status resp))))))
+
+(deftest the-board-carries-the-format-matching-the-league
+  (routes/reset-universe!)
+  (let [u (update fixture :players
+                  (fn [ps] (assoc-in (vec ps) [0 :vendor/by-format]
+                                     {:ppr {:sleeper/adp 1.0} :standard {:sleeper/adp 9.0}})))
+        adp-of (fn [s] (->> (:players (parse (rankings s)))
+                            (filter #(= "rb0" (:player-id %))) first :sleeper/adp))]
+    (with-redefs [pipeline/load-universe (fn [& _] u)]
+      (is (= 1.0 (adp-of "ppr")))
+      (is (= 9.0 (adp-of "standard")))
+      (is (not-any? :vendor/by-format (:players (parse (rankings "ppr"))))
+          "the three-format bundle never ships to the client"))))

@@ -21,7 +21,7 @@
 (defn season-url [season] (str base "/stats_player_reg_" season ".csv"))
 
 (def stat-columns
-  "nflverse column -> the Sleeper stat key `rankings.scoring` already speaks.
+  "nflverse column -> the Sleeper stat key `draft-day.scoring` already speaks.
   Deliberately limited to offensive scoring: the benchmark pool is QB/RB/WR/TE,
   and nflverse has no per-player team-defense rows to map :sack/:int/:def_td onto."
   {"passing_yards"             :pass_yd
@@ -41,7 +41,7 @@
 
 (defn row->stats
   "Pure: one nflverse row -> a Sleeper-keyed stat line, so realized outcomes can
-  be scored by `rankings.scoring/player-points` under the league's own config."
+  be scored by `draft-day.scoring/player-points` under the league's own config."
   [row]
   (into {} (map (fn [[col k]] [k (fetch/num0 (get row col))])) stat-columns))
 

@@ -24,6 +24,7 @@
             [draft-day.ingestion.match :as match]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.validate :as validate]
+            [draft-day.scoring :as scoring]
             [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
             [clojure.edn :as edn]
@@ -34,8 +35,11 @@
   "Bumped whenever the player row shape changes. It rides in the cache filename
   as well as the payload, so an old file is simply never found rather than
   deserializing cleanly into missing columns that render as zero. The benchmark
-  harness learned this the hard way — see benchmark/fetch.clj's cache-path."
-  1)
+  harness learned this the hard way — see benchmark/fetch.clj's cache-path.
+
+  2: vendor columns moved under :vendor/by-format, one entry per scoring format,
+  and the write-only :sleeper/pts-* fields were dropped."
+  2)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -70,6 +74,12 @@
   (when (.exists (io/file path))
     (with-open [in (io/input-stream path)]
       (transit/read (transit/reader in :json)))))
+
+(defn delete-cache!
+  "Remove the on-disk cache file, if present. A no-op when already absent."
+  [path]
+  (let [f (io/file path)]
+    (when (.exists f) (.delete f))))
 
 (defn cache-fresh? [path ttl-hours]
   (let [f (io/file path)]
@@ -140,45 +150,66 @@
           (assoc :players players)
           (assoc-in [:sources label] report)))))
 
+(defn format-label [source fmt] (keyword (namespace source) (str (name source) "-" (name fmt))))
+
 (def enrichment-source-labels
   "Every source `enrich-universe` reports on. The bundled sample is expected to
   carry all of them; when a new one is added here and the sample is not
   recaptured, its column renders blank offline with nothing to say the column
   is structurally absent rather than merely unmatched. That is exactly what
   happened when the FantasyPros AAV and sleepers joins were introduced."
-  [:sleeper/byes :fantasypros/ecr :fantasypros/aav :fantasypros/sleepers :espn])
+  (into [:sleeper/byes :fantasypros/sleepers :espn]
+        (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
+                           (format-label :fantasypros/aav fmt)]))
+        scoring/formats))
+
+(defn scoped
+  "Re-key a by-key enrichment map so its columns land under
+  `[:vendor/by-format fmt]` rather than at the top level."
+  [fmt by-key]
+  (some-> by-key (update-vals (fn [cols] {:vendor/by-format {fmt cols}}))))
 
 (defn enrich-universe
   "Left-join the best-effort enrichment columns onto an already-validated
   universe, returning `{:players :sources}`. Split out from the fetch so the
-  validation gate below reads as the gate it is."
+  validation gate below reads as the gate it is.
+
+  FantasyPros publishes ECR and auction values per scoring format, so all three
+  are fetched and stored side by side under `:vendor/by-format`; the league's
+  format is chosen per request in `rankings.vendor`. Baking one format in here
+  is what made a standard league read PPR tiers, PPR rank spread and PPR market
+  prices — the universe cache is shared across leagues, so the choice cannot be
+  made at ingestion.
+
+  ESPN is deliberately *not* format-scoped: it publishes the same auction value
+  under both its PPR and STANDARD rank types (checked against the live feed), so
+  splitting it would invent a distinction the source does not make."
   [season universe]
   (let [;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
         ;; :team every player already carries — complete, not just the FantasyPros
         ;; matches. Best-effort: a failed schedule fetch just leaves :bye nil.
         byes     (best-effort (sleeper/fetch-byes season))
-        ;; Deliberate shortcut: the FantasyPros enrichments are baked into this
-        ;; single, scoring-agnostic shared universe at ingestion, but they differ
-        ;; by format — the ECR cheatsheet (:ppr/:half-ppr/:standard) and the AAV
-        ;; calculator (scoring param). We always scrape PPR, so non-PPR leagues
-        ;; get PPR-flavored tiers/rank-spread and market prices. See README todo
-        ;; for the proper fix (store all variants, select at ranking time).
-        ecr      (best-effort (fantasypros/fetch-ecr :ppr))
-        aav      (best-effort (fantasypros/fetch-aav))
         sleepers (best-effort (fantasypros/fetch-sleepers))
         espn     (best-effort (espn/fetch season))]
     ;; Byes join on :team rather than a name key, so they get a row count but
     ;; none of the match-rate machinery — reporting them as a 0% join would be
     ;; a lie, not a diagnostic.
     (log/info (format ":sleeper/byes: %d team bye weeks" (count byes)))
-    (-> {:players (cond-> universe (seq byes) (sleeper/assoc-byes byes))
-         :sources {:sleeper/byes (if (seq byes)
-                                   {:ok? true :rows (count byes)}
-                                   {:ok? false})}}
-        (apply-enrichment :fantasypros/ecr      (some-> ecr match/by-key))
-        (apply-enrichment :fantasypros/aav      (some-> aav match/by-key))
-        (apply-enrichment :fantasypros/sleepers (some-> sleepers match/by-key))
-        (apply-enrichment :espn                 espn))))
+    (as-> {:players (cond-> universe (seq byes) (sleeper/assoc-byes byes))
+           :sources {:sleeper/byes (if (seq byes)
+                                     {:ok? true :rows (count byes)}
+                                     {:ok? false})}} acc
+      (reduce (fn [acc fmt]
+                (let [ecr (best-effort (fantasypros/fetch-ecr fmt))
+                      aav (best-effort (fantasypros/fetch-aav fmt))]
+                  (-> acc
+                      (apply-enrichment (format-label :fantasypros/ecr fmt)
+                                        (scoped fmt (some-> ecr match/by-key)))
+                      (apply-enrichment (format-label :fantasypros/aav fmt)
+                                        (scoped fmt (some-> aav match/by-key))))))
+              acc scoring/formats)
+      (apply-enrichment acc :fantasypros/sleepers (some-> sleepers match/by-key))
+      (apply-enrichment acc :espn espn))))
 
 (defn fetch-enriched-universe
   "The live universe: Sleeper rows, id-validated, then enriched.

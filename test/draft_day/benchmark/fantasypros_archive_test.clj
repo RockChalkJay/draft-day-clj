@@ -4,7 +4,7 @@
   kickoff, and a column order that changed between eras."
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.benchmark.sources.fantasypros-archive :as fpa]
-            [draft-day.rankings.scoring :as scoring]))
+            [draft-day.scoring :as scoring]))
 
 ;; 2021-2025 markup: RECEIVING then RUSHING, name in <a class="player-name">.
 (def modern-html

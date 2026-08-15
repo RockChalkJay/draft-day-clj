@@ -13,49 +13,52 @@
             [draft-day.rankings.tcm :as tcm]
             [draft-day.rankings.league-state :as ls]))
 
-(defn- apply-expert-tier
-  "The live-fetched FantasyPros expert tier (:fantasypros/ecr-tier) takes
-  precedence over the computed cliff tier when present and >= 1."
-  [player]
-  (let [et (:fantasypros/ecr-tier player)]
-    (if (and (number? et) (>= et 1))
-      (assoc player :tier (long et))
-      player)))
+(defn tier-floor
+  "Points below which a position's tail collapses into one tier.
 
-(defn- dense-rank-per-position
-  "Re-anchor :tier to the per-position scale: within each position, dense-rank
-  the tier values so the best cluster is tier 1. Identity for computed cliff
-  tiers (already 1..k); collapses expert *overall* tiers (a TE's best cluster may
-  be overall tier 5) back to per-position 1..k that the board/PDM think in."
-  [players]
-  (mapcat (fn [[_ grp]]
-            (let [rank-map (into {} (map-indexed (fn [i t] [t (inc i)])
-                                                 (sort (distinct (map :tier grp)))))]
-              (map #(update % :tier rank-map) grp)))
-          (group-by :position players)))
+  Valuation's replacement level where there is one. K and DST are deliberately
+  absent from that map so they price at $0, but they still need a floor: kicker
+  points are small enough that a 2-point drop down the tail is a 20% drop, and
+  tiering the whole pool split 44 kickers into 12 tiers of mostly one. Exactly
+  one of each starts, so the num-teams-th best is the same boundary the priced
+  positions get."
+  [grp level num-teams]
+  (or level
+      (let [pool (vec (sort-by :points > grp))]
+        (when (seq pool)
+          (double (or (:points (pool (min num-teams (dec (count pool))))) 0))))))
 
 (defn static-rankings
-  "Steps 0-2: points -> floor/ceiling -> per-position tiers (on mean points;
-  expert override + re-anchor) -> replacement + VORP (on points). Returns
-  {:players [...] :replacement-levels {...}}. Never mutated by the live layer.
+  "Steps 0-2: points -> floor/ceiling -> replacement level -> per-position tiers
+  (cliffs above replacement) -> VORP. Returns {:players [...]
+  :replacement-levels {...}}. Never mutated by the live layer.
+
+  Replacement runs before tiering because the tier cut needs to know where a
+  position stops being draftable; both stages read only :points, so the order
+  between them is free.
+
+  :tier is deliberately computed here rather than taken from
+  :fantasypros/ecr-tier, which used to override it. That tier is scraped PPR-only
+  and covers ~75% of the board, so Tier was the one board column that did not
+  move when the league's scoring did — and dense-ranking expert *overall* tiers
+  (1-16) together with computed *per-position* tiers made the two scales one
+  incoherent number. The expert tier is still shipped for the :fp-tier column.
 
   Opts :model (default :points, the raw scored projection) and :weights select
   which `rankings.model` produces :points; every later stage is indifferent to
   the choice. See `draft-day.rankings.model`."
   ([board scoring num-teams] (static-rankings board scoring num-teams {}))
-  ([board scoring num-teams {:keys [num-tiers replacement-config model weights]
-                             :or   {num-tiers 5 model :points}}]
-   (let [enriched   (-> (model/score-board model {:scoring scoring :weights weights} board)
-                        projections/with-floor-ceiling)
-         tiered     (mapcat (fn [[_ grp]] (tiers/tiers-by-cliffs grp num-tiers))
-                            (group-by :position enriched))
-         reanchored (->> tiered
-                         (map apply-expert-tier)
-                         dense-rank-per-position
-                         vec)
-         levels     (replacement/replacement-levels reanchored num-teams
-                                                    (or replacement-config {}) :points)]
-     {:players            (replacement/with-vorp reanchored levels :points)
+  ([board scoring num-teams {:keys [replacement-config model weights]
+                             :or   {model :points}}]
+   (let [enriched (-> (model/score-board model {:scoring scoring :weights weights} board)
+                      projections/with-floor-ceiling)
+         levels   (replacement/replacement-levels enriched num-teams
+                                                  (or replacement-config {}) :points)
+         tiered   (into [] (mapcat (fn [[pos grp]]
+                                     (tiers/tiers-by-cliffs
+                                      grp (tier-floor grp (get levels pos) num-teams))))
+                        (group-by :position enriched))]
+     {:players            (replacement/with-vorp tiered levels :points)
       :replacement-levels levels})))
 
 (defn live-valuation
