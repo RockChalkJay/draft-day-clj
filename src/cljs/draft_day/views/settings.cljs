@@ -2,7 +2,8 @@
   (:require [clojure.string :as str]
             [reagent.core :as r]
             [re-frame.core :as rf]
-            [draft-day.db :as db]))
+            [draft-day.db :as db]
+            [draft-day.scoring :as scoring]))
 
 (defn- numeric-field
   "A number input that keeps what you typed until you leave it.
@@ -100,7 +101,7 @@
    [:span label [:i.not-projected "not projected"]]
    [:input {:type "number" :value (str value) :disabled true :read-only true}]])
 
-(defn- custom-scoring-editor [scoring]
+(defn- custom-scoring-editor [weights]
   [:div.scoring-groups
    (map (fn [{:keys [group stats]}]
           ^{:key group}
@@ -111,9 +112,9 @@
             ;; on a special form is dropped at compile time, which left every row
             ;; keyless and reconciled by index.
             (map (fn [[stat-key label]]
-                   (if (contains? db/unprojected-stats stat-key)
-                     ^{:key stat-key} [unprojected-field label (get scoring stat-key 0)]
-                     ^{:key stat-key} [weight-field label (get scoring stat-key 0)
+                   (if (contains? scoring/unprojected-stats stat-key)
+                     ^{:key stat-key} [unprojected-field label (get weights stat-key 0)]
+                     ^{:key stat-key} [weight-field label (get weights stat-key 0)
                                        #(rf/dispatch [:set-scoring-weight stat-key %])]))
                  stats)]])
         db/scoring-catalog)])

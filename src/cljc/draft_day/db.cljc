@@ -168,15 +168,6 @@
 ;; Grouped presentational metadata for the custom scoring editor: each group is
 ;; rendered as a section of numeric weight inputs, in this order.
 
-(def unprojected-stats
-  "Stat keys we score but that Sleeper's projections never carry — checked
-  against both the live universe and the bundled sample, where all four appear
-  zero times. Kickers are projected for extra points but not field goals, and
-  team defenses for sacks/interceptions/fumble recoveries but not forced fumbles,
-  defensive touchdowns or safeties. A weight on these cannot move any player's
-  points, so the editor shows them but will not pretend they are editable."
-  #{:fgm :ff :def_td :safe})
-
 (def scoring-catalog
   [{:group "Passing"   :stats [[:pass_yd "Pass Yd"] [:pass_td "Pass TD"]
                                [:pass_int "Pass INT"] [:pass_2pt "Pass 2PT"]]}

@@ -197,7 +197,13 @@
   ;; reads as a valuation rather than as a broken config.
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe (fn [& _] fixture)]
-    (doseq [s [{} {:rec 0.0 :rec_yd 0.0} {:rec nil}]]
+    (doseq [s [{}
+               {:rec 0.0 :rec_yd 0.0}
+               {:rec nil}
+               ;; What Settings actually produces when a manager zeroes every
+               ;; weight: the four stats nothing is projected for are rendered
+               ;; disabled, so they keep the preset's numbers. They score nobody.
+               (select-keys (:ppr scoring/presets) scoring/unprojected-stats)]]
       (let [resp (rankings s)]
         (is (= 400 (:status resp)) (pr-str s))
         (is (re-find #"non-zero" (:error (parse resp))))))))

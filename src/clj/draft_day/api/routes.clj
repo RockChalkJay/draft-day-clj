@@ -100,7 +100,7 @@
       ;; 0.0 and prices the whole board at $0. Say so rather than returning a
       ;; plausible-looking board of zeroes.
       (if-not (scoring/scores-anything? scoring*)
-        (json-response 400 {:error "scoring config has no non-zero weights"})
+        (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
         (let [players  (vendor/for-scoring (:players (universe false)) scoring*)
               nt       (or num-teams 12)
               opts     {:replacement-config replacement-config}
