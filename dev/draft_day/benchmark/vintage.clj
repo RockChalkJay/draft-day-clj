@@ -176,7 +176,7 @@
                        (let [gsis (resolve-id (:player-id p) nil)
                              adp  (if (= adp-source :ffc)
                                     (get ffc-adp gsis)
-                                    (:sleeper/adp p))]
+                                    (sleeper/adp-of p))]
                          (when (and (scoring-positions (:position p))
                                     adp (< adp pool-size))
                            (vintage-row {:player  p
@@ -185,6 +185,14 @@
                                          :usage   (get usage gsis)
                                          :outcome (get outcomes gsis)}))))
                      players)]
+     ;; An empty board is never a real answer — it means the ADP source resolved
+     ;; to nothing, and the `adp` guard above turned that into a season with no
+     ;; players instead of an error. That is exactly how a key move under
+     ;; `:sleeper/adp` went unnoticed.
+     (when (empty? rows)
+       (throw (ex-info "vintage: no player cleared the ADP gate — the ADP source produced nothing"
+                       {:season season :adp-source adp-source :pool-size pool-size
+                        :universe (count players)})))
      {:season  season
       :gate    (gate season)
       :players (attach-biography rows season)})))

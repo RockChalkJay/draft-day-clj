@@ -41,7 +41,9 @@
   "{:players [...] :vintage {...}} for a season, disk-cached.
 
   :players are normalized universe rows (:player-id :player-name :position :stats
-  :sleeper/adp ...) exactly as the live pipeline produces them.
+  :vendor/by-format ...) exactly as the live pipeline produces them — which is
+  why ADP is read through `adp-of` rather than off a flat key that ingestion is
+  free to move.
 
   Deliberately does NOT swallow fetch errors. Sleeper answers 200 with an empty
   stats map on every entry for seasons it has no projections for (1999-2017:
@@ -64,8 +66,25 @@
 (defn players [season] (:players (season-data season)))
 (defn vintage [season] (:vintage (season-data season)))
 
+(def adp-format
+  "Which published format's ADP the harness scores against.
+
+  Ingestion carries all three under `:vendor/by-format`. Before it did, the flat
+  `:sleeper/adp` was PPR-preferred — so :ppr is what keeps these numbers
+  comparable with every result already recorded. Changing it moves every
+  benchmark, which is a decision to make and report deliberately, not a default
+  to drift into."
+  :ppr)
+
+(defn adp-of
+  "One universe row's harness ADP, or nil. The single reader of the key, so a
+  move like the one to `:vendor/by-format` breaks in one place rather than
+  silently resolving to nil across the harness."
+  [p]
+  (get-in p [:vendor/by-format adp-format :sleeper/adp]))
+
 (defn adp
   "{sleeper-player-id adp} for a season, from the same projection payload."
   [season]
-  (into {} (keep (fn [p] (when-let [a (:sleeper/adp p)] [(:player-id p) a])))
+  (into {} (keep (fn [p] (when-let [a (adp-of p)] [(:player-id p) a])))
         (players season)))
