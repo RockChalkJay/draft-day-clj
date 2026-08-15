@@ -89,17 +89,20 @@
     ;; stays there until something else triggers a recompute.
     (if-not (= n (:recompute-seq db))
       db
-      (cond-> (assoc db :ranked resp)
-        ;; Clear only an error this handler's own failure path put up; other
-        ;; flows (a league import's "✓ Imported …") own the status line too.
-        (:recompute-error? db)
-        (assoc :status (:universe-status db) :recompute-error? false)))))
+      (let [err (:recompute-error db)]
+        (cond-> (assoc db :ranked resp :recompute-error nil)
+          ;; Take the status line back only while the error is still what is on
+          ;; it. Other flows (a league import's "✓ Imported …") own it too, and
+          ;; between the failure and this reply one of them may have spoken.
+          (and err (= err (:status db)))
+          (assoc :status (:universe-status db)))))))
 
 (rf/reg-event-db :recompute-failed
   (fn [db [_ err]]
     ;; Leave :ranked alone — the previous board is stale but readable, which
     ;; beats blanking it. The status line is what says it is stale.
-    (assoc db :status (str "Rankings update failed: " err) :recompute-error? true)))
+    (let [msg (str "Rankings update failed: " err)]
+      (assoc db :status msg :recompute-error msg))))
 
 ;; ---- UI state ----
 

@@ -144,7 +144,17 @@
   (rf/dispatch-sync [:set-status "✓ Imported \"RaiderNation\" (2026)"])
   (rf/dispatch-sync [:recompute])
   (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db) {:players []}])
-  (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db))))
+  (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db)))
+
+  (testing "not even when it is clearing an earlier failure of its own"
+    ;; The real sequence: a recompute fails, the manager imports a league, and
+    ;; the import's own recompute lands 250 ms later. The import's message has
+    ;; to survive that.
+    (rf/dispatch-sync [:recompute-failed "boom"])
+    (rf/dispatch-sync [:set-status "✓ Imported \"RaiderNation\" (2026)"])
+    (rf/dispatch-sync [:recompute])
+    (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db) {:players []}])
+    (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db)))))
 
 ;; ---- which way a column opens ----
 
