@@ -1,6 +1,7 @@
 (ns draft-day.ingestion.pipeline-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
+            [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.sleeper :as sleeper]))
@@ -197,3 +198,22 @@
         "player-id must always equal the best member of its own :ids envelope")
     (is (= (count players) (count (distinct (map :player-id players))))
         "anchoring must not collide two players onto one id")))
+
+(deftest the-six-fantasypros-scrapes-go-out-together
+  ;; Six 30-second-timeout scrapes awaited one at a time stack to three minutes
+  ;; on the request thread that missed the cache. Each stub here parks until all
+  ;; six have started, so a sequential caller deadlocks the first one and comes
+  ;; back with nils.
+  (let [latch (java.util.concurrent.CountDownLatch. 6)
+        stub  (fn [fmt]
+                (.countDown latch)
+                (if (.await latch 5 java.util.concurrent.TimeUnit/SECONDS)
+                  [{:key (str "k-" (name fmt)) :fantasypros/ecr 1}]
+                  (throw (ex-info "this scrape ran on its own" {:fmt fmt}))))]
+    (with-redefs [fantasypros/fetch-ecr stub
+                  fantasypros/fetch-aav stub]
+      (let [out (update-vals (pipeline/start-fantasypros-scrapes)
+                             #(update-vals % deref))]
+        (is (= 3 (count out)))
+        (is (every? (fn [m] (every? seq (vals m))) (vals out))
+            "all six resolved, which only happens if all six were in flight")))))

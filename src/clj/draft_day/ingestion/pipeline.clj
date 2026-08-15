@@ -169,6 +169,20 @@
   [fmt by-key]
   (some-> by-key (update-vals (fn [cols] {:vendor/by-format {fmt cols}}))))
 
+(defn start-fantasypros-scrapes
+  "Kick off all six FantasyPros scrapes at once, returning
+  {fmt {:ecr future :aav future}}.
+
+  Six independent HTTP fetches with a 30-second timeout each. Awaited one at a
+  time they stack to three minutes of a thread doing nothing — and this runs
+  synchronously inside the GET /api/players that missed the cache. Started
+  together they cost one round trip."
+  []
+  (into {} (map (fn [fmt]
+                  [fmt {:ecr (future (best-effort (fantasypros/fetch-ecr fmt)))
+                        :aav (future (best-effort (fantasypros/fetch-aav fmt)))}]))
+        scoring/formats))
+
 (defn enrich-universe
   "Left-join the best-effort enrichment columns onto an already-validated
   universe, returning `{:players :sources}`. Split out from the fetch so the
@@ -179,18 +193,22 @@
   format is chosen per request in `rankings.vendor`. Baking one format in here
   is what made a standard league read PPR tiers, PPR rank spread and PPR market
   prices — the universe cache is shared across leagues, so the choice cannot be
-  made at ingestion.
+  made at ingestion. Those six scrapes go out together (`start-fantasypros-scrapes`)
+  rather than one after another; the joins that follow are still sequential.
 
   ESPN is deliberately *not* format-scoped: it publishes the same auction value
   under both its PPR and STANDARD rank types (checked against the live feed), so
   splitting it would invent a distinction the source does not make."
   [season universe]
-  (let [;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
+  (let [;; Started first so the three blocking fetches below overlap them.
+        fp-pending (start-fantasypros-scrapes)
+        ;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
         ;; :team every player already carries — complete, not just the FantasyPros
         ;; matches. Best-effort: a failed schedule fetch just leaves :bye nil.
         byes     (best-effort (sleeper/fetch-byes season))
         sleepers (best-effort (fantasypros/fetch-sleepers))
-        espn     (best-effort (espn/fetch season))]
+        espn     (best-effort (espn/fetch season))
+        fp       (update-vals fp-pending #(update-vals % deref))]
     ;; Byes join on :team rather than a name key, so they get a row count but
     ;; none of the match-rate machinery — reporting them as a 0% join would be
     ;; a lie, not a diagnostic.
@@ -199,9 +217,10 @@
            :sources {:sleeper/byes (if (seq byes)
                                      {:ok? true :rows (count byes)}
                                      {:ok? false})}} acc
+      ;; The joins stay sequential and in `scoring/formats` order: only the
+      ;; fetching is concurrent, so :sources reads the same every run.
       (reduce (fn [acc fmt]
-                (let [ecr (best-effort (fantasypros/fetch-ecr fmt))
-                      aav (best-effort (fantasypros/fetch-aav fmt))]
+                (let [{:keys [ecr aav]} (get fp fmt)]
                   (-> acc
                       (apply-enrichment (format-label :fantasypros/ecr fmt)
                                         (scoped fmt (some-> ecr match/by-key)))
