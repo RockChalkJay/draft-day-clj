@@ -111,6 +111,67 @@
   [scoring]
   (some-> (fetch-page (cheatsheet-url scoring)) parse-ecr))
 
+;; --- per-position expert tier ---
+;; The overall cheatsheet above publishes an *overall* tier (1-16). FantasyPros
+;; also publishes a per-position cheatsheet per position, whose `tier` is cut
+;; within that position — a genuinely different, finer scale (12 tiers across 177
+;; RBs, where those RBs share only a handful of overall tiers). `rankings.tiers`
+;; serves both as the two scales of the :ecr strategy, so both are ingested.
+
+(def pos-formats
+  "Whether a position's cheatsheet varies by scoring format.
+
+  RB/WR/TE have ppr / half-point-ppr / bare (standard) variants. QB, K and DST
+  have only the bare page — the prefixed URLs 302 to the *overall* cheatsheet,
+  because reception scoring cannot reorder them. Following that redirect would
+  parse a whole-board page as if it were one position, so the false entries here
+  are load-bearing, not an optimization: those three are fetched once and joined
+  unscoped, the same call `pipeline` already makes for ESPN."
+  {"RB" true "WR" true "TE" true "QB" false "K" false "DST" false})
+
+(def pos-format-prefixes
+  {:ppr "ppr-" :half-ppr "half-point-ppr-" :standard ""})
+
+(defn pos-cheatsheet-url
+  "The per-position cheatsheet for `pos` at scoring format `fmt`.
+
+  An unknown position or format throws, for the reason `cheatsheet-url` gives.
+  A format-invariant position ignores `fmt` and returns its bare page."
+  [pos fmt]
+  (let [varies? (get pos-formats pos ::missing)]
+    (when (= ::missing varies?)
+      (throw (ex-info "no FantasyPros positional cheatsheet for that position"
+                      {:position pos :known (vec (sort (keys pos-formats)))})))
+    (let [prefix (if varies?
+                   (or (get pos-format-prefixes fmt)
+                       (throw (ex-info "no FantasyPros cheatsheet for that scoring format"
+                                       {:scoring fmt
+                                        :known (vec (keys pos-format-prefixes))})))
+                   "")]
+      (str "https://www.fantasypros.com/nfl/rankings/"
+           prefix (str/lower-case pos) "-cheatsheets.php"))))
+
+(defn parse-pos-ecr
+  "Pure: a positional cheatsheet -> seq of {:key :fantasypros/ecr-pos-tier}.
+
+  Deliberately narrow. The page also carries rank_ecr, rank_std and the rest,
+  but those already arrive from the overall cheatsheet; re-emitting them here
+  would put two scrapes in a race to write the same columns through `deep-merge`,
+  and the positional page's ranks are position-relative, so the winner would
+  sometimes be an ECR of 4 meaning 'RB4'. Only the tier is taken — the one thing
+  the overall page cannot give per position."
+  [html]
+  (some->> (parse-ecr html)
+           (keep (fn [{:keys [key :fantasypros/ecr-tier]}]
+                   (when (and key ecr-tier (pos? ecr-tier))
+                     {:key key :fantasypros/ecr-pos-tier ecr-tier})))
+           seq))
+
+(defn fetch-pos-ecr
+  "Network: fetch + parse one position's cheatsheet at one format. nil on failure."
+  [pos fmt]
+  (some-> (fetch-page (pos-cheatsheet-url pos fmt)) parse-pos-ecr))
+
 ;; --- AAV (auction values) ---
 
 (def aav-scoring-params

@@ -101,3 +101,44 @@
 
 (deftest parse-sleepers-returns-nil-on-garbage
   (is (nil? (fp/parse-sleepers "<html>no rows here</html>" "WR"))))
+
+;; ---- per-position expert tier ----
+
+(deftest parse-pos-ecr-takes-the-tier-and-nothing-else
+  ;; The positional page carries rank_ecr, rank_std and the rest too, but those
+  ;; already arrive from the overall cheatsheet. Emitting them here would put two
+  ;; scrapes in a race to write the same columns, and the positional page's ranks
+  ;; are position-relative — so the winner would sometimes be an ECR of 1 meaning
+  ;; "RB1". Only the tier, which the overall page cannot give per position.
+  (let [rows (fp/parse-pos-ecr sample-html)]
+    (is (= 2 (count rows)))
+    (is (= #{:key :fantasypros/ecr-pos-tier} (set (mapcat keys rows))))
+    (is (= {(match/key-for "Bijan Robinson" "RB") 1
+            (match/key-for "CeeDee Lamb" "WR")    2}
+           (into {} (map (juxt :key :fantasypros/ecr-pos-tier)) rows)))))
+
+(deftest parse-pos-ecr-returns-nil-without-blob
+  (is (nil? (fp/parse-pos-ecr "<html>no ecr here</html>"))))
+
+(deftest positional-urls-follow-what-fantasypros-actually-publishes
+  (is (= "https://www.fantasypros.com/nfl/rankings/ppr-rb-cheatsheets.php"
+         (fp/pos-cheatsheet-url "RB" :ppr)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/half-point-ppr-wr-cheatsheets.php"
+         (fp/pos-cheatsheet-url "WR" :half-ppr)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/te-cheatsheets.php"
+         (fp/pos-cheatsheet-url "TE" :standard))
+      "standard is the bare page, not a prefixed one")
+  (doseq [pos ["QB" "K" "DST"]]
+    (is (apply = (map #(fp/pos-cheatsheet-url pos %) scoring/formats))
+        (str pos " publishes one page for every format")))
+  (is (= "https://www.fantasypros.com/nfl/rankings/qb-cheatsheets.php"
+         (fp/pos-cheatsheet-url "QB" :ppr))
+      "and it is the bare one — the prefixed URL 302s to the *overall* cheatsheet,
+       which would parse a whole-board page as if it were one position"))
+
+(deftest an-unknown-position-or-format-throws
+  (is (thrown? clojure.lang.ExceptionInfo (fp/pos-cheatsheet-url "FLEX" :ppr)))
+  (is (thrown? clojure.lang.ExceptionInfo (fp/pos-cheatsheet-url "RB" :six-point-ppr)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/qb-cheatsheets.php"
+         (fp/pos-cheatsheet-url "QB" :six-point-ppr))
+      "a format-invariant position ignores the format rather than throwing on it"))
