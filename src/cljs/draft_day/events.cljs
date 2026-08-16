@@ -134,7 +134,18 @@
                ;; Ascending first for the columns where a lower number is better
                ;; (ranks, tiers, ADP) and alphabetical for the text ones;
                ;; everything else is a dollar or a point total, best-first.
-               {:key k :dir (if (#{:name :team :position :rank :adp :ecr :fp-tier} k) 1 -1)})))))
+               {:key k :dir (if (#{:name :team :position :rank :adp :ecr :tier :fp-tier} k) 1 -1)})))))
+
+;; Which tier technique the board groups by. Display-only: the server computes
+;; every strategy at both scales on each recompute, so this persists and
+;; deliberately skips :recompute (same as :set-position-budget). An unrecognized
+;; keyword is ignored rather than stored, so a stale build's dispatch cannot
+;; persist a strategy that would render the whole board unranked.
+(rf/reg-event-db :set-tier-strategy [persist]
+  (fn [db [_ k]]
+    (if (contains? db/tier-strategies-by-key k)
+      (assoc-in db [:config :tier-strategy] k)
+      db)))
 
 ;; ---- columns ----
 

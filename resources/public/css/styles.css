@@ -121,10 +121,17 @@ button.danger:hover { background: var(--warn); color: #0b0e13; }
    table's right edge. align-items: flex-end keeps every group's bottom edge
    on the same line, immediately touching the table's top edge. */
 .board-controls { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; margin-bottom: 8px; flex-wrap: nowrap; }
-.filters { display: flex; align-items: flex-end; gap: 10px; }
-.pos-filter button { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+/* The filter group keeps its natural width so a long tier legend wraps onto a
+   second line rather than squeezing the controls. */
+.filters { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+/* One segmented-control style, two users: the position filter and the tier
+   technique switcher beside it. */
+.seg { display: flex; align-items: center; }
+.seg-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin-right: 6px; white-space: nowrap; }
+.pos-filter button, .tier-strategy button { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
   border-radius: 8px; padding: 5px 10px; margin-right: 4px; }
-.pos-filter button.on { color: var(--text); background: var(--panel2); border-color: var(--accent); }
+.pos-filter button.on, .tier-strategy button.on { color: var(--text); background: var(--panel2); border-color: var(--accent); }
 .search { width: 220px; }
 
 .col-details { margin-bottom: 8px; }
@@ -182,7 +189,10 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .roster td.slot-bye { color: var(--muted); text-align: right; font-size: 12px; }
 .roster td.slot-bye.bye-uncovered { color: #e0a72e; font-weight: 600; }
 
-/* tier row-coloring — active only when the board is filtered to one position.
+/* tier row-coloring — active in every view. It used to be limited to a
+   single-position filter, because :tier was per-position and a tier 2 RB next to
+   a tier 2 WR meant nothing; the board now carries an overall scale too and the
+   sub picks whichever matches the current filter.
    Fills alternate pale/deep between consecutive tiers so neighbours contrast
    whatever their hues are, plus a bold left-edge stripe that stays crisp
    regardless of the fill, and a rule drawn across each tier boundary. Fills are
@@ -197,9 +207,17 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 /* The boundary itself. Overrides the previous row's 1px td border-bottom under
    border-collapse, so a tier break reads as one heavier line, not two. */
 .board tbody tr.tier-start td { border-top: 2px solid var(--tier-line); }
+/* The untiered bucket: players the active strategy has no tier for. Its grey
+   comes from views/board.cljs (chroma 0, off the hue ramp); the dashed edge is
+   what keeps "no tier" from being carried by colour alone. */
+.board tbody tr.tier-untiered td:first-child { border-left-style: dashed; }
 
-/* tier key — shown above the board only while filtered to one position */
-.tier-key { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+/* tier key — the legend for the active strategy's scale. Allowed to wrap: an
+   overall ECR board can carry a dozen-plus chips, and the filters keep their
+   width, so it takes a second line instead of crushing the controls. */
+.tier-key { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+  justify-content: flex-end; row-gap: 4px; }
+.tier-key-unranked { opacity: .85; }
 .tier-key-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .tier-key-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
 .tier-swatch { width: 16px; height: 10px; border-radius: 3px; display: inline-block; }

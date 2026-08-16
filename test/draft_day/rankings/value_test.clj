@@ -3,7 +3,8 @@
             [draft-day.rankings.value :as value]
             [draft-day.scoring :as scoring]
             [draft-day.rankings.league-state :as ls]
-            [draft-day.rankings.engine :as engine]))
+            [draft-day.rankings.engine :as engine]
+            [draft-day.rankings.tiers :as tiers]))
 
 ;; ---- Value (stable salary-cap dollars) --------------------------------------
 
@@ -144,9 +145,9 @@
   ;; and `tiers-by-cliffs`.
   (let [ks (mapv (fn [i] {:player-id (str "k" i) :position "K" :points (- 300.0 (* i 9))})
                  (range 30))]
-    (is (= 255.0 (engine/tier-floor ks nil 5)) "the 6th best, matching a 1-starter position")
-    (is (= 39.0 (engine/tier-floor ks nil 100)) "clamps to the worst when the pool is short")
-    (is (= 42.0 (engine/tier-floor ks 42.0 5)) "a real replacement level always wins")))
+    (is (= 255.0 (tiers/tier-floor ks nil 5)) "the 6th best, matching a 1-starter position")
+    (is (= 39.0 (tiers/tier-floor ks nil 100)) "clamps to the worst when the pool is short")
+    (is (= 42.0 (tiers/tier-floor ks 42.0 5)) "a real replacement level always wins")))
 
 (deftest tiers-are-cut-from-points-so-they-follow-scoring
   (let [board (synthetic-board)

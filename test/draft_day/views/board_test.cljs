@@ -44,3 +44,20 @@
     (is (= [false true true true]
            (board/tier-starts [{:tier 3} {:tier 1} {:tier 3} {:tier 2}]))))
   (is (= [] (board/tier-starts []))))
+
+;; ---- the untiered bucket ----
+
+(deftest an-untiered-row-is-grey-and-off-the-hue-ramp
+  ;; Chroma 0 is the point: a grey mixed from the ramp would read as one more
+  ;; tier rather than as the absence of one.
+  (is (re-matches #"oklch\(0\.\d+ 0 0\)" (board/tier-color nil 8)))
+  (is (re-matches #"oklch\(0\.\d+ 0 0 / 0?\.\d+\)" (board/tier-fill nil 8)))
+  (is (= (board/tier-color nil 3) (board/tier-color nil 20))
+      "and it does not move with the tier count, having no place on the ramp")
+  (is (not= (board/tier-color nil 8) (board/tier-color 1 8)))
+  (is (not= (board/tier-color nil 8) (board/tier-color 8 8))))
+
+(deftest tier-starts-brackets-a-run-of-untiered-rows
+  ;; Both edges of the bucket are boundaries: entering it and leaving it.
+  (is (= [false true false true]
+         (board/tier-starts [{:tier 3} {:tier nil} {:tier nil} {:tier 4}]))))

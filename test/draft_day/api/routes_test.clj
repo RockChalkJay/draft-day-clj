@@ -250,3 +250,18 @@
       (is (= 9.0 (adp-of "standard")))
       (is (not-any? :vendor/by-format (:players (parse (rankings "ppr"))))
           "the three-format bundle never ships to the client"))))
+
+(deftest the-board-ships-every-tier-strategy-at-both-scales
+  ;; The client switches technique with no round trip, which only works if the
+  ;; response already carries all of them.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] fixture)]
+    (let [players (:players (parse (rankings "ppr")))]
+      (is (seq players))
+      (doseq [p players]
+        (is (contains? (:tiers p) :cliffs) (:player-id p))
+        (is (contains? (:tiers p) :ecr) (:player-id p))
+        (is (= (:tier p) (get-in p [:tiers :cliffs :position]))
+            "the flat :tier stays the default strategy's positional tier"))
+      (is (some #(get-in % [:tiers :cliffs :overall]) players)
+          "the overall scale is populated, not merely present"))))

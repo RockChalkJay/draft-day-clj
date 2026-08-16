@@ -130,9 +130,48 @@
 
 (def default-budget-plan (into {} (map (fn [[_ k]] [k 0])) budget-order))
 
+;; ---- tier strategies ----
+;; Which technique the board groups by. The server computes every registered
+;; strategy at both scales on each recompute, so this is a display choice: it
+;; persists and never triggers a refetch.
+
+(def tier-strategy-catalog
+  "Ordered tier techniques for the board's segmented control.
+
+  Keys must match `draft-day.rankings.tiers/registered`; a test pins the two
+  together across the language boundary, because a button dispatching a keyword
+  the server never computed does not error — it silently renders every player as
+  unranked."
+  [{:key :cliffs :label "Value"
+    :tooltip "Value cliffs — tiers cut where the drop to the next player is steep (VORP overall, projected points within a position)"}
+   {:key :ecr :label "ECR"
+    :tooltip "FantasyPros expert tiers, as published; players FantasyPros does not rank show as unranked"}])
+
+(def tier-strategies-by-key (into {} (map (juxt :key identity)) tier-strategy-catalog))
+
+(def default-tier-strategy
+  "Must equal `draft-day.rankings.tiers/DEFAULT-STRATEGY` — the strategy the
+  server also aliases to the flat :tier key."
+  :cliffs)
+
+(defn tier-scale
+  "Which tier scale the board reads: positional while filtered to one position,
+  overall otherwise. The manager never picks this separately — choosing a
+  position filter has already said which question they are asking."
+  [pos-filter]
+  (if pos-filter :position :overall))
+
+(defn player-tier
+  "`p`'s tier under `strategy` at `scale`, or nil when that strategy has no tier
+  for this player — the board's untiered bucket. Never falls back to another
+  strategy: borrowing one would put two techniques under one legend."
+  [p strategy scale]
+  (get-in p [:tiers strategy scale]))
+
 (def default-config
   {:num-teams 12 :starting-bankroll 200 :scoring :ppr :roster default-roster
-   :budget-plan default-budget-plan})
+   :budget-plan default-budget-plan
+   :tier-strategy default-tier-strategy})
 
 ;; ---- board columns ----
 ;; The board is data-driven: :columns is an ordered vector of {:key :visible?},
@@ -157,7 +196,8 @@
    {:key :inj      :label "Inj"    :tooltip "Injury status"             :default? false}
    {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
-   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros expert tier — one overall tier, not the board's per-position tier; blank where FantasyPros has no match" :default? false}
+   {:key :tier     :label "Tier"   :tooltip "Tier under the board's active technique and scale — see the Tier by control" :default? false}
+   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros' overall expert tier, as published; blank where FantasyPros has no match" :default? false}
    {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? false}
    {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
    {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}])
@@ -198,6 +238,8 @@
    :floor    :floor
    :vorp     :vorp
    :ecr      :fantasypros/ecr
+   ;; resolved in the :board-players sub from the active strategy and scale
+   :tier     :tier
    :fp-tier  :fantasypros/ecr-tier
    :inj      :sleeper/injury-status
    :bye      :bye})
@@ -222,7 +264,13 @@
                :scoring     (cond
                               (map? s) (merge (zipmap scoring/stat-keys (repeat 0)) s)
                               (contains? scoring/presets s) s
-                              :else (:scoring default-config))))))
+                              :else (:scoring default-config))
+               ;; A strategy the catalog has since dropped survives the merge
+               ;; above, and would render the whole board unranked rather than
+               ;; erroring, so it is coerced back here.
+               :tier-strategy (if (contains? tier-strategies-by-key (:tier-strategy cfg))
+                                (:tier-strategy cfg)
+                                default-tier-strategy)))))
 
 (defn default-columns []
   (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) column-catalog))

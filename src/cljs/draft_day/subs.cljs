@@ -95,12 +95,17 @@
     (let [drafted-ids (set (keys drafted))]
       (remove #(contains? drafted-ids (:player-id %)) players))))
 
+(rf/reg-sub :tier-strategy
+  :<- [:config]
+  (fn [cfg _] (or (:tier-strategy cfg) db/default-tier-strategy)))
+
 (rf/reg-sub :board-players
   :<- [:undrafted-players]
   :<- [:sort]
   :<- [:pos-filter]
   :<- [:search]
-  (fn [[players sort pos-filter search] _]
+  :<- [:tier-strategy]
+  (fn [[players sort pos-filter search strategy] _]
     (let [q           (str/lower-case (or search ""))
           filtered    (->> players
                            (filter #(or (nil? pos-filter) (= (:position %) pos-filter)))
@@ -108,7 +113,15 @@
           ;; live overall rank by Worth (independent of the active sort column)
           rank-map    (into {} (map-indexed (fn [i p] [(:player-id p) (inc i)])
                                             (sort-by #(- (or (:worth %) 0)) filtered)))
-          ranked      (map #(assoc % :rank (rank-map (:player-id %))) filtered)]
+          scale       (db/tier-scale pos-filter)
+          ;; :tier is resolved here, shadowing the flat alias the server ships.
+          ;; The server sends every strategy at both scales, so switching
+          ;; technique is this one assoc — no refetch, no :recompute — and every
+          ;; consumer downstream (row striping, the legend, the Tier column,
+          ;; sorting) keeps reading a single :tier key.
+          ranked      (map #(assoc % :rank (rank-map (:player-id %))
+                                     :tier (db/player-tier % strategy scale))
+                           filtered)]
       (vec (sort-players ranked (:key sort) (:dir sort))))))
 
 ;; ---- my team / roster ----

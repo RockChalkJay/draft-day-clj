@@ -171,9 +171,19 @@
     (is (= (db/default-columns) (db/reconcile-columns []))))
 
   (testing "a key no longer in the catalog is dropped"
-    (is (not-any? #(= :tier (:key %))
-                  (db/reconcile-columns [{:key :tier :visible? true}
+    (is (not-any? #(= :num-tiers (:key %))
+                  (db/reconcile-columns [{:key :num-tiers :visible? true}
                                          {:key :name :visible? true}]))))
+
+  (testing "a reintroduced key is kept at its stored position and visibility"
+    ;; :tier was in the catalog, was removed when tiers became row striping, and
+    ;; is back now that a tier number depends on which technique is active. A
+    ;; blob written before the removal still carries it, and must not be treated
+    ;; as unknown.
+    (let [out (db/reconcile-columns [{:key :tier :visible? true}
+                                     {:key :name :visible? true}])]
+      (is (= [:tier :name] (mapv :key (take 2 out))))
+      (is (true? (:visible? (first out))))))
 
   (testing "stored order and visibility survive; new catalog keys append"
     (let [out (db/reconcile-columns [{:key :vorp :visible? false}

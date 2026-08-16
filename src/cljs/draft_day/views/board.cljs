@@ -57,6 +57,8 @@
     :floor    [:td.num.muted (n0 (:floor p))]
     :vorp     [:td.num (n0 (:vorp p))]
     :ecr      [:td.num (or (:fantasypros/ecr p) "–")]
+    ;; already resolved to the active strategy and scale by :board-players
+    :tier     [:td.num (or (:tier p) "–")]
     :fp-tier  [:td.num.muted (or (:fantasypros/ecr-tier p) "–")]
     :inj      [:td (or (:sleeper/injury-status p) "–")]
     :bye      (let [clash? (db/board-bye-clash? (:position p) (:bye p)
@@ -104,6 +106,15 @@
 (def tier-hue-best 150.0)
 (def tier-hue-worst 22.0)
 
+(def ^:private tier-untiered
+  "The bucket for players the active strategy has no tier for — FantasyPros ranks
+  about three quarters of the board, so under :ecr the rest land here.
+
+  Chroma 0 on purpose: it sits off the hue ramp entirely, because a grey that
+  read as 'greener than the last tier' would look like a tier. Paired with a
+  dashed left stripe in styles.css so 'no tier' is not carried by colour alone."
+  {:l 0.60 :alpha 0.10})
+
 ;; The alternating bands. :pale is a bright color laid on thin, :deep a dimmer
 ;; one laid on thick — they differ in lightness *and* in strength, so a pair
 ;; stays apart even where the two hues are close.
@@ -126,29 +137,33 @@
 
 (defn tier-color
   "Full-strength color for tier `t` of `n` — the row's left stripe and its
-  legend swatch."
+  legend swatch. A nil tier is the untiered bucket's neutral grey."
   [t n]
-  (let [{:keys [l]} (tier-bands (tier-band t))]
-    (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) ")")))
+  (if (nil? t)
+    (str "oklch(" (:l tier-untiered) " 0 0)")
+    (let [{:keys [l]} (tier-bands (tier-band t))]
+      (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) ")"))))
 
 (defn tier-fill
   "Row background for tier `t` of `n`: `tier-color` laid over the board at the
-  band's strength."
+  band's strength. A nil tier is the untiered bucket's neutral grey."
   [t n]
-  (let [{:keys [l alpha]} (tier-bands (tier-band t))]
-    (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) " / " alpha ")")))
+  (if (nil? t)
+    (str "oklch(" (:l tier-untiered) " 0 0 / " (:alpha tier-untiered) ")")
+    (let [{:keys [l alpha]} (tier-bands (tier-band t))]
+      (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) " / " alpha ")"))))
 
 (defn- tier-style [t n]
   {"--tier-bg"   (tier-fill t n)
    "--tier-line" (tier-color t n)})
 
-(defn- player-row [p cols nominated color-tier? n-tiers tier-start?]
-  [:tr (cond-> {:class [(when (= nominated (:player-id p)) "selected")
-                        ;; tier row-coloring only when filtered to a single position
-                        (when color-tier? "tier-row")
-                        (when (and color-tier? tier-start?) "tier-start")]
-                :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
-         color-tier? (assoc :style (tier-style (or (:tier p) 1) n-tiers)))
+(defn- player-row [p cols nominated n-tiers tier-start?]
+  [:tr {:class [(when (= nominated (:player-id p)) "selected")
+                "tier-row"
+                (when (nil? (:tier p)) "tier-untiered")
+                (when tier-start? "tier-start")]
+        :style (tier-style (:tier p) n-tiers)
+        :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
    (map (fn [{k :key}] ^{:key k}
           [cell k p]) cols)])
 
@@ -167,10 +182,12 @@
 ;; ---- tier key ----
 
 (defn- tier-key
-  "Legend of the tier stripe colors, showing every tier present on the board."
+  "Legend of the tier stripe colors, showing every tier present on the board,
+  plus the untiered bucket when the active strategy has players it cannot tier."
   [players n-tiers]
-  (let [tiers (->> players (keep :tier) distinct sort)]
-    (when (seq tiers)
+  (let [tiers     (->> players (keep :tier) distinct sort)
+        unranked? (some #(nil? (:tier %)) players)]
+    (when (or (seq tiers) unranked?)
       [:div.tier-key
        [:span.tier-key-label "Tiers"]
        (map (fn [t]
@@ -178,7 +195,11 @@
               [:span.tier-key-item
                [:i.tier-swatch {:style {:background (tier-color t n-tiers)}}]
                (str "T" t)])
-            tiers)])))
+            tiers)
+       (when unranked?
+         [:span.tier-key-item.tier-key-unranked
+          [:i.tier-swatch {:style {:background (tier-color nil n-tiers)}}]
+          "Unranked"])])))
 
 ;; ---- filters ----
 
@@ -194,6 +215,22 @@
      [:button {:class (when (nil? active) "on") :on-click #(rf/dispatch [:set-pos-filter nil])} "All"]
      (map pos-button-fn positions)]))
 
+(defn- tier-strategy-picker
+  "Which technique the board tiers by. Switching is instant: the server ships
+  every strategy at both scales with each recompute, so this dispatches no
+  fetch."
+  []
+  (let [active @(rf/subscribe [:tier-strategy])]
+    [:div.tier-strategy.seg
+     [:span.seg-label "Tier by"]
+     (map (fn [{:keys [key label tooltip]}]
+            ^{:key key}
+            [:button {:class (when (= active key) "on")
+                      :title tooltip
+                      :on-click #(rf/dispatch [:set-tier-strategy key])}
+             label])
+          db/tier-strategy-catalog)]))
+
 (defn- search-box []
   (let [q @(rf/subscribe [:search])]
     [:input.search {:type "text" :placeholder "Search player or team…"
@@ -207,13 +244,16 @@
         cols        @(rf/subscribe [:visible-columns])
         sort        @(rf/subscribe [:sort])
         nominated   @(rf/subscribe [:nominated-id])
-        ;; color rows by tier only when filtered to a single position
-        color-tier? (some? @(rf/subscribe [:pos-filter]))
+        ;; Rows are tier-coloured in every view now. They used to be coloured
+        ;; only under a position filter, because :tier was per-position and a
+        ;; tier 2 RB beside a tier 2 WR meant nothing; the board now carries an
+        ;; overall scale as well and `:board-players` picks the one that matches
+        ;; the current filter, so both views have a coherent number to colour by.
         n-tiers     (reduce max 1 (keep :tier players))]
     [:div.board-wrap
      [:div.board-controls
-      [:div.filters [pos-filter] [search-box]]
-      (when color-tier? [tier-key players n-tiers])]
+      [:div.filters [pos-filter] [tier-strategy-picker] [search-box]]
+      [tier-key players n-tiers]]
      [:div.table-scroll
       [:table.board
        [:thead [:tr 
@@ -222,5 +262,5 @@
        [:tbody
         (map (fn [p tier-start?]
                ^{:key (:player-id p)}
-               [player-row p cols nominated color-tier? n-tiers tier-start?])
+               [player-row p cols nominated n-tiers tier-start?])
              players (tier-starts players))]]]]))

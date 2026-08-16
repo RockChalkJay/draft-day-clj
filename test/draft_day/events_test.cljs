@@ -189,3 +189,27 @@
     (is (= (:scoring db/default-config) (scoring-now)) "nil scoring cannot reach Settings")
     (is (not (contains? (:config @rdb/app-db) :num-tiers)) "a dropped key does not linger")
     (is (seq (:columns @rdb/app-db)))))
+
+;; ---- tier strategy ----
+
+(deftest choosing-a-tier-technique-persists-without-refetching
+  ;; The server computes every strategy at both scales on each recompute, so the
+  ;; switcher is a display choice. If this ever fires :http, every tier switch
+  ;; mid-draft costs a full re-rank for a number already on the client.
+  (rf/dispatch-sync [:set-tier-strategy :ecr])
+  (is (= :ecr (get-in @rdb/app-db [:config :tier-strategy])))
+  (is (empty? (:http @captured)) "no rankings request")
+  (is (empty? (:debounce @captured)) "and none queued either")
+  (is (= :ecr (:tier-strategy (:config (last (:persist @captured)))))
+      "the choice is written to the persisted config slice"))
+
+(deftest an-unrecognized-tier-technique-is-ignored
+  (rf/dispatch-sync [:set-tier-strategy :cliffs])
+  (rf/dispatch-sync [:set-tier-strategy :not-a-strategy])
+  (is (= :cliffs (get-in @rdb/app-db [:config :tier-strategy]))
+      "a stale build's dispatch cannot persist a strategy that tiers nothing"))
+
+(deftest boot-defaults-the-tier-technique-for-a-config-that-predates-it
+  (rf/dispatch-sync [:boot {:config {:num-teams 10 :scoring :ppr}}])
+  (is (= db/default-tier-strategy
+         (get-in @rdb/app-db [:config :tier-strategy]))))

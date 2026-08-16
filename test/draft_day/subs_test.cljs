@@ -113,3 +113,66 @@
            headline))
     (is (re-find #"Floor/Ceiling" detail))
     (is (re-find #"market prices" detail))))
+
+;; ---- board tiers ----
+;; :board-players is where the active tier technique and scale are resolved onto
+;; each row's :tier, so the views can stay ignorant of both.
+
+(defn- board-players []
+  (rf/clear-subscription-cache!)
+  (binding [reagent.ratom/*ratom-context* #js {}]
+    @(rf/subscribe [:board-players])))
+
+(defn- tiered-board! [strategy pos-filter]
+  (swap! rdb/app-db
+         #(-> %
+              (assoc-in [:config :tier-strategy] strategy)
+              (assoc :pos-filter pos-filter)
+              (assoc :drafted {})
+              (assoc :ranked
+                     {:players
+                      [{:player-id "rb1" :player-name "A Back" :position "RB" :worth 50
+                        :tier 1 :tiers {:cliffs {:overall 2 :position 1}
+                                        :ecr    {:overall 4 :position 3}}}
+                       {:player-id "wr1" :player-name "B Wide" :position "WR" :worth 40
+                        :tier 2 :tiers {:cliffs {:overall 3 :position 2}
+                                        ;; ranked by neither ECR scale
+                                        :ecr    {}}}]}))))
+
+(defn- tier-of [rows id]
+  (:tier (first (filter #(= id (:player-id %)) rows))))
+
+(deftest the-board-reads-the-overall-scale-until-a-position-is-filtered
+  (tiered-board! :cliffs nil)
+  (is (= 2 (tier-of (board-players) "rb1")) "overall while unfiltered")
+  (tiered-board! :cliffs "RB")
+  (is (= 1 (tier-of (board-players) "rb1")) "positional once filtered"))
+
+(deftest switching-strategy-changes-every-tier-and-nothing-else
+  ;; The instant-switch guarantee: the server ships every strategy at both
+  ;; scales, so flipping the config key is the whole operation — no refetch.
+  (tiered-board! :cliffs nil)
+  (let [before (board-players)]
+    (swap! rdb/app-db assoc-in [:config :tier-strategy] :ecr)
+    (let [after (board-players)]
+      (is (= 2 (tier-of before "rb1")))
+      (is (= 4 (tier-of after "rb1")) "same row, the other technique's number")
+      (is (= (map :player-id before) (map :player-id after))
+          "the row set and its order are untouched"))))
+
+(deftest a-player-the-strategy-cannot-tier-gets-nil-not-a-borrowed-number
+  ;; wr1 has cliff tiers but no ECR tier on either scale. Under :ecr it must read
+  ;; as untiered rather than quietly showing its cliff tier.
+  (tiered-board! :ecr nil)
+  (is (nil? (tier-of (board-players) "wr1")))
+  (tiered-board! :cliffs nil)
+  (is (= 3 (tier-of (board-players) "wr1"))
+      "and the cliff tier is still there when that strategy is active"))
+
+(deftest an-unknown-persisted-strategy-falls-back-rather-than-unranking-everything
+  (tiered-board! :cliffs nil)
+  (swap! rdb/app-db assoc-in [:config :tier-strategy] :no-such-thing)
+  (is (every? nil? (map :tier (board-players)))
+      "an unknown strategy really does tier nothing — which is why reconcile-config repairs it")
+  (is (= db/default-tier-strategy
+         (:tier-strategy (db/reconcile-config {:tier-strategy :no-such-thing})))))

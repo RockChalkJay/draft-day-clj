@@ -4,9 +4,15 @@
   (:require [draft-day.rankings.tiers :as tiers]))
 
 (def DROP-THRESHOLD
-  "Higher than `tiers/DROP-THRESHOLD` because this one is measured across two
-  roster slots rather than one: it asks 'if I pass, what is still here when it is
-  my turn again?', so the same steepness shows up as a bigger number."
+  "How steep a two-slot fall has to be before it reads as a cliff.
+
+  This is tcm's own constant and no longer has a counterpart in `tiers`, which
+  now cuts a fixed number of tiers at the biggest gaps rather than thresholding
+  each drop. The two still share `tiers/relative-drop` so 'a fall of x%' means
+  one thing on the board; only tcm asks the threshold question, and it asks it
+  across two roster slots — 'if I pass, what is still here when it is my turn
+  again?' — so the same steepness shows up as a bigger number than a
+  one-slot rule would want."
   0.10)
 
 (defn- tcm-for-position
