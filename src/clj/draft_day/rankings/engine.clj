@@ -13,42 +13,26 @@
             [draft-day.rankings.tcm :as tcm]
             [draft-day.rankings.league-state :as ls]))
 
-(defn tier-floor
-  "Points below which a position's tail collapses into one tier.
-
-  Valuation's replacement level where there is one. K and DST are deliberately
-  absent from that map so they price at $0, but they still need a floor: kicker
-  points are small enough that a 2-point drop down the tail is a 20% drop, and
-  tiering the whole pool split 44 kickers into 12 tiers of mostly one. Exactly
-  one of each starts, so the num-teams-th best is the same boundary the priced
-  positions get.
-
-  `sorted` is the position group already in descending :points order. It used to
-  sort a second copy of the group for itself; handing the same vector to
-  `tiers-by-cliffs` leaves one real sort per position, since the defensive sort
-  there costs a linear pass on input that is already ordered."
-  [sorted level num-teams]
-  (or level
-      (when (seq sorted)
-        (double (:points (nth sorted (min num-teams (dec (count sorted)))))))))
-
 (defn static-rankings
-  "Steps 0-2: points -> floor/ceiling -> replacement level -> per-position tiers
-  (cliffs above replacement) -> VORP. Returns {:players [...]
-  :replacement-levels {...}}. Never mutated by the live layer.
+  "Steps 0-2: points -> floor/ceiling -> replacement level -> VORP -> tiers.
+  Returns {:players [...] :replacement-levels {...}}. Never mutated by the live
+  layer.
 
   Replacement runs before tiering because the tier cut needs to know where a
-  position stops being draftable; both stages read only :points, so the order
-  between them is free.
+  position stops being draftable. VORP runs before tiering too, and that is the
+  one real ordering constraint here: the overall tier scale is cut on :vorp, the
+  only score that compares a QB to an RB. `with-vorp` reads nothing tiering
+  writes, so the swap is free.
 
   :tier is deliberately computed here rather than taken from
   :fantasypros/ecr-tier, which used to override it. That tier covers ~75% of the
   board, so adopting it left a quarter of the players untiered — and dense-ranking
-  expert *overall* tiers (1-16) together with computed *per-position* tiers made
-  the two scales one incoherent number. (It is no longer PPR-only: ingestion
-  scrapes all three cheatsheets and `rankings.vendor` picks the league's format,
-  so the expert tier does follow the league's scoring now. The two reasons above
-  are what still rule it out.) It is still shipped for the :fp-tier column.
+  expert *overall* tiers together with computed *per-position* tiers made the two
+  scales one incoherent number. (It is no longer PPR-only: ingestion scrapes all
+  three cheatsheets and `rankings.vendor` picks the league's format, so the
+  expert tier does follow the league's scoring now. The two reasons above are
+  what still rule it out.) Both of its scales ship as display columns instead —
+  see `db/column-catalog`.
 
   Opts :model (default :points, the raw scored projection) and :weights select
   which `rankings.model` produces :points; every later stage is indifferent to
@@ -60,12 +44,9 @@
                       projections/with-floor-ceiling)
          levels   (replacement/replacement-levels enriched num-teams
                                                   (or replacement-config {}) :points)
-         tiered   (into [] (mapcat (fn [[pos grp]]
-                                     (let [sorted (vec (sort-by :points > grp))]
-                                       (tiers/tiers-by-cliffs
-                                        sorted (tier-floor sorted (get levels pos) num-teams)))))
-                        (group-by :position enriched))]
-     {:players            (replacement/with-vorp tiered levels :points)
+         vorped   (replacement/with-vorp enriched levels :points)]
+     {:players            (tiers/with-tiers vorped {:replacement-levels levels
+                                                    :num-teams          num-teams})
       :replacement-levels levels})))
 
 (defn live-valuation
