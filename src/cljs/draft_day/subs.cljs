@@ -86,6 +86,26 @@
                 :else (* dir (compare va vb)))))
           players)))
 
+(defn- rank-key
+  "Descending sort key for the board's overall rank: Worth, then VORP, then
+  projected points.
+
+  Worth alone is not a total order. Everything below replacement prices at $0 —
+  every skill player the model scored under replacement, plus all of K and DST —
+  and a stable sort left that whole block in whatever order the server emitted,
+  which is position grouping. On the current board that is 549 of 633 players,
+  and it put a receiver FantasyPros ranks 44th at 200th: not a disagreement
+  about his value, but no opinion at all. VORP and points still separate those
+  players even where dollars cannot.
+
+  Missing values read as 0 rather than nil: the model leaves :vorp and :points
+  off players it never scored, and a nil inside a vector sort key throws instead
+  of sorting last."
+  [p]
+  [(- (double (or (:worth p) 0)))
+   (- (double (or (:vorp p) 0)))
+   (- (double (or (:points p) 0)))])
+
 ;; undrafted, unfiltered by position/search — the pool the board and watch list
 ;; draw from, so they don't collapse when the board is filtered by pos/search.
 (rf/reg-sub :undrafted-players
@@ -105,9 +125,10 @@
           filtered    (->> players
                            (filter #(or (nil? pos-filter) (= (:position %) pos-filter)))
                            (filter #(matches-search? % q)))
-          ;; live overall rank by Worth (independent of the active sort column)
+          ;; live overall rank by Worth then VORP then points (see `rank-key`),
+          ;; independent of the active sort column
           rank-map    (into {} (map-indexed (fn [i p] [(:player-id p) (inc i)])
-                                            (sort-by #(- (or (:worth %) 0)) filtered)))
+                                            (sort-by rank-key filtered)))
           ranked      (map #(assoc % :rank (rank-map (:player-id %))) filtered)]
       (vec (sort-players ranked (:key sort) (:dir sort))))))
 
