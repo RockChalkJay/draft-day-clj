@@ -32,3 +32,11 @@
   "`with-format` for the format nearest this league's scoring config."
   [players scoring]
   (with-format players (scoring/format-of scoring)))
+
+(defn without-bundle
+  "Drop `:vendor/by-format` without flattening any of it, for the responses that
+  have no league to pick a format for. `/api/players` serves the shared universe,
+  so it cannot choose — but it must not ship all three formats either, which is
+  the payload `with-format` exists to avoid."
+  [players]
+  (mapv #(dissoc % :vendor/by-format) players))

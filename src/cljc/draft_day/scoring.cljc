@@ -69,11 +69,26 @@
           (< rec ppr-cutoff)      :half-ppr
           :else                   :ppr)))
 
+(def unprojected-stats
+  "Stat keys we score but that Sleeper's projections never carry — checked
+  against both the live universe and the bundled sample, where all four appear
+  zero times. Kickers are projected for extra points but not field goals, and
+  team defenses for sacks/interceptions/fumble recoveries but not forced fumbles,
+  defensive touchdowns or safeties. A weight on these cannot move any player's
+  points, so the editor shows them but will not pretend they are editable."
+  #{:fgm :ff :def_td :safe})
+
 (defn scores-anything?
   "True when at least one weight can actually move a player's points. An empty
-  or all-zero config is not a league, it is a board where everyone is worth $0."
+  or all-zero config is not a league, it is a board where everyone is worth $0.
+
+  `unprojected-stats` do not count. They are the only weights the editor will
+  not let you clear, so zeroing every weight a manager *can* reach leaves them
+  standing — and taking them as evidence of a real league let exactly the
+  all-zero board this predicate exists to catch through."
   [scoring]
-  (boolean (some #(not (zero? (usable-weight %))) (vals scoring))))
+  (boolean (some #(not (zero? (usable-weight %)))
+                 (vals (apply dissoc scoring unprojected-stats)))))
 
 (defn player-points
   "Σ over the scoring map of (stat weight * player's projected stat), defaulting

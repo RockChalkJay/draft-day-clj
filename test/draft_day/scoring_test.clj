@@ -1,5 +1,5 @@
 (ns draft-day.scoring-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [draft-day.scoring :as scoring]))
 
 (deftest presets-has-exactly-three-keys
@@ -79,4 +79,20 @@
   (is (not (scoring/scores-anything? {})))
   (is (not (scoring/scores-anything? (zipmap scoring/stat-keys (repeat 0))))
       "an all-zero config prices the whole board at $0, which reads as a valuation")
-  (is (not (scoring/scores-anything? {:rec nil :rec_yd ##NaN}))))
+  (is (not (scoring/scores-anything? {:rec nil :rec_yd ##NaN})))
+
+  (testing "weights on stats nothing is projected for are not evidence of a league"
+    ;; What the editor leaves behind when every weight a manager can reach is
+    ;; zeroed: the unprojected four are rendered disabled, so they keep whatever
+    ;; the preset set. They cannot move a single player's points.
+    (let [only-unprojected (select-keys (:ppr scoring/presets) scoring/unprojected-stats)]
+      (is (= 4 (count only-unprojected)))
+      (is (every? pos? (vals only-unprojected)))
+      (is (not (scoring/scores-anything? only-unprojected)))
+      (is (not (scoring/scores-anything?
+                (merge (zipmap scoring/stat-keys (repeat 0)) only-unprojected))))
+      (is (scoring/scores-anything? (assoc only-unprojected :rec_yd 0.1))
+          "one projected weight is enough"))))
+
+(deftest unprojected-stats-are-real-stat-keys
+  (is (every? (set scoring/stat-keys) scoring/unprojected-stats)))

@@ -289,9 +289,6 @@
       (is (keyword? k))
       (is (and (string? label) (seq label)) (str k " has no label")))))
 
-(deftest unprojected-stats-are-real-stat-keys
-  (is (every? (set scoring/stat-keys) db/unprojected-stats)))
-
 (deftest reconcile-config-repairs-what-localstorage-may-hold
   (testing "a blob written before a key existed gets the current default"
     (is (= (:starting-bankroll db/default-config)
