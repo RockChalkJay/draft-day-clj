@@ -20,6 +20,14 @@
              (rf/clear-subscription-cache!)
              (reset! rdb/app-db (db/default-db)))})
 
+(defn- board-ranks
+  "player-id -> :rank, as the board would compute it for `players`."
+  [players]
+  (rf/clear-subscription-cache!)
+  (swap! rdb/app-db assoc :ranked {:players players})
+  (binding [reagent.ratom/*ratom-context* #js {}]
+    (into {} (map (juxt :player-id :rank)) @(rf/subscribe [:board-players]))))
+
 (defn- with-sources [scoring sources]
   (swap! rdb/app-db #(-> %
                          (assoc-in [:config :scoring] scoring)
@@ -34,6 +42,54 @@
     @(rf/subscribe [:vendor-gaps])))
 
 (def ^:private landed {:ok? true :rows 300 :matched 280})
+
+;; ---- board rank ----
+
+(deftest players-priced-at-zero-are-still-ranked-against-each-other
+  ;; Everything below replacement prices at $0 — every skill player the model
+  ;; scored under replacement, plus all of K and DST. Ranking on Worth alone left
+  ;; that whole block in the order the server happened to emit, which is position
+  ;; grouping: 549 of 633 players, among them a receiver FantasyPros ranked 44th
+  ;; who came out 200th. VORP, then points, still separate them where dollars
+  ;; cannot.
+  (let [ranks (board-ranks [{:player-id "cheap"  :worth 0 :vorp 0 :points 90}
+                            {:player-id "rich"   :worth 40 :vorp 120 :points 300}
+                            {:player-id "mid"    :worth 0 :vorp 0 :points 140}
+                            {:player-id "decent" :worth 12 :vorp 30 :points 200}])]
+    (is (= 1 (ranks "rich")))
+    (is (= 2 (ranks "decent")))
+    (is (= 3 (ranks "mid")) "more projected points ranks above")
+    (is (= 4 (ranks "cheap"))))
+
+  (testing "VORP outranks points among the $0 block"
+    (let [ranks (board-ranks [{:player-id "low-vorp"  :worth 0 :vorp 1 :points 300}
+                              {:player-id "high-vorp" :worth 0 :vorp 5 :points 10}])]
+      (is (= 1 (ranks "high-vorp")))
+      (is (= 2 (ranks "low-vorp")))))
+
+  (testing "a player the model never scored sorts last rather than throwing"
+    (let [ranks (board-ranks [{:player-id "unscored"}
+                              {:player-id "scored" :worth 0 :vorp 0 :points 5}])]
+      (is (= 1 (ranks "scored")))
+      (is (= 2 (ranks "unscored"))))))
+
+(deftest worth-still-decides-the-order-wherever-it-can
+  ;; The tie-break may only reach players Worth cannot separate. Distinct dollars
+  ;; decide the order outright, whatever VORP and points say.
+  (let [ranks (board-ranks [{:player-id "c" :worth 5  :vorp 999 :points 999}
+                            {:player-id "a" :worth 50 :vorp 1   :points 1}
+                            {:player-id "b" :worth 20 :vorp 500 :points 500}])]
+    (is (= {"a" 1 "b" 2 "c" 3} ranks)))
+
+  (testing "priced players sharing a dollar figure are separated by VORP"
+    ;; Worth is whole dollars, so ties are ordinary well above replacement — on
+    ;; the sample board 84 priced players hold 40-odd distinct prices. Those ties
+    ;; used to fall out in server order too; they just moved by less.
+    (let [ranks (board-ranks [{:player-id "lo" :worth 30 :vorp 40 :points 250}
+                              {:player-id "hi" :worth 30 :vorp 45 :points 210}
+                              {:player-id "up" :worth 31 :vorp 1  :points 10}])]
+      (is (= {"up" 1 "hi" 2 "lo" 3} ranks)
+          "a dollar more still outranks any VORP"))))
 
 (deftest a-format-scrape-that-failed-is-reported-for-that-format-only
   ;; Each FantasyPros scrape is independently best-effort, so the standard
