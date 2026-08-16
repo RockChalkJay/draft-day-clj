@@ -101,3 +101,38 @@
 
 (deftest parse-sleepers-returns-nil-on-garbage
   (is (nil? (fp/parse-sleepers "<html>no rows here</html>" "WR"))))
+
+;; ---- per-position expert tier ----
+
+(deftest a-format-varying-position-gets-one-url-per-format
+  (let [urls (map #(fp/pos-cheatsheet-url "RB" %) scoring/formats)]
+    (is (= 3 (count (distinct urls))))
+    (is (every? #(re-find #"rb-cheatsheets\.php$" %) urls))))
+
+(deftest a-format-invariant-position-gets-the-bare-page-whatever-the-format
+  ;; Load-bearing, not an optimization: QB/K/DST's ppr- and half-point-ppr- URLs
+  ;; 302 to the *overall* cheatsheet, so following one would parse a whole-board
+  ;; page as if it were one position.
+  (doseq [pos ["QB" "K" "DST"]]
+    (is (= 1 (count (distinct (map #(fp/pos-cheatsheet-url pos %) scoring/formats))))
+        (str pos " publishes one page for all three formats"))
+    (is (not (re-find #"ppr" (fp/pos-cheatsheet-url pos :ppr)))
+        (str pos " does not take a format prefix"))))
+
+(deftest an-unknown-position-or-format-throws
+  (is (thrown? clojure.lang.ExceptionInfo (fp/pos-cheatsheet-url "IDP" :ppr)))
+  (is (thrown? clojure.lang.ExceptionInfo (fp/pos-cheatsheet-url "RB" :half)))
+  (is (thrown? clojure.lang.ExceptionInfo (fp/pos-cheatsheet-url "RB" nil))))
+
+(deftest parse-pos-ecr-takes-only-the-tier
+  ;; The positional page carries rank_ecr and the rest too, but those already
+  ;; arrive from the overall cheatsheet — and here they are position-relative, so
+  ;; letting them through would sometimes write an ECR of 4 meaning "RB4".
+  (let [rows (fp/parse-pos-ecr sample-html)]
+    (is (= 2 (count rows)))
+    (is (= #{:key :fantasypros/ecr-pos-tier} (set (mapcat keys rows))))
+    (is (= 1 (:fantasypros/ecr-pos-tier
+              (get (match/by-key rows) (match/key-for "Bijan Robinson" "RB")))))))
+
+(deftest parse-pos-ecr-returns-nil-without-blob
+  (is (nil? (fp/parse-pos-ecr "<html>no ecr here</html>"))))

@@ -198,3 +198,23 @@
 
     (testing "the flat :tier the server ships never leaks through unresolved"
       (is (not= 1 (get (board-tiers players nil) "wr1"))))))
+
+(deftest the-fp-tier-column-tracks-the-boards-own-scale
+  ;; FantasyPros publishes both scales too, so FP T answers the same question
+  ;; the Tier column does rather than a different one beside it.
+  (let [players [{:player-id "rb1" :position "RB" :worth 40
+                  :tiers {:position 1 :overall 2}
+                  :fantasypros/ecr-tier 3 :fantasypros/ecr-pos-tier 1}
+                 {:player-id "rb2" :position "RB" :worth 10
+                  :tiers {:position 3 :overall 7}
+                  :fantasypros/ecr-tier 11}]
+        fp-of   (fn [pos-filter]
+                  (rf/clear-subscription-cache!)
+                  (swap! rdb/app-db #(-> % (assoc :ranked {:players players})
+                                         (assoc :pos-filter pos-filter)))
+                  (binding [reagent.ratom/*ratom-context* #js {}]
+                    (into {} (map (juxt :player-id :fantasypros/ecr-tier))
+                          @(rf/subscribe [:board-players]))))]
+    (is (= {"rb1" 3 "rb2" 11} (fp-of nil)))
+    (is (= {"rb1" 1 "rb2" nil} (fp-of "RB"))
+        "a player FantasyPros left off the positional page reads as no tier")))

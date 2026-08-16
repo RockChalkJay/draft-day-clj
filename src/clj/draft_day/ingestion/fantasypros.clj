@@ -2,14 +2,16 @@
   "Enrichment: FantasyPros. Independent best-effort scrapes off one vendor — a
   failure of any of them degrades the board, never empties it.
 
-  Ten requests land here on a cold load (ECR and AAV for each of three scoring
-  formats, plus four sleeper pages). They are started together by callers, so
-  `fetch-page` owns the one thing a caller cannot: how many of them this vendor
-  is willing to see at once.
+  Twenty-two requests land here on a cold load (ECR and AAV for each of three
+  scoring formats, four sleeper pages, and twelve per-position cheatsheets).
+  They are started together by callers, so `fetch-page` owns the one thing a
+  caller cannot: how many of them this vendor is willing to see at once.
 
    - ECR (`parse-ecr`): scrapes the `var ecrData = {…}` JSON blob out of the
      cheatsheet page, supplying expert tier, positional rank, and (crucially) the
      rank spread (rank_std) that powers the Floor/Ceiling model.
+   - Per-position tier (`parse-pos-ecr`): the same blob off each position's own
+     cheatsheet, for the finer tier that page cuts within the position.
    - AAV (`parse-aav`): scrapes FantasyPros' auction-value calculator (the
      draftwizard `#OverallTable`) for a raw market price per player."
   (:require [clojure.string :as str]
@@ -24,8 +26,8 @@
 (def max-in-flight
   "How many requests this vendor may see from us at once.
 
-  Ten scrapes (ECR and AAV for three formats, plus four sleeper pages) fired
-  simultaneously is ten connections from one IP to one host, and a
+  Twenty-two scrapes fired simultaneously is twenty-two connections from one IP
+  to one host, and a
   scraping-averse vendor answers that with a 429. A 429 is not an exception
   here — it is `nil` from every fetch, a cache written with no FantasyPros data
   in it at all, and that cache served for the next 24 hours. So the cap is the
@@ -110,6 +112,67 @@
   becoming PPR — see `cheatsheet-url`."
   [scoring]
   (some-> (fetch-page (cheatsheet-url scoring)) parse-ecr))
+
+;; --- per-position expert tier ---
+;; The overall cheatsheet above publishes an *overall* tier. FantasyPros also
+;; publishes a cheatsheet per position, whose `tier` is cut within that position
+;; — a genuinely different, finer scale (12 tiers across 171 RBs, where those
+;; same RBs share a handful of overall tiers). The board shows it beside its own
+;; tier at whichever scale is active, so both are ingested.
+
+(def pos-formats
+  "Whether a position's cheatsheet varies by scoring format.
+
+  RB/WR/TE have ppr / half-point-ppr / bare (standard) variants. QB, K and DST
+  have only the bare page — the prefixed URLs 302 to the *overall* cheatsheet,
+  because reception scoring cannot reorder them. Following that redirect would
+  parse a whole-board page as if it were one position, so the false entries here
+  are load-bearing, not an optimization: those three are fetched once and joined
+  unscoped, the same call `pipeline` already makes for ESPN."
+  {"RB" true "WR" true "TE" true "QB" false "K" false "DST" false})
+
+(def pos-format-prefixes
+  {:ppr "ppr-" :half-ppr "half-point-ppr-" :standard ""})
+
+(defn pos-cheatsheet-url
+  "The per-position cheatsheet for `pos` at scoring format `fmt`.
+
+  An unknown position or format throws, for the reason `cheatsheet-url` gives.
+  A format-invariant position ignores `fmt` and returns its bare page."
+  [pos fmt]
+  (let [varies? (get pos-formats pos ::missing)]
+    (when (= ::missing varies?)
+      (throw (ex-info "no FantasyPros positional cheatsheet for that position"
+                      {:position pos :known (vec (sort (keys pos-formats)))})))
+    (let [prefix (if varies?
+                   (or (get pos-format-prefixes fmt)
+                       (throw (ex-info "no FantasyPros cheatsheet for that scoring format"
+                                       {:scoring fmt
+                                        :known (vec (keys pos-format-prefixes))})))
+                   "")]
+      (str "https://www.fantasypros.com/nfl/rankings/"
+           prefix (str/lower-case pos) "-cheatsheets.php"))))
+
+(defn parse-pos-ecr
+  "Pure: a positional cheatsheet -> seq of {:key :fantasypros/ecr-pos-tier}.
+
+  Deliberately narrow. The page also carries rank_ecr, rank_std and the rest,
+  but those already arrive from the overall cheatsheet; re-emitting them here
+  would put two scrapes in a race to write the same columns through `deep-merge`,
+  and the positional page's ranks are position-relative, so the winner would
+  sometimes be an ECR of 4 meaning 'RB4'. Only the tier is taken — the one thing
+  the overall page cannot give per position."
+  [html]
+  (some->> (parse-ecr html)
+           (keep (fn [{:keys [key] :fantasypros/keys [ecr-tier]}]
+                   (when (and key ecr-tier (pos? ecr-tier))
+                     {:key key :fantasypros/ecr-pos-tier ecr-tier})))
+           seq))
+
+(defn fetch-pos-ecr
+  "Network: fetch + parse one position's cheatsheet at one format. nil on failure."
+  [pos fmt]
+  (some-> (fetch-page (pos-cheatsheet-url pos fmt)) parse-pos-ecr))
 
 ;; --- AAV (auction values) ---
 

@@ -151,6 +151,16 @@
   [p scale]
   (get-in p [:tiers scale]))
 
+(defn fp-tier
+  "FantasyPros' published expert tier at `scale`, so the FP T column tracks the
+  board's own tier rather than answering a different question beside it. Unlike
+  `player-tier` this is partial: FantasyPros ranks about three quarters of the
+  board, and the rest render as a dash."
+  [p scale]
+  (if (= :position scale)
+    (:fantasypros/ecr-pos-tier p)
+    (:fantasypros/ecr-tier p)))
+
 ;; ---- board columns ----
 ;; The board is data-driven: :columns is an ordered vector of {:key :visible?},
 ;; so a column can be hidden/shown and drag-reordered. Rendering + sort accessors
@@ -175,7 +185,7 @@
    {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
    {:key :tier     :label "Tier"   :tooltip "Tier — within the position while filtered to one, across the whole board otherwise" :default? false}
-   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros' expert tier, as published; blank where FantasyPros has no match" :default? false}
+   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros' expert tier at the same scale as Tier — within the position while filtered, overall otherwise; blank where FantasyPros has no match" :default? false}
    {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? false}
    {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
    {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}])

@@ -136,7 +136,11 @@
           ;; it. The server sends both scales, so a position filter switches
           ;; scale with no refetch and no :recompute.
           ranked      (map #(assoc % :rank (rank-map (:player-id %))
-                                     :tier (db/player-tier % scale))
+                                     :tier (db/player-tier % scale)
+                                     ;; FantasyPros publishes both scales too, so
+                                     ;; the FP T column tracks ours rather than
+                                     ;; answering a different question beside it
+                                     :fantasypros/ecr-tier (db/fp-tier % scale))
                            filtered)]
       (vec (sort-players ranked (:key sort) (:dir sort))))))
 
