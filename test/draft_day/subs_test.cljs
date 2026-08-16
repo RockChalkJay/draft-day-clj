@@ -169,3 +169,32 @@
            headline))
     (is (re-find #"Floor/Ceiling" detail))
     (is (re-find #"market prices" detail))))
+
+;; ---- tier scale ----
+
+(defn- board-tiers
+  "player-id -> :tier, as the board would resolve it under `pos-filter`."
+  [players pos-filter]
+  (rf/clear-subscription-cache!)
+  (swap! rdb/app-db #(-> % (assoc :ranked {:players players})
+                         (assoc :pos-filter pos-filter)))
+  (binding [reagent.ratom/*ratom-context* #js {}]
+    (into {} (map (juxt :player-id :tier)) @(rf/subscribe [:board-players]))))
+
+(deftest the-board-reads-the-scale-its-filter-implies
+  ;; The server ships both scales on every player and :tier is resolved here, so
+  ;; switching scale is a filter click — no refetch, no :recompute.
+  (let [players [{:player-id "rb1" :position "RB" :worth 40
+                  :tier 1 :tiers {:position 1 :overall 2}}
+                 {:player-id "rb2" :position "RB" :worth 10
+                  :tier 3 :tiers {:position 3 :overall 7}}
+                 {:player-id "wr1" :position "WR" :worth 30
+                  :tier 1 :tiers {:position 1 :overall 3}}]]
+    (testing "unfiltered, rows carry the cross-position tier"
+      (is (= {"rb1" 2 "rb2" 7 "wr1" 3} (board-tiers players nil))))
+
+    (testing "filtered to a position, they carry that position's own"
+      (is (= {"rb1" 1 "rb2" 3} (board-tiers players "RB"))))
+
+    (testing "the flat :tier the server ships never leaks through unresolved"
+      (is (not= 1 (get (board-tiers players nil) "wr1"))))))

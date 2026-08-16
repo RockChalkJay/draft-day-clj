@@ -182,15 +182,16 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .roster td.slot-bye { color: var(--muted); text-align: right; font-size: 12px; }
 .roster td.slot-bye.bye-uncovered { color: #e0a72e; font-weight: 600; }
 
-/* tier row-coloring — active only when the board is filtered to one position.
+/* tier row-coloring — active in every view, since the board reads a per-position
+   tier while filtered and a cross-position one otherwise.
    Fills alternate pale/deep between consecutive tiers so neighbours contrast
    whatever their hues are, plus a bold left-edge stripe that stays crisp
    regardless of the fill, and a rule drawn across each tier boundary. Fills are
    kept dark enough that near-white body text stays past 8:1.
    Kept lower-specificity than the table.board hover/selected rules so those win. */
 /* Tier stripes are driven by --tier-bg/--tier-line, set inline per row: how many
-   tiers a position has comes from its cliff structure, so a fixed set of classes
-   would cap the count instead of following it. See views/board.cljs, which also
+   tiers a pool gets follows its depth, so a fixed set of classes would cap the
+   count instead of following it. See views/board.cljs, which also
    explains why the palette bands instead of sweeping. */
 .board tbody tr.tier-row { background: var(--tier-bg); }
 .board tbody tr.tier-row td:first-child { border-left: 4px solid var(--tier-line); }
@@ -198,7 +199,7 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
    border-collapse, so a tier break reads as one heavier line, not two. */
 .board tbody tr.tier-start td { border-top: 2px solid var(--tier-line); }
 
-/* tier key — shown above the board only while filtered to one position */
+/* tier key — legend for the stripe colors, shown above the board in every view */
 .tier-key { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .tier-key-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .tier-key-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }

@@ -134,7 +134,7 @@
                ;; Ascending first for the columns where a lower number is better
                ;; (ranks, tiers, ADP) and alphabetical for the text ones;
                ;; everything else is a dollar or a point total, best-first.
-               {:key k :dir (if (#{:name :team :position :rank :adp :ecr :fp-tier} k) 1 -1)})))))
+               {:key k :dir (if (#{:name :team :position :rank :adp :ecr :tier :fp-tier} k) 1 -1)})))))
 
 ;; ---- columns ----
 
