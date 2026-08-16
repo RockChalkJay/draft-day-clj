@@ -45,6 +45,7 @@
          status   (str (:count resp) " players · " (:source resp))]
      (cond-> {:db (assoc migrated
                          :players players
+                         :universe (:universe resp)
                          :status status
                          :universe-status status)
               :fx [[:dispatch [:recompute]]]}
@@ -251,8 +252,7 @@
     (let [s (get-in db [:config :scoring])]
       (if (map? s)
         {}
-        {:db (assoc-in db [:config :scoring]
-                       (get scoring/presets s (:ppr scoring/presets)))
+        {:db (assoc-in db [:config :scoring] (scoring/resolve-config s))
          :fx [[:dispatch [:recompute]]]}))))
 
 (rf/reg-event-fx :set-scoring-weight [persist]

@@ -53,6 +53,33 @@
   FantasyPros' ECR and auction calculator and Sleeper's ADP all vary by these."
   [:standard :half-ppr :ppr])
 
+(defn format-label
+  "The `:sources` label for one vendor column at one scoring format:
+  `(format-label :fantasypros/ecr :half-ppr)` -> `:fantasypros/ecr-half-ppr`.
+
+  Shared cljc rather than living with ingestion because both ends of the wire
+  need it: ingestion writes these labels into the universe's `:sources`, and the
+  browser reads them back out of `/api/players` to say which vendor columns its
+  league's format is missing. A second hand-written copy of the scheme is a
+  rename away from turning that check into a permanent silent no-op."
+  [source fmt]
+  (keyword (namespace source) (str (name source) "-" (name fmt))))
+
+(defn resolve-config
+  "Coerce a scoring field — a preset keyword, its string spelling, or a full
+  {stat weight} map — into a {stat weight} map.
+
+  The browser stores `(:config :scoring)` as either a preset keyword or a custom
+  map, and the API accepts both plus the string spellings JSON leaves behind.
+  Three copies of this `cond` had already drifted: the client resolved the string
+  \"standard\" to *PPR* while the server resolved it to Standard, which is enough
+  to have the Settings page warn about the wrong format's vendor columns."
+  [s]
+  (cond
+    (map? s)                      s
+    (or (string? s) (keyword? s)) (get presets (keyword s) (:ppr presets))
+    :else                         (:ppr presets)))
+
 (def ^:private half-ppr-cutoff 0.25)
 (def ^:private ppr-cutoff 0.75)
 

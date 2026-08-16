@@ -289,6 +289,7 @@
      :recompute-seq 0           ; newest /api/rankings request; older replies are dropped
      :status      nil
      :universe-status nil       ; "N players · source", restored after a recompute error
+     :universe    nil           ; /api/players provenance: season, fetched-at, per-source :ok?
      :recompute-error nil       ; the failure message, while it is still on :status
      :import-report nil         ; {:name :season :unsupported-scoring [...]}
      :config      cfg

@@ -22,6 +22,7 @@
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.merge :as merge]
             [draft-day.ingestion.match :as match]
+            [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.validate :as validate]
             [draft-day.scoring :as scoring]
@@ -150,7 +151,9 @@
           (assoc :players players)
           (assoc-in [:sources label] report)))))
 
-(defn format-label [source fmt] (keyword (namespace source) (str (name source) "-" (name fmt))))
+(def ^{:doc "Alias for the shared `scoring/format-label` — the label scheme is
+  cljc because the browser reads these keys back off /api/players."}
+  format-label scoring/format-label)
 
 (def enrichment-source-labels
   "Every source `enrich-universe` reports on. The bundled sample is expected to
@@ -169,6 +172,28 @@
   [fmt by-key]
   (some-> by-key (update-vals (fn [cols] {:vendor/by-format {fmt cols}}))))
 
+(defn enrichment-tasks
+  "Every enrichment fetch as a best-effort thunk, keyed by the `:sources` label
+  it reports under.
+
+  One flat map rather than a sequence of `let` bindings, because the bindings
+  *were* the bug: each one blocked on a 30-second timeout before the next
+  started, and singling out the FantasyPros half for concurrency just moved the
+  stall to Sleeper's four sleeper pages. Everything here is independent I/O over
+  three different hosts, so the honest shape is a set of tasks with no order at
+  all — `parallel/all` starts them together and the joins below impose the order
+  that actually matters (a deterministic `:sources` report)."
+  [season]
+  (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
+         :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
+         :espn                 #(best-effort (espn/fetch season))}
+        (mapcat (fn [fmt]
+                  [[(format-label :fantasypros/ecr fmt)
+                    #(best-effort (fantasypros/fetch-ecr fmt))]
+                   [(format-label :fantasypros/aav fmt)
+                    #(best-effort (fantasypros/fetch-aav fmt))]]))
+        scoring/formats))
+
 (defn enrich-universe
   "Left-join the best-effort enrichment columns onto an already-validated
   universe, returning `{:players :sources}`. Split out from the fetch so the
@@ -181,16 +206,23 @@
   prices — the universe cache is shared across leagues, so the choice cannot be
   made at ingestion.
 
+  Every fetch goes out at once (`enrichment-tasks` + `parallel/all`); only the
+  joins below are sequential. That does raise peak heap — ESPN's ~37MB feed is
+  now in memory alongside a few cheatsheet pages instead of strictly after them,
+  which is why FantasyPros caps its own concurrency rather than letting all ten
+  of its pages land together.
+
   ESPN is deliberately *not* format-scoped: it publishes the same auction value
   under both its PPR and STANDARD rank types (checked against the live feed), so
   splitting it would invent a distinction the source does not make."
   [season universe]
-  (let [;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
+  (let [fetched  (parallel/all (enrichment-tasks season))
+        ;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
         ;; :team every player already carries — complete, not just the FantasyPros
         ;; matches. Best-effort: a failed schedule fetch just leaves :bye nil.
-        byes     (best-effort (sleeper/fetch-byes season))
-        sleepers (best-effort (fantasypros/fetch-sleepers))
-        espn     (best-effort (espn/fetch season))]
+        byes     (:sleeper/byes fetched)
+        sleepers (:fantasypros/sleepers fetched)
+        espn     (:espn fetched)]
     ;; Byes join on :team rather than a name key, so they get a row count but
     ;; none of the match-rate machinery — reporting them as a 0% join would be
     ;; a lie, not a diagnostic.
@@ -199,9 +231,11 @@
            :sources {:sleeper/byes (if (seq byes)
                                      {:ok? true :rows (count byes)}
                                      {:ok? false})}} acc
+      ;; The joins stay sequential and in `scoring/formats` order: only the
+      ;; fetching is concurrent, so :sources reads the same every run.
       (reduce (fn [acc fmt]
-                (let [ecr (best-effort (fantasypros/fetch-ecr fmt))
-                      aav (best-effort (fantasypros/fetch-aav fmt))]
+                (let [ecr (get fetched (format-label :fantasypros/ecr fmt))
+                      aav (get fetched (format-label :fantasypros/aav fmt))]
                   (-> acc
                       (apply-enrichment (format-label :fantasypros/ecr fmt)
                                         (scoped fmt (some-> ecr match/by-key)))

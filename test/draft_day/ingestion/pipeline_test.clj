@@ -1,9 +1,12 @@
 (ns draft-day.ingestion.pipeline-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
+            [draft-day.ingestion.espn :as espn]
+            [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.player-ids :as player-ids]
-            [draft-day.ingestion.sleeper :as sleeper]))
+            [draft-day.ingestion.sleeper :as sleeper]
+            [draft-day.scoring :as scoring]))
 
 (defn- tmp [name] (str (System/getProperty "java.io.tmpdir") "/dd-" name ".transit"))
 
@@ -75,18 +78,37 @@
   ;; blank offline forever with nothing to say the column is absent by
   ;; construction. Once the sample is recaptured with a stamp, any source it
   ;; claims must actually be present in the rows.
+  ;;
+  ;; The format split silently disarmed this once already: the lookup still
+  ;; keyed on the pre-split `:fantasypros/ecr`, so every format-scoped label
+  ;; resolved to nil and was skipped by the `:when`, and the columns had moved
+  ;; under :vendor/by-format where the old accessor could not have seen them
+  ;; anyway. Hence the last assertion — an unrecognized label now fails the test
+  ;; instead of quietly excusing itself from it.
   (let [{:keys [players sources]} (pipeline/cached->universe
                                    (pipeline/load-sample))
-        column-key {:fantasypros/ecr      :fantasypros/ecr
-                    :fantasypros/aav      :fantasypros/aav
-                    :fantasypros/sleepers :fantasypros/sleeper?
-                    :espn                 :espn/auction-value
-                    :sleeper/byes         :bye}]
+        flat    {:fantasypros/sleepers :fantasypros/sleeper?
+                 :espn                 :espn/auction-value
+                 :sleeper/byes         :bye}
+        scoped  (into {}
+                      (mapcat (fn [fmt]
+                                [[(pipeline/format-label :fantasypros/ecr fmt)
+                                  [fmt :fantasypros/ecr]]
+                                 [(pipeline/format-label :fantasypros/aav fmt)
+                                  [fmt :fantasypros/aav]]]))
+                      scoring/formats)]
+    (is (seq players))
+    (is (empty? (remove (some-fn flat scoped) (keys sources)))
+        "a source label this test does not know about means the guard has drifted")
     (doseq [[label {:keys [ok?]}] sources
-            :let [k (column-key label)]
-            :when (and ok? k)]
-      (is (some k players)
-          (format "sample claims %s but no row carries %s" label k)))))
+            :when ok?]
+      (if-let [k (get flat label)]
+        (is (some k players)
+            (format "sample claims %s but no row carries %s" label k))
+        (when-let [[fmt col] (get scoped label)]
+          (is (some #(get-in % [:vendor/by-format fmt col]) players)
+              (format "sample claims %s but no row carries %s under [:vendor/by-format %s]"
+                      label col fmt)))))))
 
 (deftest resolution-chain
   ;; `offline?` reads DRAFTDAY_OFFLINE at call time, so without this the whole
@@ -197,3 +219,55 @@
         "player-id must always equal the best member of its own :ids envelope")
     (is (= (count players) (count (distinct (map :player-id players))))
         "anchoring must not collide two players onto one id")))
+
+(deftest every-enrichment-fetch-goes-out-together
+  ;; Nine independent fetches behind a 30-second timeout each, on the request
+  ;; thread that missed the cache. Awaited in turn they stack to four and a half
+  ;; minutes, so what has to hold is that `enrich-universe` starts *all* of them
+  ;; before it blocks on any — not merely that some helper can start six.
+  ;;
+  ;; Testing the helper alone was not enough: hoisting the deref above the other
+  ;; fetches re-serializes the whole thing and a helper-level test stays green.
+  ;; Every stub here parks until all nine have arrived, so any fetch left on the
+  ;; sequential path deadlocks its own wait and reports unavailable.
+  (let [expected (count (pipeline/enrichment-tasks 2026))
+        latch    (java.util.concurrent.CountDownLatch. expected)
+        arrive!  (fn [what]
+                   (.countDown latch)
+                   (when-not (.await latch 10 java.util.concurrent.TimeUnit/SECONDS)
+                     (throw (ex-info "this fetch ran on its own" {:fetch what}))))
+        rows     (fn [k] [{:key k :fantasypros/ecr 1}])]
+    (is (= 9 expected) "three formats x (ECR + AAV), plus byes, sleepers and ESPN")
+    (with-redefs [sleeper/fetch-byes    (fn [_] (arrive! :byes) {"ATL" 5})
+                  fantasypros/fetch-sleepers (fn [] (arrive! :sleepers)
+                                               (rows "player0_rb"))
+                  espn/fetch            (fn [_] (arrive! :espn)
+                                          {"player0_rb" {:espn/auction-value 1.0}})
+                  fantasypros/fetch-ecr (fn [fmt] (arrive! [:ecr fmt])
+                                          (rows "player0_rb"))
+                  fantasypros/fetch-aav (fn [fmt] (arrive! [:aav fmt])
+                                          (rows "player0_rb"))]
+      (let [{:keys [sources]} (pipeline/enrich-universe 2026 (universe-fixture 5))]
+        (is (= (set pipeline/enrichment-source-labels) (set (keys sources)))
+            "every source still reports, and under its own label")
+        (is (every? :ok? (vals sources))
+            "all nine resolved, which only happens if all nine were in flight")))))
+
+(deftest a-fetch-that-throws-costs-only-its-own-column
+  ;; `parallel/all` must not let one thrower take the rest down — that is the
+  ;; whole contract `best-effort` had when the fetches were sequential.
+  (with-redefs [sleeper/fetch-byes    (fn [_] {"ATL" 5})
+                fantasypros/fetch-sleepers (fn [] nil)
+                espn/fetch            (fn [_] (throw (ex-info "espn down" {})))
+                fantasypros/fetch-ecr (fn [fmt]
+                                        (if (= :standard fmt)
+                                          (throw (ex-info "scrape blew up" {}))
+                                          [{:key "player0_rb" :fantasypros/ecr 1}]))
+                fantasypros/fetch-aav (fn [_] [{:key "player0_rb" :fantasypros/aav 3.0}])]
+    (let [{:keys [sources]} (pipeline/enrich-universe 2026 (universe-fixture 5))]
+      (is (false? (:ok? (get sources :espn))))
+      (is (false? (:ok? (get sources (pipeline/format-label :fantasypros/ecr :standard)))))
+      (is (true? (:ok? (get sources (pipeline/format-label :fantasypros/ecr :ppr))))
+          "a sibling format's scrape is unaffected")
+      (is (every? #(true? (:ok? (get sources (pipeline/format-label :fantasypros/aav %))))
+                  scoring/formats)))))

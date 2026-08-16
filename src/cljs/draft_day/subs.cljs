@@ -1,18 +1,61 @@
 (ns draft-day.subs
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
-            [draft-day.db :as db]))
+            [draft-day.db :as db]
+            [draft-day.scoring :as scoring]))
 
 ;; ---- simple extracts ----
 (doseq [k [:view :status :config :teams :my-team-id
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
-           :watchlist :import-report]]
+           :watchlist :import-report :universe]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
 ;; otherwise the active preset keyword itself (:standard/:half-ppr/:ppr).
 (rf/reg-sub :scoring-mode :<- [:config]
   (fn [cfg _] (let [s (:scoring cfg)] (cond (map? s) :custom (keyword? s) s :else :ppr))))
+
+;; The format whose vendor columns this league actually reads. Resolution is
+;; shared with the server (`routes/resolve-scoring`) so the format warned about
+;; here is always the one `rankings.vendor` flattened.
+(rf/reg-sub :scoring-format :<- [:config]
+  (fn [cfg _] (scoring/format-of (scoring/resolve-config (:scoring cfg)))))
+
+(defn source-gap?
+  "Did this `:sources` report actually deliver anything usable?
+
+  `:ok? false` is only the loud half. A scrape that answers 200 and parses to
+  nothing reports `{:ok? true :rows 0}` — which is what a vendor renaming a JSON
+  key looks like — and a join whose match keys have drifted reports plenty of
+  rows and `:matched 0`. Both leave every column blank, and keying the warning
+  off `:ok?` alone let both through silently."
+  [{:keys [ok? rows matched]}]
+  (or (false? ok?)
+      (not (pos? (or rows 0)))
+      (not (pos? (or matched 0)))))
+
+(def vendor-gap-sources
+  "The format-scoped FantasyPros halves, in the order the notice names them."
+  [:fantasypros/ecr :fantasypros/aav])
+
+(rf/reg-sub :vendor-gaps
+  :<- [:scoring-format]
+  :<- [:universe]
+  ;; FantasyPros is scraped once per scoring format, and each scrape is
+  ;; independently best-effort — so the standard cheatsheet can fail while PPR
+  ;; succeeds, and the cache is then served for a day with market prices for
+  ;; some leagues and not others. Only this league's format matters here, which
+  ;; is why the check cannot live server-side: the universe is shared.
+  ;;
+  ;; A label the universe does not mention at all is not judged: the bundled
+  ;; sample predates provenance, and "we never looked" is not "it is missing".
+  (fn [[fmt universe] _]
+    (let [sources (:sources universe)]
+      (into []
+            (keep (fn [source]
+                    (when-let [report (get sources (scoring/format-label source fmt))]
+                      (when (source-gap? report) source))))
+            vendor-gap-sources))))
 
 (rf/reg-sub :ranked-players :<- [:ranked] (fn [r _] (:players r)))
 
