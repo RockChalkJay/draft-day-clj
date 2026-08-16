@@ -117,9 +117,8 @@ button.danger:hover { background: var(--warn); color: #0b0e13; }
 
 /* ---- board controls ----
    Single row directly above the table: [pos-filter + search] left-aligned
-   flush with the table's left edge, tier-key (when present) flush with the
-   table's right edge. align-items: flex-end keeps every group's bottom edge
-   on the same line, immediately touching the table's top edge. */
+   flush with the table's left edge. align-items: flex-end keeps every group's
+   bottom edge on the same line, immediately touching the table's top edge. */
 .board-controls { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; margin-bottom: 8px; flex-wrap: nowrap; }
 .filters { display: flex; align-items: flex-end; gap: 10px; }
 .pos-filter button { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
@@ -198,12 +197,6 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 /* The boundary itself. Overrides the previous row's 1px td border-bottom under
    border-collapse, so a tier break reads as one heavier line, not two. */
 .board tbody tr.tier-start td { border-top: 2px solid var(--tier-line); }
-
-/* tier key — legend for the stripe colors, shown above the board in every view */
-.tier-key { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
-.tier-key-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-.tier-key-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
-.tier-swatch { width: 16px; height: 10px; border-radius: 3px; display: inline-block; }
 
 /* ---- roster panel ---- */
 .roster-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; height: 100%; }

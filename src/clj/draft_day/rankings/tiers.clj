@@ -28,12 +28,17 @@
   {:overall 12 :position 4})
 
 (def MAX-TIERS
-  "Ceiling on tiers per scale, whatever the pool's depth asks for.
+  "Ceiling on the tiers a scale renders, whatever the pool's depth asks for.
 
   The board spends a fixed hue budget on tiers (see `views/board.cljs`), so past
   a dozen the stripes stop being tellable apart and the tier number stops being
   a thing you can hold in your head. Nothing on a 12-team board comes close;
-  this is here for the deep-league case."
+  this is here for the deep-league case.
+
+  It bounds the *rendered* count, tail included — `tiers-by-cliffs` spends one of
+  these on the below-replacement tail when there is one, so a capped pool with a
+  tail gets `MAX-TIERS - 1` cut tiers plus it. Counting only the cuts here is how
+  a ceiling of 12 would quietly render 13."
   12)
 
 (def MIN-TIER-SIZE
@@ -132,8 +137,12 @@
          cutoff (if (nil? replacement-level)
                   n
                   (count (take-while #(> (score %) (double replacement-level)) sorted)))
+         ;; The tail below spends one of MAX-TIERS, so a capped pool that has one
+         ;; may only cut MAX-TIERS - 1. Without this the ceiling is off by one
+         ;; exactly where it matters — the deep pool that actually reaches it.
+         ceiling (if (< cutoff n) (dec MAX-TIERS) MAX-TIERS)
          cuts   (cut-points (mapv score (subvec sorted 0 cutoff))
-                            (tier-count cutoff target-size)
+                            (min (tier-count cutoff target-size) ceiling)
                             MIN-TIER-SIZE)
          tiers  (when (pos? cutoff)
                   (reductions (fn [t i] (if (contains? cuts i) (inc t) t))

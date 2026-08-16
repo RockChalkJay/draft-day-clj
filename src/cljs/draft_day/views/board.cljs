@@ -127,8 +127,8 @@
   (if (odd? (max 1 t)) :pale :deep))
 
 (defn tier-color
-  "Full-strength color for tier `t` of `n` — the row's left stripe and its
-  legend swatch."
+  "Full-strength color for tier `t` of `n` — the row's left stripe and the rule
+  drawn across a tier boundary."
   [t n]
   (let [{:keys [l]} (tier-bands (tier-band t))]
     (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) ")")))
@@ -165,22 +165,6 @@
   (map (fn [p prev] (and (some? prev) (not= (:tier p) (:tier prev))))
        players (cons nil players)))
 
-;; ---- tier key ----
-
-(defn- tier-key
-  "Legend of the tier stripe colors, showing every tier present on the board."
-  [players n-tiers]
-  (let [tiers (->> players (keep :tier) distinct sort)]
-    (when (seq tiers)
-      [:div.tier-key
-       [:span.tier-key-label "Tiers"]
-       (map (fn [t]
-              ^{:key t}
-              [:span.tier-key-item
-               [:i.tier-swatch {:style {:background (tier-color t n-tiers)}}]
-               (str "T" t)])
-            tiers)])))
-
 ;; ---- filters ----
 
 (def ^:private positions ["QB" "RB" "WR" "TE" "K" "DST"])
@@ -216,8 +200,7 @@
         n-tiers     (reduce max 1 (keep :tier players))]
     [:div.board-wrap
      [:div.board-controls
-      [:div.filters [pos-filter] [search-box]]
-      [tier-key players n-tiers]]
+      [:div.filters [pos-filter] [search-box]]]
      [:div.table-scroll
       [:table.board
        [:thead [:tr 

@@ -64,6 +64,17 @@
     (is (= 2 (tiers/tier-count 1 4)) "a pool worth tiering has a top and a bottom")
     (is (= tiers/MAX-TIERS (tiers/tier-count 10000 4)))))
 
+(deftest the-ceiling-counts-the-tail-tier-too
+  ;; MAX-TIERS bounds what the board *renders*, and the below-replacement tail is
+  ;; rendered. Counting only the cuts would spend the whole budget above
+  ;; replacement and then hand the palette one more tier than it plans for.
+  (let [deep (mapv #(- 4000.0 (* 7.0 %)) (range 300))]
+    (testing "a pool deep enough to hit the cap, with a tail below replacement"
+      (is (= tiers/MAX-TIERS (reduce max (tier-seq deep 2000.0)))))
+
+    (testing "and one with no tail spends the whole budget on cuts"
+      (is (= tiers/MAX-TIERS (reduce max (tier-seq deep nil)))))))
+
 (deftest a-deeper-pool-really-does-come-back-with-more-tiers
   ;; End to end through tiers-by-cliffs, not just the arithmetic: same shape of
   ;; decline, different depth.
