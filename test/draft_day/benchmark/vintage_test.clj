@@ -76,4 +76,11 @@
     (is (nil? (sleeper/adp-of {:player-id "x"}))
         "a player the vendor never priced stays nil")
     (is (nil? (sleeper/adp-of {:player-id "x" :sleeper/adp 3.0}))
-        "and the old flat key is not silently honoured")))
+        "and the old flat key is not silently honoured"))
+  ;; The flat key was PPR-preferred *with fallback*, so a player Sleeper priced
+  ;; only in standard stays in the pool rather than dropping out of it.
+  (is (= 16.8 (sleeper/adp-of {:vendor/by-format {:standard {:sleeper/adp 16.8}}}))
+      "falls back to a format that has a price when PPR has none")
+  (is (= 11.2 (sleeper/adp-of {:vendor/by-format {:half-ppr {:sleeper/adp 11.2}
+                                                  :standard {:sleeper/adp 16.8}}}))
+      "half-ppr before standard, matching the old key's order"))
