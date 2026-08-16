@@ -41,7 +41,9 @@
   "{:players [...] :vintage {...}} for a season, disk-cached.
 
   :players are normalized universe rows (:player-id :player-name :position :stats
-  :sleeper/adp ...) exactly as the live pipeline produces them.
+  :vendor/by-format ...) exactly as the live pipeline produces them — which is
+  why ADP is read through `adp-of` rather than off a flat key that ingestion is
+  free to move.
 
   Deliberately does NOT swallow fetch errors. Sleeper answers 200 with an empty
   stats map on every entry for seasons it has no projections for (1999-2017:
@@ -52,8 +54,9 @@
   Callers that need to keep going catch it and say so."
   [season]
   (fetch/cached
-   ;; v2 adds :raw-entries/:with-stats; see fetch/cache-path on schema tokens.
-   (fetch/cache-path "sleeper" "proj" "v2" season)
+   ;; v2 adds :raw-entries/:with-stats; v3 is the move of ADP off the flat
+   ;; :sleeper/adp into :vendor/by-format. See fetch/cache-path on schema tokens.
+   (fetch/cache-path "sleeper" "proj" "v3" season)
    (fn []
      (let [entries (sleeper/fetch-projections season)]
        {:players     (vec (sleeper/universe-from-entries entries))
@@ -64,8 +67,27 @@
 (defn players [season] (:players (season-data season)))
 (defn vintage [season] (:vintage (season-data season)))
 
+(def adp-formats
+  "Which published formats' ADP the harness scores against, in preference order.
+
+  Ingestion carries all three under `:vendor/by-format`. Before it did, the flat
+  `:sleeper/adp` was PPR-*preferred with fallback* — Sleeper leaves a 999
+  sentinel on formats it hasn't priced, and a player priced only in standard
+  still belongs in the pool. Reproducing that order is what keeps these numbers
+  comparable with every result already recorded; changing it moves every
+  benchmark, which is a decision to make and report deliberately, not a default
+  to drift into."
+  [:ppr :half-ppr :standard])
+
+(defn adp-of
+  "One universe row's harness ADP, or nil. The single reader of the key, so a
+  move like the one to `:vendor/by-format` breaks in one place rather than
+  silently resolving to nil across the harness."
+  [p]
+  (some #(get-in p [:vendor/by-format % :sleeper/adp]) adp-formats))
+
 (defn adp
   "{sleeper-player-id adp} for a season, from the same projection payload."
   [season]
-  (into {} (keep (fn [p] (when-let [a (:sleeper/adp p)] [(:player-id p) a])))
+  (into {} (keep (fn [p] (when-let [a (adp-of p)] [(:player-id p) a])))
         (players season)))

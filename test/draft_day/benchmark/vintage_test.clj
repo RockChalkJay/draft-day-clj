@@ -3,6 +3,7 @@
   against both a clean and a contaminated snapshot, with numbers taken from the
   real seasons it was calibrated on."
   (:require [clojure.test :refer [deftest is testing]]
+            [draft-day.benchmark.sources.sleeper :as sleeper]
             [draft-day.benchmark.vintage :as vintage]))
 
 (deftest gp-flatness-separates-real-seasons
@@ -60,3 +61,26 @@
     (is (= 14.0 (:prior/ppg row)))
     (is (= 17.0 (:actual/games row)))
     (is (= 1200.0 (get-in row [:actual/stats :rush_yd])))))
+
+(deftest sleeper-adp-is-read-from-the-per-format-bundle
+  ;; Ingestion moved ADP under :vendor/by-format. The harness kept reading the
+  ;; flat :sleeper/adp, which resolved to nil for every player — and the `adp`
+  ;; guard in `assemble` turned that into an empty board rather than an error,
+  ;; so `--adp-source sleeper` reported a season with no players in it.
+  (let [row {:player-id "4034"
+             :vendor/by-format {:standard {:sleeper/adp 16.8}
+                                :half-ppr {:sleeper/adp 11.2}
+                                :ppr      {:sleeper/adp 8.1}}}]
+    (is (= 8.1 (sleeper/adp-of row))
+        "PPR, matching the flat key's PPR-preferred value before the move")
+    (is (nil? (sleeper/adp-of {:player-id "x"}))
+        "a player the vendor never priced stays nil")
+    (is (nil? (sleeper/adp-of {:player-id "x" :sleeper/adp 3.0}))
+        "and the old flat key is not silently honoured"))
+  ;; The flat key was PPR-preferred *with fallback*, so a player Sleeper priced
+  ;; only in standard stays in the pool rather than dropping out of it.
+  (is (= 16.8 (sleeper/adp-of {:vendor/by-format {:standard {:sleeper/adp 16.8}}}))
+      "falls back to a format that has a price when PPR has none")
+  (is (= 11.2 (sleeper/adp-of {:vendor/by-format {:half-ppr {:sleeper/adp 11.2}
+                                                  :standard {:sleeper/adp 16.8}}}))
+      "half-ppr before standard, matching the old key's order"))

@@ -176,7 +176,7 @@
                        (let [gsis (resolve-id (:player-id p) nil)
                              adp  (if (= adp-source :ffc)
                                     (get ffc-adp gsis)
-                                    (:sleeper/adp p))]
+                                    (sleeper/adp-of p))]
                          (when (and (scoring-positions (:position p))
                                     adp (< adp pool-size))
                            (vintage-row {:player  p
@@ -185,8 +185,21 @@
                                          :usage   (get usage gsis)
                                          :outcome (get outcomes gsis)}))))
                      players)]
+     ;; An empty board is never a real answer — it means the ADP source resolved
+     ;; to nothing, and the `adp` guard above turned that into a season with no
+     ;; players instead of a stated reason. That is exactly how a key move under
+     ;; `:sleeper/adp` went unnoticed. It fails the gate rather than throwing:
+     ;; `gate` judges projections only, so a season Sleeper has no ADP for at all
+     ;; (pre-2021) passes it, and throwing would kill a whole sweep over seasons
+     ;; the caller already knows how to skip.
      {:season  season
-      :gate    (gate season)
+      :gate    (if (empty? rows)
+                 {:season season :pass? false
+                  :reason (str "no player cleared the ADP gate — " (name adp-source)
+                               " produced no ADP for this season")
+                  :adp-source adp-source :pool-size pool-size
+                  :universe (count players)}
+                 (gate season))
       :players (attach-biography rows season)})))
 
 (defn assemble-from-fp-archive
