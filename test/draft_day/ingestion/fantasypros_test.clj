@@ -1,7 +1,8 @@
 (ns draft-day.ingestion.fantasypros-test
   (:require [clojure.test :refer [deftest is]]
             [draft-day.ingestion.fantasypros :as fp]
-            [draft-day.ingestion.match :as match]))
+            [draft-day.ingestion.match :as match]
+            [draft-day.scoring :as scoring]))
 
 (def ^:private sample-html
   (str "<html><body><script>var ecrData = {\"sport\":\"NFL\",\"players\":["
@@ -25,6 +26,24 @@
 
 (deftest parse-returns-nil-without-blob
   (is (nil? (fp/parse-ecr "<html>no ecr here</html>"))))
+
+(deftest an-unknown-format-throws-rather-than-serving-ppr
+  ;; Falling back to PPR is silent in the worst way: the fetch succeeds, the
+  ;; join succeeds, the source reports a full row count, and a standard league
+  ;; reads PPR ranks and prices with nothing anywhere saying so. Ingestion wraps
+  ;; these in `best-effort`, so throwing costs one column and *shows*.
+  (doseq [[label f] {"cheatsheet" fp/cheatsheet-url "auction" fp/aav-url}]
+    (is (thrown? clojure.lang.ExceptionInfo (f :half))
+        (str label ": an unrecognized format keyword"))
+    (is (thrown? clojure.lang.ExceptionInfo (f "ppr"))
+        (str label ": the string spelling is not the keyword"))
+    (is (thrown? clojure.lang.ExceptionInfo (f nil))
+        (str label ": a missing format")))
+  (doseq [fmt scoring/formats]
+    (is (string? (fp/cheatsheet-url fmt)) (str fmt " has a cheatsheet"))
+    (is (string? (fp/aav-url fmt)) (str fmt " has an auction URL")))
+  (is (not= (fp/aav-url :standard) (fp/aav-url :ppr))
+      "the formats must actually address different pages"))
 
 ;; --- AAV ---
 

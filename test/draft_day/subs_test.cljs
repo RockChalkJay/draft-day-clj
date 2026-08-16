@@ -1,15 +1,24 @@
 (ns draft-day.subs-test
   "Subscriptions that read the universe provenance the API sends alongside the
-  players. Not reachable from `lein test` — run with
+  players, and the Settings copy built from them. Not reachable from
+  `lein test` — run with
   `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing use-fixtures]]
             [re-frame.core :as rf]
             [re-frame.db :as rdb]
             [reagent.ratom]
             [draft-day.db :as db]
-            [draft-day.subs]))
+            [draft-day.subs :as subs]
+            [draft-day.views.settings :as settings]))
 
-(use-fixtures :each {:before (fn [] (reset! rdb/app-db (db/default-db)))})
+;; Every `-test` namespace compiles into one node bundle and they all share
+;; `rdb/app-db`, so what this fixture sets up it also has to put back — the
+;; sibling events-test makes the same promise about the :fx handlers it swaps.
+(use-fixtures :each
+  {:before (fn [] (reset! rdb/app-db (db/default-db)))
+   :after  (fn []
+             (rf/clear-subscription-cache!)
+             (reset! rdb/app-db (db/default-db)))})
 
 (defn- with-sources [scoring sources]
   (swap! rdb/app-db #(-> %
@@ -24,40 +33,83 @@
   (binding [reagent.ratom/*ratom-context* #js {}]
     @(rf/subscribe [:vendor-gaps])))
 
+(def ^:private landed {:ok? true :rows 300 :matched 280})
+
 (deftest a-format-scrape-that-failed-is-reported-for-that-format-only
-  ;; Each of the six FantasyPros scrapes is independently best-effort, so the
-  ;; standard cheatsheet can fail while PPR succeeds. Before this, the cache was
-  ;; served for a day and only standard leagues were affected — silently.
+  ;; Each FantasyPros scrape is independently best-effort, so the standard
+  ;; cheatsheet can fail while PPR succeeds. Before this, the cache was served
+  ;; for a day and only standard leagues were affected — silently.
   (let [sources {:fantasypros/aav-standard {:ok? false}
-                 :fantasypros/aav-ppr      {:ok? true :rows 300}
-                 :fantasypros/ecr-standard {:ok? true :rows 300}
-                 :fantasypros/ecr-ppr      {:ok? true :rows 300}}]
+                 :fantasypros/aav-ppr      landed
+                 :fantasypros/ecr-standard landed
+                 :fantasypros/ecr-ppr      landed}]
     (testing "a standard league is told its auction values are missing"
       (with-sources :standard sources)
-      (is (= ["auction values"] (gaps))))
+      (is (= [:fantasypros/aav] (gaps))))
 
     (testing "a PPR league in the same universe has nothing to report"
       (with-sources :ppr sources)
       (is (= [] (gaps))))
 
-    (testing "both halves failing are named together"
+    (testing "both halves failing are named together, ranks first"
       (with-sources :standard (assoc sources :fantasypros/ecr-standard {:ok? false}))
-      (is (= #{"expert ranks" "auction values"} (set (gaps)))))))
+      (is (= [:fantasypros/ecr :fantasypros/aav] (gaps))))))
+
+(deftest a-scrape-that-answered-but-delivered-nothing-is-still-a-gap
+  ;; `:ok? false` is only the loud half. A vendor renaming a JSON key leaves the
+  ;; parse returning an empty (but non-nil) seq, which the join records as
+  ;; `{:ok? true :rows 0}`; match keys drifting leaves plenty of rows and
+  ;; `:matched 0`. Both blank every column, and keying off `:ok?` missed both.
+  (testing "parsed to nothing"
+    (with-sources :ppr {:fantasypros/ecr-ppr {:ok? true :rows 0 :matched 0}
+                        :fantasypros/aav-ppr landed})
+    (is (= [:fantasypros/ecr] (gaps))))
+
+  (testing "published rows that landed on nobody"
+    (with-sources :ppr {:fantasypros/ecr-ppr landed
+                        :fantasypros/aav-ppr {:ok? true :rows 150 :matched 0}})
+    (is (= [:fantasypros/aav] (gaps)))))
 
 (deftest a-custom-scoring-map-is-matched-to-its-nearest-format
   ;; A custom config names no format; the :rec weight picks the nearest, the
   ;; same way the server picks which vendor columns to flatten.
   (let [sources {:fantasypros/aav-standard {:ok? false}
-                 :fantasypros/aav-ppr      {:ok? true}}]
+                 :fantasypros/aav-ppr      landed}]
     (with-sources {:rec 0.0 :rec_yd 0.1} sources)
-    (is (= ["auction values"] (gaps)) "no receptions reads as standard")
+    (is (= [:fantasypros/aav] (gaps)) "no receptions reads as standard")
 
     (with-sources {:rec 1.0 :rec_yd 0.1} sources)
     (is (= [] (gaps)) "a point per catch reads as PPR")))
 
 (deftest no-provenance-yet-is-not-a-gap
   ;; Before /api/players answers there is nothing to judge, and a universe from
-  ;; an older server may carry no :sources at all.
+  ;; an older server may carry no :sources at all. "We never looked" is not
+  ;; "it is missing" — the bundled sample predates provenance entirely.
   (is (= [] (gaps)))
   (with-sources :ppr nil)
-  (is (= [] (gaps))))
+  (is (= [] (gaps)))
+  (with-sources :ppr {:espn landed})
+  (is (= [] (gaps)) "an unrelated source says nothing about FantasyPros"))
+
+(deftest the-notice-names-the-consequence-that-actually-follows
+  ;; ECR sets tiers and the rank spread behind the Floor/Ceiling band; AAV is
+  ;; the market price. Blaming prices when the ranks failed points the manager
+  ;; at the one number still worth trusting.
+  (is (nil? (settings/vendor-gap-message [])))
+
+  (let [{:keys [headline detail]} (settings/vendor-gap-message [:fantasypros/ecr])]
+    (is (= "FantasyPros expert ranks are missing for your scoring format." headline))
+    (is (re-find #"Floor/Ceiling" detail))
+    (is (not (re-find #"market prices" detail))
+        "prices are fine — the auction values landed"))
+
+  (let [{:keys [headline detail]} (settings/vendor-gap-message [:fantasypros/aav])]
+    (is (= "FantasyPros auction values are missing for your scoring format." headline))
+    (is (re-find #"market prices lean on ESPN alone" detail))
+    (is (not (re-find #"Floor/Ceiling" detail))))
+
+  (let [{:keys [headline detail]} (settings/vendor-gap-message subs/vendor-gap-sources)]
+    (is (= "FantasyPros expert ranks and auction values are missing for your scoring format."
+           headline))
+    (is (re-find #"Floor/Ceiling" detail))
+    (is (re-find #"market prices" detail))))

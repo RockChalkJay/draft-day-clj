@@ -252,8 +252,7 @@
     (let [s (get-in db [:config :scoring])]
       (if (map? s)
         {}
-        {:db (assoc-in db [:config :scoring]
-                       (get scoring/presets s (:ppr scoring/presets)))
+        {:db (assoc-in db [:config :scoring] (scoring/resolve-config s))
          :fx [[:dispatch [:recompute]]]}))))
 
 (rf/reg-event-fx :set-scoring-weight [persist]

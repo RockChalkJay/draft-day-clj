@@ -73,19 +73,14 @@
           (json-response status {:error error}))))))
 
 (defn resolve-scoring
-  "Coerce the request's scoring field into a scoring config. A preset keyword or
-  string resolves to its preset map; a custom {stat weight} map is bounded to
-  known stat keys so an oversized client map can't amplify per-player scoring;
-  anything else falls back to PPR."
+  "Coerce the request's scoring field into a scoring config, bounded to known
+  stat keys so an oversized client map can't amplify per-player scoring.
+
+  The preset-or-map coercion itself is `scoring/resolve-config`, shared with the
+  browser: the client picks which vendor format to warn about from the same
+  field, and the two spellings of this `cond` had already drifted on strings."
   [s]
-  (cond
-    (map? s) (select-keys s scoring/stat-keys)
-
-    (or (string? s) (keyword? s))
-    (get scoring/presets (keyword s) (:ppr scoring/presets))
-
-    :else
-    (:ppr scoring/presets)))
+  (select-keys (scoring/resolve-config s) scoring/stat-keys))
 
 
 (defn- coerce-league-state [ls]

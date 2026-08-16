@@ -1,6 +1,11 @@
 (ns draft-day.ingestion.fantasypros
-  "Enrichment: FantasyPros. Two independent best-effort scrapes off the same
-  vendor — a failure of either degrades the board, never empties it.
+  "Enrichment: FantasyPros. Independent best-effort scrapes off one vendor — a
+  failure of any of them degrades the board, never empties it.
+
+  Ten requests land here on a cold load (ECR and AAV for each of three scoring
+  formats, plus four sleeper pages). They are started together by callers, so
+  `fetch-page` owns the one thing a caller cannot: how many of them this vendor
+  is willing to see at once.
 
    - ECR (`parse-ecr`): scrapes the `var ecrData = {…}` JSON blob out of the
      cheatsheet page, supplying expert tier, positional rank, and (crucially) the
@@ -11,13 +16,57 @@
             [org.httpkit.client :as http]
             [jsonista.core :as json]
             [draft-day.ingestion.match :as match]
+            [draft-day.ingestion.parallel :as parallel]
             [draft-day.json :refer [mapper]])
-  (:import [org.jsoup Jsoup]))
+  (:import [java.util.concurrent Semaphore]
+           [org.jsoup Jsoup]))
+
+(def max-in-flight
+  "How many requests this vendor may see from us at once.
+
+  Ten scrapes (ECR and AAV for three formats, plus four sleeper pages) fired
+  simultaneously is ten connections from one IP to one host, and a
+  scraping-averse vendor answers that with a 429. A 429 is not an exception
+  here — it is `nil` from every fetch, a cache written with no FantasyPros data
+  in it at all, and that cache served for the next 24 hours. So the cap is the
+  point: three at a time is most of the speedup without looking like a crawl."
+  3)
+
+(defonce ^:private throttle (Semaphore. max-in-flight true))
+
+(defn fetch-page
+  "GET one FantasyPros page, returning its body, or nil on any transport error
+  or non-200.
+
+  Every scrape in this namespace goes through here, so however many are started
+  at once the vendor still sees at most `max-in-flight` of them. The permit is
+  released in a `finally`: a scrape that throws must not retire a permit
+  permanently, or a later cold load deadlocks on a vendor that is perfectly
+  healthy."
+  [url]
+  (.acquire throttle)
+  (try
+    (let [{:keys [status body error]} @(http/get url {:timeout 30000})]
+      (when (and (not error) (= 200 status)) body))
+    (finally (.release throttle))))
 
 (def cheatsheet-urls
   {:ppr      "https://www.fantasypros.com/nfl/rankings/ppr-cheatsheets.php"
    :half-ppr "https://www.fantasypros.com/nfl/rankings/half-point-ppr-cheatsheets.php"
    :standard "https://www.fantasypros.com/nfl/rankings/consensus-cheatsheets.php"})
+
+(defn cheatsheet-url
+  "The cheatsheet for a scoring format. An unknown format throws.
+
+  Falling back to PPR here is the bug the per-format split removed, wearing a
+  different hat: the fetch succeeds, the join succeeds, the source reports a
+  full row count, and a standard league reads PPR expert ranks with nothing
+  anywhere saying so. Ingestion wraps this in `best-effort`, so a throw costs
+  that one column and says so on the board — which is the whole point."
+  [scoring]
+  (or (get cheatsheet-urls scoring)
+      (throw (ex-info "no FantasyPros cheatsheet for that scoring format"
+                      {:scoring scoring :known (vec (keys cheatsheet-urls))}))))
 
 
 (defn- ->int [x] (cond (number? x) (int x)
@@ -57,13 +106,10 @@
 
 (defn fetch-ecr
   "Network: fetch + parse the cheatsheet for a scoring format. nil on failure.
-  The format is required on purpose — defaulting it is how PPR got baked into a
-  universe shared by every league."
+  The format is required, and an unrecognized one throws rather than quietly
+  becoming PPR — see `cheatsheet-url`."
   [scoring]
-  (let [url (get cheatsheet-urls scoring (:ppr cheatsheet-urls))
-        {:keys [status body error]} @(http/get url {:timeout 30000})]
-    (when (and (not error) (= 200 status))
-      (parse-ecr body))))
+  (some-> (fetch-page (cheatsheet-url scoring)) parse-ecr))
 
 ;; --- AAV (auction values) ---
 
@@ -76,10 +122,15 @@
 
 (defn aav-url
   "`teams`/`tb` fix the baseline pool (12 * $200 = $2400) that rankings.market
-  normalizes against."
+  normalizes against. An unknown format throws, for the reason `cheatsheet-url`
+  gives — and doubly so here, because the calculator itself silently serves
+  Standard for a parameter it does not recognize."
   [fmt]
-  (str "https://draftwizard.fantasypros.com/auction/fp_nfl.jsp?scoring="
-       (get aav-scoring-params fmt "PPR") "&teams=12&tb=200"))
+  (let [param (or (get aav-scoring-params fmt)
+                  (throw (ex-info "no FantasyPros auction scoring param for that format"
+                                  {:format fmt :known (vec (keys aav-scoring-params))})))]
+    (str "https://draftwizard.fantasypros.com/auction/fp_nfl.jsp?scoring="
+         param "&teams=12&tb=200")))
 
 ;; "Josh Allen (BUF - QB)" / "Houston Texans (HOU - DST)" -> name + position.
 (def ^:private aav-name-re #"^(.*?)\s*\([A-Z]{2,3}\s*-\s*([A-Z]{1,3})\)\s*$")
@@ -104,9 +155,7 @@
   "Network: fetch + parse the auction-value calculator for a scoring format.
   nil on failure. Format required, for the reason `fetch-ecr` gives."
   [fmt]
-  (let [{:keys [status body error]} @(http/get (aav-url fmt) {:timeout 30000})]
-    (when (and (not error) (= 200 status))
-      (parse-aav body))))
+  (some-> (fetch-page (aav-url fmt)) parse-aav))
 
 ;; --- Sleepers (a per-position boolean list, no numeric value) ---
 ;; Scoring-agnostic: FantasyPros publishes one sleeper list per position. We just
@@ -132,11 +181,17 @@
     (catch Exception _ nil)))
 
 (defn fetch-sleepers
-  "Network: fetch + parse every position's sleeper list, concatenated. Each page is
-  best-effort; a failing page contributes nothing. nil when none succeed."
+  "Network: fetch + parse every position's sleeper list, concatenated. Each page
+  is best-effort; a failing page contributes nothing. nil when none succeed.
+
+  The four pages go out together. Walked in turn they were four more 30-second
+  timeouts on the request thread — 120 seconds that no amount of parallelism
+  elsewhere in ingestion could hide, and all of it against the same vendor that
+  had just gone quiet. `fetch-page` still holds them to `max-in-flight`."
   []
-  (seq (mapcat (fn [[pos url]]
-                 (let [{:keys [status body error]} @(http/get url {:timeout 30000})]
-                   (when (and (not error) (= 200 status))
-                     (parse-sleepers body pos))))
-               sleeper-urls)))
+  (let [bodies (parallel/all
+                (update-vals sleeper-urls
+                             (fn [url] #(try (fetch-page url)
+                                             (catch Exception _ nil)))))]
+    (seq (mapcat (fn [[pos _]] (some-> (get bodies pos) (parse-sleepers pos)))
+                 sleeper-urls))))

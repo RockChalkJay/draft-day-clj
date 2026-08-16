@@ -131,18 +131,39 @@
                   your board will differ from your league where they matter:"]
        [:code (str/join ", " unsupported-scoring)]])))
 
-(defn- vendor-gap-warning
-  "What FantasyPros did not publish *for this league's format*. Each of the six
-  scrapes is independently best-effort and the cache is served for a day, so a
-  standard league can silently be pricing off ESPN alone while a PPR league in
-  the same universe sees the full consensus."
+(def vendor-gap-copy
+  "What each missing FantasyPros half is called, and what the board actually
+  loses without it. The two are not interchangeable: ECR sets tiers and the rank
+  spread the Floor/Ceiling band is built from, while AAV is the market price. A
+  notice that blames prices when the *ranks* failed points the manager at the
+  one number still worth trusting."
+  {:fantasypros/ecr {:what "expert ranks"
+                     :cost "tiers and the Floor/Ceiling band fall back to projections alone"}
+   :fantasypros/aav {:what "auction values"
+                     :cost "market prices lean on ESPN alone"}})
+
+(defn vendor-gap-message
+  "Headline + consequence for the FantasyPros halves missing at this league's
+  format, or nil when there are none. Pure, so what the notice claims is
+  testable without rendering it."
+  [gaps]
+  (when-let [entries (seq (keep vendor-gap-copy gaps))]
+    {:headline (str "FantasyPros " (str/join " and " (map :what entries))
+                    " are missing for your scoring format.")
+     :detail   (str "The board still values every player, but "
+                    (str/join ", and " (map :cost entries))
+                    " until the next cache refresh.")}))
+
+(defn vendor-gap-warning
+  "What FantasyPros did not publish *for this league's format*. Each scrape is
+  independently best-effort and the cache is served for a day, so a standard
+  league can silently be pricing off ESPN alone while a PPR league in the same
+  universe sees the full consensus."
   []
-  (let [gaps @(rf/subscribe [:vendor-gaps])]
-    (when (seq gaps)
-      [:div.scoring-warning
-       [:b (str "FantasyPros " (str/join " and " gaps) " are missing for your scoring format.")]
-       [:p.muted "The board still values every player, but market prices lean on
-                  ESPN alone until the next cache refresh."]])))
+  (when-let [{:keys [headline detail]} (vendor-gap-message @(rf/subscribe [:vendor-gaps]))]
+    [:div.scoring-warning
+     [:b headline]
+     [:p.muted detail]]))
 
 (defn- scoring-config []
   (let [cfg    @(rf/subscribe [:config])
