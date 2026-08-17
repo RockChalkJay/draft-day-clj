@@ -75,15 +75,26 @@
       (str/includes? (str/lower-case (or (:player-name p) "")) q)
       (str/includes? (str/lower-case (or (:team p) "")) q)))
 
-(defn- sort-players [players key dir]
+(defn- sort-players
+  "Sort by the active column, breaking ties on the board's overall rank.
+
+  Ties are the common case, not the edge: Worth is whole dollars and the whole
+  minimum-bid tail sits on the same one, so sorting on Worth alone left a
+  96-player block — and the $0 block behind it — in whatever order the server
+  emitted. The `#` column is computed from `rank-key` regardless, so those rows
+  rendered with their rank numbers out of order, which reads as a broken board
+  rather than as a tie. Falling back to `:rank` makes every column's order total
+  and lets the rank the board already computed decide."
+  [players key dir]
   (let [acc (get db/sort-accessors key :worth)]
     (sort (fn [a b]
             (let [va (acc a) vb (acc b)]
               (cond
-                (and (nil? va) (nil? vb)) 0
+                (and (nil? va) (nil? vb)) (compare (:rank a) (:rank b))
                 (nil? va) 1
                 (nil? vb) -1
-                :else (* dir (compare va vb)))))
+                :else (let [c (* dir (compare va vb))]
+                        (if (zero? c) (compare (:rank a) (:rank b)) c)))))
           players)))
 
 (defn- rank-key

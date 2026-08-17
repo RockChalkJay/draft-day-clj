@@ -73,6 +73,27 @@
       (is (= 1 (ranks "scored")))
       (is (= 2 (ranks "unscored"))))))
 
+(defn- board-order
+  "player-ids in the order the board renders them under `sort`."
+  [players sort]
+  (rf/clear-subscription-cache!)
+  (swap! rdb/app-db #(-> % (assoc :ranked {:players players}) (assoc :sort sort)))
+  (binding [reagent.ratom/*ratom-context* #js {}]
+    (mapv :player-id @(rf/subscribe [:board-players]))))
+
+(deftest a-tie-on-the-sorted-column-falls-back-to-rank
+  ;; Worth is whole dollars and the whole minimum-bid tail sits on $1, so ties
+  ;; are the common case. Sorting on Worth alone left that block in server
+  ;; order while the # column kept showing its real rank, so the numbers ran out
+  ;; of order down the page.
+  (let [players [{:player-id "c" :position "WR" :worth 1 :vorp -30.0 :points 120}
+                 {:player-id "a" :position "RB" :worth 1 :vorp -2.0  :points 150}
+                 {:player-id "b" :position "TE" :worth 1 :vorp -9.0  :points 130}]]
+    (is (= ["a" "b" "c"] (board-order players {:key :worth :dir -1}))
+        "a block sharing a dollar renders in rank order, not server order")
+    (is (= ["a" "b" "c"] (board-order players {:key :bye :dir -1}))
+        "a column nobody has a value for still lands in rank order")))
+
 (deftest k-and-dst-rank-behind-every-skill-player
   ;; VORP is signed, so a below-replacement receiver carries a negative number
   ;; while K and DST — which the engine gives no replacement level at all — sit
