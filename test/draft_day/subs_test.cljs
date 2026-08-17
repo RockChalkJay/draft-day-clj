@@ -73,6 +73,27 @@
       (is (= 1 (ranks "scored")))
       (is (= 2 (ranks "unscored"))))))
 
+(deftest k-and-dst-rank-behind-every-skill-player
+  ;; VORP is signed, so a below-replacement receiver carries a negative number
+  ;; while K and DST — which the engine gives no replacement level at all — sit
+  ;; at 0.0 meaning "no opinion". Read as a score, that 0.0 outranks the whole
+  ;; tail: on the sample board 76 kickers and defenses would leapfrog 469 players
+  ;; worth drafting ahead of them. Their $0 price already said where they go.
+  (let [ranks (board-ranks [{:player-id "kicker" :position "K"   :worth 0 :vorp 0.0   :points 140}
+                            {:player-id "dst"    :position "DST" :worth 0 :vorp 0.0   :points 120}
+                            {:player-id "deep"   :position "WR"  :worth 0 :vorp -90.0 :points 100}
+                            {:player-id "near"   :position "RB"  :worth 1 :vorp -2.0  :points 158}])]
+    (is (= 1 (ranks "near")) "a minimum-bid player is still a dollar, so he leads")
+    (is (= 2 (ranks "deep")) "and an unpriced receiver still beats both specialists")
+    (is (= 3 (ranks "kicker")))
+    (is (= 4 (ranks "dst"))))
+
+  (testing "among themselves K and DST still order on points"
+    (let [ranks (board-ranks [{:player-id "k-lo" :position "K" :worth 0 :vorp 0.0 :points 90}
+                              {:player-id "k-hi" :position "K" :worth 0 :vorp 0.0 :points 140}])]
+      (is (= 1 (ranks "k-hi")))
+      (is (= 2 (ranks "k-lo"))))))
+
 (deftest worth-still-decides-the-order-wherever-it-can
   ;; The tie-break may only reach players Worth cannot separate. Distinct dollars
   ;; decide the order outright, whatever VORP and points say.

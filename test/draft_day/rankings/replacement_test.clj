@@ -33,11 +33,25 @@
     (is (= 270.0 (base "RB")))                ; index 24+6=30
     (is (= 264.0 (more "RB")))))              ; index 24+12=36
 
-(deftest vorp-floored-at-zero-and-zero-for-k-dst
+(deftest vorp-is-signed-and-zero-for-k-dst
   (let [board [{:player-id "rb1" :position "RB" :points 250}
                {:player-id "rb2" :position "RB" :points 100}   ; below replacement
                {:player-id "k1"  :position "K"  :points 180}]
         vorp  (mapv :vorp (rep/with-vorp board {"RB" 150.0}))]
     (is (= 100.0 (nth vorp 0)))               ; 250 - 150
-    (is (= 0.0   (nth vorp 1)))               ; max(0, 100-150)
-    (is (= 0.0   (nth vorp 2)))))             ; K not in levels
+    (is (= -50.0 (nth vorp 1)))               ; 100 - 150, not floored at 0
+    (is (= 0.0   (nth vorp 2)))))             ; K not in levels -> no opinion
+
+(deftest signed-vorp-orders-the-tail-across-positions
+  ;; The reason the floor came off. Raw points are not comparable between
+  ;; positions, so the below-replacement block used to sort every quarterback
+  ;; above every receiver purely because quarterbacks score more. Against their
+  ;; own replacement levels the same three players read in the right order.
+  (let [board  [{:player-id "qb" :position "QB" :points 220.0}   ; -60 vs 280
+                {:player-id "wr" :position "WR" :points 185.0}   ;  -5 vs 190
+                {:player-id "rb" :position "RB" :points 140.0}]  ; -20 vs 160
+        levels {"QB" 280.0 "WR" 190.0 "RB" 160.0}
+        by-pts  (mapv :player-id (sort-by :points > board))
+        by-vorp (mapv :player-id (sort-by :vorp > (rep/with-vorp board levels)))]
+    (is (= ["qb" "wr" "rb"] by-pts)  "points rank the quarterback first")
+    (is (= ["wr" "rb" "qb"] by-vorp) "signed VORP ranks him last, which is right")))

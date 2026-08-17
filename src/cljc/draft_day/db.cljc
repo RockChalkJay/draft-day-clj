@@ -42,6 +42,13 @@
 ;;  - once every starting slot is filled, the board goes quiet and My Roster marks
 ;;    a starter's bye amber when no bench player at that position covers the week.
 
+(def priced-positions
+  "Positions the model puts a dollar on. K/DST are streamed, so the engine gives
+  them no replacement level and no price (`rankings.replacement`), which also
+  leaves their :vorp at 0.0 meaning 'no opinion' rather than 'at replacement' —
+  the board has to keep them out of any VORP comparison itself."
+  #{"QB" "RB" "WR" "TE"})
+
 (def conflict-positions
   "Positions whose bye stacking matters — QB/RB/WR/TE only (K/DST streamed, FLEX
   ignored). Only these drive the red board pulse and the amber roster marker."

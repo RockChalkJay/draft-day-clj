@@ -87,22 +87,27 @@
           players)))
 
 (defn- rank-key
-  "Descending sort key for the board's overall rank: Worth, then VORP, then
-  projected points.
+  "Descending sort key for the board's overall rank: Worth, then skill positions
+  ahead of K/DST, then VORP, then projected points.
 
-  Worth alone is not a total order. Everything below replacement prices at $0 —
-  every skill player the model scored under replacement, plus all of K and DST —
-  and a stable sort left that whole block in whatever order the server emitted,
-  which is position grouping. On the current board that is 549 of 633 players,
-  and it put a receiver FantasyPros ranks 44th at 200th: not a disagreement
-  about his value, but no opinion at all. VORP and points still separate those
-  players even where dollars cannot.
+  Worth alone is not a total order. Everything past the last roster slot prices
+  at $0, and the minimum-bid tail all prices at $1, so a stable sort left those
+  blocks in whatever order the server emitted, which is position grouping. VORP
+  and points still separate those players even where dollars cannot.
+
+  The K/DST term is what keeps signed VORP honest. The engine gives those two no
+  replacement level, so their :vorp is 0.0 meaning 'no opinion' — and once every
+  below-replacement skill player carries a negative number, 0.0 floats to the top
+  of the tail and 76 kickers and defenses leapfrog 469 players who are actually
+  worth drafting. Ordering them behind the skill board is what the $0 price was
+  already saying.
 
   Missing values read as 0 rather than nil: the model leaves :vorp and :points
   off players it never scored, and a nil inside a vector sort key throws instead
   of sorting last."
   [p]
   [(- (double (or (:worth p) 0)))
+   (if (db/priced-positions (:position p)) 0 1)
    (- (double (or (:vorp p) 0)))
    (- (double (or (:points p) 0)))])
 
