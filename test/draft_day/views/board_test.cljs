@@ -4,7 +4,8 @@
   have: adjacent tiers stay visibly apart however many tiers a position has.
   Run with `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing]]
-            [draft-day.views.board :as board]))
+            [draft-day.views.board :as board]
+            [draft-day.views.util :as util]))
 
 (deftest tier-hue-ramps-green-to-red
   (testing "tier 1 is the green end and the last tier the red end"
@@ -44,6 +45,53 @@
     (is (= [false true true true]
            (board/tier-starts [{:tier 3} {:tier 1} {:tier 3} {:tier 2}]))))
   (is (= [] (board/tier-starts []))))
+
+(deftest dragleave-ignores-a-move-into-a-child
+  ;; A header is `<th>` wrapping a `[:span.sort-ind]` arrow. dragleave fires on
+  ;; the th when the pointer crosses into that span, so treating every dragleave
+  ;; as "left the header" blinks the insertion line off mid-drag.
+  ;; The node runner has no DOM, so `contains` is stubbed with the contract the
+  ;; real Node.contains has: true for a descendant, false for anything else
+  ;; including null.
+  (let [arrow #js {}
+        other #js {}
+        th    #js {:contains (fn [n] (identical? n arrow))}
+        event (fn [related] #js {:currentTarget th :relatedTarget related})]
+
+    (testing "moving onto the sort arrow has not left the header"
+      (is (not (util/left-element? (event arrow)))))
+
+    (testing "moving onto a different header has"
+      (is (util/left-element? (event other))))
+
+    (testing "leaving for nothing at all counts as leaving"
+      (is (util/left-element? (event nil))))))
+
+(deftest column-drags-do-not-carry-droppable-text
+  ;; text/plain would make every header a payload any text input will accept,
+  ;; and the board's search box sits directly above the header row.
+  (is (not= "text/plain" util/column-mime))
+  (is (re-find #"^application/" util/column-mime)))
+
+(deftest drop-side-follows-the-direction-of-travel
+  ;; The insertion line has to name the gap the column will actually land in.
+  ;; db/move-column-onto drops a rightward drag past the target and a leftward
+  ;; one before it, so a line that always drew on the same edge would be a lie
+  ;; half the time.
+  (let [ks [:rank :ecr :name :worth :market]]
+    (testing "dragging rightwards, the line sits on the target's far edge"
+      (is (= "drop-after" (board/drop-side ks :rank :worth))))
+
+    (testing "dragging leftwards, it sits on the near edge"
+      (is (= "drop-before" (board/drop-side ks :market :ecr))))
+
+    (testing "no line over the column being dragged — there is no gap there"
+      (is (nil? (board/drop-side ks :name :name))))
+
+    (testing "a key that is not on screen draws nothing rather than guessing"
+      (is (nil? (board/drop-side ks :floor :name)))
+      (is (nil? (board/drop-side ks :name :floor)))
+      (is (nil? (board/drop-side ks nil :name))))))
 
 (deftest every-row-is-striped-whatever-the-view
   ;; Striping used to be switched off unless the board was filtered to one

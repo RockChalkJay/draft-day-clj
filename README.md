@@ -57,6 +57,9 @@ paired season-block-bootstrapped statistics, the draft-simulation metric).
 
 - **Add stats and player pic to the on the block card** Include additional stats like target percentage, number of targets, number of receptions.
 
+- ~~Drag-and-drop column bugs found reviewing #12: droppable `text/plain` payload,
+  picker drag dead in Firefox, missing `preventDefault`, insertion line flicker~~
+
 ## Known scoring coverage gaps
 
 Draft Day scores a flat stat line — `Σ(projected stat × weight)` over the 21 keys in

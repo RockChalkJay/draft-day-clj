@@ -2,26 +2,35 @@
   "Column picker: show/hide via checkboxes, rearrange via drag-and-drop."
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
-            [draft-day.db :as db]))
+            [draft-day.db :as db]
+            [draft-day.views.util :as util]))
 
 (defn column-picker []
-  (let [drag-idx (r/atom nil)]
+  ;; Tracks the dragged column's key, not its index: :move-column-onto is keyed
+  ;; so the picker and the board header can share one event (see views.board).
+  (let [drag-key (r/atom nil)]
     (fn []
       (let [cols @(rf/subscribe [:columns])]
         [:ul.col-picker
-         (map-indexed
-          (fn [i c]
-            ^{:key (:key c)}
-            [:li.col-item
-             {:draggable true
-              :on-drag-start #(reset! drag-idx i)
-              :on-drag-over  #(.preventDefault %)
-              :on-drop       #(when (and @drag-idx (not= @drag-idx i))
-                                (rf/dispatch [:move-column @drag-idx i])
-                                (reset! drag-idx nil))}
-             [:span.drag-handle "⠿"]
-             [:label
-              [:input {:type "checkbox" :checked (:visible? c)
-                       :on-change #(rf/dispatch [:toggle-column (:key c)])}]
-              " " (:label (db/columns-by-key (:key c)))]])
-          cols)]))))
+         (map (fn [c]
+                (let [k (:key c)]
+                  ^{:key k}
+                  [:li.col-item
+                   {:draggable true
+                    :on-drag-start (fn [e]
+                                     (util/column-drag-start! e k)
+                                     (reset! drag-key k))
+                    :on-drag-over  #(.preventDefault %)
+                    ;; preventDefault or the browser runs its own drop action on
+                    ;; top of the reorder
+                    :on-drop       (fn [e]
+                                     (.preventDefault e)
+                                     (rf/dispatch [:move-column-onto @drag-key k])
+                                     (reset! drag-key nil))
+                    :on-drag-end   #(reset! drag-key nil)}
+                   [:span.drag-handle "⠿"]
+                   [:label
+                    [:input {:type "checkbox" :checked (:visible? c)
+                             :on-change #(rf/dispatch [:toggle-column k])}]
+                    " " (:label (db/columns-by-key k))]]))
+              cols)]))))

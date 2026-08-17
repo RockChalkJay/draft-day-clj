@@ -272,6 +272,32 @@
                              :visible? (boolean (:default? c))})))]
     (vec (concat kept added))))
 
+(defn move-column-onto
+  "Drop the column keyed `from-k` onto `to-k`: remove it, then insert it at
+  `to-k`'s index *in the original vector*.
+
+  Taking the target index before the removal rather than after is what makes the
+  drag read the way it looks. Dragging rightwards, the removal shifts the target
+  left by one, so the old index lands the column just past it; dragging
+  leftwards nothing before the target moves, so it lands just before it. Both
+  ends of the board stay reachable — measuring after the removal instead costs
+  you the last slot, since no surviving column has an index to aim at.
+
+  Keyed rather than indexed because the two places that reorder columns hold
+  different vectors — the picker lists every column, the board header only the
+  visible ones — so an index means two different things depending on where it
+  came from. A key means one thing either way, and hidden columns keep their
+  slots. An absent key, or a drop onto itself, is a no-op."
+  [cols from-k to-k]
+  (let [cols     (vec cols)
+        index-of (fn [k] (first (keep-indexed #(when (= k (:key %2)) %1) cols)))
+        from     (index-of from-k)
+        to       (index-of to-k)]
+    (if (or (nil? from) (nil? to) (= from-k to-k))
+      cols
+      (let [without (vec (concat (subvec cols 0 from) (subvec cols (inc from))))]
+        (vec (concat (subvec without 0 to) [(nth cols from)] (subvec without to)))))))
+
 ;; ---- player-id migration ----
 ;; :player-id used to be Sleeper's id verbatim; it is now the GSIS id wherever
 ;; one resolves. Draft state saved before that change is keyed by the old value,

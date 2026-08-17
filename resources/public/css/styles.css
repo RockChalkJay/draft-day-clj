@@ -138,9 +138,19 @@ button.danger:hover { background: var(--warn); color: #0b0e13; }
 table.board { width: 100%; border-collapse: collapse; background: var(--panel); }
 table.board th { position: sticky; top: 0; background: var(--panel2); text-align: left;
   font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
-  padding: 8px 10px; cursor: pointer; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  padding: 8px 10px; cursor: grab; white-space: nowrap; border-bottom: 1px solid var(--border);
+  /* headers are drag handles as well as sort buttons; without this a drag
+     paints a text selection across the row */
+  user-select: none; }
 table.board th.sorted { color: var(--accent); }
 .sort-ind { color: var(--muted); }
+
+/* Column drag-and-drop. The insertion line is an inset shadow rather than a
+   border because a border would widen the cell and shove every column sideways
+   mid-drag, which is exactly when the board needs to hold still. */
+table.board th.dragging { opacity: .4; cursor: grabbing; }
+table.board th.drop-before { box-shadow: inset 2px 0 0 var(--accent); }
+table.board th.drop-after  { box-shadow: inset -2px 0 0 var(--accent); }
 table.board td { padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 table.board tbody tr:hover { background: var(--panel2); }
 table.board tbody tr.selected { background: #1d2a44; }

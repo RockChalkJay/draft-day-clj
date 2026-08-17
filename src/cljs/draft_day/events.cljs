@@ -142,13 +142,11 @@
   (fn [db [_ k]]
     (update db :columns (fn [cols] (mapv #(if (= (:key %) k) (update % :visible? not) %) cols)))))
 
-(rf/reg-event-db :move-column [persist]
-  (fn [db [_ from to]]
-    (update db :columns
-            (fn [cols]
-              (let [item    (nth cols from)
-                    without (vec (concat (subvec cols 0 from) (subvec cols (inc from))))]
-                (vec (concat (subvec without 0 to) [item] (subvec without to))))))))
+;; Reorder is keyed, not indexed: the picker drags against every column while the
+;; board header drags against the visible ones only, and both dispatch this.
+(rf/reg-event-db :move-column-onto [persist]
+  (fn [db [_ from-k to-k]]
+    (update db :columns db/move-column-onto from-k to-k)))
 
 ;; ---- draft actions ----
 
