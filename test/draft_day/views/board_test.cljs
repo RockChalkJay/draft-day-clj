@@ -45,6 +45,26 @@
            (board/tier-starts [{:tier 3} {:tier 1} {:tier 3} {:tier 2}]))))
   (is (= [] (board/tier-starts []))))
 
+(deftest drop-side-follows-the-direction-of-travel
+  ;; The insertion line has to name the gap the column will actually land in.
+  ;; db/move-column-onto drops a rightward drag past the target and a leftward
+  ;; one before it, so a line that always drew on the same edge would be a lie
+  ;; half the time.
+  (let [ks [:rank :ecr :name :worth :market]]
+    (testing "dragging rightwards, the line sits on the target's far edge"
+      (is (= "drop-after" (board/drop-side ks :rank :worth))))
+
+    (testing "dragging leftwards, it sits on the near edge"
+      (is (= "drop-before" (board/drop-side ks :market :ecr))))
+
+    (testing "no line over the column being dragged — there is no gap there"
+      (is (nil? (board/drop-side ks :name :name))))
+
+    (testing "a key that is not on screen draws nothing rather than guessing"
+      (is (nil? (board/drop-side ks :floor :name)))
+      (is (nil? (board/drop-side ks :name :floor)))
+      (is (nil? (board/drop-side ks nil :name))))))
+
 (deftest every-row-is-striped-whatever-the-view
   ;; Striping used to be switched off unless the board was filtered to one
   ;; position, because :tier was per-position and a tier 2 RB beside a tier 2 WR

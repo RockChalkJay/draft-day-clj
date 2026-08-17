@@ -1,5 +1,7 @@
 (ns draft-day.views.board
-  (:require [re-frame.core :as rf]
+  (:require [clojure.string :as str]
+            [reagent.core :as r]
+            [re-frame.core :as rf]
             [draft-day.db :as db]
             [draft-day.views.util :as util]))
 
@@ -72,15 +74,64 @@
 
 ;; ---- header + rows ----
 
-(defn- header-cell [col sort]
+;; A header is both a sort button and a drag handle. That is not a conflict:
+;; a completed HTML5 drag suppresses the click, and a plain click never starts
+;; one, so :on-click below still owns the tap.
+
+(defn drop-side
+  "Which edge of the hovered column to draw the insertion line on, given the
+  order the manager can actually see (`ks`, the visible keys). Dragging
+  rightwards the column lands after the hovered one, leftwards before it — so
+  the line has to follow the direction of travel or it points at the wrong gap."
+  [ks dragging over]
+  (let [idx (zipmap ks (range))
+        from (idx dragging)
+        to   (idx over)]
+    (when (and from to (not= from to))
+      (if (< from to) "drop-after" "drop-before"))))
+
+(defn header-cell [col sort drag ks]
   (let [k (:key col)
         d (db/columns-by-key k)
-        active? (= (:key sort) k)]
+        active? (= (:key sort) k)
+        {:keys [dragging over]} @drag]
     [:th {:on-click #(rf/dispatch [:set-sort k])
           :title (:tooltip d)
-          :class (when active? "sorted")}
+          :draggable true
+          ;; Firefox will not begin a drag unless dataTransfer carries something.
+          :on-drag-start (fn [e]
+                           (set! (.. e -dataTransfer -effectAllowed) "move")
+                           (.setData (.-dataTransfer e) "text/plain" (name k))
+                           (reset! drag {:dragging k :over nil}))
+          :on-drag-over  (fn [e]
+                           (.preventDefault e)
+                           (swap! drag assoc :over k))
+          :on-drag-leave #(swap! drag update :over (fn [o] (when-not (= o k) o)))
+          :on-drop       (fn [e]
+                           (.preventDefault e)
+                           (rf/dispatch [:move-column-onto (:dragging @drag) k])
+                           (reset! drag {}))
+          ;; A drag abandoned off the row still ends, so nothing stays lit.
+          :on-drag-end   #(reset! drag {})
+          :class (->> [(when active? "sorted")
+                       (when (= dragging k) "dragging")
+                       (when (= over k) (drop-side ks dragging k))]
+                      (filter some?)
+                      (str/join " "))}
      (:label d)
      [:span.sort-ind (cond (not active?) " ↕" (= -1 (:dir sort)) " ▼" :else " ▲")]]))
+
+(defn board-header
+  "The header row. Owns the transient drag state in a local atom — it is pointer
+  state, not app state; only the committed reorder reaches app-db."
+  [_cols _sort]
+  (let [drag (r/atom {})]
+    (fn [cols sort]
+      (let [ks (mapv :key cols)]
+        [:tr (map (fn [col]
+                    ^{:key (:key col)}
+                    [header-cell col sort drag ks])
+                  cols)]))))
 
 ;; ---- tier colors ----
 
@@ -203,9 +254,7 @@
       [:div.filters [pos-filter] [search-box]]]
      [:div.table-scroll
       [:table.board
-       [:thead [:tr 
-                (map (fn [col] ^{:key (:key col)} 
-                       [header-cell col sort]) cols)]]
+       [:thead [board-header cols sort]]
        [:tbody
         (map (fn [p tier-start?]
                ^{:key (:player-id p)}

@@ -190,6 +190,42 @@
     (let [once (db/reconcile-columns [{:key :vorp :visible? false}])]
       (is (= once (db/reconcile-columns once))))))
 
+(deftest move-column-onto-reorders-by-key
+  ;; :a and :c are hidden, so a reorder that only ever reasoned about the visible
+  ;; columns would still have to leave these two in the right slots
+  (let [cols [{:key :a :visible? false} {:key :b :visible? true}
+              {:key :c :visible? false} {:key :d :visible? true}]
+        ks   #(mapv :key %)]
+
+    (testing "dragging rightwards drops the column just past the target"
+      (is (= [:b :c :a :d] (ks (db/move-column-onto cols :a :c)))))
+
+    (testing "dragging leftwards drops it just before the target"
+      (is (= [:a :d :b :c] (ks (db/move-column-onto cols :d :b)))))
+
+    (testing "both ends are reachable — the case that fails if the target index
+              is measured after the removal instead of before it"
+      (is (= [:b :c :d :a] (ks (db/move-column-onto cols :a :d))))
+      (is (= [:d :a :b :c] (ks (db/move-column-onto cols :d :a)))))
+
+    (testing "a hidden column rides along with its own key and visibility"
+      (let [out (db/move-column-onto cols :d :b)]
+        (is (= {:key :c :visible? false} (nth out 3)))
+        (is (= (frequencies cols) (frequencies out))
+            "nothing is invented, lost, or has its visibility rewritten")))
+
+    (testing "a drop onto itself is a no-op"
+      (is (= cols (db/move-column-onto cols :b :b))))
+
+    (testing "an absent key is a no-op rather than a throw"
+      (is (= cols (db/move-column-onto cols :gone :b)))
+      (is (= cols (db/move-column-onto cols :b :gone))))
+
+    (testing "every drop is a permutation — no move can drop or duplicate one"
+      (let [all   (ks cols)
+            drops (mapcat (fn [f] (map #(db/move-column-onto cols f %) all)) all)]
+        (is (every? #(= (frequencies cols) (frequencies %)) drops))))))
+
 (deftest column-catalog-is-internally-consistent
   (testing "keys are unique"
     (is (= (count db/column-catalog) (count db/columns-by-key))))

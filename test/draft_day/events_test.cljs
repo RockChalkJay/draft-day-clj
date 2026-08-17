@@ -172,6 +172,20 @@
     (rf/dispatch-sync [:set-sort :fp-tier])
     (is (= {:key :fp-tier :dir -1} (:sort @rdb/app-db)))))
 
+;; ---- a dragged column keeps its new slot across a refresh ----
+
+(deftest a-reordered-column-reaches-localstorage
+  (let [keys-now #(mapv :key (:columns @rdb/app-db))
+        [a b c]  (take 3 (keys-now))]
+    (rf/dispatch-sync [:move-column-onto a c])
+    (is (= [b c a] (take 3 (keys-now)))
+        "the board header hands over keys, so what is hidden cannot skew the move")
+    (is (= (:columns @rdb/app-db) (:columns (last (:persist @captured))))
+        "and the new order is in the persisted slice — this is the whole
+         hard-refresh guarantee, since :boot keeps the stored order")
+    (testing "reordering is display-only; it must not re-rank the board"
+      (is (empty? (:http @captured))))))
+
 ;; ---- a config change made before the universe lands is not lost ----
 
 (deftest a-scoring-change-with-no-players-yet-is-picked-up-on-load
