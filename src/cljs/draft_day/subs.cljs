@@ -129,7 +129,19 @@
           ;; independent of the active sort column
           rank-map    (into {} (map-indexed (fn [i p] [(:player-id p) (inc i)])
                                             (sort-by rank-key filtered)))
-          ranked      (map #(assoc % :rank (rank-map (:player-id %))) filtered)]
+          scale       (db/tier-scale pos-filter)
+          ;; :tier is resolved here, shadowing the flat alias the server ships,
+          ;; so every consumer downstream — row striping, the legend, the Tier
+          ;; column, sorting — keeps reading one key while the scale moves under
+          ;; it. The server sends both scales, so a position filter switches
+          ;; scale with no refetch and no :recompute.
+          ranked      (map #(assoc % :rank (rank-map (:player-id %))
+                                     :tier (db/player-tier % scale)
+                                     ;; FantasyPros publishes both scales too, so
+                                     ;; the FP T column tracks ours rather than
+                                     ;; answering a different question beside it
+                                     :fantasypros/ecr-tier (db/fp-tier % scale))
+                           filtered)]
       (vec (sort-players ranked (:key sort) (:dir sort))))))
 
 ;; ---- my team / roster ----

@@ -57,6 +57,8 @@
     :floor    [:td.num.muted (n0 (:floor p))]
     :vorp     [:td.num (n0 (:vorp p))]
     :ecr      [:td.num (or (:fantasypros/ecr p) "–")]
+    ;; already resolved to the active scale by :board-players
+    :tier     [:td.num (or (:tier p) "–")]
     :fp-tier  [:td.num.muted (or (:fantasypros/ecr-tier p) "–")]
     :inj      [:td (or (:sleeper/injury-status p) "–")]
     :bye      (let [clash? (db/board-bye-clash? (:position p) (:bye p)
@@ -125,8 +127,8 @@
   (if (odd? (max 1 t)) :pale :deep))
 
 (defn tier-color
-  "Full-strength color for tier `t` of `n` — the row's left stripe and its
-  legend swatch."
+  "Full-strength color for tier `t` of `n` — the row's left stripe and the rule
+  drawn across a tier boundary."
   [t n]
   (let [{:keys [l]} (tier-bands (tier-band t))]
     (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) ")")))
@@ -142,13 +144,12 @@
   {"--tier-bg"   (tier-fill t n)
    "--tier-line" (tier-color t n)})
 
-(defn- player-row [p cols nominated color-tier? n-tiers tier-start?]
-  [:tr (cond-> {:class [(when (= nominated (:player-id p)) "selected")
-                        ;; tier row-coloring only when filtered to a single position
-                        (when color-tier? "tier-row")
-                        (when (and color-tier? tier-start?) "tier-start")]
-                :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
-         color-tier? (assoc :style (tier-style (or (:tier p) 1) n-tiers)))
+(defn player-row [p cols nominated n-tiers tier-start?]
+  [:tr {:class [(when (= nominated (:player-id p)) "selected")
+                "tier-row"
+                (when tier-start? "tier-start")]
+        :style (tier-style (or (:tier p) 1) n-tiers)
+        :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
    (map (fn [{k :key}] ^{:key k}
           [cell k p]) cols)])
 
@@ -163,22 +164,6 @@
   [players]
   (map (fn [p prev] (and (some? prev) (not= (:tier p) (:tier prev))))
        players (cons nil players)))
-
-;; ---- tier key ----
-
-(defn- tier-key
-  "Legend of the tier stripe colors, showing every tier present on the board."
-  [players n-tiers]
-  (let [tiers (->> players (keep :tier) distinct sort)]
-    (when (seq tiers)
-      [:div.tier-key
-       [:span.tier-key-label "Tiers"]
-       (map (fn [t]
-              ^{:key t}
-              [:span.tier-key-item
-               [:i.tier-swatch {:style {:background (tier-color t n-tiers)}}]
-               (str "T" t)])
-            tiers)])))
 
 ;; ---- filters ----
 
@@ -207,13 +192,15 @@
         cols        @(rf/subscribe [:visible-columns])
         sort        @(rf/subscribe [:sort])
         nominated   @(rf/subscribe [:nominated-id])
-        ;; color rows by tier only when filtered to a single position
-        color-tier? (some? @(rf/subscribe [:pos-filter]))
+        ;; Rows are tier-coloured in every view now. They used to be coloured
+        ;; only under a position filter, because :tier was per-position and a
+        ;; tier 2 RB beside a tier 2 WR meant nothing; the board now carries an
+        ;; overall scale too and `:board-players` picks the one that matches the
+        ;; current filter, so both views have a coherent number to colour by.
         n-tiers     (reduce max 1 (keep :tier players))]
     [:div.board-wrap
      [:div.board-controls
-      [:div.filters [pos-filter] [search-box]]
-      (when color-tier? [tier-key players n-tiers])]
+      [:div.filters [pos-filter] [search-box]]]
      [:div.table-scroll
       [:table.board
        [:thead [:tr 
@@ -222,5 +209,5 @@
        [:tbody
         (map (fn [p tier-start?]
                ^{:key (:player-id p)}
-               [player-row p cols nominated color-tier? n-tiers tier-start?])
+               [player-row p cols nominated n-tiers tier-start?])
              players (tier-starts players))]]]]))

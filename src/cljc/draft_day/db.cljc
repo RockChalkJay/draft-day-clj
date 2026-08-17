@@ -134,6 +134,33 @@
   {:num-teams 12 :starting-bankroll 200 :scoring :ppr :roster default-roster
    :budget-plan default-budget-plan})
 
+;; ---- tiers ----
+;; The server ships both scales on every player, so which one the board reads is
+;; a pure display decision made here.
+
+(defn tier-scale
+  "Which tier scale the board reads: positional while filtered to one position,
+  overall otherwise. The manager never picks this separately — choosing a
+  position filter has already said which question they are asking."
+  [pos-filter]
+  (if pos-filter :position :overall))
+
+(defn player-tier
+  "`p`'s tier at `scale`. Every player is tiered on both scales, so this is total
+  — there is no untiered bucket to fall into."
+  [p scale]
+  (get-in p [:tiers scale]))
+
+(defn fp-tier
+  "FantasyPros' published expert tier at `scale`, so the FP T column tracks the
+  board's own tier rather than answering a different question beside it. Unlike
+  `player-tier` this is partial: FantasyPros ranks about three quarters of the
+  board, and the rest render as a dash."
+  [p scale]
+  (if (= :position scale)
+    (:fantasypros/ecr-pos-tier p)
+    (:fantasypros/ecr-tier p)))
+
 ;; ---- board columns ----
 ;; The board is data-driven: :columns is an ordered vector of {:key :visible?},
 ;; so a column can be hidden/shown and drag-reordered. Rendering + sort accessors
@@ -157,7 +184,8 @@
    {:key :inj      :label "Inj"    :tooltip "Injury status"             :default? false}
    {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
-   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros expert tier — one overall tier, not the board's per-position tier; blank where FantasyPros has no match" :default? false}
+   {:key :tier     :label "Tier"   :tooltip "Tier — within the position while filtered to one, across the whole board otherwise" :default? false}
+   {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros' expert tier at the same scale as Tier — within the position while filtered, overall otherwise; blank where FantasyPros has no match" :default? false}
    {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? false}
    {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
    {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}])
@@ -198,6 +226,8 @@
    :floor    :floor
    :vorp     :vorp
    :ecr      :fantasypros/ecr
+   ;; resolved to the active scale in the :board-players sub
+   :tier     :tier
    :fp-tier  :fantasypros/ecr-tier
    :inj      :sleeper/injury-status
    :bye      :bye})

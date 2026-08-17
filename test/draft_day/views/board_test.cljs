@@ -44,3 +44,19 @@
     (is (= [false true true true]
            (board/tier-starts [{:tier 3} {:tier 1} {:tier 3} {:tier 2}]))))
   (is (= [] (board/tier-starts []))))
+
+(deftest every-row-is-striped-whatever-the-view
+  ;; Striping used to be switched off unless the board was filtered to one
+  ;; position, because :tier was per-position and a tier 2 RB beside a tier 2 WR
+  ;; meant nothing. The sub now hands down whichever scale the filter implies, so
+  ;; there is always a coherent number to colour by.
+  (let [[_ attrs] (board/player-row {:player-id "p1" :tier 3} [] nil 6 true)]
+    (is (some #{"tier-row"} (:class attrs)))
+    (is (some #{"tier-start"} (:class attrs)))
+    (is (contains? (:style attrs) "--tier-bg"))
+    (is (contains? (:style attrs) "--tier-line")))
+
+  (testing "a row the server never tiered still renders rather than throwing"
+    (let [[_ attrs] (board/player-row {:player-id "p2"} [] nil 6 false)]
+      (is (some #{"tier-row"} (:class attrs)))
+      (is (not-any? #{"tier-start"} (:class attrs))))))

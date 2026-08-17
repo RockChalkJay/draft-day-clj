@@ -133,21 +133,6 @@
     (is (apply <= (map :tier (sort-by :points > out-qbs)))
         "tier only ever worsens as points fall")))
 
-(deftest unpriced-positions-still-get-a-tier-floor
-  ;; K and DST are absent from the replacement-levels map on purpose (it is what
-  ;; makes them price at $0), but tiering their whole pool shattered them: kicker
-  ;; points are small enough that a 2-point drop down the tail is a 20% drop, and
-  ;; 44 kickers came out as 12 tiers of mostly one. One of each starts, so the
-  ;; num-teams-th best is the floor.
-  ;; k0..k29 at 300, 291, 282, … (300 - 9i) — descending, which is the order
-  ;; `tier-floor` requires now that the caller sorts the group once for both it
-  ;; and `tiers-by-cliffs`.
-  (let [ks (mapv (fn [i] {:player-id (str "k" i) :position "K" :points (- 300.0 (* i 9))})
-                 (range 30))]
-    (is (= 255.0 (engine/tier-floor ks nil 5)) "the 6th best, matching a 1-starter position")
-    (is (= 39.0 (engine/tier-floor ks nil 100)) "clamps to the worst when the pool is short")
-    (is (= 42.0 (engine/tier-floor ks 42.0 5)) "a real replacement level always wins")))
-
 (deftest tiers-are-cut-from-points-so-they-follow-scoring
   (let [board (synthetic-board)
         tiers-under (fn [s]

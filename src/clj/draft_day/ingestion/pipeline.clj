@@ -29,6 +29,7 @@
             [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
             [clojure.edn :as edn]
+            [clojure.string :as str]
             [clojure.java.io :as io])
   (:import [java.time Instant]))
 
@@ -155,16 +156,34 @@
   cljc because the browser reads these keys back off /api/players."}
   format-label scoring/format-label)
 
+(defn pos-tier-label
+  "The `:sources` label for one position's expert-tier scrape. Format-varying
+  positions get one label per format; the rest get a single unscoped label, so
+  the report says plainly that QB was fetched once and not three times."
+  ([pos] (keyword "fantasypros" (str "pos-tier-" (str/lower-case pos))))
+  ([pos fmt] (format-label (pos-tier-label pos) fmt)))
+
+(def pos-tier-tasks
+  "[label position format-or-nil] for every per-position expert-tier scrape.
+  Twelve of them: RB/WR/TE across three formats, plus QB/K/DST once each."
+  (vec (mapcat (fn [[pos varies?]]
+                 (if varies?
+                   (map (fn [fmt] [(pos-tier-label pos fmt) pos fmt]) scoring/formats)
+                   [[(pos-tier-label pos) pos (first scoring/formats)]]))
+               (sort fantasypros/pos-formats))))
+
 (def enrichment-source-labels
   "Every source `enrich-universe` reports on. The bundled sample is expected to
   carry all of them; when a new one is added here and the sample is not
   recaptured, its column renders blank offline with nothing to say the column
   is structurally absent rather than merely unmatched. That is exactly what
   happened when the FantasyPros AAV and sleepers joins were introduced."
-  (into [:sleeper/byes :fantasypros/sleepers :espn]
-        (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
-                           (format-label :fantasypros/aav fmt)]))
-        scoring/formats))
+  (into (into [:sleeper/byes :fantasypros/sleepers :espn]
+              (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
+                                 (format-label :fantasypros/aav fmt)]))
+              scoring/formats)
+        (map first)
+        pos-tier-tasks))
 
 (defn scoped
   "Re-key a by-key enrichment map so its columns land under
@@ -184,15 +203,18 @@
   all — `parallel/all` starts them together and the joins below impose the order
   that actually matters (a deterministic `:sources` report)."
   [season]
-  (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
-         :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
-         :espn                 #(best-effort (espn/fetch season))}
-        (mapcat (fn [fmt]
-                  [[(format-label :fantasypros/ecr fmt)
-                    #(best-effort (fantasypros/fetch-ecr fmt))]
-                   [(format-label :fantasypros/aav fmt)
-                    #(best-effort (fantasypros/fetch-aav fmt))]]))
-        scoring/formats))
+  (into (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
+               :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
+               :espn                 #(best-effort (espn/fetch season))}
+              (mapcat (fn [fmt]
+                        [[(format-label :fantasypros/ecr fmt)
+                          #(best-effort (fantasypros/fetch-ecr fmt))]
+                         [(format-label :fantasypros/aav fmt)
+                          #(best-effort (fantasypros/fetch-aav fmt))]]))
+              scoring/formats)
+        (map (fn [[label pos fmt]]
+               [label #(best-effort (fantasypros/fetch-pos-ecr pos fmt))]))
+        pos-tier-tasks))
 
 (defn enrich-universe
   "Left-join the best-effort enrichment columns onto an already-validated
@@ -242,6 +264,16 @@
                       (apply-enrichment (format-label :fantasypros/aav fmt)
                                         (scoped fmt (some-> aav match/by-key))))))
               acc scoring/formats)
+      ;; Per-position expert tiers. RB/WR/TE are scoped like every other
+      ;; format-varying column; QB/K/DST publish one page for all three formats
+      ;; and so join flat, exactly as ESPN does.
+      (reduce (fn [acc [label pos fmt]]
+                (let [by-key (some-> (get fetched label) match/by-key)]
+                  (apply-enrichment acc label
+                                    (if (get fantasypros/pos-formats pos)
+                                      (scoped fmt by-key)
+                                      by-key))))
+              acc pos-tier-tasks)
       (apply-enrichment acc :fantasypros/sleepers (some-> sleepers match/by-key))
       (apply-enrichment acc :espn espn))))
 

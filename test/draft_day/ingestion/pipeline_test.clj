@@ -87,16 +87,28 @@
   ;; instead of quietly excusing itself from it.
   (let [{:keys [players sources]} (pipeline/cached->universe
                                    (pipeline/load-sample))
-        flat    {:fantasypros/sleepers :fantasypros/sleeper?
-                 :espn                 :espn/auction-value
-                 :sleeper/byes         :bye}
-        scoped  (into {}
-                      (mapcat (fn [fmt]
-                                [[(pipeline/format-label :fantasypros/ecr fmt)
-                                  [fmt :fantasypros/ecr]]
-                                 [(pipeline/format-label :fantasypros/aav fmt)
-                                  [fmt :fantasypros/aav]]]))
-                      scoring/formats)]
+        ;; The per-position expert tiers land on both sides of this split, which
+        ;; is the point of `fantasypros/pos-formats`: RB/WR/TE publish a page per
+        ;; scoring format and so are scoped, while QB/K/DST publish one page for
+        ;; all three and join flat, exactly as ESPN does.
+        flat    (into {:fantasypros/sleepers :fantasypros/sleeper?
+                       :espn                 :espn/auction-value
+                       :sleeper/byes         :bye}
+                      (keep (fn [[label pos _]]
+                              (when-not (get fantasypros/pos-formats pos)
+                                [label :fantasypros/ecr-pos-tier])))
+                      pipeline/pos-tier-tasks)
+        scoped  (into (into {}
+                            (mapcat (fn [fmt]
+                                      [[(pipeline/format-label :fantasypros/ecr fmt)
+                                        [fmt :fantasypros/ecr]]
+                                       [(pipeline/format-label :fantasypros/aav fmt)
+                                        [fmt :fantasypros/aav]]]))
+                            scoring/formats)
+                      (keep (fn [[label pos fmt]]
+                              (when (get fantasypros/pos-formats pos)
+                                [label [fmt :fantasypros/ecr-pos-tier]])))
+                      pipeline/pos-tier-tasks)]
     (is (seq players))
     (is (empty? (remove (some-fn flat scoped) (keys sources)))
         "a source label this test does not know about means the guard has drifted")
@@ -221,15 +233,15 @@
         "anchoring must not collide two players onto one id")))
 
 (deftest every-enrichment-fetch-goes-out-together
-  ;; Nine independent fetches behind a 30-second timeout each, on the request
-  ;; thread that missed the cache. Awaited in turn they stack to four and a half
+  ;; Twenty-one independent fetches behind a 30-second timeout each, on the
+  ;; request thread that missed the cache. Awaited in turn they stack to ten
   ;; minutes, so what has to hold is that `enrich-universe` starts *all* of them
   ;; before it blocks on any — not merely that some helper can start six.
   ;;
   ;; Testing the helper alone was not enough: hoisting the deref above the other
   ;; fetches re-serializes the whole thing and a helper-level test stays green.
-  ;; Every stub here parks until all nine have arrived, so any fetch left on the
-  ;; sequential path deadlocks its own wait and reports unavailable.
+  ;; Every stub here parks until all of them have arrived, so any fetch left on
+  ;; the sequential path deadlocks its own wait and reports unavailable.
   (let [expected (count (pipeline/enrichment-tasks 2026))
         latch    (java.util.concurrent.CountDownLatch. expected)
         arrive!  (fn [what]
@@ -237,7 +249,8 @@
                    (when-not (.await latch 10 java.util.concurrent.TimeUnit/SECONDS)
                      (throw (ex-info "this fetch ran on its own" {:fetch what}))))
         rows     (fn [k] [{:key k :fantasypros/ecr 1}])]
-    (is (= 9 expected) "three formats x (ECR + AAV), plus byes, sleepers and ESPN")
+    (is (= 21 expected)
+        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers and ESPN")
     (with-redefs [sleeper/fetch-byes    (fn [_] (arrive! :byes) {"ATL" 5})
                   fantasypros/fetch-sleepers (fn [] (arrive! :sleepers)
                                                (rows "player0_rb"))
@@ -246,12 +259,15 @@
                   fantasypros/fetch-ecr (fn [fmt] (arrive! [:ecr fmt])
                                           (rows "player0_rb"))
                   fantasypros/fetch-aav (fn [fmt] (arrive! [:aav fmt])
-                                          (rows "player0_rb"))]
+                                          (rows "player0_rb"))
+                  fantasypros/fetch-pos-ecr (fn [pos fmt] (arrive! [:pos-tier pos fmt])
+                                              [{:key "player0_rb"
+                                                :fantasypros/ecr-pos-tier 1}])]
       (let [{:keys [sources]} (pipeline/enrich-universe 2026 (universe-fixture 5))]
         (is (= (set pipeline/enrichment-source-labels) (set (keys sources)))
             "every source still reports, and under its own label")
         (is (every? :ok? (vals sources))
-            "all nine resolved, which only happens if all nine were in flight")))))
+            "all of them resolved, which only happens if all were in flight")))))
 
 (deftest a-fetch-that-throws-costs-only-its-own-column
   ;; `parallel/all` must not let one thrower take the rest down — that is the

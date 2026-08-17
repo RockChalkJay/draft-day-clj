@@ -171,8 +171,8 @@
     (is (= (db/default-columns) (db/reconcile-columns []))))
 
   (testing "a key no longer in the catalog is dropped"
-    (is (not-any? #(= :tier (:key %))
-                  (db/reconcile-columns [{:key :tier :visible? true}
+    (is (not-any? #(= :num-tiers (:key %))
+                  (db/reconcile-columns [{:key :num-tiers :visible? true}
                                          {:key :name :visible? true}]))))
 
   (testing "stored order and visibility survive; new catalog keys append"
@@ -314,3 +314,18 @@
   (testing "partial nested maps are filled rather than replaced"
     (is (= (:bench db/default-roster) (:bench (:roster (db/reconcile-config {:roster {:qb 2}})))))
     (is (= 2 (:qb (:roster (db/reconcile-config {:roster {:qb 2}})))))))
+
+;; ---- tier scale ----
+
+(deftest the-scale-follows-the-position-filter
+  ;; The manager never picks a scale; choosing a position filter has already said
+  ;; which question they are asking.
+  (is (= :overall (db/tier-scale nil)))
+  (is (= :position (db/tier-scale "RB"))))
+
+(deftest player-tier-reads-the-scale-it-is-given
+  (let [p {:tiers {:overall 5 :position 2} :tier 2}]
+    (is (= 2 (db/player-tier p :position)))
+    (is (= 5 (db/player-tier p :overall)))
+    (is (nil? (db/player-tier {} :overall))
+        "a board that predates the scales reads as untiered rather than throwing")))

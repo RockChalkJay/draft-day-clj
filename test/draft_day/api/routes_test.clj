@@ -238,6 +238,19 @@
                                          :drafted-player-ids [] :starting-bankroll 200 :picks []}}))})]
       (is (= 200 (:status resp))))))
 
+(deftest the-board-carries-both-tier-scales
+  ;; The board picks a scale from its position filter with no round trip, so the
+  ;; response has to carry both — and :tier has to keep meaning the positional
+  ;; one, since every consumer that predates the overall scale reads it.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] fixture)]
+    (let [players (:players (parse (rankings "ppr")))]
+      (is (seq players))
+      (is (every? #(and (get-in % [:tiers :position]) (get-in % [:tiers :overall]))
+                  players)
+          "every player is tiered on both scales — there is no untiered bucket")
+      (is (every? #(= (:tier %) (get-in % [:tiers :position])) players)))))
+
 (deftest the-board-carries-the-format-matching-the-league
   (routes/reset-universe!)
   (let [u (update fixture :players
