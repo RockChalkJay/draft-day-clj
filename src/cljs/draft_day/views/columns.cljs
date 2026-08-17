@@ -2,7 +2,8 @@
   "Column picker: show/hide via checkboxes, rearrange via drag-and-drop."
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
-            [draft-day.db :as db]))
+            [draft-day.db :as db]
+            [draft-day.views.util :as util]))
 
 (defn column-picker []
   ;; Tracks the dragged column's key, not its index: :move-column-onto is keyed
@@ -16,10 +17,16 @@
                   ^{:key k}
                   [:li.col-item
                    {:draggable true
-                    :on-drag-start #(reset! drag-key k)
+                    :on-drag-start (fn [e]
+                                     (util/column-drag-start! e k)
+                                     (reset! drag-key k))
                     :on-drag-over  #(.preventDefault %)
-                    :on-drop       #(do (rf/dispatch [:move-column-onto @drag-key k])
-                                        (reset! drag-key nil))
+                    ;; preventDefault or the browser runs its own drop action on
+                    ;; top of the reorder
+                    :on-drop       (fn [e]
+                                     (.preventDefault e)
+                                     (rf/dispatch [:move-column-onto @drag-key k])
+                                     (reset! drag-key nil))
                     :on-drag-end   #(reset! drag-key nil)}
                    [:span.drag-handle "⠿"]
                    [:label

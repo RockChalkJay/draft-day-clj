@@ -98,15 +98,18 @@
     [:th {:on-click #(rf/dispatch [:set-sort k])
           :title (:tooltip d)
           :draggable true
-          ;; Firefox will not begin a drag unless dataTransfer carries something.
           :on-drag-start (fn [e]
-                           (set! (.. e -dataTransfer -effectAllowed) "move")
-                           (.setData (.-dataTransfer e) "text/plain" (name k))
+                           (util/column-drag-start! e k)
                            (reset! drag {:dragging k :over nil}))
           :on-drag-over  (fn [e]
                            (.preventDefault e)
                            (swap! drag assoc :over k))
-          :on-drag-leave #(swap! drag update :over (fn [o] (when-not (= o k) o)))
+          ;; only when the pointer left the cell outright — crossing into the
+          ;; sort arrow inside it fires dragleave too, and clearing on that
+          ;; blinks the insertion line off until the next dragover
+          :on-drag-leave (fn [e]
+                           (when (util/left-element? e)
+                             (swap! drag update :over (fn [o] (when-not (= o k) o)))))
           :on-drop       (fn [e]
                            (.preventDefault e)
                            (rf/dispatch [:move-column-onto (:dragging @drag) k])
