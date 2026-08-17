@@ -94,25 +94,38 @@
 
   Zero gaps are never cut on, so players with identical scores cannot be split.
   Ties in gap size break toward the earlier index, so the result is a pure
-  function of the scores."
+  function of the scores.
+
+  Greedy, and it has to be: whether a cut is legal depends on which cuts were
+  already taken, so this is a fold over the gaps in descending order rather than
+  a filter. `reduced` stops it as soon as the count is met."
   [scores tier-count min-size]
-  (let [n (count scores)]
-    (if (or (< n (* 2 min-size)) (< tier-count 2))
+  (let [n        (count scores)
+        max-cuts (dec tier-count)
+        ;; A cut at i is legal when both segments it creates — back to the
+        ;; nearest cut already taken (or the top) and on to the next (or the
+        ;; bottom) — are big enough. This is also what keeps a pool too small to
+        ;; hold two full tiers from being cut at all.
+        room?    (fn [cuts i]
+                   (let [lo (or (first (rsubseq cuts <= i)) 0)
+                         hi (or (first (subseq cuts > i)) n)]
+                     (and (>= (- i lo) min-size) (>= (- hi i) min-size))))
+        by-gap   (->> (range 1 n)
+                      (keep (fn [i]
+                              (let [g (- (double (scores (dec i)))
+                                         (double (scores i)))]
+                                (when (pos? g) [i g]))))
+                      (sort-by (fn [[i g]] [(- g) i]))
+                      (map first))]
+    (if-not (pos? max-cuts)
       (sorted-set)
-      (loop [cands (->> (range 1 n)
-                        (keep (fn [i]
-                                (let [g (- (double (scores (dec i))) (double (scores i)))]
-                                  (when (pos? g) [i g]))))
-                        (sort-by (fn [[i g]] [(- g) i])))
-             cuts  (sorted-set)]
-        (if (or (empty? cands) (>= (count cuts) (dec tier-count)))
-          cuts
-          (let [[[i] & more] cands
-                lo (or (first (rsubseq cuts <= i)) 0)
-                hi (or (first (subseq cuts > i)) n)]
-            (recur more (if (and (>= (- i lo) min-size) (>= (- hi i) min-size))
-                          (conj cuts i)
-                          cuts))))))))
+      (reduce (fn [cuts i]
+                (if-not (room? cuts i)
+                  cuts
+                  (let [cuts (conj cuts i)]
+                    (if (>= (count cuts) max-cuts) (reduced cuts) cuts))))
+              (sorted-set)
+              by-gap))))
 
 (defn tiers-by-cliffs
   "Return `players` sorted descending by the score key, each with a 1-indexed
