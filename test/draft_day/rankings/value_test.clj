@@ -9,6 +9,8 @@
 
 (deftest value-conserves-to-budget
   ;; Discretionary pool (budget - slots = 185) split by VORP share, +$1 each.
+  ;; Only 3 players and 15 slots, so there is nobody left to take the other 12
+  ;; minimum bids — a real board has 96 of them and reaches the full $200.
   (let [board [{:player-id "a" :position "RB" :vorp 100.0}
                {:player-id "b" :position "WR" :vorp 60.0}
                {:player-id "c" :position "TE" :vorp 40.0}]
@@ -16,16 +18,45 @@
     (is (<= (Math/abs (long (- (reduce + v) (+ 3 185)))) 2))  ; conserves
     (is (> (nth v 0) (nth v 1) (nth v 2)))))                  ; more VORP -> more value
 
-(deftest k-dst-and-replacement-get-zero-value
+(deftest the-below-replacement-tail-conserves-the-rest-of-the-budget
+  ;; 20 slots, 1 player above replacement, so 19 minimum bids are owed. Deep
+  ;; enough to pay all of them, the board sums to the whole $200 rather than
+  ;; leaving $19 of a real room unaccounted for.
+  (let [board (into [{:player-id "a" :position "RB" :vorp 80.0}]
+                    (map (fn [i] {:player-id (str "t" i) :position "WR"
+                                  :vorp (- (double i))}))
+                    (range 30))
+        vs    (value/calculate-value board 200 20)
+        vv    (into {} (map (juxt :player-id :value)) vs)]
+    (is (= 200 (reduce + (map :value vs))) "sums to the budget, not to priced + discretionary")
+    (is (= 181 (vv "a")))                                   ; 1 + 180 discretionary
+    (is (= 19 (count (filter #(= 1 (:value %)) vs))) "one minimum bid per open slot")
+    (is (= 1 (vv "t0")) "the best of the tail is drafted, so it costs a dollar")
+    (is (= 0 (vv "t25")) "past the last roster slot, nothing")))
+
+(deftest k-dst-get-zero-but-a-replacement-level-skill-player-costs-a-dollar
   (let [board [{:player-id "k" :position "K"   :vorp 50.0}
                {:player-id "d" :position "DST" :vorp 50.0}
                {:player-id "r" :position "RB"  :vorp 0.0}    ; replacement level
                {:player-id "a" :position "RB"  :vorp 80.0}]
         vv    (into {} (map (juxt :player-id :value) (value/calculate-value board 200 15)))]
-    (is (= 0 (vv "k"))) (is (= 0 (vv "d"))) (is (= 0 (vv "r"))) (is (pos? (vv "a")))))
+    (is (= 0 (vv "k")) "K is streamed, never priced")
+    (is (= 0 (vv "d")) "nor DST")
+    (is (= 1 (vv "r")) "he fills a roster slot, and a slot costs at least a dollar")
+    (is (pos? (vv "a")))))
 
 (deftest missing-vorp-gives-zero-value
+  ;; No :vorp is no opinion, which is not the same as a minimum bid.
   (is (= 0 (:value (first (value/calculate-value [{:player-id "p0" :position "RB"}] 200 15))))))
+
+(deftest min-bid-tail-takes-the-best-of-what-is-left
+  (let [board [{:player-id "hi"  :position "WR" :vorp -1.0}
+               {:player-id "lo"  :position "WR" :vorp -99.0}
+               {:player-id "k"   :position "K"  :vorp 0.0}
+               {:player-id "nil" :position "WR"}]]
+    (is (= #{"hi"} (value/min-bid-ids board 1)) "one slot goes to the least-worst")
+    (is (= #{"hi" "lo"} (value/min-bid-ids board 2)) "K and the unscored never take one")
+    (is (= #{} (value/min-bid-ids board 0)))))
 
 ;; ---- Price (Value scaled by live inflation) ---------------------------------
 

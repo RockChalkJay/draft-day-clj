@@ -29,6 +29,20 @@
     (is (= 0.9 (m "RB")))
     (is (= 0.9 (m "WR")))))
 
+(deftest minimum-bid-picks-do-not-move-a-position
+  ;; Every roster slot is priced now, and the ones below replacement all price at
+  ;; $1. Measured as a ratio that floor is explosive — $3 for a $1 flier reads as
+  ;; a 3x overpay — so those picks are excluded rather than allowed to pin the
+  ;; position at POS-MAX on nothing.
+  (let [board [{:player-id "flier" :position "RB" :value 1}
+               {:player-id "stud"  :position "WR" :value 40}]]
+    (is (= 1.0 ((idx/per-position-inflation
+                 board {:picks [{:player-id "flier" :position "RB" :price 3}]} 1.0) "RB"))
+        "a $1 player bought for $3 leaves RB at the global factor")
+    (is (= 1.025 ((idx/per-position-inflation
+                   board {:picks [{:player-id "stud" :position "WR" :price 42}]} 1.0) "WR"))
+        "the same $2 over on a real price still registers, proportionally")))
+
 (deftest per-position-inflation-clamped-to-band
   ;; extreme overpay/underpay runs can't push a position outside [POS-MIN, POS-MAX]
   (let [board [{:player-id "r1" :position "RB" :value 40}]]
