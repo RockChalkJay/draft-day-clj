@@ -27,20 +27,6 @@
   between the leagues one manager runs."
   {:overall 12 :position 4})
 
-(def MAX-TIERS
-  "Ceiling on the tiers a scale renders, whatever the pool's depth asks for.
-
-  The board spends a fixed hue budget on tiers (see `views/board.cljs`), so past
-  a dozen the stripes stop being tellable apart and the tier number stops being
-  a thing you can hold in your head. Nothing on a 12-team board comes close;
-  this is here for the deep-league case.
-
-  It bounds the *rendered* count, tail included — `tiers-by-cliffs` spends one of
-  these on the below-replacement tail when there is one, so a capped pool with a
-  tail gets `MAX-TIERS - 1` cut tiers plus it. Counting only the cuts here is how
-  a ceiling of 12 would quietly render 13."
-  12)
-
 (def MIN-TIER-SIZE
   "No tier may hold fewer than this many players.
 
@@ -52,10 +38,19 @@
   2)
 
 (defn tier-count
-  "How many tiers a pool of `n` gets at `target` players per tier. At least 2 (a
-  pool worth tiering at all has a top and a bottom), at most `MAX-TIERS`."
+  "How many tiers a pool of `n` gets at `target` players per tier. At least 2 —
+  a pool worth tiering at all has a top and a bottom.
+
+  There is deliberately no ceiling. One briefly sat here, justified by the
+  board's hue budget, but `views/board.cljs` answers that itself: its tiers
+  alternate between a pale and a deep band, which holds neighbours apart however
+  many there are. `MIN-TIER-SIZE` bounds the count anyway — `cut-points` will not
+  leave a segment under it, so a pool cannot exceed `n / MIN-TIER-SIZE` tiers,
+  and at these targets it asks for far fewer. `TARGET-TIER-SIZE` is the only knob
+  on the count; a second one that overrode it just made tier size stop meaning
+  what it says in deep leagues."
   [n target]
-  (-> (/ (double n) (double target)) Math/round long (max 2) (min MAX-TIERS)))
+  (-> (/ (double n) (double target)) Math/round long (max 2)))
 
 (defn- metric-fn
   "Reader for the score a tiering pass cuts on. Missing reads as 0, so a player
@@ -150,12 +145,8 @@
          cutoff (if (nil? replacement-level)
                   n
                   (count (take-while #(> (score %) (double replacement-level)) sorted)))
-         ;; The tail below spends one of MAX-TIERS, so a capped pool that has one
-         ;; may only cut MAX-TIERS - 1. Without this the ceiling is off by one
-         ;; exactly where it matters — the deep pool that actually reaches it.
-         ceiling (if (< cutoff n) (dec MAX-TIERS) MAX-TIERS)
          cuts   (cut-points (mapv score (subvec sorted 0 cutoff))
-                            (min (tier-count cutoff target-size) ceiling)
+                            (tier-count cutoff target-size)
                             MIN-TIER-SIZE)
          tiers  (when (pos? cutoff)
                   (reductions (fn [t i] (if (contains? cuts i) (inc t) t))

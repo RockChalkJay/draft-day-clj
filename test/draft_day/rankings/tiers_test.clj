@@ -60,20 +60,17 @@
     (is (> (tiers/tier-count 30 (:position tiers/TARGET-TIER-SIZE))
            (tiers/tier-count 12 (:position tiers/TARGET-TIER-SIZE)))))
 
-  (testing "clamped at both ends"
+  (testing "floored at 2, and uncapped above — the target is the only knob"
     (is (= 2 (tiers/tier-count 1 4)) "a pool worth tiering has a top and a bottom")
-    (is (= tiers/MAX-TIERS (tiers/tier-count 10000 4)))))
+    (is (= 2500 (tiers/tier-count 10000 4))
+        "no ceiling: a deeper pool keeps the tier *size* the target promises"))
 
-(deftest the-ceiling-counts-the-tail-tier-too
-  ;; MAX-TIERS bounds what the board *renders*, and the below-replacement tail is
-  ;; rendered. Counting only the cuts would spend the whole budget above
-  ;; replacement and then hand the palette one more tier than it plans for.
-  (let [deep (mapv #(- 4000.0 (* 7.0 %)) (range 300))]
-    (testing "a pool deep enough to hit the cap, with a tail below replacement"
-      (is (= tiers/MAX-TIERS (reduce max (tier-seq deep 2000.0)))))
-
-    (testing "and one with no tail spends the whole budget on cuts"
-      (is (= tiers/MAX-TIERS (reduce max (tier-seq deep nil)))))))
+  (testing "MIN-TIER-SIZE is what bounds the count in practice, since cut-points
+            will not leave a segment under it"
+    (let [flat (vec (range 40 0 -1))]
+      (is (<= (reduce max (tier-seq flat nil {:target-size 1}))
+              (quot (count flat) tiers/MIN-TIER-SIZE))
+          "even asking for one tier per player cannot produce singletons"))))
 
 (deftest a-deeper-pool-really-does-come-back-with-more-tiers
   ;; End to end through tiers-by-cliffs, not just the arithmetic: same shape of
