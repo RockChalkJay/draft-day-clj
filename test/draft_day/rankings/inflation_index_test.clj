@@ -29,10 +29,63 @@
     (is (= 0.9 (m "RB")))
     (is (= 0.9 (m "WR")))))
 
+(deftest a-cheap-pick-barely-moves-its-position
+  ;; The tilt is a scale-free ratio, so without shrinkage $3 for a $1 flier reads
+  ;; as a 3x overpay and pins the position at POS-MAX on the first nomination of
+  ;; the draft. A hard par threshold only moves that cliff — $6 on a $2 player is
+  ;; the same 3x — so the weight grades with how much par is actually at stake.
+  (let [board [{:player-id "flier" :position "RB" :value 1}
+               {:player-id "two"   :position "TE" :value 2}
+               {:player-id "stud"  :position "WR" :value 40}]
+        infl  (fn [id pos price]
+                ((idx/per-position-inflation
+                  board {:picks [{:player-id id :position pos :price price}]} 1.0) pos))]
+    (is (< (infl "flier" "RB" 3) 1.06)
+        "$3 on a $1 flier moves RB a few percent, not to the ceiling")
+    (is (< (infl "two" "TE" 6) 1.10)
+        "and $6 on a $2 player is the same 3x, so it is treated the same way")
+    (is (> (infl "stud" "WR" 60) 1.15)
+        "while the same ratio on a real price speaks at close to full volume")))
+
+(deftest a-run-of-cheap-picks-still-registers
+  ;; The threshold this replaced filtered minimum-bid picks out entirely, so a
+  ;; whole endgame run at 6x par reported as nothing — a false negative on
+  ;; exactly what this namespace exists to catch.
+  (let [board (mapv (fn [i] {:player-id (str "te" i) :position "TE" :value 1}) (range 9))
+        picks (mapv (fn [i] {:player-id (str "te" i) :position "TE" :price 6}) (range 9))
+        one   ((idx/per-position-inflation board {:picks (take 1 picks)} 1.0) "TE")
+        run   ((idx/per-position-inflation board {:picks picks} 1.0) "TE")]
+    (is (< one 1.15) "one cheap flier is noise")
+    (is (> run 1.3) "nine of them bought at 6x is a run")
+    (is (> run one) "and the signal grows with the money at stake")))
+
+(deftest real-buys-mixed-with-cheap-ones-still-count
+  ;; The threshold also discarded the loudest overpay signal in the room — a
+  ;; player bought well above a par the board set low.
+  (let [board [{:player-id "stud" :position "RB" :value 50}
+               {:player-id "punt" :position "RB" :value 1}]
+        m     (idx/per-position-inflation
+               board {:picks [{:player-id "stud" :position "RB" :price 50}
+                              {:player-id "punt" :position "RB" :price 20}]} 1.0)]
+    (is (> (m "RB") 1.05) "paying $20 over par is not nothing")))
+
+(deftest the-index-ignores-k-and-dst
+  ;; The board never prices them, so every dollar spent on one scored as pure
+  ;; overpay and a room that paid par on every pick still reported a warning.
+  (let [board [{:player-id "k1" :position "K" :value 0}
+               {:player-id "d1" :position "DST" :value 0}
+               {:player-id "r1" :position "RB" :value 40}]]
+    (is (= 0.0 (idx/inflation-index board [{:player-id "k1" :position "K" :price 2}
+                                           {:player-id "d1" :position "DST" :price 3}])))
+    (is (= 5.0 (idx/inflation-index board [{:player-id "r1" :position "RB" :price 45}
+                                           {:player-id "k1" :position "K" :price 2}])))))
+
 (deftest per-position-inflation-clamped-to-band
   ;; extreme overpay/underpay runs can't push a position outside [POS-MIN, POS-MAX]
-  (let [board [{:player-id "r1" :position "RB" :value 40}]]
+  ;; Enough par at stake that shrinkage is nearly 1 and the raw tilt runs past
+  ;; both rails on its own.
+  (let [board [{:player-id "r1" :position "RB" :value 200}]]
     (is (= 1.6 ((idx/per-position-inflation
-                 board {:picks [{:player-id "r1" :position "RB" :price 500}]} 1.0) "RB")))
+                 board {:picks [{:player-id "r1" :position "RB" :price 2000}]} 1.0) "RB")))
     (is (= 0.6 ((idx/per-position-inflation
                  board {:picks [{:player-id "r1" :position "RB" :price 0}]} 1.0) "RB")))))

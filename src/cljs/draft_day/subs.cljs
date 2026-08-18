@@ -75,36 +75,60 @@
       (str/includes? (str/lower-case (or (:player-name p) "")) q)
       (str/includes? (str/lower-case (or (:team p) "")) q)))
 
-(defn- sort-players [players key dir]
-  (let [acc (get db/sort-accessors key :worth)]
-    (sort (fn [a b]
-            (let [va (acc a) vb (acc b)]
-              (cond
-                (and (nil? va) (nil? vb)) 0
-                (nil? va) 1
-                (nil? vb) -1
-                :else (* dir (compare va vb)))))
-          players)))
-
 (defn- rank-key
-  "Descending sort key for the board's overall rank: Worth, then VORP, then
-  projected points.
+  "Descending sort key for the board's overall rank: Worth, then skill positions
+  ahead of K/DST, then VORP, then projected points.
 
-  Worth alone is not a total order. Everything below replacement prices at $0 —
-  every skill player the model scored under replacement, plus all of K and DST —
-  and a stable sort left that whole block in whatever order the server emitted,
-  which is position grouping. On the current board that is 549 of 633 players,
-  and it put a receiver FantasyPros ranks 44th at 200th: not a disagreement
-  about his value, but no opinion at all. VORP and points still separate those
-  players even where dollars cannot.
+  Worth alone is not a total order. Everything past the last roster slot prices
+  at $0, and the minimum-bid tail all prices at $1, so a stable sort left those
+  blocks in whatever order the server emitted, which is position grouping. VORP
+  and points still separate those players even where dollars cannot.
+
+  The K/DST term is what keeps signed VORP honest. The engine gives those two no
+  replacement level, so their :vorp is 0.0 meaning 'no opinion' — and once every
+  below-replacement skill player carries a negative number, 0.0 floats to the top
+  of the tail and 76 kickers and defenses leapfrog 469 players who are actually
+  worth drafting. Ordering them behind the skill board is what the $0 price was
+  already saying.
 
   Missing values read as 0 rather than nil: the model leaves :vorp and :points
   off players it never scored, and a nil inside a vector sort key throws instead
   of sorting last."
   [p]
   [(- (double (or (:worth p) 0)))
+   (if (db/priced-positions (:position p)) 0 1)
    (- (double (or (:vorp p) 0)))
    (- (double (or (:points p) 0)))])
+
+(defn- sort-players
+  "Sort by the active column, breaking ties on `rank-key` — the board's own total
+  order.
+
+  Ties are the common case, not the edge: Worth is whole dollars and the whole
+  minimum-bid tail sits on the same one, so sorting on Worth alone left a
+  96-player block in whatever order the server emitted while the `#` column kept
+  showing each row's real rank, which reads as a broken board rather than as a
+  tie.
+
+  The fallback is `rank-key` rather than the `:rank` field because `:rank` is
+  assoc'd by `:board-players` a few lines below and nothing here could enforce
+  that: `(compare nil nil)` is 0, so any other caller — a sortable watch list,
+  My Roster — would silently get the arbitrary server order back with no error.
+  `rank-key` is self-contained and cannot be called wrong.
+
+  Ties deliberately do *not* invert with `dir`: a tie is not an ordering, so both
+  directions show the better player first. Only the sorted column reverses."
+  [players key dir]
+  (let [acc (get db/sort-accessors key :worth)]
+    (sort (fn [a b]
+            (let [va (acc a) vb (acc b)]
+              (cond
+                (and (nil? va) (nil? vb)) (compare (rank-key a) (rank-key b))
+                (nil? va) 1
+                (nil? vb) -1
+                :else (let [c (* dir (compare va vb))]
+                        (if (zero? c) (compare (rank-key a) (rank-key b)) c)))))
+          players)))
 
 ;; undrafted, unfiltered by position/search — the pool the board and watch list
 ;; draw from, so they don't collapse when the board is filtered by pos/search.
@@ -207,5 +231,8 @@
     (->> watchlist
          (remove #(contains? drafted %))
          (keep by-id)
-         (sort-by #(- (or (:worth %) 0)))
+         ;; Same tie problem as the board, and worse: `:watchlist` is a set, so
+         ;; the order feeding the stable sort is hash iteration. Five starred $1
+         ;; sleepers visibly reshuffled whenever an unrelated sixth was starred.
+         (sort-by rank-key)
          vec)))

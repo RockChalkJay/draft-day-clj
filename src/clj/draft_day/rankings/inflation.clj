@@ -16,7 +16,7 @@
   "Anticipatory multiplier 1 - PHASE_DECAY * t^2, where t is the fraction of
   league roster slots already filled. 1.0 at open; 1 - PHASE_DECAY when full."
   [league-state]
-  (let [total-slots (reduce + 0 (map #(count (:roster %)) (:teams league-state)))]
+  (let [total-slots (ls/total-slots league-state)]
     (if (<= total-slots 0)
       1.0
       (let [empty (reduce + 0 (vals (ls/empty-slots-by-pos league-state)))

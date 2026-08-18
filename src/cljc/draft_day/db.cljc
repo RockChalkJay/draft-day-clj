@@ -34,6 +34,31 @@
 (defn make-teams [num-teams roster-cfg bankroll]
   (make-teams-named (map default-name (range num-teams)) roster-cfg bankroll))
 
+(def priced-positions
+  "Positions the model puts a dollar on.
+
+  The one copy. `rankings.value` and `rankings.inflation-index` read this too —
+  `src/cljc` is on the backend classpath — because there were five hand-written
+  copies of this set before, one of them a *vector* under the same name, so
+  `(priced-positions pos)` threw where it read as a membership test everywhere
+  else. `conflict-positions` below happens to hold the same four strings for an
+  unrelated reason and is deliberately not aliased to this.
+
+  K and DST are absent because the engine gives them no replacement level and no
+  price (see `rankings.replacement/with-vorp`), which leaves their :vorp at 0.0
+  meaning 'no opinion' rather than 'at replacement'."
+  #{"QB" "RB" "WR" "TE"})
+
+(defn vorp-sort-key
+  "Sortable :vorp, or nil for a position the model has no opinion about.
+
+  K/DST carry :vorp 0.0 as a placeholder, which reads as *at replacement* to a
+  plain numeric sort and floats all 76 of them above every below-replacement
+  skill player. Returning nil hands them to `sort-players`' nil-last rule, which
+  already holds in both directions — the same answer the $0 price gives."
+  [p]
+  (when (priced-positions (:position p)) (:vorp p)))
+
 ;; ---- bye-week conflict detection ----
 ;; Staged by draft phase. Only QB/RB/WR/TE matter (K/DST are streamed weekly, so
 ;; bye stacking there is a non-issue; FLEX is ignored too):
@@ -224,7 +249,7 @@
    :proj     :points
    :ceiling  :ceiling
    :floor    :floor
-   :vorp     :vorp
+   :vorp     vorp-sort-key
    :ecr      :fantasypros/ecr
    ;; resolved to the active scale in the :board-players sub
    :tier     :tier

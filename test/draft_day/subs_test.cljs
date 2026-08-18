@@ -73,6 +73,65 @@
       (is (= 1 (ranks "scored")))
       (is (= 2 (ranks "unscored"))))))
 
+(defn- board-order
+  "player-ids in the order the board renders them under `sort`."
+  [players sort]
+  (rf/clear-subscription-cache!)
+  (swap! rdb/app-db #(-> % (assoc :ranked {:players players}) (assoc :sort sort)))
+  (binding [reagent.ratom/*ratom-context* #js {}]
+    (mapv :player-id @(rf/subscribe [:board-players]))))
+
+(deftest a-tie-on-the-sorted-column-falls-back-to-rank
+  ;; Worth is whole dollars and the whole minimum-bid tail sits on $1, so ties
+  ;; are the common case. Sorting on Worth alone left that block in server
+  ;; order while the # column kept showing its real rank, so the numbers ran out
+  ;; of order down the page.
+  (let [players [{:player-id "c" :position "WR" :worth 1 :vorp -30.0 :points 120}
+                 {:player-id "a" :position "RB" :worth 1 :vorp -2.0  :points 150}
+                 {:player-id "b" :position "TE" :worth 1 :vorp -9.0  :points 130}]]
+    (is (= ["a" "b" "c"] (board-order players {:key :worth :dir -1}))
+        "a block sharing a dollar renders in rank order, not server order")
+    (is (= ["a" "b" "c"] (board-order players {:key :bye :dir -1}))
+        "a column nobody has a value for still lands in rank order")))
+
+(deftest k-and-dst-rank-behind-every-skill-player
+  ;; VORP is signed, so a below-replacement receiver carries a negative number
+  ;; while K and DST — which the engine gives no replacement level at all — sit
+  ;; at 0.0 meaning "no opinion". Read as a score, that 0.0 outranks the whole
+  ;; tail: on the sample board 76 kickers and defenses would leapfrog 469 players
+  ;; worth drafting ahead of them. Their $0 price already said where they go.
+  (let [ranks (board-ranks [{:player-id "kicker" :position "K"   :worth 0 :vorp 0.0   :points 140}
+                            {:player-id "dst"    :position "DST" :worth 0 :vorp 0.0   :points 120}
+                            {:player-id "deep"   :position "WR"  :worth 0 :vorp -90.0 :points 100}
+                            {:player-id "near"   :position "RB"  :worth 1 :vorp -2.0  :points 158}])]
+    (is (= 1 (ranks "near")) "a minimum-bid player is still a dollar, so he leads")
+    (is (= 2 (ranks "deep")) "and an unpriced receiver still beats both specialists")
+    (is (= 3 (ranks "kicker")))
+    (is (= 4 (ranks "dst"))))
+
+  (testing "among themselves K and DST still order on points"
+    (let [ranks (board-ranks [{:player-id "k-lo" :position "K" :worth 0 :vorp 0.0 :points 90}
+                              {:player-id "k-hi" :position "K" :worth 0 :vorp 0.0 :points 140}])]
+      (is (= 1 (ranks "k-hi")))
+      (is (= 2 (ranks "k-lo"))))))
+
+(deftest sorting-the-vorp-column-keeps-k-and-dst-behind-the-skill-board
+  ;; The regression this pair of fixes exists for. `rank-key` got the K/DST
+  ;; demotion but the sort accessor did not, so clicking the VORP header compared
+  ;; a kicker's placeholder 0.0 against a real -90.0 and every kicker and defense
+  ;; rendered above the whole below-replacement skill board — the exact ordering
+  ;; the demotion was added to prevent, one column away.
+  (let [players [{:player-id "deep" :position "WR"  :worth 0 :vorp -90.0 :points 100}
+                 {:player-id "near" :position "RB"  :worth 0 :vorp -2.0  :points 158}
+                 {:player-id "kick" :position "K"   :worth 0 :vorp 0.0   :points 140}
+                 {:player-id "dst"  :position "DST" :worth 0 :vorp 0.0   :points 120}]]
+    (is (= ["near" "deep" "kick" "dst"]
+           (board-order players {:key :vorp :dir -1}))
+        "descending VORP ranks the skill board first, specialists last")
+    (is (= ["deep" "near" "kick" "dst"]
+           (board-order players {:key :vorp :dir 1}))
+        "and ascending reverses the skill board while specialists stay last")))
+
 (deftest worth-still-decides-the-order-wherever-it-can
   ;; The tie-break may only reach players Worth cannot separate. Distinct dollars
   ;; decide the order outright, whatever VORP and points say.

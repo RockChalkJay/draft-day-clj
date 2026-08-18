@@ -17,6 +17,38 @@
 (defn total-remaining-cash [ls]
   (reduce + 0.0 (map #(double (:bankroll %)) (:teams ls))))
 
+(defn slot-counts
+  "Every roster slot in the league, filled or not, keyed by slot label
+  (\"QB\"/\"FLEX\"/\"BENCH\"/\"K\"/...).
+
+  `engine`, `inflation` and `value` each want a different cut of this — the
+  total, the count a position can fill, the count K and DST will take — and each
+  used to hand-roll the same reduce."
+  [ls]
+  (reduce (fn [acc team]
+            (reduce (fn [a slot] (update a (:pos slot) (fnil inc 0)))
+                    acc (:roster team)))
+          {} (:teams ls)))
+
+(defn total-slots
+  "How many roster slots the league drafts in total."
+  [ls]
+  (reduce + 0 (vals (slot-counts ls))))
+
+(defn priced-slots
+  "Roster slots that a priced position can fill — every slot except the ones
+  reserved for K and DST, which the engine never puts a dollar on.
+
+  `value/min-bid-ids` needs this rather than the total: paying a minimum bid for
+  every slot while only skill players can collect one hands 24 dollars (at the
+  12-team default) to skill players that a kicker and a defense will really
+  spend."
+  [ls]
+  (let [counts (slot-counts ls)]
+    (- (reduce + 0 (vals counts))
+       (get counts "K" 0)
+       (get counts "DST" 0))))
+
 (defn empty-slots-by-pos
   "Empty (unfilled) slots aggregated across every team, keyed by slot label
   (incl. \"FLEX\"/\"BENCH\")."

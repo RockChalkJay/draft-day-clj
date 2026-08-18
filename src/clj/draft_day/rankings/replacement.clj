@@ -37,13 +37,33 @@
              {} spec))))
 
 (defn with-vorp
-  "Assoc :vorp = max(0, score - level) for QB/RB/WR/TE; 0 for positions absent
-  from levels (K/DST). `score-key` (default :points) matches replacement-levels."
+  "Assoc :vorp = score - level for QB/RB/WR/TE; 0.0 for positions absent from
+  levels (K/DST). `score-key` (default :points) matches replacement-levels.
+
+  VORP is signed. It used to be max(0, ...), which collapsed every player below
+  replacement to exactly 0.0 — 549 of 633 on the sample board — and left the
+  back half of the draft with nothing to order it but raw :points, a scale that
+  means something different at every position. The tail came out grouped by
+  position with twelve straight quarterbacks at its head, and a receiver ranked
+  49th by FantasyPros sat behind a quarterback ranked 247th. Signed, the same
+  stretch reads one player per position in a sensible order.
+
+  Negative VORP is not merely display. `rankings.value/priced-vorp?` gates the
+  *discretionary* pool on VORP being positive, but `value/min-bid-ids` then draws
+  the $1 minimum bids exclusively from the players it rejects — 96 of the 97 $1
+  rows on the sample board are priced *because* their VORP is non-positive. Read
+  `value/calculate-value` for the real rule before rescaling or re-flooring this.
+
+  K and DST stay at 0.0 rather than taking a replacement level of their own: at
+  one starter each, the best defense on the sample board would carry +20 real
+  VORP and outrank seventy skill players. 0.0 here means 'no opinion', not 'at
+  replacement' — consumers that sort on VORP have to keep K/DST out of the
+  comparison themselves, which is what `subs/rank-key` does on the board."
   ([board levels] (with-vorp board levels :points))
   ([board levels score-key]
    (mapv (fn [p]
            (let [lvl (get levels (:position p))]
              (assoc p :vorp (if (nil? lvl)
                               0.0
-                              (max 0.0 (- (double (score-key p)) lvl))))))
+                              (- (double (score-key p)) lvl)))))
          board)))
