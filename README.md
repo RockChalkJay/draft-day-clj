@@ -81,6 +81,9 @@ issue below applies to you.
 `rec_fd` (474 players), `rush_fd` (376) and `pass_fd` (77) are now ingested and scorable:
 the keys sit in `scoring/stat-keys` at weight 0 in every preset, so a vanilla league is
 unaffected and a PPFD league can price them in Settings or import them from Sleeper.
+The committed offline sample (`resources/sample_players.edn`) predates them, so
+`DRAFTDAY_OFFLINE=1` still scores first downs at 0 until it is regenerated with
+`dev/draft_day/tools/snapshot.clj`; live and cached universes carry them.
 
 This was the gap worth closing. Awarding 0.5 per receiving and rushing first down moved
 **40 of the top 200 by ≥10 slots** (mean absolute move 6.4), and it reordered *within*

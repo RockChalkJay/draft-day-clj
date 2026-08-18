@@ -40,8 +40,11 @@
   harness learned this the hard way — see benchmark/fetch.clj's cache-path.
 
   2: vendor columns moved under :vendor/by-format, one entry per scoring format,
-  and the write-only :sleeper/pts-* fields were dropped."
-  2)
+  and the write-only :sleeper/pts-* fields were dropped.
+  3: :stats carries first downs (:pass_fd :rush_fd :rec_fd). A v2 row validates
+  without them, so a PPFD weight would have multiplied nothing until the cache
+  aged out."
+  3)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
