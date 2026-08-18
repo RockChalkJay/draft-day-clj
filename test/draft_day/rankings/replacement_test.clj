@@ -33,14 +33,14 @@
     (is (= 270.0 (base "RB")))                ; index 24+6=30
     (is (= 264.0 (more "RB")))))              ; index 24+12=36
 
-(deftest vorp-is-signed-and-zero-for-k-dst
+(deftest vorp-is-signed-and-nil-where-there-is-no-opinion
   (let [board [{:player-id "rb1" :position "RB" :points 250}
                {:player-id "rb2" :position "RB" :points 100}   ; below replacement
                {:player-id "k1"  :position "K"  :points 180}]
         vorp  (mapv :vorp (rep/with-vorp board {"RB" 150.0}))]
     (is (= 100.0 (nth vorp 0)))               ; 250 - 150
     (is (= -50.0 (nth vorp 1)))               ; 100 - 150, not floored at 0
-    (is (= 0.0   (nth vorp 2)))))             ; K not in levels -> no opinion
+    (is (nil?    (nth vorp 2)))))             ; K takes no level -> no opinion, not a score
 
 (deftest signed-vorp-orders-the-tail-across-positions
   ;; The reason the floor came off. Raw points are not comparable between

@@ -95,23 +95,23 @@
         "a column nobody has a value for still lands in rank order")))
 
 (deftest k-and-dst-rank-behind-every-skill-player
-  ;; VORP is signed, so a below-replacement receiver carries a negative number
-  ;; while K and DST — which the engine gives no replacement level at all — sit
-  ;; at 0.0 meaning "no opinion". Read as a score, that 0.0 outranks the whole
-  ;; tail: on the sample board 76 kickers and defenses would leapfrog 469 players
-  ;; worth drafting ahead of them. Their $0 price already said where they go.
-  (let [ranks (board-ranks [{:player-id "kicker" :position "K"   :worth 0 :vorp 0.0   :points 140}
-                            {:player-id "dst"    :position "DST" :worth 0 :vorp 0.0   :points 120}
+  ;; K/DST now carry the same $1 as the minimum-bid tail, because they fill a
+  ;; roster slot too — so Worth no longer separates them from a below-replacement
+  ;; skill player and the position term is the only thing that does. The engine
+  ;; sends them no VORP at all, which `(or nil 0)` would otherwise read as *at
+  ;; replacement* and float above the whole tail.
+  (let [ranks (board-ranks [{:player-id "kicker" :position "K"   :worth 1 :vorp nil   :points 140}
+                            {:player-id "dst"    :position "DST" :worth 1 :vorp nil   :points 120}
                             {:player-id "deep"   :position "WR"  :worth 0 :vorp -90.0 :points 100}
                             {:player-id "near"   :position "RB"  :worth 1 :vorp -2.0  :points 158}])]
-    (is (= 1 (ranks "near")) "a minimum-bid player is still a dollar, so he leads")
-    (is (= 2 (ranks "deep")) "and an unpriced receiver still beats both specialists")
-    (is (= 3 (ranks "kicker")))
-    (is (= 4 (ranks "dst"))))
+    (is (= 1 (ranks "near")) "at the same dollar, a skill player outranks a specialist")
+    (is (= 2 (ranks "kicker")))
+    (is (= 3 (ranks "dst")))
+    (is (= 4 (ranks "deep")) "and an unpriced player ranks below a priced one"))
 
   (testing "among themselves K and DST still order on points"
-    (let [ranks (board-ranks [{:player-id "k-lo" :position "K" :worth 0 :vorp 0.0 :points 90}
-                              {:player-id "k-hi" :position "K" :worth 0 :vorp 0.0 :points 140}])]
+    (let [ranks (board-ranks [{:player-id "k-lo" :position "K" :worth 1 :vorp nil :points 90}
+                              {:player-id "k-hi" :position "K" :worth 1 :vorp nil :points 140}])]
       (is (= 1 (ranks "k-hi")))
       (is (= 2 (ranks "k-lo"))))))
 
@@ -123,8 +123,10 @@
   ;; the demotion was added to prevent, one column away.
   (let [players [{:player-id "deep" :position "WR"  :worth 0 :vorp -90.0 :points 100}
                  {:player-id "near" :position "RB"  :worth 0 :vorp -2.0  :points 158}
-                 {:player-id "kick" :position "K"   :worth 0 :vorp 0.0   :points 140}
-                 {:player-id "dst"  :position "DST" :worth 0 :vorp 0.0   :points 120}]]
+                 ;; the engine sends nil, not a placeholder — `(or nil 0)` in
+                 ;; `rank-key` is exactly the coercion the demotion term guards
+                 {:player-id "kick" :position "K"   :worth 1 :vorp nil :points 140}
+                 {:player-id "dst"  :position "DST" :worth 1 :vorp nil :points 120}]]
     (is (= ["near" "deep" "kick" "dst"]
            (board-order players {:key :vorp :dir -1}))
         "descending VORP ranks the skill board first, specialists last")

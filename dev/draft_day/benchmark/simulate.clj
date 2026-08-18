@@ -59,8 +59,8 @@
     simulation makes 144 picks against roughly 84 above-replacement players, so
     every pick from about round 8 on now comes off a differently ordered board.
     Any `--simulate` figure recorded before that change is not what this computes.
-  - **K/DST are demoted explicitly.** They carry :vorp 0.0 meaning 'no opinion',
-    which reads as *at replacement* to a numeric sort and would float them above
+  - **K/DST are demoted explicitly.** They carry no VORP at all, and the `(or ...
+    0.0)` below would read that absence as *at replacement* and float them above
     every below-replacement skill player. `vintage/scoring-positions` keeps them
     out of the benchmark pool today, so this guard is unreachable — but that is a
     property of the data source, and `default-config`'s `:caps` names no K/DST, so
