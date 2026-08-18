@@ -9,10 +9,33 @@
   "Starters per team; flex slots are RB/WR/TE-eligible."
   {:qb 1 :rb 2 :wr 2 :te 1 :flex 1})
 
-(def flex-positions
+(def flex-starter-keys
   "Positions a FLEX slot accepts, paired with the config key holding their
-  dedicated starter count. Matches the roster's own rule (see `events/eligible?`)."
+  dedicated starter count. Matches the roster's own rule (see `events/eligible?`).
+
+  Named for the mapping rather than the membership because `pdm` and
+  `benchmark.simulate` each carry a `flex-positions` **set** of the same three
+  strings; `(flex-positions pos)` reading as a predicate there and as a lookup
+  here is how the `priced-positions` drift started."
   {"RB" :rb "WR" :wr "TE" :te})
+
+(defn- sorted-pools
+  "Board grouped by position, each pool sorted descending on `score-key`. Sorting
+  once here is what lets the flex pass and the level lookup share the work."
+  [board score-key]
+  (into {} (map (fn [[pos grp]] [pos (vec (sort-by score-key > grp))]))
+        (group-by :position board)))
+
+(defn- claims-from-pools
+  [pools num-teams config score-key]
+  (let [spots (* num-teams (long (or (:flex config) 0)))]
+    (if-not (pos? spots)
+      {}
+      (let [leftovers (mapcat (fn [[pos starters-key]]
+                                (drop (* num-teams (long (or (get config starters-key) 0)))
+                                      (get pools pos)))
+                              flex-starter-keys)]
+        (frequencies (map :position (take spots (sort-by score-key > leftovers))))))))
 
 (defn flex-claims
   "How many of the league's flex slots each flex-eligible position actually wins:
@@ -35,18 +58,14 @@
   In PPR that put RB replacement six slots too deep — 160.2 points instead of
   174.8, so **every** running back carried +14.6 phantom points and about +$9.
   Against the vendor consensus the mean per-player error at RB was +$8.6 and is
-  now +$2.4."
+  now +$2.4.
+
+  `config` is merged with `default-config` here rather than assumed complete: a
+  missing `:rb`/`:wr`/`:te` would otherwise read as *zero dedicated starters* and
+  hand the flex slots to whole position pools competing from the top."
   [board num-teams config score-key]
-  (let [spots (* num-teams (long (or (:flex config) 0)))]
-    (if-not (pos? spots)
-      {}
-      (let [leftovers (mapcat (fn [[pos starters-key]]
-                                (->> board
-                                     (filter #(= pos (:position %)))
-                                     (sort-by score-key >)
-                                     (drop (* num-teams (long (or (get config starters-key) 0))))))
-                              flex-positions)]
-        (frequencies (map :position (take spots (sort-by score-key > leftovers))))))))
+  (claims-from-pools (sorted-pools board score-key) num-teams
+                     (merge default-config config) score-key))
 
 (defn replacement-levels
   "Return {\"QB\" pts \"RB\" pts \"WR\" pts \"TE\" pts}. The replacement index for
@@ -57,13 +76,14 @@
   ([board num-teams config] (replacement-levels board num-teams config :points))
   ([board num-teams config score-key]
    (let [config (merge default-config config)
-         claims (flex-claims board num-teams config score-key)
+         pools  (sorted-pools board score-key)
+         claims (claims-from-pools pools num-teams config score-key)
          spec   [["QB" (:qb config) 0]
                  ["RB" (:rb config) (get claims "RB" 0)]
                  ["WR" (:wr config) (get claims "WR" 0)]
                  ["TE" (:te config) (get claims "TE" 0)]]]
      (reduce (fn [acc [pos starters flx]]
-               (let [pool (sort-by score-key > (filter #(= (:position %) pos) board))]
+               (let [pool (get pools pos)]
                  (if (empty? pool)
                    acc
                    (let [idx (min (+ (* num-teams starters) flx) (dec (count pool)))]

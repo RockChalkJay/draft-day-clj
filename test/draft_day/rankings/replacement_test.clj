@@ -59,6 +59,17 @@
           claims (rep/flex-claims board 12 {:rb 2 :wr 2 :te 1 :flex 1} :points)]
       (is (= {"TE" 12} claims)))))
 
+(deftest flex-claims-fills-in-a-partial-config
+  ;; It is public, so it cannot assume the caller already merged the defaults —
+  ;; a missing :rb/:wr/:te would read as "no dedicated starters" and let whole
+  ;; position pools compete for the flex slots from the top.
+  (let [board (concat (pool "RB" 40 :top 300 :step 1)
+                      (pool "WR" 40 :top 295 :step 1)
+                      (pool "TE" 40 :top 290 :step 1))]
+    (is (= (rep/flex-claims board 12 {:rb 2 :wr 2 :te 1 :flex 1} :points)
+           (rep/flex-claims board 12 {:flex 1} :points))
+        "a partial config resolves to the same claims as the full default")))
+
 (deftest flex-claims-sum-to-the-league-s-flex-demand
   (let [board (concat (pool "RB" 60 :top 300 :step 2)
                       (pool "WR" 60 :top 295 :step 2)
