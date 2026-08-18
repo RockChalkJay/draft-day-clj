@@ -58,8 +58,9 @@
   (let [base        (:players static-result)
          board       (tcm/with-tcm base league-state)
          budget      (ls/initial-cash league-state)
-         total-slots (reduce + 0 (map #(count (:roster %)) (:teams league-state)))
-         valued      (value/calculate-value board budget total-slots)
+         total-slots (ls/total-slots league-state)
+         valued      (value/calculate-value board budget total-slots
+                                            (ls/priced-slots league-state))
          infl        (inflation/auction-inflation valued league-state)
          heat        (inflation/draft-phase-decay league-state)
          ;; per-position inflation replaces the single global scalar; reduces to

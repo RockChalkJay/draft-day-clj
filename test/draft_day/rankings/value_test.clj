@@ -19,31 +19,46 @@
     (is (> (nth v 0) (nth v 1) (nth v 2)))))                  ; more VORP -> more value
 
 (deftest the-below-replacement-tail-conserves-the-rest-of-the-budget
-  ;; 20 slots, 1 player above replacement, so 19 minimum bids are owed. Deep
-  ;; enough to pay all of them, the board sums to the whole $200 rather than
-  ;; leaving $19 of a real room unaccounted for.
-  (let [board (into [{:player-id "a" :position "RB" :vorp 80.0}]
+  ;; Three players above replacement rather than one, so no single row can absorb
+  ;; the whole rounding residue and make the equality true by construction.
+  ;; `to-dollars` rounds each priced player independently, so the claim is "to
+  ;; within rounding", which is what `calculate-value` now says.
+  (let [board (into [{:player-id "a" :position "RB" :vorp 80.0}
+                     {:player-id "b" :position "WR" :vorp 55.0}
+                     {:player-id "c" :position "TE" :vorp 33.0}]
                     (map (fn [i] {:player-id (str "t" i) :position "WR"
-                                  :vorp (- (double i))}))
+                                  :vorp (- (double (inc i)))}))
                     (range 30))
         vs    (value/calculate-value board 200 20)
         vv    (into {} (map (juxt :player-id :value)) vs)]
-    (is (= 200 (reduce + (map :value vs))) "sums to the budget, not to priced + discretionary")
-    (is (= 181 (vv "a")))                                   ; 1 + 180 discretionary
-    (is (= 19 (count (filter #(= 1 (:value %)) vs))) "one minimum bid per open slot")
+    (is (<= (Math/abs (- (reduce + (map :value vs)) 200)) 2)
+        "sums to the budget within rounding, not to priced + discretionary")
+    (is (= 20 (count (filter #(pos? (:value %)) vs)))
+        "exactly one priced player per roster slot")
+    (is (= 17 (count (filter #(= 1 (:value %)) vs))) "the rest of the slots at the minimum")
     (is (= 1 (vv "t0")) "the best of the tail is drafted, so it costs a dollar")
     (is (= 0 (vv "t25")) "past the last roster slot, nothing")))
 
-(deftest k-dst-get-zero-but-a-replacement-level-skill-player-costs-a-dollar
-  (let [board [{:player-id "k" :position "K"   :vorp 50.0}
-               {:player-id "d" :position "DST" :vorp 50.0}
-               {:player-id "r" :position "RB"  :vorp 0.0}    ; replacement level
-               {:player-id "a" :position "RB"  :vorp 80.0}]
-        vv    (into {} (map (juxt :player-id :value) (value/calculate-value board 200 15)))]
-    (is (= 0 (vv "k")) "K is streamed, never priced")
-    (is (= 0 (vv "d")) "nor DST")
-    (is (= 1 (vv "r")) "he fills a roster slot, and a slot costs at least a dollar")
-    (is (pos? (vv "a")))))
+(deftest a-board-cannot-price-more-players-than-the-league-has-slots
+  ;; `:teams` and `:replacement-config` come from different snapshots — editing
+  ;; roster or team count mid-draft keeps the old `:teams` — so more players can
+  ;; clear replacement than there are seats. Left alone the board over-summed the
+  ;; room and rows past the last slot read a real price.
+  (let [board (mapv (fn [i] {:player-id (str "p" i) :position "RB"
+                             :vorp (double (- 50 i))})
+                    (range 40))
+        vs    (value/calculate-value board 200 10)]
+    (is (= 10 (count (filter #(pos? (:value %)) vs))) "never more priced rows than slots")
+    (is (<= (reduce + (map :value vs)) 200) "and never more dollars than the room holds")))
+
+(deftest a-room-too-poor-to-pay-a-dollar-a-slot-never-over-sums
+  ;; `routes` rejects this league outright; the pure function still must not claim
+  ;; 150% of the room if one reaches it another way.
+  (let [board (mapv (fn [i] {:player-id (str "p" i) :position "RB"
+                             :vorp (double (- 20 i))})
+                    (range 40))
+        vs    (value/calculate-value board 12 40)]
+    (is (<= (reduce + (map :value vs)) 12))))
 
 (deftest missing-vorp-gives-zero-value
   ;; No :vorp is no opinion, which is not the same as a minimum bid.
@@ -55,8 +70,43 @@
                {:player-id "k"   :position "K"  :vorp 0.0}
                {:player-id "nil" :position "WR"}]]
     (is (= #{"hi"} (value/min-bid-ids board 1)) "one slot goes to the least-worst")
-    (is (= #{"hi" "lo"} (value/min-bid-ids board 2)) "K and the unscored never take one")
+    (is (= #{"hi" "lo"} (value/min-bid-ids board 2)))
     (is (= #{} (value/min-bid-ids board 0)))))
+
+(deftest k-and-dst-are-excluded-from-the-tail-by-name-not-by-accident
+  ;; `priced-vorp?` is a `group-by` key, and `(and (a-set x) ...)` yields nil
+  ;; rather than false on a miss — so K/DST used to land in a third group that
+  ;; the `{priced true tail false}` destructuring dropped, and the explicit
+  ;; position filter that really excluded them read as dead defensive code.
+  (is (false? (value/priced-vorp? {:position "K" :vorp 50.0})))
+  (is (false? (value/priced-vorp? {:position "RB" :vorp -5.0})))
+  (is (true?  (value/priced-vorp? {:position "RB" :vorp 5.0})))
+  (let [board [{:player-id "k1" :position "K"   :vorp 0.0}
+               {:player-id "d1" :position "DST" :vorp 0.0}
+               {:player-id "w1" :position "WR"  :vorp -3.0}]]
+    (is (= #{"w1"} (value/min-bid-ids board 3))
+        "three slots but only one player a dollar can attach to")))
+
+(deftest minimum-bids-follow-each-position-s-share-of-the-roster
+  ;; Below replacement every position's points curve has its own slope, so
+  ;; ranking the tail globally by VORP bought the flattest curves: on the real
+  ;; board it gave TE 27 of 96 minimums against 12 TE starters, pricing a TE at
+  ;; ADP 251 while an RB at ADP 147 read as undraftable.
+  (let [priced (concat (map (fn [i] {:player-id (str "rb" i) :position "RB" :vorp (double (- 60 i))})
+                            (range 30))
+                       (map (fn [i] {:player-id (str "te" i) :position "TE" :vorp (double (- 20 i))})
+                            (range 10)))
+        ;; TE's tail falls away gently, RB's steeply — the shape that used to
+        ;; hand every minimum bid to TE.
+        tail   (concat (map (fn [i] {:player-id (str "rbt" i) :position "RB"
+                                     :vorp (double (* -5 (inc i)))}) (range 30))
+                       (map (fn [i] {:player-id (str "tet" i) :position "TE"
+                                     :vorp (double (- (inc i)))}) (range 30)))
+        ids    (value/min-bid-ids (vec (concat priced tail)) 60)
+        by-pos (frequencies (map #(if (.startsWith ^String % "rb") "RB" "TE") ids))]
+    (is (= 20 (count ids)) "60 slots less the 40 already above replacement")
+    (is (= 15 (get by-pos "RB")) "RB starts 30 of 40, so it takes 30/40 of the minimums")
+    (is (= 5  (get by-pos "TE")) "and TE starts 10 of 40, so it takes a quarter")))
 
 ;; ---- Price (Value scaled by live inflation) ---------------------------------
 

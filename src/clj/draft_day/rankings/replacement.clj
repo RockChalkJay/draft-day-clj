@@ -48,9 +48,11 @@
   49th by FantasyPros sat behind a quarterback ranked 247th. Signed, the same
   stretch reads one player per position in a sensible order.
 
-  Everything that prices on VORP still gates on it being positive (see
-  `rankings.value/priced-vorp?`), so negative VORP orders the board without
-  earning a dollar.
+  Negative VORP is not merely display. `rankings.value/priced-vorp?` gates the
+  *discretionary* pool on VORP being positive, but `value/min-bid-ids` then draws
+  the $1 minimum bids exclusively from the players it rejects — 96 of the 97 $1
+  rows on the sample board are priced *because* their VORP is non-positive. Read
+  `value/calculate-value` for the real rule before rescaling or re-flooring this.
 
   K and DST stay at 0.0 rather than taking a replacement level of their own: at
   one starter each, the best defense on the sample board would carry +20 real
