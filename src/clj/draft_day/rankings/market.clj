@@ -6,7 +6,8 @@
   engine.clj). Sources publish dollars against their own baseline pool (e.g. ESPN
   vs 10 teams x $200 = $2000); we rescale each to the request league's pool so
   they're comparable, average the ones a player has, and expose the gap to Worth
-  as :edge.")
+  as :edge."
+  (:require [draft-day.rankings.value :as value]))
 
 (def source-baselines
   "Player-map key -> the total money pool that source's raw dollars are quoted
@@ -37,9 +38,17 @@
 
 (defn edge
   "Worth minus market — positive means the model values the player above the
-  room. nil unless the player has a positive Worth and a market price."
+  room. nil unless the player is priced *above the minimum bid* and has a market
+  price.
+
+  `(pos? worth)` used to stand in for 'the model priced this player'. Once every
+  roster slot started carrying at least $1 that stopped being true, and all 97
+  minimum-bid players grew a numeric Edge — Davante Adams at worth $1 against a
+  $19 market showed -18, painted red, on a board whose $1 means the model has no
+  opinion at all. Every one of those numbers was the tautology 'a slot floor is
+  less than a market price'."
   [worth market]
-  (when (and (number? worth) (pos? worth) (number? market))
+  (when (and (number? worth) (> worth value/MIN-BID) (number? market))
     (- worth market)))
 
 (defn with-market
