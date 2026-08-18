@@ -66,7 +66,10 @@
          ;; per-position inflation replaces the single global scalar; reduces to
          ;; `infl` for positions with no picks.
          pos-infl    (idx/per-position-inflation valued league-state infl)
-         infl-fn     (fn [p] (* (get pos-infl (:position p) infl) heat))
+         ;; position tilt x phase decay, held inside one band at the end — see
+         ;; `inflation/clamp-to-band` for why the band lives here and nowhere else
+         infl-fn     (fn [p] (inflation/clamp-to-band
+                              (* (get pos-infl (:position p) infl) heat)))
          priced      (value/calculate-price valued infl-fn
                                             (:drafted-player-ids league-state))
          with-barg   (mapv (fn [p]

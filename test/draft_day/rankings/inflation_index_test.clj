@@ -80,12 +80,26 @@
     (is (= 5.0 (idx/inflation-index board [{:player-id "r1" :position "RB" :price 45}
                                            {:player-id "k1" :position "K" :price 2}])))))
 
-(deftest per-position-inflation-clamped-to-band
-  ;; extreme overpay/underpay runs can't push a position outside [POS-MIN, POS-MAX]
-  ;; Enough par at stake that shrinkage is nearly 1 and the raw tilt runs past
-  ;; both rails on its own.
+(deftest per-position-inflation-is-one-factor-not-the-answer
+  ;; It used to clamp to [0.6,1.6], a band described as *softer* than the global
+  ;; [0.5,1.8] but strictly narrower — so a global factor of 1.8 came back as 1.6
+  ;; even for a position with no picks at all. The tilt is now returned raw and
+  ;; `inflation/clamp-to-band` holds the finished multiplier once, at the end.
   (let [board [{:player-id "r1" :position "RB" :value 200}]]
-    (is (= 1.6 ((idx/per-position-inflation
-                 board {:picks [{:player-id "r1" :position "RB" :price 2000}]} 1.0) "RB")))
-    (is (= 0.6 ((idx/per-position-inflation
-                 board {:picks [{:player-id "r1" :position "RB" :price 0}]} 1.0) "RB")))))
+    (is (> ((idx/per-position-inflation
+             board {:picks [{:player-id "r1" :position "RB" :price 2000}]} 1.0) "RB")
+           1.8)
+        "a wild overpay is left wild here; the band catches it downstream")
+    (is (< ((idx/per-position-inflation
+             board {:picks [{:player-id "r1" :position "RB" :price 0}]} 1.0) "RB")
+           0.6)
+        "and so is a wild underpay")))
+
+(deftest a-position-with-no-picks-really-does-pass-the-global-through
+  ;; The docstring always claimed this; the old band made it false at the top of
+  ;; the global range, which is exactly where a manager most needs it right.
+  (doseq [global [0.5 0.9 1.0 1.5 1.8]]
+    (let [m (idx/per-position-inflation
+             [{:player-id "r1" :position "RB" :value 40}]
+             {:picks []} global)]
+      (is (= global (m "WR")) (str "global " global " passes through untouched")))))
