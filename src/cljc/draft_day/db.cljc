@@ -44,18 +44,20 @@
   else. `conflict-positions` below happens to hold the same four strings for an
   unrelated reason and is deliberately not aliased to this.
 
-  K and DST are absent because the engine gives them no replacement level and no
-  price (see `rankings.replacement/with-vorp`), which leaves their :vorp at 0.0
-  meaning 'no opinion' rather than 'at replacement'."
+  K and DST are absent because the engine ranks them on no replacement level and
+  gives them no VORP (see `rankings.replacement/with-vorp`). They are still
+  *priced*, at the league minimum, because they fill roster slots."
   #{"QB" "RB" "WR" "TE"})
 
 (defn vorp-sort-key
   "Sortable :vorp, or nil for a position the model has no opinion about.
 
-  K/DST carry :vorp 0.0 as a placeholder, which reads as *at replacement* to a
-  plain numeric sort and floats all 76 of them above every below-replacement
-  skill player. Returning nil hands them to `sort-players`' nil-last rule, which
-  already holds in both directions — the same answer the $0 price gives."
+  The engine now sends nil for K/DST rather than a placeholder 0.0, so this is
+  belt and braces — but the braces are the reason the belt exists. A 0.0 that
+  read as *at replacement* floated all 76 specialists above every
+  below-replacement skill player once, and a column accessor is exactly where
+  that resurfaces if the engine ever spells 'no opinion' as a number again. nil
+  falls to `sort-players`' nil-last rule, which holds in both directions."
   [p]
   (when (priced-positions (:position p)) (:vorp p)))
 

@@ -60,7 +60,7 @@
          budget      (ls/initial-cash league-state)
          total-slots (ls/total-slots league-state)
          valued      (value/calculate-value board budget total-slots
-                                            (ls/priced-slots league-state))
+                                            (ls/streamed-slots league-state))
          infl        (inflation/auction-inflation valued league-state)
          heat        (inflation/draft-phase-decay league-state)
          ;; per-position inflation replaces the single global scalar; reduces to

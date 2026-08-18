@@ -1,7 +1,9 @@
 (ns draft-day.rankings.replacement
   "Piece 2: replacement level + VORP (static). Pure function of
-  (board, num-teams, config). K/DST are intentionally absent from the levels map
-  so they price at $0 (vorp 0).")
+  (board, num-teams, config). K/DST are intentionally absent from the levels map,
+  so they carry no VORP and earn no share of the discretionary money — but they
+  still fill roster slots, and `rankings.value` prices those at the league
+  minimum.")
 
 (def default-config
   "Starters per team; flex slots are RB/WR/TE-eligible."
@@ -37,7 +39,7 @@
              {} spec))))
 
 (defn with-vorp
-  "Assoc :vorp = score - level for QB/RB/WR/TE; 0.0 for positions absent from
+  "Assoc :vorp = score - level for QB/RB/WR/TE; nil for positions absent from
   levels (K/DST). `score-key` (default :points) matches replacement-levels.
 
   VORP is signed. It used to be max(0, ...), which collapsed every player below
@@ -54,16 +56,18 @@
   rows on the sample board are priced *because* their VORP is non-positive. Read
   `value/calculate-value` for the real rule before rescaling or re-flooring this.
 
-  K and DST stay at 0.0 rather than taking a replacement level of their own: at
-  one starter each, the best defense on the sample board would carry +20 real
-  VORP and outrank seventy skill players. 0.0 here means 'no opinion', not 'at
-  replacement' — consumers that sort on VORP have to keep K/DST out of the
-  comparison themselves, which is what `subs/rank-key` does on the board."
+  K and DST get **nil**, not a number. They take no replacement level of their
+  own — at one starter each, the best defense on the sample board would carry +20
+  real VORP and outrank seventy skill players, which is not what a $1 position is
+  worth. But spelling 'no opinion' as 0.0 made it a value that compares: it read
+  as *at replacement*, so every consumer that sorted on VORP floated all 76
+  specialists above the whole below-replacement skill board, and each one had to
+  be taught the exception separately. nil cannot be compared by accident — the
+  board's sort already puts it last in both directions, and the VORP column
+  renders it as the same dash the price does."
   ([board levels] (with-vorp board levels :points))
   ([board levels score-key]
    (mapv (fn [p]
            (let [lvl (get levels (:position p))]
-             (assoc p :vorp (if (nil? lvl)
-                              0.0
-                              (- (double (score-key p)) lvl)))))
+             (assoc p :vorp (when lvl (- (double (score-key p)) lvl)))))
          board)))

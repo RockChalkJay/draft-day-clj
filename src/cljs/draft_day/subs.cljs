@@ -85,11 +85,10 @@
   and points still separate those players even where dollars cannot.
 
   The K/DST term is what keeps signed VORP honest. The engine gives those two no
-  replacement level, so their :vorp is 0.0 meaning 'no opinion' — and once every
-  below-replacement skill player carries a negative number, 0.0 floats to the top
-  of the tail and 76 kickers and defenses leapfrog 469 players who are actually
-  worth drafting. Ordering them behind the skill board is what the $0 price was
-  already saying.
+  replacement level, so their :vorp is nil — and `(or nil 0)` below would put them
+  right back at the top of the tail, ahead of 469 players actually worth
+  drafting. They now carry the same $1 as the minimum-bid tail, so Worth no longer
+  separates them either; this term is the only thing that does.
 
   Missing values read as 0 rather than nil: the model leaves :vorp and :points
   off players it never scored, and a nil inside a vector sort key throws instead
