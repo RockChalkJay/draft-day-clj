@@ -231,7 +231,9 @@
                                [:rush_fd "Rush 1st Down"]]}
    {:group "Receiving" :stats [[:rec "Reception"] [:rec_yd "Rec Yd"]
                                [:rec_td "Rec TD"] [:rec_2pt "Rec 2PT"]
-                               [:rec_fd "Rec 1st Down"]]}
+                               [:rec_fd "Rec 1st Down"]
+                               [:bonus_rec_rb "RB Rec Bonus"] [:bonus_rec_wr "WR Rec Bonus"]
+                               [:bonus_rec_te "TE Rec Bonus"]]}
    {:group "Misc"      :stats [[:fum_lost "Fumble Lost"]]}
    {:group "Kicking"   :stats [[:fgm "FG Made"] [:xpm "XP Made"] [:blk_kick "Blocked Kick"]]}
    {:group "Defense"   :stats [[:sack "Sack"] [:int "INT"] [:fum_rec "Fumble Rec"]

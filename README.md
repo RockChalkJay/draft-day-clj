@@ -91,10 +91,14 @@ position — volume backs up (Jonathan Taylor +21, McCaffrey +19, Cook and Henry
 low-volume QBs down. A within-position shuffle survives the VORP transform instead of
 cancelling out, so a PPFD league drafting off the old board drafted the wrong players.
 
-### TE premium misprices rather than misorders
+### ~~TE premium misprices rather than misorders~~ — closed
 
-Position reception premiums are dropped too: `bonus_rec_te` (126 players), `bonus_rec_wr`
-(210), `bonus_rec_rb` (138). Adding `bonus_rec_te` at 0.5 looks alarming on a global points
+`bonus_rec_te` (126 players), `bonus_rec_wr` (210) and `bonus_rec_rb` (138) are ingested
+and scorable, on the same terms as first downs: 0 in every preset, settable in Settings,
+applied on import. The same offline-sample caveat applies.
+
+The cost of dropping them was mispricing, not misordering. Adding `bonus_rec_te` at 0.5
+looked alarming on a global points
 list — 77 of the top 200 move ≥10 slots — but restricted to tight ends the order barely
 budges: **max move 2 slots, mean 0.4**. Every starting TE gains ~12 points in step. Since
 replacement-level TE rises with them, VORP absorbs part of even that. The board is right;
@@ -135,10 +139,11 @@ custom scoring editor shows them (with `fgm`) as "not projected" via `db/unproje
 rather than offering an editable box that cannot move any player's points. `fgm` is the odd
 one out in that set — it is inert today but *is* recoverable from the distance buckets.
 
-### Closing it
+### What is left
 
-The cheapest fix with real return was three keys — `rec_fd`, `rush_fd` (done) and
-`bonus_rec_te` — added to `ingestion/sleeper.clj`'s stat-key list, the preset table in
-`src/cljc/draft_day/scoring.cljc` (at 0.0, so preset behaviour stays byte-identical), and
-`db/scoring-catalog`, which have to move together. Kickers need more than a new key: the
-buckets must be summed into a synthetic `fgm`, or the buckets priced individually.
+The cheap fix — `rec_fd`, `rush_fd` and `bonus_rec_te`, added to
+`ingestion/sleeper.clj`'s stat-key list, the preset table in
+`src/cljc/draft_day/scoring.cljc` (at 0.0, so preset behaviour stays byte-identical) and
+`db/scoring-catalog`, which have to move together — is done. Kickers need more than a new
+key: the buckets must be summed into a synthetic `fgm`, or the buckets priced individually.
+The offline sample also still predates both sets of keys.

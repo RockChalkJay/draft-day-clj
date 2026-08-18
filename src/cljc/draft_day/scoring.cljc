@@ -15,13 +15,15 @@
   that threw. One definition, both sides, no fetch.")
 
 (defn- preset [reception-pts]
-  ;; The `_fd` keys are 0.0 in all three presets on purpose: none of the published
-  ;; formats award first downs, so no vanilla league's points move. They are here
-  ;; so a PPFD league can weight them at all — `stat-keys` is the vocabulary, and
-  ;; a key absent from it can never be set, imported, or scored.
+  ;; The `_fd` and `bonus_rec_*` keys are 0.0 in all three presets on purpose: none
+  ;; of the published formats award first downs or a position reception premium, so
+  ;; no vanilla league's points move. They are here so a PPFD or TE-premium league
+  ;; can weight them at all — `stat-keys` is the vocabulary, and a key absent from
+  ;; it can never be set, imported, or scored.
   {:pass_yd 0.04 :pass_td 4.0 :pass_int -2.0 :pass_2pt 0.0 :pass_fd 0.0
    :rush_yd 0.1 :rush_td 6.0 :rush_2pt 0.0 :rush_fd 0.0
    :rec reception-pts :rec_yd 0.1 :rec_td 6.0 :rec_2pt 0.0 :rec_fd 0.0
+   :bonus_rec_rb 0.0 :bonus_rec_wr 0.0 :bonus_rec_te 0.0
    :fum_lost -2.0
    ;; kicking
    :fgm 3.0 :xpm 1.0 :blk_kick 0.0

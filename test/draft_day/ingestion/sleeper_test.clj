@@ -70,6 +70,18 @@
     (is (= 2.0 (:rush_fd stats)))
     (is (= 1.0 (:pass_fd stats)))))
 
+(deftest reception-premiums-survive-ingestion
+  ;; Sleeper projects these (bonus_rec_te on 126 players, bonus_rec_wr on 210,
+  ;; bonus_rec_rb on 138); a TE-premium league prices its tight ends off them.
+  (let [entry {:player_id "p" :team "X"
+               :player {:first_name "A" :last_name "B" :position "TE"}
+               :stats {:pts_ppr 100.0 :rec 80.0 :bonus_rec_te 80.0
+                       :bonus_rec_wr 1.0 :bonus_rec_rb 2.0}}
+        stats (:stats (sleeper/normalize-entry entry))]
+    (is (= 80.0 (:bonus_rec_te stats)))
+    (is (= 1.0 (:bonus_rec_wr stats)))
+    (is (= 2.0 (:bonus_rec_rb stats)))))
+
 (deftest scoring-engine-matches-sleeper-precomputed
   ;; Cross-check: our scoring on Sleeper :stats lands near Sleeper's own pts_ppr,
   ;; validating the stat-key alignment (we don't model every scoring bonus).

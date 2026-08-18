@@ -55,11 +55,11 @@
   (let [dropped (sleeper-import/unsupported-scoring
                  {:rec 1.0 :rec_yd 0.1                    ; modelled
                   :fgm_0_19 3.0 :fgm_50p 5.0              ; not modelled
-                  :bonus_rec_te 0.5 :pts_allow_0 10.0
+                  :pts_allow_0 10.0
                   :def_st_ff 0.0                          ; present but off
-                  :pass_2pt 2.0})]                        ; modelled
-    (is (= ["bonus_rec_te" "fgm_0_19" "fgm_50p" "pts_allow_0"] dropped))
-    (is (not-any? #{"rec" "rec_yd" "pass_2pt"} dropped)
+                  :pass_2pt 2.0 :bonus_rec_te 0.5})]      ; modelled
+    (is (= ["fgm_0_19" "fgm_50p" "pts_allow_0"] dropped))
+    (is (not-any? #{"rec" "rec_yd" "pass_2pt" "bonus_rec_te"} dropped)
         "rules we do score are not reported as dropped")
     (is (not-any? #{"def_st_ff"} dropped)
         "a rule the league has switched off costs it nothing"))

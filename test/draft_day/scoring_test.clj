@@ -44,6 +44,17 @@
     (is (= 2.0 (- (scoring/player-points player (assoc (:ppr scoring/presets) :rec_fd 0.5))
                   (scoring/player-points player (:ppr scoring/presets)))))))
 
+(deftest a-te-premium-league-can-price-the-reception-bonus
+  ;; Same shape as first downs: 0 in every preset, reachable from a custom config.
+  ;; Sleeper counts the premium separately from :rec, so weighting it adds to the
+  ;; base reception points rather than replacing them.
+  (let [te {:stats {:rec 80.0 :rec_yd 900.0 :bonus_rec_te 80.0}}]
+    (is (= (scoring/player-points te (:ppr scoring/presets))
+           (scoring/player-points te (assoc (:ppr scoring/presets) :bonus_rec_te 0.0)))
+        "no preset scores a reception premium")
+    (is (= 40.0 (- (scoring/player-points te (assoc (:ppr scoring/presets) :bonus_rec_te 0.5))
+                   (scoring/player-points te (:ppr scoring/presets)))))))
+
 (deftest stat-keys-covers-every-preset-key
   (is (= (set scoring/stat-keys) (set (keys (:ppr scoring/presets)))))
   (is (every? (set scoring/stat-keys) [:pass_2pt :rush_2pt :rec_2pt :blk_kick])))
