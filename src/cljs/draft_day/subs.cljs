@@ -75,28 +75,6 @@
       (str/includes? (str/lower-case (or (:player-name p) "")) q)
       (str/includes? (str/lower-case (or (:team p) "")) q)))
 
-(defn- sort-players
-  "Sort by the active column, breaking ties on the board's overall rank.
-
-  Ties are the common case, not the edge: Worth is whole dollars and the whole
-  minimum-bid tail sits on the same one, so sorting on Worth alone left a
-  96-player block — and the $0 block behind it — in whatever order the server
-  emitted. The `#` column is computed from `rank-key` regardless, so those rows
-  rendered with their rank numbers out of order, which reads as a broken board
-  rather than as a tie. Falling back to `:rank` makes every column's order total
-  and lets the rank the board already computed decide."
-  [players key dir]
-  (let [acc (get db/sort-accessors key :worth)]
-    (sort (fn [a b]
-            (let [va (acc a) vb (acc b)]
-              (cond
-                (and (nil? va) (nil? vb)) (compare (:rank a) (:rank b))
-                (nil? va) 1
-                (nil? vb) -1
-                :else (let [c (* dir (compare va vb))]
-                        (if (zero? c) (compare (:rank a) (:rank b)) c)))))
-          players)))
-
 (defn- rank-key
   "Descending sort key for the board's overall rank: Worth, then skill positions
   ahead of K/DST, then VORP, then projected points.
@@ -121,6 +99,36 @@
    (if (db/priced-positions (:position p)) 0 1)
    (- (double (or (:vorp p) 0)))
    (- (double (or (:points p) 0)))])
+
+(defn- sort-players
+  "Sort by the active column, breaking ties on `rank-key` — the board's own total
+  order.
+
+  Ties are the common case, not the edge: Worth is whole dollars and the whole
+  minimum-bid tail sits on the same one, so sorting on Worth alone left a
+  96-player block in whatever order the server emitted while the `#` column kept
+  showing each row's real rank, which reads as a broken board rather than as a
+  tie.
+
+  The fallback is `rank-key` rather than the `:rank` field because `:rank` is
+  assoc'd by `:board-players` a few lines below and nothing here could enforce
+  that: `(compare nil nil)` is 0, so any other caller — a sortable watch list,
+  My Roster — would silently get the arbitrary server order back with no error.
+  `rank-key` is self-contained and cannot be called wrong.
+
+  Ties deliberately do *not* invert with `dir`: a tie is not an ordering, so both
+  directions show the better player first. Only the sorted column reverses."
+  [players key dir]
+  (let [acc (get db/sort-accessors key :worth)]
+    (sort (fn [a b]
+            (let [va (acc a) vb (acc b)]
+              (cond
+                (and (nil? va) (nil? vb)) (compare (rank-key a) (rank-key b))
+                (nil? va) 1
+                (nil? vb) -1
+                :else (let [c (* dir (compare va vb))]
+                        (if (zero? c) (compare (rank-key a) (rank-key b)) c)))))
+          players)))
 
 ;; undrafted, unfiltered by position/search — the pool the board and watch list
 ;; draw from, so they don't collapse when the board is filtered by pos/search.
@@ -223,5 +231,8 @@
     (->> watchlist
          (remove #(contains? drafted %))
          (keep by-id)
-         (sort-by #(- (or (:worth %) 0)))
+         ;; Same tie problem as the board, and worse: `:watchlist` is a set, so
+         ;; the order feeding the stable sort is hash iteration. Five starred $1
+         ;; sleepers visibly reshuffled whenever an unrelated sixth was starred.
+         (sort-by rank-key)
          vec)))

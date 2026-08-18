@@ -115,6 +115,23 @@
       (is (= 1 (ranks "k-hi")))
       (is (= 2 (ranks "k-lo"))))))
 
+(deftest sorting-the-vorp-column-keeps-k-and-dst-behind-the-skill-board
+  ;; The regression this pair of fixes exists for. `rank-key` got the K/DST
+  ;; demotion but the sort accessor did not, so clicking the VORP header compared
+  ;; a kicker's placeholder 0.0 against a real -90.0 and every kicker and defense
+  ;; rendered above the whole below-replacement skill board — the exact ordering
+  ;; the demotion was added to prevent, one column away.
+  (let [players [{:player-id "deep" :position "WR"  :worth 0 :vorp -90.0 :points 100}
+                 {:player-id "near" :position "RB"  :worth 0 :vorp -2.0  :points 158}
+                 {:player-id "kick" :position "K"   :worth 0 :vorp 0.0   :points 140}
+                 {:player-id "dst"  :position "DST" :worth 0 :vorp 0.0   :points 120}]]
+    (is (= ["near" "deep" "kick" "dst"]
+           (board-order players {:key :vorp :dir -1}))
+        "descending VORP ranks the skill board first, specialists last")
+    (is (= ["deep" "near" "kick" "dst"]
+           (board-order players {:key :vorp :dir 1}))
+        "and ascending reverses the skill board while specialists stay last")))
+
 (deftest worth-still-decides-the-order-wherever-it-can
   ;; The tie-break may only reach players Worth cannot separate. Distinct dollars
   ;; decide the order outright, whatever VORP and points say.

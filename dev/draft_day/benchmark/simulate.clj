@@ -19,6 +19,7 @@
   every seat equally. Read it as a relative measure between models, never as a
   projection of league finish."
   (:require [draft-day.benchmark.metrics :as metrics]
+            [draft-day.db :as db]
             [draft-day.rankings.replacement :as replacement]))
 
 (def default-config
@@ -48,11 +49,28 @@
   of that gap it recovers.
 
   Reuses the live engine's `replacement-levels` / `with-vorp` so the board under
-  test is the one the app would actually build, not a reimplementation."
+  test is the one the app would actually build, not a reimplementation.
+
+  Two things about the ordering are worth knowing before comparing a run against
+  an older number:
+
+  - **VORP is signed now.** It used to be floored at 0, so every below-replacement
+    player tied and the stable sort left that whole block in pool order. A 12x12
+    simulation makes 144 picks against roughly 84 above-replacement players, so
+    every pick from about round 8 on now comes off a differently ordered board.
+    Any `--simulate` figure recorded before that change is not what this computes.
+  - **K/DST are demoted explicitly.** They carry :vorp 0.0 meaning 'no opinion',
+    which reads as *at replacement* to a numeric sort and would float them above
+    every below-replacement skill player. `vintage/scoring-positions` keeps them
+    out of the benchmark pool today, so this guard is unreachable — but that is a
+    property of the data source, and `default-config`'s `:caps` names no K/DST, so
+    a pool that ever included them would let the model seat take unlimited
+    kickers. Same rule the live board applies in `db/vorp-sort-key`."
   [players num-teams replacement-config]
   (let [levels (replacement/replacement-levels players num-teams (or replacement-config {}) :points)]
     (->> (replacement/with-vorp players levels :points)
-         (sort-by #(- (double (or (:vorp %) 0.0)))))))
+         (sort-by (fn [p] [(if (db/priced-positions (:position p)) 0 1)
+                           (- (double (or (:vorp p) 0.0)))])))))
 
 (defn board-order
   "Players sorted by a seat's preference.
