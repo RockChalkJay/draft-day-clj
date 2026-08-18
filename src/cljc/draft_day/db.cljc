@@ -225,10 +225,13 @@
 
 (def scoring-catalog
   [{:group "Passing"   :stats [[:pass_yd "Pass Yd"] [:pass_td "Pass TD"]
-                               [:pass_int "Pass INT"] [:pass_2pt "Pass 2PT"]]}
-   {:group "Rushing"   :stats [[:rush_yd "Rush Yd"] [:rush_td "Rush TD"] [:rush_2pt "Rush 2PT"]]}
+                               [:pass_int "Pass INT"] [:pass_2pt "Pass 2PT"]
+                               [:pass_fd "Pass 1st Down"]]}
+   {:group "Rushing"   :stats [[:rush_yd "Rush Yd"] [:rush_td "Rush TD"] [:rush_2pt "Rush 2PT"]
+                               [:rush_fd "Rush 1st Down"]]}
    {:group "Receiving" :stats [[:rec "Reception"] [:rec_yd "Rec Yd"]
-                               [:rec_td "Rec TD"] [:rec_2pt "Rec 2PT"]]}
+                               [:rec_td "Rec TD"] [:rec_2pt "Rec 2PT"]
+                               [:rec_fd "Rec 1st Down"]]}
    {:group "Misc"      :stats [[:fum_lost "Fumble Lost"]]}
    {:group "Kicking"   :stats [[:fgm "FG Made"] [:xpm "XP Made"] [:blk_kick "Blocked Kick"]]}
    {:group "Defense"   :stats [[:sack "Sack"] [:int "INT"] [:fum_rec "Fumble Rec"]

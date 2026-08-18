@@ -34,6 +34,16 @@
     (is (apply = (map #(get % k) (vals scoring/presets)))
         (str k " differs between presets"))))
 
+(deftest a-ppfd-league-can-price-first-downs
+  ;; The presets leave the `_fd` weights at 0, so a vanilla league's points are
+  ;; unchanged; the point of carrying the keys is that a custom config can set them.
+  (let [player {:stats {:rec 6.0 :rec_yd 80.0 :rec_fd 4.0}}]
+    (is (= (scoring/player-points player (:ppr scoring/presets))
+           (scoring/player-points player (assoc (:ppr scoring/presets) :rec_fd 0.0)))
+        "no preset scores first downs")
+    (is (= 2.0 (- (scoring/player-points player (assoc (:ppr scoring/presets) :rec_fd 0.5))
+                  (scoring/player-points player (:ppr scoring/presets)))))))
+
 (deftest stat-keys-covers-every-preset-key
   (is (= (set scoring/stat-keys) (set (keys (:ppr scoring/presets)))))
   (is (every? (set scoring/stat-keys) [:pass_2pt :rush_2pt :rec_2pt :blk_kick])))

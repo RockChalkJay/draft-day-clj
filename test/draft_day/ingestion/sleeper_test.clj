@@ -51,6 +51,25 @@
     (is (= {:ppr {:sleeper/adp 12.0}}
            (:vendor/by-format (sleeper/normalize-entry entry))))))
 
+(deftest ingested-stat-keys-stay-within-the-scoring-vocabulary
+  ;; Two independent lists gate a stat: this one decides what survives ingestion,
+  ;; `scoring/stat-keys` decides what can carry a weight. A key in only one of
+  ;; them is silently inert — payload nothing can price, or a weight multiplying
+  ;; a stat that was thrown away — and neither shows up as a failure anywhere.
+  (is (empty? (remove (set scoring/stat-keys) sleeper/stat-keys))))
+
+(deftest first-downs-survive-ingestion
+  ;; Sleeper projects these (rec_fd on 474 players, rush_fd on 376, pass_fd on 77)
+  ;; and a PPFD league scores them; dropping them reordered the board within
+  ;; position, which VORP does not absorb.
+  (let [entry {:player_id "p" :team "X"
+               :player {:first_name "A" :last_name "B" :position "WR"}
+               :stats {:pts_ppr 100.0 :rec 50.0 :rec_fd 34.0 :rush_fd 2.0 :pass_fd 1.0}}
+        stats (:stats (sleeper/normalize-entry entry))]
+    (is (= 34.0 (:rec_fd stats)))
+    (is (= 2.0 (:rush_fd stats)))
+    (is (= 1.0 (:pass_fd stats)))))
+
 (deftest scoring-engine-matches-sleeper-precomputed
   ;; Cross-check: our scoring on Sleeper :stats lands near Sleeper's own pts_ppr,
   ;; validating the stat-key alignment (we don't model every scoring bonus).

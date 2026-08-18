@@ -62,7 +62,7 @@ paired season-block-bootstrapped statistics, the draft-simulation metric).
 
 ## Known scoring coverage gaps
 
-Draft Day scores a flat stat line — `Σ(projected stat × weight)` over the 21 keys in
+Draft Day scores a flat stat line — `Σ(projected stat × weight)` over the keys in
 `draft-day.scoring/stat-keys`. Rules with any other shape (FG distance buckets, tiered
 points-allowed, yardage bonuses) have nowhere to land. A Sleeper import therefore lists
 exactly what it could not apply (one real league: 54 of its 74 non-zero rules), because a
@@ -76,15 +76,17 @@ amounts, so they are listed by what they actually cost rather than by why they e
 carries a non-zero weight in any preset. If you play a vanilla format, only the kicker
 issue below applies to you.
 
-### PPFD reorders the board — the one defect that changes who you draft
+### ~~PPFD reorders the board~~ — closed
 
-`ingestion/sleeper.clj`'s stat-key list drops first downs that Sleeper does project:
-`rec_fd` (474 players), `rush_fd` (376), `pass_fd` (77). Awarding 0.5 per receiving and
-rushing first down moves **40 of the top 200 by ≥10 slots** (mean absolute move 6.4), and it
-reorders *within* position — volume backs up (Jonathan Taylor +21, McCaffrey +19, Cook and
-Henry +17), low-volume QBs down. A within-position shuffle survives the VORP transform
-instead of cancelling out, so a PPFD league drafting off this board drafts the wrong
-players. This is the gap worth closing.
+`rec_fd` (474 players), `rush_fd` (376) and `pass_fd` (77) are now ingested and scorable:
+the keys sit in `scoring/stat-keys` at weight 0 in every preset, so a vanilla league is
+unaffected and a PPFD league can price them in Settings or import them from Sleeper.
+
+This was the gap worth closing. Awarding 0.5 per receiving and rushing first down moved
+**40 of the top 200 by ≥10 slots** (mean absolute move 6.4), and it reordered *within*
+position — volume backs up (Jonathan Taylor +21, McCaffrey +19, Cook and Henry +17),
+low-volume QBs down. A within-position shuffle survives the VORP transform instead of
+cancelling out, so a PPFD league drafting off the old board drafted the wrong players.
 
 ### TE premium misprices rather than misorders
 
@@ -132,8 +134,8 @@ one out in that set — it is inert today but *is* recoverable from the distance
 
 ### Closing it
 
-The cheapest fix with real return is three keys — `rec_fd`, `rush_fd`, `bonus_rec_te` —
-added to `ingestion/sleeper.clj`'s stat-key list, the preset table in
+The cheapest fix with real return was three keys — `rec_fd`, `rush_fd` (done) and
+`bonus_rec_te` — added to `ingestion/sleeper.clj`'s stat-key list, the preset table in
 `src/cljc/draft_day/scoring.cljc` (at 0.0, so preset behaviour stays byte-identical), and
 `db/scoring-catalog`, which have to move together. Kickers need more than a new key: the
 buckets must be summed into a synthetic `fgm`, or the buckets priced individually.

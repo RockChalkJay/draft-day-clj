@@ -16,16 +16,19 @@
 (defn- canon-pos [pos] (if (= pos "DEF") "DST" pos))
 
 ;; Stat keys carried into :stats for the scoring engine (skill + kicking/defense).
-;; NOT the whole payload: Sleeper also projects first downs (:rec_fd on 474 players,
-;; :rush_fd on 376, :pass_fd on 77), position reception premiums (:bonus_rec_te/_wr/_rb),
-;; the FG distance buckets that exist (:fgm_40_49 :fgm_50p :fgm_yds :fgmiss_40_49
-;; :fgmiss_50p :xpmiss), :pass_int_td, :pr_td, :def_kr_td, :pts_allow_0 and
-;; :yds_allow_0_100. Dropping them is why a PPFD or TE-premium league imports lossy —
-;; see the coverage-gap section in the README.
-(def ^:private stat-keys
-  [:pass_yd :pass_td :pass_int :pass_2pt
-   :rush_yd :rush_td :rush_2pt
-   :rec :rec_yd :rec_td :rec_2pt
+;; NOT the whole payload: Sleeper also projects position reception premiums
+;; (:bonus_rec_te/_wr/_rb), the FG distance buckets that exist (:fgm_40_49 :fgm_50p
+;; :fgm_yds :fgmiss_40_49 :fgmiss_50p :xpmiss), :pass_int_td, :pr_td, :def_kr_td,
+;; :pts_allow_0 and :yds_allow_0_100. Dropping them is why a TE-premium league
+;; imports lossy — see the coverage-gap section in the README.
+;;
+;; This list must stay a subset of `draft-day.scoring/stat-keys`: a key carried
+;; here that nothing can weight is dead payload, and a key weighted there that is
+;; dropped here is a weight that silently multiplies a missing stat.
+(def stat-keys
+  [:pass_yd :pass_td :pass_int :pass_2pt :pass_fd
+   :rush_yd :rush_td :rush_2pt :rush_fd
+   :rec :rec_yd :rec_td :rec_2pt :rec_fd
    :fum_lost
    :fgm :xpm
    :sack :int :fum_rec :ff :def_td :safe :blk_kick])
