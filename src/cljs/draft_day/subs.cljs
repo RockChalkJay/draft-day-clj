@@ -63,7 +63,7 @@
   (fn [r _] (into {} (map (juxt :player-id identity)) (:players r))))
 
 (rf/reg-sub :market :<- [:ranked]
-  (fn [r _] (select-keys r [:inflation :inflation-index :market-heat])))
+  (fn [r _] (select-keys r [:inflation :inflation-index :market-heat :market-multiplier])))
 
 (rf/reg-sub :visible-columns :<- [:columns]
   (fn [cols _] (filterv :visible? cols)))

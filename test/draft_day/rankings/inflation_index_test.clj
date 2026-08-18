@@ -31,7 +31,7 @@
 
 (deftest a-cheap-pick-barely-moves-its-position
   ;; The tilt is a scale-free ratio, so without shrinkage $3 for a $1 flier reads
-  ;; as a 3x overpay and pins the position at POS-MAX on the first nomination of
+  ;; as a 3x overpay and pins the position at the top of the band on the first
   ;; the draft. A hard par threshold only moves that cliff — $6 on a $2 player is
   ;; the same 3x — so the weight grades with how much par is actually at stake.
   (let [board [{:player-id "flier" :position "RB" :value 1}

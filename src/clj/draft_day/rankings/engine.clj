@@ -70,6 +70,11 @@
          ;; `inflation/clamp-to-band` for why the band lives here and nowhere else
          infl-fn     (fn [p] (inflation/clamp-to-band
                               (* (get pos-infl (:position p) infl) heat)))
+         ;; The banded figure the board actually prices at, shipped rather than
+         ;; left for the client to recompose: the header used to multiply
+         ;; :inflation by :market-heat itself and skip the band, so it read ×0.40
+         ;; where the board was pricing at 0.50.
+         mult        (inflation/clamp-to-band (* infl heat))
          priced      (value/calculate-price valued infl-fn
                                             (:drafted-player-ids league-state))
          with-barg   (mapv (fn [p]
@@ -79,5 +84,6 @@
      {:players             with-barg
       :replacement-levels  (:replacement-levels static-result)
       :inflation           infl
+      :market-multiplier   mult
       :inflation-index     (idx/inflation-index valued (:picks league-state))
       :market-heat         heat}))

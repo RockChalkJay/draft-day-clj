@@ -27,11 +27,11 @@
   speaks at full volume.
 
   The tilt is a scale-free ratio, so without this a trivial pick swings it as hard
-  as a real one: $3 for a $1 flier reads as a 3x overpay and pins the position at
-  POS-MAX on the first nomination of the draft, pricing a $40 RB at $63. A hard
-  minimum-par threshold does not fix that — it just moves the cliff, since $6 on a
-  $2 player is the same 3x and a dollar of par difference would swing the
-  multiplier from 1.0 to 1.6 with nothing in between.
+  as a real one: $3 for a $1 flier reads as a 3x overpay and pinned the position
+  at the top of the band on the first nomination of the draft, pricing a $40 RB
+  at $63. A hard minimum-par threshold does not fix that — it just moves the
+  cliff, since $6 on a $2 player is the same 3x and a dollar of par difference
+  would swing the multiplier from end to end with nothing in between.
 
   Shrinking toward 1.0 by how much par is actually at stake grades the same
   judgement continuously: one $1 flier bought at 3x moves its position 5%, while

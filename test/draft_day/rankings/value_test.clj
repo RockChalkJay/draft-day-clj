@@ -257,6 +257,17 @@
           open-row (first (filter #(= (:player-id survivor) (:player-id %)) (:players at-open)))]
       (is (< (:worth survivor) (:worth open-row))))))
 
+(deftest the-market-multiplier-is-shipped-banded
+  ;; The header used to recompose this on the client as :inflation x :market-heat
+  ;; and skip the band, so it could claim a discount the board was not applying.
+  (let [static (engine/static-rankings (synthetic-board) (:ppr scoring/presets) 12)
+        live   (engine/live-valuation static {:teams (mapv #(team (str "t" %) 200.0 std-roster) (range 12))
+                                              :drafted-player-ids #{} :picks [] :starting-bankroll 200.0})]
+    (is (contains? live :market-multiplier))
+    (is (<= 0.5 (:market-multiplier live) 1.8) "inside the one published band")
+    (is (< (Math/abs (double (- (:market-multiplier live) 1.0))) 0.05)
+        "and at draft open it is the same 1.0 the rest of the board opens at")))
+
 (deftest static-result-reusable-across-picks
   (let [rows   (mapv (fn [i] {:player-id (str "rb" i) :player-name (str "RB" i) :position "RB"
                               :stats {:rush_yd (- 1500 (* i 100)) :rush_td (- 12 i)

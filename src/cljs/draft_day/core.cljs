@@ -20,7 +20,11 @@
         max-bid @(rf/subscribe [:my-max-bid])
         view    @(rf/subscribe [:view])
         status  @(rf/subscribe [:status])
-        infl    (* (or (:inflation market) 1) (or (:market-heat market) 1))]
+        ;; the banded figure the board prices at, straight from the server —
+        ;; multiplying :inflation by :market-heat here skipped the band and read
+        ;; ×0.40 where the board was pricing at 0.50
+        infl    (or (:market-multiplier market)
+                    (* (or (:inflation market) 1) (or (:market-heat market) 1)))]
     [:header.top
      [:div.brand "🏈 Draft Day"]
      [:nav.views
