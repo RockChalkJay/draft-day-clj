@@ -35,19 +35,16 @@
   [ls]
   (reduce + 0 (vals (slot-counts ls))))
 
-(defn priced-slots
-  "Roster slots that a priced position can fill — every slot except the ones
-  reserved for K and DST, which the engine never puts a dollar on.
+(defn streamed-slots
+  "Roster slots reserved for the streamed positions, keyed by label — `{\"K\" 12
+  \"DST\" 12}` at the 12-team default.
 
-  `value/min-bid-ids` needs this rather than the total: paying a minimum bid for
-  every slot while only skill players can collect one hands 24 dollars (at the
-  12-team default) to skill players that a kicker and a defense will really
-  spend."
+  These seats get filled and paid for like any other, but the engine never puts a
+  VORP dollar on them (see `rankings.replacement/with-vorp`), so `value` prices
+  exactly this many of each at the league minimum rather than letting skill
+  players collect their share."
   [ls]
-  (let [counts (slot-counts ls)]
-    (- (reduce + 0 (vals counts))
-       (get counts "K" 0)
-       (get counts "DST" 0))))
+  (select-keys (slot-counts ls) ["K" "DST"]))
 
 (defn empty-slots-by-pos
   "Empty (unfilled) slots aggregated across every team, keyed by slot label

@@ -122,9 +122,14 @@
 (deftest dollar-value-stays-a-dollar-regardless-of-inflation
   (is (= 1 (worth1 (pf 1) 1.8 #{}))))
 
-(deftest price-k-dst-zero
-  (is (= 0 (worth1 (pf 30 "K") 1.0 #{})))
-  (is (= 0 (worth1 (pf 30 "DST") 1.0 #{}))))
+(deftest worth-follows-value-including-for-a-streamed-seat
+  ;; Worth used to gate on the position as a stand-in for "the board priced this
+  ;; player". Now that a kicker holding a roster slot really is priced, at the
+  ;; league minimum, the gate is the price itself — and the $1 base leaves that
+  ;; dollar untouched at any inflation.
+  (is (= 1 (worth1 (pf 1 "K") 1.6 #{})))
+  (is (= 1 (worth1 (pf 1 "DST") 0.5 #{})))
+  (is (= 0 (worth1 (pf 0 "K") 1.0 #{})) "an unpriced kicker is still nothing"))
 
 (deftest price-drafted-zero
   (is (= 0 (worth1 (pf 40) 1.0 #{"p0"}))))
