@@ -98,8 +98,21 @@
       ;; An empty or all-zero custom map is not a league — it scores every player
       ;; 0.0 and prices the whole board at $0. Say so rather than returning a
       ;; plausible-looking board of zeroes.
-      (if-not (scoring/scores-anything? scoring*)
+      (cond
+        (not (scoring/scores-anything? scoring*))
         (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
+
+        ;; A room that cannot put a dollar on every slot it has to fill is not a
+        ;; league. Left alone the board hands out one dollar per slot anyway and
+        ;; reports more money than the room holds — 150% of it at $10 bankrolls —
+        ;; with every row reading $1 and nothing to tell them apart. Same argument
+        ;; as the all-zero scoring map above: that is a lie, not a board.
+        (let [ls (coerce-league-state league-state)]
+          (and (seq (:teams ls))
+               (< (ls/initial-cash ls) (ls/total-slots ls))))
+        (json-response 400 {:error "each team's bankroll must cover $1 per roster slot"})
+
+        :else
         (let [players  (vendor/for-scoring (:players (universe false)) scoring*)
               nt       (or num-teams 12)
               opts     {:replacement-config replacement-config}
