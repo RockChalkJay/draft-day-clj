@@ -37,10 +37,14 @@
   (not (.contains (.-currentTarget e) (.-relatedTarget e))))
 
 (defn headshot-url
-  "Sleeper's CDN keys headshots by player-id; team defenses have no headshot,
-  and their player-id *is* the team abbreviation, so they get the team logo."
-  [{:keys [player-id position]}]
-  (when player-id
-    (if (#{"DEF" "DST"} position)
-      (str "https://sleepercdn.com/images/team_logos/nfl/" (.toLowerCase player-id) ".png")
-      (str "https://sleepercdn.com/content/nfl/players/thumb/" player-id ".jpg"))))
+  "Sleeper's CDN keys headshots by Sleeper id; `:player-id` is GSIS for most
+  players, so read `[:ids :sleeper]` and fall back to `:player-id` for legacy
+  rows. Team defenses have no headshot — their id is the team abbreviation, so
+  they get the team logo instead."
+  [{:keys [player-id position ids]}]
+  (let [sleeper-id (or (:sleeper ids) player-id)
+        team-id    (or (:team ids) player-id)]
+    (when sleeper-id
+      (if (#{"DEF" "DST"} position)
+        (str "https://sleepercdn.com/images/team_logos/nfl/" (.toLowerCase team-id) ".png")
+        (str "https://sleepercdn.com/content/nfl/players/thumb/" sleeper-id ".jpg")))))
