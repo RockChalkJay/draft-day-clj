@@ -198,11 +198,13 @@
   {"--tier-bg"   (tier-fill t n)
    "--tier-line" (tier-color t n)})
 
-(defn player-row [p cols nominated n-tiers tier-start?]
-  [:tr {:class [(when (= nominated (:player-id p)) "selected")
-                "tier-row"
-                (when tier-start? "tier-start")]
-        :style (tier-style (or (:tier p) 1) n-tiers)
+(defn player-row [p cols nominated n-tiers tier-start? show-bands]
+  [:tr {:class (->> [(when (= nominated (:player-id p)) "selected")
+                     (when show-bands "tier-row")
+                     (when (and show-bands tier-start?) "tier-start")]
+                    (filter some?)
+                    (str/join " "))
+        :style (when show-bands (tier-style (or (:tier p) 1) n-tiers))
         :on-click #(rf/dispatch [:set-nominated (:player-id p)])}
    (map (fn [{k :key}] ^{:key k}
           [cell k p]) cols)])
@@ -246,6 +248,9 @@
         cols        @(rf/subscribe [:visible-columns])
         sort        @(rf/subscribe [:sort])
         nominated   @(rf/subscribe [:nominated-id])
+        ;; Tier bands visible only when sorting by :rank to avoid distraction when
+        ;; sorting by other columns.
+        show-bands  (= (:key sort) :rank)
         ;; Rows are tier-coloured in every view now. They used to be coloured
         ;; only under a position filter, because :tier was per-position and a
         ;; tier 2 RB beside a tier 2 WR meant nothing; the board now carries an
@@ -261,5 +266,5 @@
        [:tbody
         (map (fn [p tier-start?]
                ^{:key (:player-id p)}
-               [player-row p cols nominated n-tiers tier-start?])
+               [player-row p cols nominated n-tiers tier-start? show-bands])
              players (tier-starts players))]]]]))
