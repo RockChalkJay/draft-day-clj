@@ -61,3 +61,24 @@
 
 (deftest phase-decay-handles-empty-league
   (is (= 1.0 (infl/draft-phase-decay {:teams []}))))
+
+;; ---- one band, applied at the end -------------------------------------------
+
+(deftest clamp-to-band-holds-the-published-bounds
+  (is (= 1.8 (infl/clamp-to-band 5.09)))
+  (is (= 0.5 (infl/clamp-to-band 0.42)))
+  (is (= 1.0 (infl/clamp-to-band 1.0)))
+  (is (= infl/INFL-MAX (infl/clamp-to-band Double/MAX_VALUE)))
+  (is (= infl/INFL-MIN (infl/clamp-to-band 0.0))))
+
+(deftest the-multiplier-worth-uses-cannot-escape-the-band
+  ;; The composed factor is position tilt x phase decay. Clamping the tilt alone
+  ;; left the product free to leave the band: at the old floor that was
+  ;; 0.6 * 0.8 = 0.48, under a published minimum of 0.5.
+  (is (= 0.48 (* 0.6 0.8)) "what the old chain produced")
+  (is (= 0.5 (infl/clamp-to-band (* 0.6 0.8))) "what one band at the end produces")
+  (doseq [tilt [0.1 0.5 1.0 3.0 20.0]
+          heat [0.8 0.9 1.0]]
+    (let [x (infl/clamp-to-band (* tilt heat))]
+      (is (<= infl/INFL-MIN x infl/INFL-MAX)
+          (str "tilt " tilt " x heat " heat " lands inside the band")))))

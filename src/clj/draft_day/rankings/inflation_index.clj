@@ -22,20 +22,16 @@
   global factor."
   0.5)
 
-;; Softer band than the global [0.5,1.8] so a positional run can register.
-(def POS-MIN 0.6)
-(def POS-MAX 1.6)
-
 (def SHRINK-BASE
   "Dollars of par a position must have on the board before its realized ratio
   speaks at full volume.
 
   The tilt is a scale-free ratio, so without this a trivial pick swings it as hard
-  as a real one: $3 for a $1 flier reads as a 3x overpay and pins the position at
-  POS-MAX on the first nomination of the draft, pricing a $40 RB at $63. A hard
-  minimum-par threshold does not fix that — it just moves the cliff, since $6 on a
-  $2 player is the same 3x and a dollar of par difference would swing the
-  multiplier from 1.0 to 1.6 with nothing in between.
+  as a real one: $3 for a $1 flier reads as a 3x overpay and pinned the position
+  at the top of the band on the first nomination of the draft, pricing a $40 RB
+  at $63. A hard minimum-par threshold does not fix that — it just moves the
+  cliff, since $6 on a $2 player is the same 3x and a dollar of par difference
+  would swing the multiplier from end to end with nothing in between.
 
   Shrinking toward 1.0 by how much par is actually at stake grades the same
   judgement continuously: one $1 flier bought at 3x moves its position 5%, while
@@ -69,10 +65,17 @@
 
     ratio_p = Σpaid / Σpar
     shrink  = Σpar / (Σpar + SHRINK-BASE)
-    infl_p  = clamp(global * (1 + BETA*(ratio_p - 1)*shrink))
+    infl_p  = global * (1 + BETA*(ratio_p - 1)*shrink)
 
   Positions with no picks pass the global factor straight through, and so, very
-  nearly, do positions whose only picks were minimum bids — see `SHRINK-BASE`."
+  nearly, do positions whose only picks were minimum bids — see `SHRINK-BASE`.
+
+  Deliberately unclamped. This is one factor in the multiplier Worth is scaled
+  by, not the multiplier itself: phase decay still multiplies in afterwards, and
+  `inflation/clamp-to-band` holds the finished product inside a single band. A
+  band here bounded the wrong quantity — it capped a position at 1.6 while the
+  global factor alone was allowed to reach 1.8, so a position with no picks came
+  out *below* the factor it was supposed to be passing straight through."
   [board league-state global-infl]
   (let [par    (par-values board)
         by-pos (group-by :position (:picks league-state))]
@@ -84,5 +87,5 @@
                     tilt   (if (pos? base)
                              (+ 1.0 (* BETA (- (/ paid base) 1.0) shrink))
                              1.0)]
-                (assoc m pos (double (min POS-MAX (max POS-MIN (* global-infl tilt)))))))
+                (assoc m pos (double (* global-infl tilt)))))
             {} priced-positions)))
