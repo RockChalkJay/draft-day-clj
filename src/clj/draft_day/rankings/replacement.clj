@@ -9,29 +9,81 @@
   "Starters per team; flex slots are RB/WR/TE-eligible."
   {:qb 1 :rb 2 :wr 2 :te 1 :flex 1})
 
-(defn flex-share-each
-  "Total league flex demand (num-teams * flex-spots) split evenly between RB and
-  WR (TE gets none). At 12 teams / flex 1 this is floor(12/2)=6 each, matching the
-  original hardcoded `+ floor(num_teams * 0.5)`."
-  [num-teams flex-spots]
-  (long (Math/floor (/ (* num-teams flex-spots) 2.0))))
+(def flex-starter-keys
+  "Positions a FLEX slot accepts, paired with the config key holding their
+  dedicated starter count. Matches the roster's own rule (see `events/eligible?`).
+
+  Named for the mapping rather than the membership because `pdm` and
+  `benchmark.simulate` each carry a `flex-positions` **set** of the same three
+  strings; `(flex-positions pos)` reading as a predicate there and as a lookup
+  here is how the `priced-positions` drift started."
+  {"RB" :rb "WR" :wr "TE" :te})
+
+(defn- sorted-pools
+  "Board grouped by position, each pool sorted descending on `score-key`. Sorting
+  once here is what lets the flex pass and the level lookup share the work."
+  [board score-key]
+  (into {} (map (fn [[pos grp]] [pos (vec (sort-by score-key > grp))]))
+        (group-by :position board)))
+
+(defn- claims-from-pools
+  [pools num-teams config score-key]
+  (let [spots (* num-teams (long (or (:flex config) 0)))]
+    (if-not (pos? spots)
+      {}
+      (let [leftovers (mapcat (fn [[pos starters-key]]
+                                (drop (* num-teams (long (or (get config starters-key) 0)))
+                                      (get pools pos)))
+                              flex-starter-keys)]
+        (frequencies (map :position (take spots (sort-by score-key > leftovers))))))))
+
+(defn flex-claims
+  "How many of the league's flex slots each flex-eligible position actually wins:
+  `{\"RB\" n \"WR\" m \"TE\" k}`, summing to `num-teams * flex-spots`.
+
+  Pool the players left after every team's dedicated starters are filled, rank
+  that pool on its own merits, and take the best `num-teams * flex-spots` of
+  them. Whoever is left standing is who the flex slots go to.
+
+  This replaces a 50/50 RB/WR split (with TE getting none), which is the single
+  largest positional bias the engine had, and it is format-dependent — so a
+  standard league was roughly right while a PPR league was materially wrong.
+  Measured on the bundled sample, the best twelve flex-eligible players actually
+  available after base starters:
+
+      standard   RB 7 / WR 5      (assumed RB 6 / WR 6)
+      half-PPR   RB 3 / WR 9      (assumed RB 6 / WR 6)
+      PPR        WR 12 / RB 0     (assumed RB 6 / WR 6)
+
+  In PPR that put RB replacement six slots too deep — 160.2 points instead of
+  174.8, so **every** running back carried +14.6 phantom points and about +$9.
+  Against the vendor consensus the mean per-player error at RB was +$8.6 and is
+  now +$2.4.
+
+  `config` is merged with `default-config` here rather than assumed complete: a
+  missing `:rb`/`:wr`/`:te` would otherwise read as *zero dedicated starters* and
+  hand the flex slots to whole position pools competing from the top."
+  [board num-teams config score-key]
+  (claims-from-pools (sorted-pools board score-key) num-teams
+                     (merge default-config config) score-key))
 
 (defn replacement-levels
   "Return {\"QB\" pts \"RB\" pts \"WR\" pts \"TE\" pts}. The replacement index for
-  a position is num-teams*starters (+ flex share for RB/WR), clamped to
-  (count pool)-1; the score of the player at that index is the level. Positions
-  with an empty pool are omitted. `score-key` (default :points) selects the score
-  field to compute levels on."
+  a position is num-teams*starters plus the flex slots that position actually
+  wins (`flex-claims`), clamped to (count pool)-1; the score of the player at that
+  index is the level. Positions with an empty pool are omitted. `score-key`
+  (default :points) selects the score field to compute levels on."
   ([board num-teams config] (replacement-levels board num-teams config :points))
   ([board num-teams config score-key]
    (let [config (merge default-config config)
-         flex   (flex-share-each num-teams (:flex config))
+         pools  (sorted-pools board score-key)
+         claims (claims-from-pools pools num-teams config score-key)
          spec   [["QB" (:qb config) 0]
-                 ["RB" (:rb config) flex]
-                 ["WR" (:wr config) flex]
-                 ["TE" (:te config) 0]]]
+                 ["RB" (:rb config) (get claims "RB" 0)]
+                 ["WR" (:wr config) (get claims "WR" 0)]
+                 ["TE" (:te config) (get claims "TE" 0)]]]
      (reduce (fn [acc [pos starters flx]]
-               (let [pool (sort-by score-key > (filter #(= (:position %) pos) board))]
+               (let [pool (get pools pos)]
                  (if (empty? pool)
                    acc
                    (let [idx (min (+ (* num-teams starters) flx) (dec (count pool)))]
