@@ -30,7 +30,7 @@
      [:div.brand "🏈 Draft Day"]
      ;; backend connectivity indicator
      [:div.backend-status {:title (if backend-up "Backend reachable" "Backend unreachable")}
-      (if backend-up [:span "🟢 Backend"] [:span "🔴 Backend"])]
+      (if backend-up [:span "🟢 Backend"] [:span "🔴 Backend"]) [:span {:style {:margin-left "8px" :font-size "0.9em"}} (str "v" (or app-version "dev"))]]
      [:nav.views
       (map (fn [[v label]]
              ^{:key v}

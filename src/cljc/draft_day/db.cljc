@@ -378,6 +378,7 @@
      :recompute-error nil       ; the failure message, while it is still on :status
      :import-report nil         ; {:name :season :unsupported-scoring [...]} 
      :backend-up  false
+     :app-version  nil
      :config      cfg
      :teams       (make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
      :my-team-id  "t0"

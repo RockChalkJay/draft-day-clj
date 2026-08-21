@@ -21,7 +21,8 @@
             (update :columns db/reconcile-columns)    ; drop removed cols, add new ones
             (update :config db/reconcile-config))     ; repair a config from an older shape
     :fx [[:dispatch [:fetch-players]]
-         [:dispatch [:check-ping]]]}))
+         [:dispatch [:check-ping]]
+         [:dispatch [:check-version]]]}))
 
 (rf/reg-event-fx
  :fetch-players
@@ -122,6 +123,23 @@
  :ping-failed
  (fn [db [_ err]]
    (-> db (assoc :backend-up false) (assoc :status (str "Backend unreachable: " err)))) )
+
+;; ---- version check ----
+
+(rf/reg-event-fx
+ :check-version
+ (fn [_ _]
+   {:http {:method :get :url "/api/version" :on-success [:version-loaded] :on-failure [:version-failed]}}))
+
+(rf/reg-event-db
+ :version-loaded
+ (fn [db [_ resp]]
+   (assoc db :app-version (:version resp))))
+
+(rf/reg-event-db
+ :version-failed
+ (fn [db [_ err]]
+   (assoc db :app-version "unknown"))))
 
 ;; ---- UI state ----
 
