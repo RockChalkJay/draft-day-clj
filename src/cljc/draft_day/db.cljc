@@ -18,6 +18,8 @@
 
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
+(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist])
+
 (defn make-teams-named
   "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
   names; a blank name falls back to the default (\"You\"/\"Team N\")."
@@ -388,6 +390,3 @@
      :search      ""
      :view        :board
      :columns     (default-columns)}))
-
-;; slice persisted to localStorage
-(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist])
