@@ -7,7 +7,7 @@
 ;; ---- simple extracts ----
 (doseq [k [:view :status :config :teams :my-team-id
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
-           :watchlist :import-report :universe]]
+           :watchlist :import-report :universe :backend-up]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),

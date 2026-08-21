@@ -20,6 +20,7 @@
         max-bid @(rf/subscribe [:my-max-bid])
         view    @(rf/subscribe [:view])
         status  @(rf/subscribe [:status])
+        backend-up @(rf/subscribe [:backend-up])
         ;; the banded figure the board prices at, straight from the server —
         ;; multiplying :inflation by :market-heat here skipped the band and read
         ;; ×0.40 where the board was pricing at 0.50
@@ -27,6 +28,9 @@
                     (* (or (:inflation market) 1) (or (:market-heat market) 1)))]
     [:header.top
      [:div.brand "🏈 Draft Day"]
+     ;; backend connectivity indicator
+     [:div.backend-status {:title (if backend-up "Backend reachable" "Backend unreachable")}
+      (if backend-up [:span "🟢 Backend"] [:span "🔴 Backend"])]
      [:nav.views
       (map (fn [[v label]]
              ^{:key v}
@@ -40,7 +44,7 @@
        [:span.stat-label "Infl Idx"]
        [:span.stat-val {:class (cond (> (or (:inflation-index market) 0) 0) "warn"
                                      (< (or (:inflation-index market) 0) 0) "good")}
-        (str "$" (js/Math.round (or (:inflation-index market) 0)))]]
+        (str "$" (js/Math.round (or (:inflation-index market) 0)))]],
       [:div.stat [:span.stat-label "Bankroll"] [:span.stat-val.good (str "$" (:bankroll my-team))]]
       [:div.stat [:span.stat-label "Max Bid"] [:span.stat-val.good (str "$" max-bid)]]]
      [:button.start-draft {:on-click #(rf/dispatch [:show-modal :start-draft])} "Start Draft"]]))
