@@ -132,6 +132,7 @@
     [["/api/health"   {:get  (fn [_] (json-response 200 {:status "ok" :service "draft-day-clj"}))}]
      ["/api/ping"     {:get  (fn [_] (json-response 200 {:ok true}))}]
      ["/api/players"  {:get  players-handler}]
+     ["/api/version"  {:get  (fn [_] (json-response 200 {:version (or (System/getenv "APP_VERSION") "dev")}))}]
      ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
      ["/api/league/import"   {:post league-import-handler}]]
