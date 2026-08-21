@@ -130,6 +130,7 @@
   (ring/ring-handler
    (ring/router
     [["/api/health"   {:get  (fn [_] (json-response 200 {:status "ok" :service "draft-day-clj"}))}]
+     ["/api/ping"     {:get  (fn [_] (json-response 200 {:ok true}))}]
      ["/api/players"  {:get  players-handler}]
      ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
