@@ -53,7 +53,7 @@ paired season-block-bootstrapped statistics, the draft-simulation metric).
 
 - **Fix tier row color bug**
 
-- **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
+- **Warning when a nominated player would cause 2 or more shared bye weeks at the same position**
 
 - **Add stats and player pic to the on the block card** Include additional stats like target percentage, number of targets, number of receptions.
 
