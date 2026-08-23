@@ -12,6 +12,7 @@
             [draft-day.benchmark.fetch :as fetch]
             [draft-day.benchmark.metrics :as metrics]
             [draft-day.benchmark.simulate :as simulate]
+            [draft-day.benchmark.auction :as auction]
             [draft-day.benchmark.sources.fantasypros-archive :as fp-archive]
             [draft-day.benchmark.sources.fantasypros-ecr :as fp-ecr]
             [draft-day.benchmark.sources.ffcalculator :as ffc]
@@ -90,6 +91,7 @@
       (= a "--common-pool")   (recur more (assoc opts :common-pool? true))
       (= a "--simulate")      (recur more (assoc opts :simulate? true))
       (= a "--vorp")          (recur more (assoc opts :vorp? true))
+      (= a "--auction")       (recur more (assoc opts :auction? true))
       (= a "--no-slice")      (recur more (assoc opts :no-slice? true))
       (= a "--force-totals")  (recur more (assoc opts :force-totals? true))
       (= a "--compare")       (let [ms (parse-models (str/join "," (take 2 more)))]
@@ -118,6 +120,12 @@
                         board — and bootstrap the difference. Answers whether
                         the replacement-level correction is worth anything,
                         which nothing in this harness could previously run.
+    --auction           draft the season by AUCTION instead of snake: the model
+                        seat bids up to its Worth, the field bids a price curve
+                        measured from real auctions and disagrees about it by as
+                        much as real rooms do. The only mode that exercises
+                        value, inflation and phase decay — a snake pick is a
+                        choice of player, and none of those three can change it.
     --no-slice          keep the raw pool instead of a fixed per-position slice
     --force-totals      allow a season-total comparison that spans 2021
     --refresh           bypass the disk cache and re-fetch from source
@@ -225,6 +233,27 @@
                      (if (and (:hit-seasons a) (not= (:hit-seasons a) (:seasons a)))
                        (format "   (hit rate from %d of %d seasons)" (:hit-seasons a) (:seasons a))
                        "")))))
+
+(def exclusive-modes
+  "Flags that each take over the whole run, and the flag text to name them by.
+
+  Checked centrally because a check that lives inside one mode's own handler is
+  dead code whenever another mode dispatches first: `--auction` refused to
+  combine with `--vorp`, `-main` tested `:vorp?` one line earlier, and the pair
+  silently ran the VORP report. Every new mode would otherwise have to name
+  every older one, in both directions, with the `cond` order deciding which half
+  of each pair never runs."
+  {:source-report? "--source-report" :power-report? "--power-report"
+   :vorp? "--vorp" :auction? "--auction"})
+
+(defn check-one-mode
+  "Refuse a run that asks for two whole modes at once."
+  [opts]
+  (let [named (keep (fn [[k flag]] (when (get opts k) flag)) exclusive-modes)]
+    (when (next named)
+      (usage-error (str "these flags are each a whole mode and cannot combine: "
+                        (str/join ", " named)
+                        ".\n  Run them one at a time.")))))
 
 (defn run-model [model {:keys [seasons scoring-name truth pool-size adp-source projection-source
                               require-week1? no-slice? force-totals?]}]
@@ -401,6 +430,85 @@
                        (simulate/run results truth-key (assoc base :vorp? true))
                        (simulate/run results truth-key base)))))
 
+(defn- print-auction-table
+  "One season per row: what the Worth-bidding seat's roster scored against the
+  eleven seats that just paid the going rate.
+
+  Not `print-sim-table`, which varies one thing across two runs. Here the
+  comparison is inside a single run — model seat against its own field — so the
+  season's number is the edge itself, and the interval is over that."
+  [label rows]
+  (let [ci (metrics/block-bootstrap-ci rows (metrics/mean-of :edge))]
+    (println)
+    (println "  AUCTION SIMULATION — realized points of the team Worth bought")
+    (println (format "    %-8s %12s %12s %12s %14s" "season" "model" "field mean" "edge"
+                     "top buy m/f"))
+    (doseq [{:keys [season model-points field-mean edge model-top-buy field-top-buy]}
+            (sort-by :season rows)]
+      (println (format "    %-8d %12s %12s %12s %14s"
+                       season (fmt model-points 1) (fmt field-mean 1) (fmt edge 1)
+                       (format "$%.0f/$%.0f" (double model-top-buy) (double field-top-buy)))))
+    (println (format "    %-8s %12s %12s %12s %14s   %s"
+                     "MEAN" (fmt (metrics/mean (map :model-points rows)) 1)
+                     (fmt (metrics/mean (map :field-mean rows)) 1)
+                     (fmt (:point ci) 1)
+                     (format "$%.0f/$%.0f"
+                             (metrics/mean (map :model-top-buy rows))
+                             (metrics/mean (map :field-top-buy rows)))
+                     (cond (metrics/spans-zero? ci) "indistinguishable from the market"
+                           (pos? (:point ci))       (str label " better")
+                           :else                    (str label " worse"))))
+    (println (format "    95%% CI on the edge: %s" (ci-str ci)))
+    (println "    'top buy' is the priciest single player the model seat bought against what")
+    (println "    the average field seat paid for its own — which way the seat missed, not")
+    (println "    just that it did.")
+    (println "    Season-long approximation: no waivers, trades or weekly start/sit.")))
+
+(defn auction-report
+  "Does bidding Worth beat paying the going rate?
+
+  The snake simulator cannot ask this. A snake pick is a choice of player, so
+  value, inflation and phase decay — three of the five live steps — never touch
+  its result; `--simulate` and `--vorp` between them measure board order and
+  nothing else. An auction is a choice of how much, which is what those steps
+  compute, so this is the first run in the harness that can falsify the dollars.
+
+  Eleven seats bid a curve measured from the collected corpus of real auctions
+  (`replay.price-curve`), disagreeing with each other by as much as real rooms
+  disagree; the twelfth bids up to the Worth the live engine computes against
+  the state of the room, recomputed before every nomination. Repeated with the
+  model in every seat, so nomination luck cancels.
+
+  The disagreement is not decoration. A field that names one number to the
+  dollar makes the marginal bidder sit exactly at the mean, so any seat a dollar
+  off it wins everything or nothing, and the run scores being different rather
+  than being wrong — see `auction/jitter`."
+  [opts]
+  (when-let [ignored (seq (keep (fn [[k flag]] (when (get opts k) flag))
+                                [[:compare "--compare"]
+                                 [:simulate? "--simulate"]
+                                 [:common-pool? "--common-pool"]]))]
+    (usage-error (str "--auction is its own mode and cannot combine with "
+                      (str/join ", " ignored)
+                      ".\n  It already simulates, and it scores one model's seat"
+                      " against the market rather than two models against each other.")))
+  (let [models (or (:models opts) [:points])
+        m      (first models)]
+    (when (next models)
+      (usage-error (str "--auction takes one model, got " (str/join ", " (map name models))
+                        ".\n  It scores that model's Worth against the market.")))
+    (when (ordinal-key-for m)
+      (usage-error (str "--auction cannot run " (name m) ": it ranks on "
+                        (name (ordinal-key-for m)) " and has no points for the valuation"
+                        " chain to price.\n  Try --auction --models points.")))
+    (let [{:keys [results truth-key]} (run-model m opts)
+          rows (auction/run results truth-key auction/default-config)]
+      (println)
+      (println (format "=== %s: bidding Worth against the market ===" m))
+      (if (empty? rows)
+        (println "  no seasons survived the vintage gate — nothing to auction.")
+        (print-auction-table "Worth" rows)))))
+
 (defn power-report
   "What the current corpus can and cannot resolve, BEFORE running a sweep."
   [[a b] opts]
@@ -536,12 +644,14 @@
 (defn -main [& args]
   (try
     (let [opts (parse-args args)]
+      (when-not (:help? opts) (check-one-mode opts))
       (binding [fetch/*refresh* (boolean (:refresh? opts))]
        (cond
         (:help? opts)          (print-help)
         (:source-report? opts) (source-report opts)
         (:power-report? opts)  (power-report (or (:compare opts) [nil nil]) opts)
         (:vorp? opts)          (vorp-report opts)
+        (:auction? opts)       (auction-report opts)
         (:compare opts)        (compare-models (:compare opts) opts)
         :else                  (do (report opts)
                                    (println)
