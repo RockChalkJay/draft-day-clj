@@ -17,6 +17,22 @@
     (testing "the field ranks by consensus ADP"
       (is (= ["b" "a" "c"] (mapv :player-id (sim/board-order ps false nil)))))))
 
+(deftest replacement-config-tracks-the-simulated-lineup
+  ;; Two vocabularies for one roster. They agreed by coincidence before — both
+  ;; describing a 1QB/2RB/2WR/1TE/1FLEX league — and a VORP board measures the
+  ;; wrong correction the moment they stop.
+  (is (= {:qb 1 :rb 2 :wr 2 :te 1 :flex 1}
+         (sim/replacement-config sim/default-config)))
+
+  (testing "a superflex lineup carries its second quarterback through"
+    (is (= {:qb 2 :rb 2 :wr 2 :te 1 :flex 1}
+           (sim/replacement-config (assoc sim/default-config
+                                          :starters {"QB" 2 "RB" 2 "WR" 2 "TE" 1})))))
+
+  (testing "a position the lineup does not start reads as zero, not as absent"
+    (is (= {:qb 0 :rb 2 :wr 3 :te 0 :flex 0}
+           (sim/replacement-config {:starters {"RB" 2 "WR" 3} :flex 0})))))
+
 (deftest the-vorp-board-reorders-across-positions
   ;; What the correction is for, and what nothing could previously run: this path
   ;; was gated on a `:vorp?` config key no caller ever set. Raw points rank a

@@ -37,6 +37,21 @@
    ;; and every --simulate run ever recorded scored the raw-points board.
    :vorp?    false})
 
+(defn replacement-config
+  "The `rankings.replacement` roster config implied by a simulation config.
+
+  Two vocabularies describe one roster here — `:starters`/`:flex` for scoring the
+  lineup, `:qb`/`:rb`/... for computing replacement levels — and a VORP board is
+  only measuring the right thing when they agree. Letting `replacement-levels`
+  fall back to its own default made them agree by coincidence: both say one QB,
+  two RB, two WR, one TE, one flex today, and nothing would notice if `:starters`
+  changed to simulate a superflex league while replacement kept pricing a single
+  quarterback."
+  [{:keys [starters flex]}]
+  {:qb (get starters "QB" 0) :rb (get starters "RB" 0)
+   :wr (get starters "WR" 0) :te (get starters "TE" 0)
+   :flex (or flex 0)})
+
 (defn snake-order
   "Team index per overall pick, snaking each round: 0..n-1, then n-1..0."
   [teams rounds]
