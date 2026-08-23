@@ -6,7 +6,13 @@
     lein run -m draft-day.replay.report               ; use cached corpus
     lein run -m draft-day.replay.report --rebuild     ; recrawl, resuming state
     lein run -m draft-day.replay.report --fresh       ; recrawl from scratch
-    lein run -m draft-day.replay.report 12345 67890   ; score these draft ids"
+    lein run -m draft-day.replay.report 12345 67890   ; score these draft ids
+
+  A crawl takes its bounds from `--k=v` flags, all optional:
+
+    --max-users=N            stop after visiting N users
+    --max-drafts=N           stop once N drafts are accepted
+    --max-drafts-per-user=N  cap what any one community contributes"
   (:require [draft-day.replay.sleeper :as sleeper]
             [draft-day.replay.core :as core]
             [draft-day.replay.metrics :as metrics]
@@ -57,7 +63,12 @@
   []
   (->> (file-seq (io/file "data/replay_cache"))
        (filter #(re-matches #"crawl-state-v\d+\.transit" (.getName %)))
-       (keep #(pipeline/read-transit (.getPath %)))
+       ;; Guarded the way `load-state` is. These are *older* state versions by
+       ;; definition, written before `spit-atomically!` existed, so they are the
+       ;; files most likely to be half-written — and `read-transit` throws on a
+       ;; truncated one, which would take down every run at its seed step. One
+       ;; damaged file should cost its own user list, not the crawl.
+       (keep #(try (pipeline/read-transit (.getPath %)) (catch Exception _ nil)))
        (mapcat (fn [st] (concat (:frontier st) (:seen-users st))))
        distinct
        vec))
@@ -129,20 +140,29 @@
   ;; records from the last time a derived cache gained a field.
   (let [path (str "data/replay_cache/draft-v2-" did ".edn")]
     (or (slurp-edn path)
-        (let [d     (sleeper/body (sleeper/draft did))
-              picks (sleeper/body (sleeper/draft-picks did))
-              lresp (some-> (:league_id d) sleeper/league)]
+        (let [dresp (sleeper/draft did)
+              presp (sleeper/draft-picks did)
+              d     (sleeper/body dresp)
+              picks (sleeper/body presp)
+              lresp (some-> (:league_id d) sleeper/league)
+              ;; All three, not just the league. The league fetch is the one
+              ;; that would poison the cache — a throttle there classifies a
+              ;; superflex draft as standard and keeps that answer forever,
+              ;; filing it in the block the report calls trustworthy — but a
+              ;; throttled draft or picks fetch read through `body` is nil, and
+              ;; nil drops the draft from the run in silence. The report's pick
+              ;; and draft counts then shrink to match, which is the same
+              ;; rate-limit-as-data-drought this harness exists to stop
+              ;; believing. Name which one, and cache nothing either way.
+              bad   (some (fn [[label resp]]
+                            (when (sleeper/unreadable? resp) [label (:reason resp)]))
+                          [["draft" dresp] ["picks" presp] ["league" lresp]])]
           (cond
-            (not (and d picks)) nil
+            bad (do (println (format "  skipped %s: %s unreadable (%s) — not cached"
+                                     did (first bad) (name (second bad))))
+                    nil)
 
-            ;; A throttled league fetch would classify a superflex draft as
-            ;; standard and then *cache that answer forever*, filing it in the
-            ;; block the report calls trustworthy. Better to score nothing this
-            ;; run than to poison the split permanently.
-            (sleeper/unreadable? lresp)
-            (do (println (format "  skipped %s: league unreadable (%s) — not cached"
-                                 did (name (:reason lresp))))
-                nil)
+            (not (and d picks)) nil
 
             :else
             (doto (sleeper/normalize-draft d picks (sleeper/body lresp))
@@ -197,40 +217,43 @@
   cold crawl start anywhere other than one account."
   [{:keys [fresh] :as opts}]
   (let [prior (if fresh {} (load-state))
-        seeds (seed-uids prior 24)
-        _     (when (and (seq (:seen-users prior))
-                         (empty? (remove (set (:seen-users prior)) seeds))
-                         (empty? (:frontier prior)))
-                ;; every seed already visited and nothing queued: `crawl` would
-                ;; skip straight past them and return, printing a summary of the
-                ;; previous run as though this one had done the work
-                (println "nothing left to crawl: the frontier is drained and every"
-                         "known user has been visited.\nUse --fresh to re-judge"
-                         "them, or widen the graph with new seeds."))
-        st    (sleeper/crawl seeds
-                             (assoc opts
-                                    :state prior
-                                    :progress!
-                                    (fn [{:keys [visited accepted candidates]}]
-                                      (println (format "  visited=%d accepted=%d (+%d leagues)"
-                                                       visited accepted candidates)))
-                                    ;; a multi-hour crawl will be interrupted; save
-                                    ;; as we go so the next run resumes rather than
-                                    ;; re-fetching everything
-                                    :checkpoint!
-                                    (fn [snap]
-                                      (save-state! snap)
-                                      (spit-edn corpus-file (vec (keys (:accepted snap))))
-                                      (println (format "  ...checkpointed at %d users, %d drafts"
-                                                       (:visited snap) (count (:accepted snap)))))))
-        {:keys [accepted reasons visited examined]} st]
-    (println (format "\ncrawl done: visited=%d examined=%d accepted=%d"
-                     visited examined (count accepted)))
-    (print-histogram reasons)
-    (print-corpus-shape accepted)
-    (save-state! st)
-    (spit-edn corpus-file (vec (keys accepted)))
-    (vec (keys accepted))))
+        seeds (seed-uids prior 24)]
+    (if (and (seq (:seen-users prior))
+             (empty? (remove (set (:seen-users prior)) seeds))
+             (empty? (:frontier prior)))
+      ;; Every seed already visited and nothing queued. `crawl` would skip
+      ;; straight past them and hand back the prior state, and the summary below
+      ;; would then report the previous run's totals as though this run had
+      ;; produced them. Saying so and stopping is the point; saying so and
+      ;; carrying on would print the very thing the message warns about.
+      (do (println "nothing left to crawl: the frontier is drained and every"
+                   "known user has been visited.\nUse --fresh to re-judge"
+                   "them, or widen the graph with new seeds.")
+          (vec (keys (:accepted prior))))
+      (let [st (sleeper/crawl seeds
+                              (assoc opts
+                                     :state prior
+                                     :progress!
+                                     (fn [{:keys [visited accepted candidates]}]
+                                       (println (format "  visited=%d accepted=%d (+%d leagues)"
+                                                        visited accepted candidates)))
+                                     ;; a multi-hour crawl will be interrupted; save
+                                     ;; as we go so the next run resumes rather than
+                                     ;; re-fetching everything
+                                     :checkpoint!
+                                     (fn [snap]
+                                       (save-state! snap)
+                                       (spit-edn corpus-file (vec (keys (:accepted snap))))
+                                       (println (format "  ...checkpointed at %d users, %d drafts"
+                                                        (:visited snap) (count (:accepted snap)))))))
+            {:keys [accepted reasons visited examined]} st]
+        (println (format "\ncrawl done: visited=%d examined=%d accepted=%d"
+                         visited examined (count accepted)))
+        (print-histogram reasons)
+        (print-corpus-shape accepted)
+        (save-state! st)
+        (spit-edn corpus-file (vec (keys accepted)))
+        (vec (keys accepted))))))
 
 (defn- fmt [{:keys [n mae rmse bias spearman]}]
   (format "n=%-5d  MAE=$%-6.2f  RMSE=$%-6.2f  bias=$%-7.2f  rho=%+.3f"
@@ -294,22 +317,42 @@
 
 (defn run
   "Score `ids` if given, else the cached corpus, else crawl one. Prints the report."
-  [{:keys [ids rebuild fresh max-drafts max-users]}]
+  [{:keys [ids rebuild fresh max-drafts max-users max-drafts-per-user]}]
   (let [ids (or (seq ids)
                 (and (not rebuild) (not fresh) (seq (slurp-edn corpus-file)))
                 (build-corpus! (cond-> {:fresh fresh}
                                  max-drafts (assoc :max-drafts max-drafts)
-                                 max-users  (assoc :max-users max-users))))]
+                                 max-users  (assoc :max-users max-users)
+                                 max-drafts-per-user
+                                 (assoc :max-drafts-per-user max-drafts-per-user))))]
     (println (format "scoring %d draft(s)" (count ids)))
     (doto (score-ids ids) report)))
 
+(defn parse-bounds
+  "`--k=v` crawl bounds from the command line, as `{:k long}`.
+
+  They were reachable only from a REPL: `run` accepted two of them and `-main`
+  parsed neither, while `--max-drafts-per-user` — the lever deciding how much any
+  one community contributes, and so the one that governs whether the corpus can
+  be balanced at all — was not plumbed through `run` in the first place. A sweep
+  that runs for hours is precisely the thing wanted from a shell with a bound on
+  it. Unknown flags are ignored rather than rejected, since `--rebuild` and
+  `--fresh` come through the same argv."
+  [args]
+  (into {} (keep (fn [a]
+                   (when-let [[_ k v] (re-matches #"--([a-z-]+)=(\d+)" a)]
+                     [(keyword k) (parse-long v)])))
+        args))
+
 (defn -main
   "Args: bare numeric draft-ids score those directly; --rebuild recrawls
-  (resuming saved state); --fresh recrawls from scratch; no args uses the cached
-  corpus."
+  (resuming saved state); --fresh recrawls from scratch; --max-users=N,
+  --max-drafts=N and --max-drafts-per-user=N bound a crawl; no args uses the
+  cached corpus."
   [& args]
   (let [ids (filter #(re-matches #"\d+" %) args)]
-    (run {:ids     ids
-          :rebuild (boolean (some #{"--rebuild"} args))
-          :fresh   (boolean (some #{"--fresh"} args))}))
+    (run (merge {:ids     ids
+                 :rebuild (boolean (some #{"--rebuild"} args))
+                 :fresh   (boolean (some #{"--fresh"} args))}
+                (parse-bounds args))))
   (shutdown-agents))
