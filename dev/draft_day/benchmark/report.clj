@@ -360,7 +360,23 @@
   only thing that varies is how the model seat orders its board — so the
   difference is the replacement-level correction and nothing else."
   [opts]
-  (let [m (first (or (:models opts) [:points]))]
+  ;; This is a mode, not a modifier, so it cannot honour the flags that belong to
+  ;; `--compare`. Saying so beats discarding them: `--simulate` in particular is
+  ;; the one a reader is most likely to add, since every other simulation here
+  ;; requires it and this flag's help text describes simulating.
+  (when-let [ignored (seq (keep (fn [[k flag]] (when (get opts k) flag))
+                                [[:compare "--compare"]
+                                 [:simulate? "--simulate"]
+                                 [:common-pool? "--common-pool"]]))]
+    (usage-error (str "--vorp is its own mode and cannot combine with "
+                      (str/join ", " ignored)
+                      ".\n  It already simulates, and it compares one model's two boards"
+                      " rather than two models.")))
+  (let [models (or (:models opts) [:points])
+        m      (first models)]
+    (when (next models)
+      (usage-error (str "--vorp takes one model, got " (str/join ", " (map name models))
+                        ".\n  It compares that model's VORP board against its own points board.")))
     (when (ordinal-key-for m)
       ;; :adp and :ecr carry no real points, only a synthesized descending scale
       ;; (see `simulate.clj`'s note on ordinal models). Replacement level computed
@@ -371,7 +387,14 @@
                         "replacement level from.
   Try --vorp --models points.")))
     (let [{:keys [results truth-key]} (run-model m opts)
-          base (assoc simulate/default-config :ordinal-key nil)]
+          ;; Derived, not restated. `replacement-levels` would otherwise fall
+          ;; back to its own default roster, which happens to match the lineup
+          ;; simulated here — until someone changes `:starters` to run a 2QB
+          ;; simulation and the VORP board silently keeps pricing replacement as
+          ;; though one quarterback started.
+          base (assoc simulate/default-config
+                      :replacement-config (simulate/replacement-config
+                                           simulate/default-config))]
       (println)
       (println (format "=== %s: VORP board vs raw-points board ===" m))
       (print-sim-table "VORP" "points"
