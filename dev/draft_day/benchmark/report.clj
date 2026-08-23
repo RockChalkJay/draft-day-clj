@@ -122,7 +122,8 @@
                         which nothing in this harness could previously run.
     --auction           draft the season by AUCTION instead of snake: the model
                         seat bids up to its Worth, the field bids a price curve
-                        measured from real auctions. The only mode that exercises
+                        measured from real auctions and disagrees about it by as
+                        much as real rooms do. The only mode that exercises
                         value, inflation and phase decay — a snake pick is a
                         choice of player, and none of those three can change it.
     --no-slice          keep the raw pool instead of a fixed per-position slice
@@ -232,6 +233,27 @@
                      (if (and (:hit-seasons a) (not= (:hit-seasons a) (:seasons a)))
                        (format "   (hit rate from %d of %d seasons)" (:hit-seasons a) (:seasons a))
                        "")))))
+
+(def exclusive-modes
+  "Flags that each take over the whole run, and the flag text to name them by.
+
+  Checked centrally because a check that lives inside one mode's own handler is
+  dead code whenever another mode dispatches first: `--auction` refused to
+  combine with `--vorp`, `-main` tested `:vorp?` one line earlier, and the pair
+  silently ran the VORP report. Every new mode would otherwise have to name
+  every older one, in both directions, with the `cond` order deciding which half
+  of each pair never runs."
+  {:source-report? "--source-report" :power-report? "--power-report"
+   :vorp? "--vorp" :auction? "--auction"})
+
+(defn check-one-mode
+  "Refuse a run that asks for two whole modes at once."
+  [opts]
+  (let [named (keep (fn [[k flag]] (when (get opts k) flag)) exclusive-modes)]
+    (when (next named)
+      (usage-error (str "these flags are each a whole mode and cannot combine: "
+                        (str/join ", " named)
+                        ".\n  Run them one at a time.")))))
 
 (defn run-model [model {:keys [seasons scoring-name truth pool-size adp-source projection-source
                               require-week1? no-slice? force-totals?]}]
@@ -452,14 +474,19 @@
   compute, so this is the first run in the harness that can falsify the dollars.
 
   Eleven seats bid a curve measured from the collected corpus of real auctions
-  (`replay.price-curve`); the twelfth bids up to the Worth the live engine
-  computes against the state of the room, recomputed before every nomination.
-  Repeated with the model in every seat, so nomination luck cancels."
+  (`replay.price-curve`), disagreeing with each other by as much as real rooms
+  disagree; the twelfth bids up to the Worth the live engine computes against
+  the state of the room, recomputed before every nomination. Repeated with the
+  model in every seat, so nomination luck cancels.
+
+  The disagreement is not decoration. A field that names one number to the
+  dollar makes the marginal bidder sit exactly at the mean, so any seat a dollar
+  off it wins everything or nothing, and the run scores being different rather
+  than being wrong — see `auction/jitter`."
   [opts]
   (when-let [ignored (seq (keep (fn [[k flag]] (when (get opts k) flag))
                                 [[:compare "--compare"]
                                  [:simulate? "--simulate"]
-                                 [:vorp? "--vorp"]
                                  [:common-pool? "--common-pool"]]))]
     (usage-error (str "--auction is its own mode and cannot combine with "
                       (str/join ", " ignored)
@@ -617,6 +644,7 @@
 (defn -main [& args]
   (try
     (let [opts (parse-args args)]
+      (when-not (:help? opts) (check-one-mode opts))
       (binding [fetch/*refresh* (boolean (:refresh? opts))]
        (cond
         (:help? opts)          (print-help)

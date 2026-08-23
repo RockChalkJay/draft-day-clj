@@ -100,6 +100,33 @@
        :n-drafts k
        :spend-share (/ (reduce + 0.0 (map #(reduce + 0.0 %) ss)) k)})))
 
+(defn spread
+  "How much the price at each rank actually scatters, as a coefficient of
+  variation across `drafts`, on a grid of `n` ranks.
+
+  The mean curve alone describes a room where every manager agrees to the
+  dollar, and a simulated field built from it has no dispersion at all: the
+  marginal bidder sits at exactly the mean, so a seat bidding a dollar more wins
+  every contest it enters and a seat bidding a dollar less wins none. That is a
+  step function where real auctions have a slope, and it makes a valuation that
+  is *close* to the market score worse than one that is wildly wrong.
+
+  Real rooms disagree by about 15% at the top of the board and 40% in the tail
+  (45 standard drafts: $73.70 +/- $12.20 at rank 1, $3.60 +/- $1.40 at rank
+  100). The scatter is what turns a small edge in valuation into a small edge in
+  outcome instead of an all-or-nothing one."
+  [drafts n]
+  (let [ss (->> drafts (map shares) (remove empty?) (mapv #(resample % n)))
+        k  (count ss)]
+    (if (zero? k)
+      (vec (repeat n 0.0))
+      (mapv (fn [j]
+              (let [xs (map #(nth % j) ss)
+                    m  (/ (reduce + 0.0 xs) k)
+                    v  (/ (reduce + 0.0 (map #(let [d (- % m)] (* d d)) xs)) k)]
+                (if (pos? m) (/ (Math/sqrt v) m) 0.0)))
+            (range n)))))
+
 (defn clearing-prices
   "The curve as whole dollars for a room holding `pool`.
 

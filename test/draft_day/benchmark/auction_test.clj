@@ -43,13 +43,13 @@
 
 (deftest a-full-roster-cannot-bid
   (let [t {:team-id "1" :bankroll 50.0 :roster [{:pos "RB" :player-id "rb0"}]}]
-    (is (not (a/can-take? t (mk "rb1" "RB" 100 1) by-id {"RB" 6} a/default-config)))))
+    (is (not (a/can-take? t (mk "rb1" "RB" 100 1) by-id a/default-config)))))
 
 (deftest a-position-at-its-cap-cannot-bid
   (let [t {:team-id "1" :bankroll 50.0
            :roster (conj (mapv #(hash-map :pos "BENCH" :player-id (str "rb" %)) (range 3))
                          {:pos "BENCH" :player-id nil})}]
-    (is (not (a/can-take? t (mk "rb7" "RB" 10 40) by-id (:caps cfg) cfg))
+    (is (not (a/can-take? t (mk "rb7" "RB" 10 40) by-id cfg))
         "three running backs is the cap in this fixture")))
 
 (deftest a-purchase-that-orphans-a-starting-slot-is-refused
@@ -61,9 +61,9 @@
                     {:pos "RB" :player-id "rb1"} {:pos "WR" :player-id "wr0"}
                     {:pos "TE" :player-id "te0"} {:pos "FLEX" :player-id "rb2"}
                     {:pos "BENCH" :player-id nil}]}]
-    (is (not (a/can-take? t (mk "rb7" "RB" 10 40) by-id {"RB" 6 "WR" 6} cfg))
+    (is (not (a/can-take? t (mk "rb7" "RB" 10 40) by-id (assoc cfg :caps {"RB" 6 "WR" 6})))
         "a fourth back would leave the second receiver slot unfillable")
-    (is (a/can-take? t (mk "wr7" "WR" 10 40) by-id {"RB" 6 "WR" 6} cfg)
+    (is (a/can-take? t (mk "wr7" "WR" 10 40) by-id (assoc cfg :caps {"RB" 6 "WR" 6}))
         "the receiver that fills it is still allowed")))
 
 (deftest an-obligated-seat-is-recognized-as-obligated
@@ -92,6 +92,78 @@
     (is (not (a/must-bid? t (mk "qb3" "QB" 10 40) by-id cfg))
         "a second quarterback fills no hole")))
 
+(defn- run-one
+  "`simulate-season`'s loop, kept open so the final state can be asserted on.
+  Adds a `:log` of who bought what, which `apply-pick` does not record."
+  ([clearing] (run-one clearing (vec (repeat (count clearing) 0.0)) cfg))
+  ([clearing spread] (run-one clearing spread cfg))
+  ([clearing spread config]
+   (let [st (a/static-board pool config)]
+     (loop [state (assoc (replay/base-state 2 (:budget config) (a/roster-slots config)) :log [])
+            [p & more] (a/nomination-order pool) i 0]
+       (if (or (nil? p) (every? #(zero? (a/open-slots %)) (:teams state)))
+         state
+         (let [live (engine/live-valuation st state)
+               w    (or (:worth (first (filter #(= (:player-id %) (:player-id p))
+                                               (:players live)))) 0)
+               j    (min i (dec (count clearing)))]
+           (if-let [[tid price] (#'a/winner state "1" (nth clearing j) (nth spread j)
+                                            j w by-id config p)]
+             (recur (-> (replay/apply-pick state {:player-id (:player-id p)
+                                                  :position  (:position p)
+                                                  :price     (double price)
+                                                  :team-id   tid})
+                        (update :log conj {:team-id tid :price price :rank j}))
+                    more (inc i))
+             (recur state more (inc i)))))))))
+
+;; ---- the field has to disagree ----------------------------------------------
+
+(deftest a-seat-a-dollar-over-the-market-does-not-sweep-the-board
+  ;; The flaw this whole mechanism exists to fix. With every field seat naming
+  ;; the same number to the dollar, the marginal bidder sits exactly at the mean:
+  ;; a seat bidding $1 more wins every contest it enters and a seat bidding $1
+  ;; less wins none. Measured, that step function cost a market+$1 seat 13 points
+  ;; a game — more than bidding Worth cost — which made the headline finding an
+  ;; artifact of being the only seat that was different.
+  ;; Every seat fills its roster either way, so the tell is not how many players
+  ;; the aggressive seat got but WHICH: how many of the early, expensive
+  ;; nominations it took.
+  (let [rich  (assoc cfg :budget 100 :model-bid (fn [m _] (inc m)))
+        early (fn [spread]
+                (->> (:log (run-one (vec (repeat 14 5)) spread rich))
+                     (filter #(and (= "1" (:team-id %)) (< (:rank %) 7)))
+                     count))]
+    (is (= 7 (early (vec (repeat 14 0.0))))
+        "with no disagreement a dollar takes every one of the first seven")
+    (is (< (early (vec (repeat 14 0.35))) 7)
+        "with real disagreement it takes only some of them")))
+
+(deftest jitter-is-deterministic-and-scales-with-the-spread
+  (is (= (a/jitter "3" 7 0.2 11) (a/jitter "3" 7 0.2 11))
+      "the benchmark has to reproduce, so the draw cannot come from a fresh RNG")
+  (is (not= (a/jitter "3" 7 0.2 11) (a/jitter "4" 7 0.2 11))
+      "two seats hold different opinions of the same player")
+  (is (not= (a/jitter "3" 7 0.2 11) (a/jitter "3" 8 0.2 11))
+      "one seat holds different opinions of two players")
+  (is (= 1.0 (a/jitter "3" 7 0.0 11)) "no measured spread, no disagreement")
+  (is (every? #(<= 0.0 % 2.0) (for [t (range 40)] (a/jitter (str t) 3 0.3 11)))
+      "no seat is ever willing to pay a negative or wildly unbounded price"))
+
+(deftest the-field-is-centred-so-the-winning-bid-lands-on-the-curve
+  ;; The measured spread is the scatter of what rooms actually PAID, which is
+  ;; already a winning bid. Centring eleven bidders on it and taking the top of
+  ;; them would price every player above what any real room paid.
+  (let [n 11
+        runner-up (fn [rank cv]
+                    (second (sort > (map #(a/jitter (str %) rank cv n) (range n)))))
+        mean (fn [cv] (let [xs (map #(runner-up % cv) (range 400))]
+                        (/ (reduce + 0.0 xs) (count xs))))]
+    (doseq [cv [0.15 0.25 0.4]]
+      (is (< 0.9 (mean cv) 1.1)
+          (str "at cv " cv " the runner-up among eleven opinions lands on the curve, "
+               "not above it")))))
+
 ;; ---- the budget guard -------------------------------------------------------
 
 (deftest a-bid-always-leaves-a-dollar-on-every-remaining-seat
@@ -104,26 +176,6 @@
       "a full roster bids nothing"))
 
 ;; ---- the auction as a whole -------------------------------------------------
-
-(defn- run-one
-  "`simulate-season`'s loop, kept open so the final state can be asserted on."
-  [clearing]
-  (let [st (a/static-board pool cfg)]
-    (loop [state (replay/base-state 2 20 (a/roster-slots cfg))
-           [p & more] (a/nomination-order pool) i 0]
-      (if (or (nil? p) (every? #(zero? (a/open-slots %)) (:teams state)))
-        state
-        (let [live (engine/live-valuation st state)
-              w    (or (:worth (first (filter #(= (:player-id %) (:player-id p))
-                                              (:players live)))) 0)
-              m    (nth clearing (min i (dec (count clearing))))]
-          (if-let [[tid price] (#'a/winner state "1" m w by-id cfg p)]
-            (recur (replay/apply-pick state {:player-id (:player-id p)
-                                             :position  (:position p)
-                                             :price     (double price)
-                                             :team-id   tid})
-                   more (inc i))
-            (recur state more (inc i))))))))
 
 (deftest nobody-ever-ends-up-in-debt
   ;; `replay/apply-pick` subtracts whatever price it is handed and will happily
@@ -192,20 +244,19 @@
 ;; ---- the top-level metric ---------------------------------------------------
 
 (deftest a-season-scores-both-sides
-  (let [r (a/simulate-season pool 0 cfg :actual (vec (repeat 14 3)))]
+  (let [r (a/simulate-season pool 0 cfg :actual (vec (repeat 14 3)) (vec (repeat 14 0.0)))]
     (is (pos? (:model-points r)))
     (is (pos? (:field-mean r)))
     (is (= (:edge r) (- (:model-points r) (:field-mean r))))))
 
 (deftest every-seat-is-simulated
-  (is (= 2 (count (:by-seat (a/simulate-all-seats pool cfg :actual (vec (repeat 14 3))))))
+  (is (= 2 (count (:by-seat (a/simulate-all-seats pool cfg :actual (vec (repeat 14 3)) (vec (repeat 14 0.0))))))
       "one run per seat, so nomination luck cancels"))
 
 (deftest a-skipped-season-is-not-auctioned
   ;; Clearing prices passed in rather than measured: `market-prices` reads the
   ;; replay cache, which is gitignored and may not exist on the machine running
   ;; this.
-  (is (= [] (a/run [{:season 2020 :skipped? true :players pool}] :actual cfg
-                   (vec (repeat 14 3)))))
-  (is (= [2019] (map :season (a/run [{:season 2019 :players pool}] :actual cfg
-                                    (vec (repeat 14 3)))))))
+  (let [market {:clearing (vec (repeat 14 3)) :spread (vec (repeat 14 0.0))}]
+    (is (= [] (a/run [{:season 2020 :skipped? true :players pool}] :actual cfg market)))
+    (is (= [2019] (map :season (a/run [{:season 2019 :players pool}] :actual cfg market))))))

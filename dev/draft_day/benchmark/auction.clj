@@ -17,29 +17,49 @@
   The field bids a price curve measured from real auctions
   (`replay.price-curve`), because nothing published carries vintage auction
   dollars and an invented curve would make the simulator reward whoever deviated
-  least from the invention. Every field seat shares the curve, so the curve *is*
-  the clearing price and the model's decision reduces to the one a manager
-  actually faces: is this player worth more to me than the room will pay?
+  least from the invention.
 
-  What it says so far, over 2021-2025: bidding Worth loses to simply paying the
-  going rate, by 136 points a season, CI [-227, -35]. The mechanism is in the
-  report's top-buy column — the Worth seat pays $73 for its most expensive
-  player where the average field seat pays $54 — so Worth sits above the market
-  at the top of the board, wins those auctions, and starves the rest of the
-  roster. Read it as a finding about the dollars, not about board order: the
-  same `:points` board wins the snake simulation.
+  Field seats do not all read the curve the same way. They disagree by as much
+  as real rooms disagree — `price-curve/spread`, about 15% at the top of the
+  board and 40% in the tail — and getting that wrong is what a first version of
+  this got wrong. With eleven seats naming one number to the dollar, the
+  marginal bidder sits exactly at the mean: a seat bidding $1 more wins every
+  contest it enters, a seat bidding $1 less wins none. Measured, that step
+  function cost a market+$1 seat 13 points a game and a market-$1 seat 15 —
+  both worse than bidding Worth — so the simulator was scoring *being different*
+  rather than being wrong, and the deviation it punished hardest was the one
+  closest to correct.
 
-  The seat can be neutered to bid the market itself (`:model-bid` in the config),
-  and when it does the edge is 0.0 with a zero-width interval. That null is the
-  licence to believe the rest: a simulator that quietly advantages or punishes
-  one seat would report a number just as confident.
+  What it says with a field that disagrees, over 2021-2025: bidding Worth is
+  **indistinguishable from simply paying the going rate**, +70 points a season,
+  CI [-93, +233]. The report's top-buy column says the seat is doing something —
+  it pays $75 for its most expensive player where the average field seat pays
+  $52, so Worth does sit above the market at the top of the board — but buying
+  there neither wins nor loses over five seasons.
+
+  The controls that make that readable, all on the same five seasons, per game:
+
+    market (identity)   +0.07  [-0.61, +0.52]   the null
+    market +/- $1       +0.83 / -0.33           deviation itself is ~free
+    market x 1.1        +0.19  [-2.12, +2.36]
+    market x 0.9        -8.83  [-12.15, -5.50]  the metric still has teeth
+    worth               +2.71  [-3.15, +8.97]
+
+  The null is `:model-bid` set to the identity, which makes the model an
+  ordinary field seat. It shows the seat is not special-cased in the bidding
+  path and nothing more — a seat bidding the market is not deviating, so it
+  cannot speak to whether deviation is treated fairly. The +/-$1 controls are
+  what does that, and they are the reason to believe the Worth number now and
+  not before. (The null lands at +0.07 rather than 0 because an obligated seat
+  bids a dollar where a field seat would bid nothing; see `must-bid?`.)
 
   ## Next: does inflation earn its keep?
 
-  Worth is Value scaled by live inflation and phase decay. This run says Worth
-  loses to the market, but not which of the three is at fault, and the seam to
-  find out is already here — `:model-bid` receives `[market worth]`, and the
-  board carries `:value` alongside `:worth`.
+  Worth is Value scaled by live inflation and phase decay. This run says the
+  three of them together come out level with the market, which is not the same
+  as saying each earns its place, and the seam to find out is already here —
+  `:model-bid` receives `[market worth]`, and the board carries `:value`
+  alongside `:worth`.
 
   Three seats over the same seasons and the same curve:
 
@@ -48,9 +68,11 @@
     value    bid `:value`                   the same dollars before either scaling
 
   If `value` beats `worth`, the live scaling is subtracting; if they tie, it is
-  free motion the shipped board pays for on every pick; if `worth` wins, it is
-  doing its job and the gap to `market` is Value's to answer for. Roughly 3x the
+  free motion the shipped board pays for on every pick; if `worth` wins, the
+  scaling is what is holding the seat level with the market. Roughly 3x the
   runtime of one mode, since each seat is a full re-simulation of every season.
+  Five seasons put the interval at about +/-160 points, so a tie there means
+  too thin to call, not no difference.
 
   Two things to get right when it runs. Passing `:value` through `:model-bid`
   means threading the board's `:value` into the callback, which today only sees
@@ -151,7 +173,7 @@
   this is a constraint the shipped board is already used under rather than one
   invented here. It binds only near the end, when open seats run short of
   starter holes."
-  [team player by-id caps {:keys [rounds] :as config}]
+  [team player by-id {:keys [rounds caps] :as config}]
   (let [counts (position-counts team by-id)
         pos    (:position player)]
     (and (pos? (open-slots team))
@@ -186,44 +208,76 @@
   [players]
   (sort-by #(double (or (:adp %) (:ecr %) Double/MAX_VALUE)) players))
 
+(defn jitter
+  "One seat's private opinion of the going rate, as a multiplier.
+
+  Deterministic in `(team-id, rank)` — the benchmark has to be reproducible, and
+  a fresh RNG per run would make two identical invocations disagree by more than
+  the effects being measured.
+
+  Uniform with standard deviation `cv`, shifted down so that the *second highest*
+  of `n-bidders` draws sits on the curve rather than above it. The measured
+  spread is the scatter of what rooms actually *paid*, which is already a
+  winning bid; centring the field on it and then taking the top of eleven draws
+  would price every player above what any real room paid. For a uniform of
+  half-width w, the second-highest of n has mean 1 + w(1 - 4/(n+1)), so the
+  centre comes down by exactly that."
+  [team-id rank cv n-bidders]
+  (if-not (pos? cv)
+    1.0
+    (let [w (* (Math/sqrt 3.0) cv)
+          c (* w (- 1.0 (/ 4.0 (inc (double n-bidders)))))
+          u (/ (double (mod (bit-and (hash [team-id rank]) 0x7fffffff) 10007)) 10007.0)]
+      (max 0.0 (+ 1.0 (- c) (* w (- (* 2.0 u) 1.0)))))))
+
 (defn willingness
   "The most a seat would go to for this player, before its bankroll is consulted.
 
-  Field seats want the going rate and nothing more — that is what makes the
-  curve the clearing price. The model seat wants its Worth, except on a seat it
-  is obligated to fill, where a dollar beats an empty starting slot.
+  A field seat wants the going rate as *it* sees it — the curve, moved by this
+  seat's private opinion. Eleven seats reading one number to the dollar is what
+  made the simulator a step function; see `price-curve/spread`.
 
-  One function for both sides on purpose. Passing `:model-bid` a function of the
-  market makes the model seat bid exactly like a field seat, which is the null
-  this simulator has to be able to run: a rigged seat would report a confident
-  edge with nothing behind it, the way `simulate.clj` records `:adp` scoring
-  -257 against a field drafting the very same order."
-  [team model-id market worth player by-id {:keys [model-bid] :as config}]
-  (if (= model-id (:team-id team))
-    (let [want (if model-bid (model-bid market worth) worth)]
-      (if (must-bid? team player by-id config) (max 1 want) want))
-    market))
+  The model seat wants its Worth, except on a seat it is obligated to fill,
+  where a dollar beats an empty starting slot.
+
+  One function for both sides on purpose. `:model-bid` receives *this seat's*
+  jittered market, so passing it `(fn [m _] m)` makes the model an ordinary
+  field seat — which is the null this simulator has to be able to run. Note what
+  that null does and does not show: it confirms the model seat is not
+  special-cased anywhere in the bidding path, and nothing more. It cannot prove
+  the design treats a *deviating* seat fairly, because a seat bidding the market
+  is not deviating. The controls that test that are the ones a dollar either
+  side of the market."
+  [team model-id market cv n-bidders rank worth player by-id {:keys [model-bid] :as config}]
+  (let [mine (Math/round (* (double market) (jitter (:team-id team) rank cv n-bidders)))]
+    (if (= model-id (:team-id team))
+      (let [want (if model-bid (model-bid mine worth) worth)]
+        (if (must-bid? team player by-id config) (max 1 want) want))
+      mine)))
 
 (defn- winner
   "Resolve one nomination: `[team-id price]`, or nil if nobody bids.
 
   Every eligible seat names a price, capped by what its bankroll can cover with a
   dollar left on each remaining seat. Highest wants it; ties go to the deepest
-  pocket, which is what spreads the expensive players across a field that all
-  bids the same curve.
+  pocket, which is what keeps a field that happens to agree from clustering its
+  buys on one team.
 
   The winner pays the runner-up plus a dollar, not its own number — an auction
   charges what it took to win, not what you would have gone to. That is also
   what makes the endgame informative: once the field is down to its reserve, the
   runner-up bid collapses and a seat that held money back buys the tail cheaply."
-  [state model-id market worth by-id config player]
-  (let [bids (->> (:teams state)
-                  (filter #(can-take? % player by-id (:caps config) config))
+  [state model-id market cv rank worth by-id config player]
+  (let [able (filter #(can-take? % player by-id config) (:teams state))
+        ;; at least two: the centring in `jitter` is defined by where the
+        ;; runner-up lands, and one bidder has no runner-up.
+        n    (max 2 (dec (count (:teams state))))
+        bids (->> able
                   (map (fn [t]
-                         (let [cap (max-bid t)]
-                           {:team t
-                            :bid  (min cap (long (max 0 (willingness t model-id market worth
-                                                                     player by-id config))))})))
+                         {:team t
+                          :bid  (min (max-bid t)
+                                     (long (max 0 (willingness t model-id market cv n rank
+                                                               worth player by-id config))))}))
                   (filter #(pos? (:bid %)))
                   (sort-by (juxt #(- (:bid %)) #(- (max-bid (:team %))))))]
     (when-let [{:keys [team bid]} (first bids)]
@@ -237,14 +291,20 @@
   are paying too much for stars and fading them, and the edge alone cannot say
   which happened. It is the priciest single player each seat bought, averaged
   over the field."
-  [players model-seat config truth-key clearing]
+  [players model-seat config truth-key clearing spread]
   (let [{:keys [teams budget]} config
         by-id    (into {} (map (juxt :player-id identity)) players)
         static   (static-board players config)
-        model-id (str (inc model-seat))
         order    (nomination-order players)
-        last-i   (dec (count clearing))]
-    (loop [state (replay/base-state teams budget (roster-slots config))
+        last-i   (dec (count clearing))
+        start    (replay/base-state teams budget (roster-slots config))
+        ;; read back rather than rebuilt: `replay/base-state` numbers teams by
+        ;; Sleeper's roster_id, a convention that belongs to replaying real
+        ;; drafts. Reconstructing it here would fail silently if it changed --
+        ;; no seat would match, every seat would bid the market, and the run
+        ;; would report a clean 0.0 that looks exactly like the null.
+        model-id (:team-id (nth (:teams start) model-seat))]
+    (loop [state start
            [p & more] order
            spend {}
            i 0]
@@ -268,8 +328,9 @@
               worth  (or (:worth (first (filter #(= (:player-id %) (:player-id p))
                                                 (:players live))))
                          0)
-              market (nth clearing (min i last-i))]
-          (if-let [[tid price] (winner state model-id market worth by-id config p)]
+              j      (min i last-i)]
+          (if-let [[tid price] (winner state model-id (nth clearing j) (nth spread j)
+                                       j worth by-id config p)]
             (recur (replay/apply-pick state {:player-id (:player-id p)
                                              :position  (:position p)
                                              :price     (double price)
@@ -281,8 +342,8 @@
 
 (defn simulate-all-seats
   "Average edge over every seat, so nomination luck and seat order cancel."
-  [players config truth-key clearing]
-  (let [runs (mapv #(simulate-season players % config truth-key clearing)
+  [players config truth-key clearing spread]
+  (let [runs (mapv #(simulate-season players % config truth-key clearing spread)
                    (range (:teams config)))
         avg  (fn [k] (metrics/mean (map k runs)))]
     {:edge          (avg :edge)
@@ -293,31 +354,32 @@
      :by-seat       (mapv :edge runs)}))
 
 (defn market-prices
-  "The clearing price by rank for a room running `config`, measured from the
-  corpus of collected real auctions.
+  "What the room pays by rank, and how much it disagrees: `{:clearing :spread}`.
 
-  Built at the simulation's own pick count via `price-curve/for-picks`, because
-  the curve is indexed in rank-fraction space: a grid of any other size prices
-  every rank from the wrong slice of the distribution, silently and plausibly."
+  Both measured from the corpus of collected real auctions and both built at the
+  simulation's own pick count via `price-curve/for-picks`, because the curve is
+  indexed in rank-fraction space: a grid of any other size prices every rank
+  from the wrong slice of the distribution, silently and plausibly."
   [{:keys [teams rounds budget]}]
-  (let [picks (* teams rounds)]
-    (price-curve/clearing-prices
-     (price-curve/for-picks (price-curve/standard-drafts (price-curve/load-drafts)) picks)
-     (* teams budget))))
+  (let [picks  (* teams rounds)
+        drafts (price-curve/standard-drafts (price-curve/load-drafts))]
+    {:clearing (price-curve/clearing-prices (price-curve/for-picks drafts picks)
+                                            (* teams budget))
+     :spread   (price-curve/spread drafts picks)}))
 
 (defn run
   "Per season, the model's auctioned-team edge over the field.
   `results` is a `core/run` output. Returns [{:season :edge ...}].
 
-  The 4-arity takes the clearing prices directly. `market-prices` reads a corpus
-  that lives in a gitignored cache, so anything that must run without it — the
-  tests — supplies its own."
+  The 4-arity takes the market directly. `market-prices` reads a corpus that
+  lives in a gitignored cache, so anything that must run without it — the tests
+  — supplies its own."
   ([results truth-key] (run results truth-key default-config))
   ([results truth-key config] (run results truth-key config (market-prices config)))
-  ([results truth-key config clearing]
+  ([results truth-key config {:keys [clearing spread]}]
    (into []
          (comp (remove :skipped?)
                (map (fn [{:keys [season players]}]
-                      (assoc (simulate-all-seats players config truth-key clearing)
+                      (assoc (simulate-all-seats players config truth-key clearing spread)
                              :season season))))
          results)))
