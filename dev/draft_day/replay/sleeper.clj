@@ -300,9 +300,12 @@
         :when (not (and skip? (skip? did)))
         :let  [shape (draft-shape d)]]
     (if shape
-      {:draft-id did :decision {:ok? false :reason shape :meta {}}}
+      {:draft-id did :league-id (:league_id l)
+       :auction? (= "auction" (:type d))
+       :decision {:ok? false :reason shape :meta {}}}
       (let [picks (body (draft-picks did))]
-        {:draft-id did
+        {:draft-id did :league-id (:league_id l)
+         :auction? true
          :decision (auction-decision d (or picks []) l)
          :draft    d
          :picks    picks
@@ -353,14 +356,23 @@
                 ;; one visit per league, however many seasons and chains reach it
                 probes  (->> (league-histories cands chain-depth)
                              (mapcat #(probe-drafts % {:skip? seen-drafts})))
-                ;; expand via up to N leagues to move through the graph without an
-                ;; unbounded rosters-fetch per user
+                ;; Expand toward auction players. Measured on the first widened
+                ;; crawl, 106 of 113 drafts examined were snake — the gate had
+                ;; stopped being the constraint and the population had become it.
+                ;; But auctions cluster: someone who plays one is disproportionately
+                ;; in others, and so are their leaguemates. Owners of a league that
+                ;; ran *any* auction (whether or not it passed the gate) go to the
+                ;; front of the frontier, everyone else to the back — a blind BFS
+                ;; spends its whole budget on the snake-drafting majority.
+                hot-lg?    (into #{} (comp (filter :auction?) (map :league-id)) probes)
                 expand-lgs (->> leagues
                                 (map :league_id)
                                 (remove seen-lgs)
                                 distinct
+                                (sort-by #(if (hot-lg? %) 0 1))
                                 (take expand-per-user))
-                owners     (distinct (mapcat league-owners expand-lgs))
+                hot-owners  (distinct (mapcat league-owners (filter hot-lg? expand-lgs)))
+                cold-owners (distinct (mapcat league-owners (remove hot-lg? expand-lgs)))
                 accepted'  (into accepted
                                  (comp (filter #(get-in % [:decision :ok?]))
                                        (map (juxt :draft-id #(get-in % [:decision :meta]))))
@@ -371,7 +383,10 @@
               (progress! {:uid uid :visited (inc (count seen-users))
                           :accepted (count accepted') :candidates (count cands)
                           :frontier (count frontier) :reasons reasons'}))
-            (let [frontier'    (into (subvec frontier 1) (remove seen-users owners))
+            (let [fresh-hot    (remove seen-users hot-owners)
+                  fresh-cold   (remove seen-users cold-owners)
+                  frontier'    (-> (into (vec fresh-hot) (subvec frontier 1))
+                                   (into fresh-cold))
                   seen-users'  (conj seen-users uid)
                   seen-drafts' (into seen-drafts (map :draft-id) probes)
                   seen-lgs'    (into seen-lgs expand-lgs)
