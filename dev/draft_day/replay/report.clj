@@ -45,18 +45,42 @@
 ;; seed the crawl from the user's own account; the BFS fans out over leaguemates.
 (def ^:private seed-uid "993960010998722560")   ; rockchalkjay
 
+(defn known-users
+  "Every Sleeper user id any crawl has ever turned up, across all state versions.
+
+  Deliberately *not* versioned, unlike the state file that carries it. A version
+  token guards derived judgements — an accepted draft's metadata means something
+  different after the gate changes, so reading it forward is a bug. A user id is
+  an address, not a judgement: it means exactly what it meant before. Bumping the
+  state version and thereby discarding 2,123 discovered users cost a crawl its
+  whole seed pool and sent it back to walking out from one account."
+  []
+  (->> (file-seq (io/file "data/replay_cache"))
+       (filter #(re-matches #"crawl-state-v\d+\.transit" (.getName %)))
+       (keep #(pipeline/read-transit (.getPath %)))
+       (mapcat (fn [st] (concat (:frontier st) (:seen-users st))))
+       distinct
+       vec))
+
 (defn seed-uids
-  "Where a fresh crawl starts.
+  "Where a cold crawl starts.
 
   A single seed is how the corpus ended up 89% superflex — not because the seed
   account is superflex (it is not), but because one seed means one walk, and a
-  walk that chases auctions falls into whichever community it first reaches.
-  Resuming a crawl carries its own frontier, so this only matters on a cold
-  start; when a prior crawl's frontier exists, its unvisited users are far better
-  seeds than the owner's account, being already several hops out."
+  walk that chases auctions falls into whichever community it first reaches
+  and then never leaves.
+
+  Seeds are spread evenly across the known-user pool rather than taken from its
+  head, because that pool is in breadth-first order: its first `n` entries are
+  all neighbours of each other, which is the same single neighbourhood in a
+  different disguise. `state` is the crawl being resumed, whose already-visited
+  users are skipped."
   [state n]
-  (let [prior (->> (:frontier state) (remove (:seen-users state #{})) distinct)]
-    (vec (distinct (cons seed-uid (take n prior))))))
+  (let [seen  (set (:seen-users state))
+        pool  (remove seen (known-users))
+        step  (max 1 (quot (count pool) (max 1 n)))
+        picks (take n (take-nth step pool))]
+    (vec (distinct (cons seed-uid picks)))))
 
 (defn- slurp-edn [path] (when (.exists (io/file path)) (edn/read-string (slurp path))))
 (defn- spit-edn  [path data] (io/make-parents path) (spit path (with-out-str (pp/pprint data))))
@@ -134,7 +158,7 @@
   "Crawl for auctions; persist accepted draft-ids and the resumable crawl state."
   [{:keys [fresh] :as opts}]
   (let [prior (if fresh {} (load-state))
-        seeds (seed-uids (when fresh (load-state)) 24)
+        seeds (seed-uids prior 24)
         st    (sleeper/crawl seeds
                              (assoc opts
                                     :state prior
