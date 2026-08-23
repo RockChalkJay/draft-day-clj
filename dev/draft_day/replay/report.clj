@@ -29,11 +29,18 @@
   "Everything the crawl learned, so a run that was capped or interrupted resumes
   instead of restarting.
 
-  The `v1` token is the same discipline as `benchmark/fetch.clj/cache-path` and
-  `ingestion/pipeline`'s schema version: this file holds a *derived* judgement,
-  not raw responses, so when the gate changes the old decisions are wrong rather
-  than merely stale. Bump the token and they are ignored."
-  "data/replay_cache/crawl-state-v1.transit")
+  The version token is the same discipline as `benchmark/fetch.clj/cache-path`
+  and `ingestion/pipeline`'s schema version: this file holds a *derived*
+  judgement, not raw responses, so when the gate changes the old decisions are
+  wrong rather than merely stale. Bump the token and they are ignored.
+
+  v2 earned its bump the hard way. The accepted metas gained a league type, and
+  a v1 state resumed under v2 code reports every one of its drafts as having no
+  type — which `wanted-superflex?` reads as an all-standard corpus and answers by
+  steering toward superflex. On a corpus that was already 89% superflex that is
+  precisely backwards: the balancing machinery would have driven the imbalance it
+  exists to correct."
+  "data/replay_cache/crawl-state-v2.transit")
 
 ;; seed the crawl from the user's own account; the BFS fans out over leaguemates.
 (def ^:private seed-uid "993960010998722560")   ; rockchalkjay
