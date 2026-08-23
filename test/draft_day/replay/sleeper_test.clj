@@ -108,7 +108,7 @@
 ;; ---- the gate ---------------------------------------------------------------
 
 (deftest a-plain-clean-auction-is-accepted
-  (let [d (s/auction-decision (auction) (picks 24 12 15) (league))]
+  (let [d (s/auction-decision (auction) (picks 24 12 60) (league))]
     (is (:ok? d))
     (is (= :accepted (:reason d)))
     (is (= {:num-teams 12 :budget 200 :scoring-rec 1.0 :picks 24
@@ -121,19 +121,19 @@
   ;; types disagree, in opposite directions, about the very phase bias the decay
   ;; constant would be fitted to.
   (testing "a superflex league is recorded as one, and counts both QB seats"
-    (let [m (:meta (s/auction-decision (auction) (picks 24 12 15) (league 1.0 superflex)))]
+    (let [m (:meta (s/auction-decision (auction) (picks 24 12 60) (league 1.0 superflex)))]
       (is (true? (:superflex? m)))
       (is (= 2 (:qb-slots m)))))
 
   (testing "a standard league is not"
-    (let [m (:meta (s/auction-decision (auction) (picks 24 12 15) (league 1.0 one-qb)))]
+    (let [m (:meta (s/auction-decision (auction) (picks 24 12 60) (league 1.0 one-qb)))]
       (is (false? (:superflex? m)))
       (is (= 1 (:qb-slots m)))))
 
   (testing "a league we could not read is not silently called standard"
     ;; nil roster_positions yields qb-slots 0, which no real league has — the
     ;; tell that the type is unknown rather than known-to-be-1QB.
-    (let [m (:meta (s/auction-decision (auction) (picks 24 12 15) nil))]
+    (let [m (:meta (s/auction-decision (auction) (picks 24 12 60) nil))]
       (is (false? (:superflex? m)))
       (is (zero? (:qb-slots m))))))
 
@@ -155,39 +155,39 @@
   ;; never have passed the gate that was supposed to have collected it.
   (testing "a $250 budget"
     (is (:ok? (s/auction-decision (auction {:settings {:teams 12 :budget 250}})
-                                  (picks 24 12 15) (league)))))
+                                  (picks 24 12 80) (league)))))
   (testing "half-PPR"
-    (is (:ok? (s/auction-decision (auction) (picks 24 12 15) (league 0.5)))))
+    (is (:ok? (s/auction-decision (auction) (picks 24 12 60) (league 0.5)))))
   (testing "standard scoring"
-    (is (:ok? (s/auction-decision (auction) (picks 24 12 15) (league 0.0)))))
+    (is (:ok? (s/auction-decision (auction) (picks 24 12 60) (league 0.0)))))
   (testing "ten teams"
     (is (:ok? (s/auction-decision (auction {:settings {:teams 10 :budget 100}})
-                                  (picks 20 10 8) (league)))))
+                                  (picks 20 10 30) (league)))))
   (testing "an eight-team league"
     (is (:ok? (s/auction-decision (auction {:settings {:teams 8 :budget 300}})
-                                  (picks 16 8 20) (league)))))
+                                  (picks 16 8 80) (league)))))
   (testing "a team that left money on the table"
     ;; the old gate required every roster to spend >=85% of budget, which calls a
     ;; legitimate way to lose an auction a corrupt record
-    (let [thrifty (conj (picks 23 12 15) (pick 99 12 1))]
+    (let [thrifty (conj (picks 23 12 60) (pick 99 12 1))]
       (is (:ok? (s/auction-decision (auction) thrifty (league)))))))
 
 (deftest rejection-reasons
   (testing "not an auction"
     (is (= :not-auction (:reason (s/auction-decision (auction {:type "snake"})
-                                                     (picks 24 12 15) (league))))))
+                                                     (picks 24 12 60) (league))))))
   (testing "still drafting"
     (is (= :incomplete (:reason (s/auction-decision (auction {:status "drafting"})
-                                                    (picks 24 12 15) (league))))))
+                                                    (picks 24 12 60) (league))))))
   (testing "no picks recorded"
     (is (= :no-picks (:reason (s/auction-decision (auction) [] (league))))))
   (testing "most picks carry no price"
-    (let [half (into (picks 12 12 15) (mapv #(pick (+ 100 %) 1 nil) (range 12)))]
+    (let [half (into (picks 12 12 60) (mapv #(pick (+ 100 %) 1 nil) (range 12)))]
       (is (= :few-amounts (:reason (s/auction-decision (auction) half (league)))))))
   (testing "a roster never appears"
-    (is (= :missing-teams (:reason (s/auction-decision (auction) (picks 24 11 15) (league))))))
+    (is (= :missing-teams (:reason (s/auction-decision (auction) (picks 24 11 60) (league))))))
   (testing "back-filled at a dollar"
-    (let [dollars (into (picks 6 12 15) (mapv #(pick (+ 200 %) (inc (mod % 12)) 1) (range 18)))]
+    (let [dollars (into (picks 6 12 60) (mapv #(pick (+ 200 %) (inc (mod % 12)) 1) (range 18)))]
       (is (= :dollar-defaulted (:reason (s/auction-decision (auction) dollars (league)))))))
   (testing "no draft at all"
     (is (= :no-draft (:reason (s/auction-decision nil [] (league))))))
@@ -197,8 +197,14 @@
     ;; drafts would be scored against projections that already knew the outcome.
     (doseq [yr ["2020" "2019" "2018"]]
       (is (= :season-contaminated
-             (:reason (s/auction-decision (auction {:season yr}) (picks 24 12 15) (league))))
+             (:reason (s/auction-decision (auction {:season yr}) (picks 24 12 60) (league))))
           (str yr " is before the vintage boundary"))))
+  (testing "an auction the room walked away from"
+    ;; Passes every other check — all priced, all rosters present, no $1
+    ;; defaults — and describes a market with 90% of the money still unspent.
+    ;; `min-teams` cannot catch it because the defect is spend, not size.
+    (is (= :barely-spent
+           (:reason (s/auction-decision (auction) (picks 24 12 15) (league))))))
   (testing "too small to be a market"
     ;; The first widened crawl accepted a four-team $1000 league — a mock. Four
     ;; bidders do not price like twelve, so its prices would be noise in a corpus
@@ -217,6 +223,51 @@
   (is (nil? (s/draft-shape (auction))) "a completed auction is still a candidate")
   (is (nil? (s/draft-shape (auction {:season "2021"}))) "2021 is the boundary, inclusive"))
 
+(deftest a-throttle-never-becomes-a-verdict
+  ;; The failure the fetch layer exists to prevent, reappearing at its consumers.
+  ;; A 429 on the picks call read through `body` is an empty pick list, which
+  ;; `auction-decision` calls `:no-picks` — and the crawl then writes that id into
+  ;; `seen-drafts`, so one rate limit removes a real auction from every future
+  ;; crawl. The verdict has to be withheld, not guessed.
+  (let [lg (league)]
+    (testing "throttled picks yield :throttled, not :no-picks"
+      (with-redefs [s/league-drafts (fn [_] {:ok? true :body [(auction)]})
+                    s/draft-picks   (fn [_] {:ok? false :reason :throttled})]
+        (let [[p] (s/probe-drafts lg {})]
+          (is (= :throttled (get-in p [:decision :reason])))
+          (is (s/undecided? p) "so the caller knows not to record it"))))
+
+    (testing "a throttled league listing leaves a trace rather than vanishing"
+      ;; previously this returned [], so the league contributed nothing to the
+      ;; histogram, nothing to `examined`, and no record it was ever attempted
+      (with-redefs [s/league-drafts (fn [_] {:ok? false :reason :throttled})]
+        (let [[p] (s/probe-drafts lg {})]
+          (is (= :throttled (get-in p [:decision :reason])))
+          (is (nil? (:draft-id p)) "no id was learned, so none is claimed"))))
+
+    (testing "a 404 is still a real verdict"
+      (with-redefs [s/league-drafts (fn [_] {:ok? true :body [(auction)]})
+                    s/draft-picks   (fn [_] {:ok? false :reason :not-found})]
+        (let [[p] (s/probe-drafts lg {})]
+          (is (= :no-picks (get-in p [:decision :reason])))
+          (is (not (s/undecided? p))))))))
+
+(deftest a-throttled-draft-is-not-marked-seen
+  ;; The persistence half of the same bug: if it reaches `seen-drafts`, `skip?`
+  ;; on the next run means it is never re-examined.
+  (with-redefs [s/user-leagues   (fn [_ season] {:ok? true
+                                                 :body (when (= "2025" season)
+                                                         [(assoc (league) :draft_id "seed")])})
+                s/league         (fn [_] {:ok? false :reason :not-found})
+                s/league-drafts  (fn [_] {:ok? true :body [(auction)]})
+                s/draft-picks    (fn [_] {:ok? false :reason :throttled})
+                s/league-rosters (fn [_] {:ok? true :body []})]
+    (let [{:keys [seen-drafts reasons accepted]} (s/crawl ["u1"] {:max-users 1})]
+      (is (empty? accepted))
+      (is (= 1 (:throttled reasons)) "counted, so the histogram can warn about it")
+      (is (not (contains? seen-drafts "d1"))
+          "and left un-judged, so a later run asks again"))))
+
 (deftest no-single-community-may-define-the-corpus
   ;; One user in 528 leagues contributed roughly 300 of 322 drafts on the last
   ;; crawl, so every aggregate computed afterwards was really a statement about
@@ -230,7 +281,7 @@
                                               [(assoc (league) :draft_id "seed")])})
                   s/league         (fn [_] {:ok? false :reason :not-found})
                   s/league-drafts  (fn [_] {:ok? true :body drafts})
-                  s/draft-picks    (fn [_] {:ok? true :body (picks 24 12 15)})
+                  s/draft-picks    (fn [_] {:ok? true :body (picks 24 12 60)})
                   s/league-rosters (fn [_] {:ok? true :body []})]
       (let [{:keys [accepted reasons]} (s/crawl ["u1"] {:max-users 1
                                                         :max-drafts-per-user 25})]

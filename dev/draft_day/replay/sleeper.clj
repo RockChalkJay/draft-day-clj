@@ -33,12 +33,15 @@
   "draft-day-replay/0.1 (fantasy football research; +https://github.com/RockChalkJay/draft-day-clj)")
 
 (def max-in-flight
-  "How many requests Sleeper may see from us at once.
+  "Ceiling on concurrent requests, should this namespace ever fetch in parallel.
 
-  Their docs put the ceiling at 1000 calls/minute before an IP block. Six
-  concurrent requests with a 30s timeout cannot approach that, and the cap is
-  what keeps a widened crawl — which now probes every league rather than only
-  12-team PPR ones — from looking like an attack."
+  It does not today: `crawl`, `league-histories`, `league-chain`, `probe-drafts`
+  and the owner lookups are all sequential, so exactly one request is ever in
+  flight and this semaphore never blocks. Sequential *is* the rate limit — one
+  request at a time against Sleeper's documented 1000/minute ceiling is an order
+  of magnitude under it — and the cap is here so that parallelising the fetches
+  later cannot quietly turn a polite crawl into an attack. Said plainly because
+  the previous wording credited this with pacing it does not currently do."
   6)
 
 (defonce ^:private throttle (Semaphore. max-in-flight true))
@@ -78,19 +81,34 @@
   ([path] (fetch path {}))
   ([path {:keys [retries backoff-ms] :or {retries 4 backoff-ms 2000}}]
    (let [url (str base path)]
-     (loop [n 1 last-reason :error]
+     (loop [n 1]
        (let [{:keys [done retry]} (attempt url)]
          (cond
            done           done
-           (>= n retries) {:ok? false :reason (or retry last-reason)}
+           (>= n retries) {:ok? false :reason retry}
            :else          (do (Thread/sleep (* n backoff-ms))
-                              (recur (inc n) retry))))))))
+                              (recur (inc n)))))))))
 
 (defn body
   "The parsed body of a `fetch` result, or nil. Use where a miss and a throttle
-  are genuinely equivalent — never on the draft path."
+  are genuinely equivalent — never anywhere a decision gets *recorded*.
+
+  The distinction is the whole point of the layer above and is easy to undo by
+  accident: a throttled fetch read through here is nil, nil reads as \"nothing
+  there\", and a crawl that then writes that conclusion into `seen-drafts` or a
+  disk cache has turned a temporary rate limit into a permanent one."
   [resp]
   (when (:ok? resp) (:body resp)))
+
+(defn unreadable?
+  "Did this fetch fail for a reason that might not fail next time?
+
+  `:not-found` is settled — the id does not exist and will not start existing.
+  `:throttled` and `:error` are not, and a decision recorded from either is a
+  decision recorded from noise."
+  [resp]
+  (and (not (:ok? resp))
+       (contains? #{:throttled :error} (:reason resp))))
 
 ;; ---- raw endpoints ----
 (defn user           [name-or-id] (fetch (str "/user/" name-or-id)))
@@ -197,6 +215,22 @@
   than no number, because it looks like evidence."
   2021)
 
+(def min-spend-share
+  "How much of the room's money must actually have been spent.
+
+  The rule this replaces demanded every team spend 85% of budget, which called a
+  legitimate way to lose an auction — leaving money on the table — a corrupt
+  record. But dropping it left no floor whatsoever, and an abandoned draft passes
+  every other check: twenty-four picks, all priced, all twelve rosters present,
+  no $1 defaults, and $30 of a $200 budget spent per team. Its prices describe a
+  room with ninety percent of the money still unspent, which is the opposite of
+  the market being calibrated against, and `min-teams` cannot see it because the
+  defect is in spend rather than size.
+
+  Half the pool is deliberately loose. It is a floor against abandonment, not a
+  second attempt to prescribe how a room ought to spend."
+  0.5)
+
 (def min-teams
   "Below this many teams the draft is a mock or a test league, not a market.
 
@@ -257,6 +291,11 @@
       (> (/ (count (filter #(= 1 %) amts)) (double (max 1 (count amts)))) max-dollar-share)
       (no :dollar-defaulted)
 
+      (< (/ (reduce + 0.0 amts)
+            (double (max 1 (* (or (:teams s) 0) (or (:budget s) 200)))))
+         min-spend-share)
+      (no :barely-spent)
+
       :else {:ok? true :reason :accepted :meta meta})))
 
 (defn draft-shape
@@ -311,7 +350,9 @@
        acc
        (let [acc'    (conj acc cur)
              prev-id (:previous_league_id cur)]
-         (if (or (nil? prev-id) (some #(= prev-id (:league_id %)) acc'))
+         (if (or (nil? prev-id)
+                 (seen? prev-id)
+                 (some #(= prev-id (:league_id %)) acc'))
            acc'
            (recur (body (league prev-id)) (inc n) acc')))))))
 
@@ -338,25 +379,47 @@
 
   `skip?` is asked before any per-draft request. A resumed crawl passes the ids
   it has already decided, so re-running costs a listing per league instead of a
-  picks fetch per draft."
+  picks fetch per draft.
+
+  A throttled fetch yields a `:throttled` probe rather than a verdict. That
+  matters because the caller records what comes back: a 429 on the picks call
+  read through `body` looks like an empty pick list, `auction-decision` calls it
+  `:no-picks`, and the id goes into `seen-drafts` — so one rate limit removes a
+  real auction from every future crawl. A whole league listing can be throttled
+  too, which previously left no trace at all."
   [l {:keys [skip?]}]
-  (for [d  (or (body (league-drafts (:league_id l))) [])
-        :let  [did (:draft_id d)]
-        :when (not (and skip? (skip? did)))
-        :let  [shape (draft-shape d)]]
-    (if shape
-      {:draft-id did :league-id (:league_id l)
-       :auction?   (= "auction" (:type d))
-       :superflex? (:superflex? (league-type l))
-       :decision {:ok? false :reason shape :meta {}}}
-      (let [picks (body (draft-picks did))]
-        {:draft-id did :league-id (:league_id l)
-         :auction?   true
-         :superflex? (:superflex? (league-type l))
-         :decision (auction-decision d (or picks []) l)
-         :draft    d
-         :picks    picks
-         :league   l}))))
+  (let [lid  (:league_id l)
+        sf   (:superflex? (league-type l))
+        resp (league-drafts lid)]
+    (if (unreadable? resp)
+      [{:draft-id nil :league-id lid :auction? false :superflex? sf
+        :decision {:ok? false :reason :throttled :meta {}}}]
+      (for [d  (or (body resp) [])
+            :let  [did (:draft_id d)]
+            :when (not (and skip? (skip? did)))
+            :let  [shape (draft-shape d)]]
+        (if shape
+          {:draft-id did :league-id lid
+           :auction?   (= "auction" (:type d))
+           :superflex? sf
+           :decision {:ok? false :reason shape :meta {}}}
+          (let [presp (draft-picks did)]
+            (if (unreadable? presp)
+              {:draft-id did :league-id lid :auction? true :superflex? sf
+               :decision {:ok? false :reason :throttled :meta {}}}
+              {:draft-id did :league-id lid
+               :auction?   true
+               :superflex? sf
+               :decision (auction-decision d (or (body presp) []) l)
+               :draft    d
+               :picks    (body presp)
+               :league   l})))))))
+
+(defn undecided?
+  "Was this probe a non-answer? Such a probe must not reach `seen-drafts` — that
+  set is what a resume trusts to mean 'already judged'."
+  [p]
+  (= :throttled (get-in p [:decision :reason])))
 
 (defn wanted-superflex?
   "Which league type the corpus is short of, as the `:superflex?` value to seek.
@@ -402,24 +465,26 @@
                      max-drafts-per-user progress! checkpoint! checkpoint-every state]
               :or   {max-drafts 500 max-users 3000 expand-per-user 8 chain-depth 4
                      max-drafts-per-user 25 checkpoint-every 5}}]
-  (let [snapshot (fn [frontier seen-users seen-drafts seen-lgs accepted reasons examined]
+  (let [snapshot (fn [frontier seen-users seen-drafts seen-lgs accepted reasons examined auction-lgs]
                    {:accepted accepted :reasons reasons :visited (count seen-users)
                     :examined examined :frontier frontier :seen-users seen-users
-                    :seen-drafts seen-drafts :seen-lgs seen-lgs})]
+                    :seen-drafts seen-drafts :seen-lgs seen-lgs
+                    :auction-lgs auction-lgs})]
    (loop [frontier    (or (not-empty (:frontier state)) (vec (distinct seed-uids)))
           seen-users  (or (:seen-users state) #{})
           seen-drafts (or (:seen-drafts state) #{})
           seen-lgs    (or (:seen-lgs state) #{})
           accepted    (or (:accepted state) {})
           reasons     (or (:reasons state) {})
-          examined    (or (:examined state) 0)]
+          examined    (or (:examined state) 0)
+          auction-lgs (or (:auction-lgs state) {})]
     (if (or (empty? frontier)
             (>= (count accepted) max-drafts)
             (>= (count seen-users) max-users))
-      (snapshot frontier seen-users seen-drafts seen-lgs accepted reasons examined)
+      (snapshot frontier seen-users seen-drafts seen-lgs accepted reasons examined auction-lgs)
       (let [uid (first frontier)]
         (if (seen-users uid)
-          (recur (subvec frontier 1) seen-users seen-drafts seen-lgs accepted reasons examined)
+          (recur (subvec frontier 1) seen-users seen-drafts seen-lgs accepted reasons examined auction-lgs)
           (let [leagues (mapcat #(body (user-leagues uid %)) seasons)
                 cands   (filter candidate-league? leagues)
                 ;; one visit per league, however many seasons and chains reach it
@@ -433,8 +498,15 @@
                 ;; league of the wanted type goes to the front, an auction league of
                 ;; the other type behind the existing frontier, everyone else last.
                 want       (wanted-superflex? accepted)
-                auction-lg (into {} (comp (filter :auction?)
-                                          (map (juxt :league-id #(boolean (:superflex? %)))))
+                ;; Classification has to persist. Built from this visit's probes
+                ;; alone it is empty on a resume — `skip? seen-drafts` removes
+                ;; exactly the probes it would be derived from — so every league
+                ;; already known to run auctions scores as "everyone else" and the
+                ;; steering silently reverts to the blind walk it replaced.
+                auction-lg (into auction-lgs
+                                 (comp (filter :auction?)
+                                       (filter :league-id)
+                                       (map (juxt :league-id #(boolean (:superflex? %)))))
                                  probes)
                 tier       (fn [lid] (if-let [sf (get auction-lg lid)]
                                        (if (= sf want) 0 1)
@@ -455,6 +527,7 @@
                 ;; every aggregate after that was really a statement about them.
                 ;; When the cap bites, the wanted type is kept first.
                 newly-ok   (->> probes
+                                (remove undecided?)
                                 (filter #(get-in % [:decision :ok?]))
                                 (sort-by #(if (= want (boolean (get-in % [:decision :meta :superflex?])))
                                             0 1)))
@@ -473,16 +546,25 @@
               (progress! {:uid uid :visited (inc (count seen-users))
                           :accepted (count accepted') :candidates (count cands)
                           :frontier (count frontier) :reasons reasons'}))
-            (let [fresh        (fn [os] (remove seen-users os))
+            (let [queued      (set frontier)
+                  ;; already-visited *and* already-queued: without the second, each
+                  ;; visit re-appends leaguemates that are still waiting in the
+                  ;; queue, and the frontier grows faster than it drains
+                  fresh       (fn [os] (remove #(or (seen-users %) (queued %)) os))
                   frontier'    (-> (into (vec (fresh hot-owners)) (subvec frontier 1))
                                    (into (fresh warm-owners))
                                    (into (fresh cold-owners)))
                   seen-users'  (conj seen-users uid)
-                  seen-drafts' (into seen-drafts (map :draft-id) probes)
+                  ;; a non-answer is not a judgement; leaving it out is what lets
+                  ;; a later run re-ask instead of inheriting a rate limit forever
+                  seen-drafts' (into seen-drafts
+                                     (comp (remove undecided?)
+                                           (keep :draft-id))
+                                     probes)
                   seen-lgs'    (into seen-lgs expand-lgs)
                   examined'    (+ examined (count probes))]
               (when (and checkpoint! (zero? (mod (count seen-users') checkpoint-every)))
                 (checkpoint! (snapshot frontier' seen-users' seen-drafts' seen-lgs'
-                                       accepted' reasons' examined')))
+                                       accepted' reasons' examined' auction-lg)))
               (recur frontier' seen-users' seen-drafts' seen-lgs'
-                     accepted' reasons' examined')))))))))
+                     accepted' reasons' examined' auction-lg)))))))))

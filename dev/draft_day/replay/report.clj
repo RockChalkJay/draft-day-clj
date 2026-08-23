@@ -20,7 +20,7 @@
 
   Lives beside the other crawl artifacts under the gitignored `data/replay_cache/`
   rather than in `resources/`, for three reasons: it is derived data a crawl can
-  rebuild, the checkpoint rewrites it every twenty users so committing it would
+  rebuild, the checkpoint rewrites it every few users so committing it would
   churn the tree constantly, and it is a list of other people's league drafts —
   public through Sleeper's API, but not ours to publish in a repo."
   "data/replay_cache/corpus.edn")
@@ -82,15 +82,36 @@
         picks (take n (take-nth step pool))]
     (vec (distinct (cons seed-uid picks)))))
 
-(defn- slurp-edn [path] (when (.exists (io/file path)) (edn/read-string (slurp path))))
-(defn- spit-edn  [path data] (io/make-parents path) (spit path (with-out-str (pp/pprint data))))
+(defn- slurp-edn
+  "Read an EDN file, or nil. A half-written file reads as nil rather than
+  throwing — see `save-state!` for why one can exist."
+  [path]
+  (when (.exists (io/file path))
+    (try (edn/read-string (slurp path)) (catch Exception _ nil))))
+
+(defn- spit-atomically!
+  "Write via a temp file and rename.
+
+  Every one of these files exists to survive an interruption, so the one moment
+  they must not be destroyed by an interruption is the write itself. A partial
+  transit or EDN file is not merely stale: `read-transit` throws on it, so a
+  crawl killed mid-checkpoint would take down every subsequent run at startup and
+  lose hours of accepted corpus. Rename is atomic; a truncated temp file is
+  ignorable."
+  [path write!]
+  (io/make-parents path)
+  (let [tmp (str path ".tmp")]
+    (write! tmp)
+    (.renameTo (io/file tmp) (io/file path))))
+
+(defn- spit-edn [path data]
+  (spit-atomically! path #(spit % (with-out-str (pp/pprint data)))))
 
 (defn load-state []
-  (or (pipeline/read-transit state-file) {}))
+  (or (try (pipeline/read-transit state-file) (catch Exception _ nil)) {}))
 
 (defn save-state! [state]
-  (io/make-parents state-file)
-  (pipeline/write-transit! state-file state))
+  (spit-atomically! state-file #(pipeline/write-transit! % state)))
 
 (defn load-normalized
   "Fetch+normalize a draft (cached to disk).
@@ -110,9 +131,22 @@
     (or (slurp-edn path)
         (let [d     (sleeper/body (sleeper/draft did))
               picks (sleeper/body (sleeper/draft-picks did))
-              lg    (some-> (:league_id d) sleeper/league sleeper/body)]
-          (when (and d picks)
-            (doto (sleeper/normalize-draft d picks lg) (->> (spit-edn path))))))))
+              lresp (some-> (:league_id d) sleeper/league)]
+          (cond
+            (not (and d picks)) nil
+
+            ;; A throttled league fetch would classify a superflex draft as
+            ;; standard and then *cache that answer forever*, filing it in the
+            ;; block the report calls trustworthy. Better to score nothing this
+            ;; run than to poison the split permanently.
+            (sleeper/unreadable? lresp)
+            (do (println (format "  skipped %s: league unreadable (%s) — not cached"
+                                 did (name (:reason lresp))))
+                nil)
+
+            :else
+            (doto (sleeper/normalize-draft d picks (sleeper/body lresp))
+              (->> (spit-edn path))))))))
 
 (defn print-histogram
   "Why the crawl rejected what it rejected.
@@ -220,8 +254,10 @@
     (when (seq sf) (print-block "superflex" sf))
     (when (and (seq st) (seq sf))
       (println "\n  ^ superflex valuations are contaminated until SUPER_FLEX stops")
-      (println "    importing as a bench slot; the standard block is the trustworthy one."))
-    (print-block "ALL LEAGUES POOLED" rows)))
+      (println "    importing as a bench slot; the standard block is the trustworthy one.")
+      ;; only worth printing when there are two populations to pool; with one it
+      ;; is the block above under a second heading
+      (print-block "ALL LEAGUES POOLED" rows))))
 
 (defn score-ids
   "Replay + score an explicit collection of draft-ids (bypasses the crawl).
@@ -246,7 +282,7 @@
   "Score `ids` if given, else the cached corpus, else crawl one. Prints the report."
   [{:keys [ids rebuild fresh max-drafts max-users]}]
   (let [ids (or (seq ids)
-                (and (not rebuild) (not fresh) (slurp-edn corpus-file))
+                (and (not rebuild) (not fresh) (seq (slurp-edn corpus-file)))
                 (build-corpus! (cond-> {:fresh fresh}
                                  max-drafts (assoc :max-drafts max-drafts)
                                  max-users  (assoc :max-users max-users))))]
