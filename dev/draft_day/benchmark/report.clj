@@ -89,6 +89,7 @@
       (= a "--power-report")  (recur more (assoc opts :power-report? true))
       (= a "--common-pool")   (recur more (assoc opts :common-pool? true))
       (= a "--simulate")      (recur more (assoc opts :simulate? true))
+      (= a "--vorp")          (recur more (assoc opts :vorp? true))
       (= a "--no-slice")      (recur more (assoc opts :no-slice? true))
       (= a "--force-totals")  (recur more (assoc opts :force-totals? true))
       (= a "--compare")       (let [ms (parse-models (str/join "," (take 2 more)))]
@@ -113,6 +114,10 @@
     --common-pool       restrict a comparison to players BOTH models scored
     --simulate          draft a team off each board and score it (the metric that
                         matches the decision: what roster do you end up with)
+    --vorp              simulate one model twice — raw points board vs VORP
+                        board — and bootstrap the difference. Answers whether
+                        the replacement-level correction is worth anything,
+                        which nothing in this harness could previously run.
     --no-slice          keep the raw pool instead of a fixed per-position slice
     --force-totals      allow a season-total comparison that spans 2021
     --refresh           bypass the disk cache and re-fetch from source
@@ -293,27 +298,20 @@
     (println "  Intervals are season-block bootstraps: whole seasons are resampled, because")
     (println "  players within a season share a common shock and are not independent.")))
 
-(defn print-simulation
-  "Draft-simulation results: what team each board actually built.
-
-  Twelve teams snake-draft; one seat uses the model, eleven use consensus ADP,
-  repeated with the model in every seat so draft position cancels. 'edge' is the
-  model roster's realized best-lineup points minus the field's average."
-  [a b ra rb truth-key]
-  (let [ordinal (fn [m] (let [needs (model/requires m)]
-                          (when-not (contains? needs :projections)
-                            (if (contains? needs :ecr) :ecr :adp))))
-        cfg  (fn [m] (assoc simulate/default-config :ordinal-key (ordinal m)))
-        sa (simulate/run (:results ra) truth-key (cfg a))
-        sb (simulate/run (:results rb) truth-key (cfg b))
-        idx (fn [rows] (into {} (map (juxt :season identity)) rows))
+(defn- print-sim-table
+  "Two simulated boards side by side, per season, with a block-bootstrapped CI on
+  the difference. Shared by the model-vs-model and board-vs-board comparisons —
+  the arithmetic is identical, only what is being varied differs."
+  [label-a label-b sa sb]
+  (let [idx (fn [rows] (into {} (map (juxt :season identity)) rows))
         ia (idx sa) ib (idx sb)
         common (sort (filter (set (keys ib)) (keys ia)))
         rows (mapv (fn [s] {:season s :diff (- (:edge (ia s)) (:edge (ib s)))}) common)
         ci   (metrics/block-bootstrap-ci rows (metrics/mean-of :diff))]
     (println)
     (println "  DRAFT SIMULATION — realized points of the team each board drafted")
-    (println (format "    %-8s %12s %12s %12s" "season" (str a " edge") (str b " edge") "difference"))
+    (println (format "    %-8s %12s %12s %12s" "season"
+                     (str label-a " edge") (str label-b " edge") "difference"))
     (doseq [s common]
       (println (format "    %-8d %12s %12s %12s"
                        s (fmt (:edge (ia s)) 1) (fmt (:edge (ib s)) 1)
@@ -323,9 +321,62 @@
                      (fmt (metrics/mean (map :edge sb)) 1)
                      (fmt (:point ci) 1)
                      (if (metrics/spans-zero? ci) "indistinguishable"
-                         (if (pos? (:point ci)) (str a " better") (str b " better")))))
+                         (if (pos? (:point ci)) (str label-a " better") (str label-b " better")))))
     (println (format "    95%% CI on the difference: %s" (ci-str ci)))
     (println "    Season-long approximation: no waivers, trades or weekly start/sit.")))
+
+(defn- ordinal-key-for
+  "The native ordering key for a model that does not rank on projections. nil for
+  a projection model, which ranks on the :points it produced."
+  [m]
+  (let [needs (model/requires m)]
+    (when-not (contains? needs :projections)
+      (if (contains? needs :ecr) :ecr :adp))))
+
+(defn print-simulation
+  "Draft-simulation results: what team each board actually built.
+
+  Twelve teams snake-draft; one seat uses the model, eleven use consensus ADP,
+  repeated with the model in every seat so draft position cancels. 'edge' is the
+  model roster's realized best-lineup points minus the field's average."
+  [a b ra rb truth-key]
+  (let [cfg (fn [m] (assoc simulate/default-config :ordinal-key (ordinal-key-for m)))]
+    (print-sim-table (str a) (str b)
+                     (simulate/run (:results ra) truth-key (cfg a))
+                     (simulate/run (:results rb) truth-key (cfg b)))))
+
+(defn vorp-report
+  "Is a VORP board better than a raw-points board?
+
+  The question `simulate/vorp-board` was written to answer and that nothing could
+  ask: `simulate-season` reads a `:vorp?` config key, no caller ever set it, and
+  so every `--simulate` run this harness has ever produced scored the raw-points
+  board. `simulate.clj` justifies VORP's existence with a ~180-point figure that
+  is stated as motivation rather than measured output, and a claim of
+  '+205/season' survives in project notes without appearing anywhere in the repo.
+  This is the run that settles it.
+
+  One model, simulated twice against the same field and the same seasons — the
+  only thing that varies is how the model seat orders its board — so the
+  difference is the replacement-level correction and nothing else."
+  [opts]
+  (let [m (first (or (:models opts) [:points]))]
+    (when (ordinal-key-for m)
+      ;; :adp and :ecr carry no real points, only a synthesized descending scale
+      ;; (see `simulate.clj`'s note on ordinal models). Replacement level computed
+      ;; from that is arithmetic on a rank, and the comparison would measure
+      ;; nothing.
+      (usage-error (str "--vorp needs a projection model; " m " ranks on "
+                        (name (ordinal-key-for m)) " and has no points to take a "
+                        "replacement level from.
+  Try --vorp --models points.")))
+    (let [{:keys [results truth-key]} (run-model m opts)
+          base (assoc simulate/default-config :ordinal-key nil)]
+      (println)
+      (println (format "=== %s: VORP board vs raw-points board ===" m))
+      (print-sim-table "VORP" "points"
+                       (simulate/run results truth-key (assoc base :vorp? true))
+                       (simulate/run results truth-key base)))))
 
 (defn power-report
   "What the current corpus can and cannot resolve, BEFORE running a sweep."
@@ -467,6 +518,7 @@
         (:help? opts)          (print-help)
         (:source-report? opts) (source-report opts)
         (:power-report? opts)  (power-report (or (:compare opts) [nil nil]) opts)
+        (:vorp? opts)          (vorp-report opts)
         (:compare opts)        (compare-models (:compare opts) opts)
         :else                  (do (report opts)
                                    (println)

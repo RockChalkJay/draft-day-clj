@@ -30,7 +30,12 @@
    :flex     1
    :flex-positions #{"RB" "WR" "TE"}
    ;; Roster caps stop a greedy board drafting six quarterbacks.
-   :caps     {"QB" 2 "RB" 6 "WR" 6 "TE" 2}})
+   :caps     {"QB" 2 "RB" 6 "WR" 6 "TE" 2}
+   ;; Order the model seat's board by VORP rather than raw points. Present here
+   ;; so the key is discoverable: `simulate-season` has always read it, but no
+   ;; caller ever set it, so `vorp-board` below was reachable only from a REPL
+   ;; and every --simulate run ever recorded scored the raw-points board.
+   :vorp?    false})
 
 (defn snake-order
   "Team index per overall pick, snaking each round: 0..n-1, then n-1..0."
