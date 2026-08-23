@@ -10,6 +10,7 @@
   (:require [draft-day.rankings.engine :as engine]
             [draft-day.rankings.market :as market]
             [draft-day.rankings.league-state :as ls]
+            [draft-day.replay.sleeper :as sleeper]
             [draft-day.ingestion.league-import :as li]
             [draft-day.ingestion.league-import.sleeper]  ; register :sleeper defmethods
             [draft-day.replay.universe :as universe]))
@@ -84,15 +85,42 @@
           (recur (apply-pick state pick) (rest ps) (cond-> rows row (conj row))))
         rows))))
 
+(defn league-config
+  "The league's real scoring and roster, fetched through the harness's own
+  throttled, retrying client.
+
+  `league_import/import-league` would do this in one call, but its network half
+  is a bare un-retried GET with no User-Agent that swallows a 429 into
+  `{:ok false}` — fine for one interactive import from the app, wrong for a
+  scoring run that now issues hundreds of back-to-back requests to the host the
+  crawl just finished rate-limiting itself against. Under a 429 burst an
+  arbitrary subset of drafts would contribute no rows, indistinguishable from a
+  projection gap, and the report's MAE would be computed on a silently truncated
+  sample.
+
+  So the network half comes from `replay/sleeper`, and only the *pure* half —
+  `normalize-league`, the provider seam's whole point — is reused."
+  [league-id]
+  (let [resp (sleeper/league league-id)]
+    (cond
+      (sleeper/unreadable? resp) {:ok false :reason (:reason resp)}
+      (not (:ok? resp))          {:ok false :reason :not-found}
+      :else (try
+              {:ok true :config (li/normalize-league :sleeper (:body resp))}
+              (catch Exception e {:ok false :reason :unparseable :error (ex-message e)})))))
+
 (defn score-draft
   "Full pipeline for one normalized draft: import the league's real scoring/roster,
   build the season-vintage universe, static-rank, replay. Returns rows (empty if
   settings or projections are unavailable)."
   [{:keys [league-id season num-teams budget] :as ndraft}]
-  (let [imp (li/import-league {:provider "sleeper" :league-id league-id})
+  (let [imp (league-config league-id)
         univ (universe/season-universe season)]
     (if (or (not (:ok imp)) (empty? univ))
-      []
+      (do (when-not (:ok imp)
+            (println (format "  no rows for %s: league unreadable (%s)"
+                             league-id (name (:reason imp)))))
+          [])
       (let [{:keys [scoring roster]} (:config imp)
             static (engine/static-rankings
                     univ scoring num-teams
