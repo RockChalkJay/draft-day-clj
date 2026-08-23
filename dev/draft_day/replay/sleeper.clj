@@ -58,6 +58,12 @@
         error             {:retry :error}
         (= 404 status)    {:done {:ok? false :reason :not-found}}
         (= 429 status)    {:retry :throttled}
+        ;; Any other 4xx is a settled refusal. A 403 — what a crawl earns when a
+        ;; host decides it dislikes our User-Agent — will not clear, and asking
+        ;; four more times spends 12s of backoff per URL to arrive at the same
+        ;; answer, which reads in the histogram as a scatter of per-league quirks
+        ;; rather than the systematic block it is. 5xx is worth asking again.
+        (and status (<= 400 status 499)) {:done {:ok? false :reason :error}}
         (not= 200 status) {:retry :error}
         :else
         (let [v (try (json/read-value body mapper) (catch Exception _ ::unparseable))]
@@ -247,6 +253,27 @@
   of the floor is always visible."
   6)
 
+(defn draft-shape
+  "The cheap half of the gate — what the draft object alone rules out, before
+  spending a request on its picks. nil means still a candidate.
+
+  Worth separating because the widened gate probes every league now, and most
+  drafts in the wild are snake. Fetching picks for all of them to learn that
+  would multiply the crawl's request count for no information.
+
+  `auction-decision` delegates here rather than restating these clauses, which is
+  the point of the split: `probe-drafts` uses this one to *skip* and that one to
+  *accept*, so two copies that drifted would reject the same draft under two
+  different reasons and the histogram — the instrument added precisely to make
+  the gate legible — would be reporting from two gates that disagree."
+  [d]
+  (cond
+    (nil? d)                      :no-draft
+    (not= "auction" (:type d))    :not-auction
+    (not= "complete" (:status d)) :incomplete
+    (< (or (parse-long (str (:season d))) 0) min-season) :season-contaminated
+    (< (or (:teams (:settings d)) 0) min-teams) :too-small))
+
 (defn auction-decision
   "Is this draft usable corpus, and if not, why not?
 
@@ -254,6 +281,8 @@
   that only counts acceptances cannot tell a narrow gate from a thin population,
   which is exactly how this gate stayed at 12-team/$200/PPR while reporting a
   data shortage.
+
+  The draft-object half of the gate is `draft-shape`, called rather than copied.
 
   What is *not* checked is as deliberate as what is. Budget and scoring are
   recorded, never required — `replay/core.clj` already configures the engine from
@@ -264,28 +293,30 @@
   count survives only as a floor against mocks (`min-teams`), not as a fixed
   shape."
   [d picks lg]
-  (let [s    (:settings d)
-        amts (keep amount picks)
-        meta (merge {:num-teams   (:teams s)
-                     :budget      (or (:budget s) 200)
-                     :scoring-rec (reception-weight lg)
-                     :picks       (count picks)}
-                    (league-type lg))
-        no   (fn [reason] {:ok? false :reason reason :meta meta})]
+  (let [s     (:settings d)
+        amts  (keep amount picks)
+        meta  (merge {:num-teams   (:teams s)
+                      :budget      (or (:budget s) 200)
+                      :scoring-rec (reception-weight lg)
+                      :picks       (count picks)}
+                     (league-type lg))
+        no    (fn [reason] {:ok? false :reason reason :meta meta})
+        shape (draft-shape d)]
     (cond
-      (nil? d)                      (no :no-draft)
-      (not= "auction" (:type d))    (no :not-auction)
-      (not= "complete" (:status d)) (no :incomplete)
-      (< (or (parse-long (str (:season d))) 0) min-season) (no :season-contaminated)
-      (< (or (:teams s) 0) min-teams) (no :too-small)
-      (empty? picks)                (no :no-picks)
+      shape          (no shape)
+      (empty? picks) (no :no-picks)
 
       (< (/ (count amts) (double (count picks))) min-priced-share)
       (no :few-amounts)
 
-      ;; every roster in the league has to show up, or we are replaying a draft
-      ;; against a league the engine will size differently
-      (not= (:teams s) (count (distinct (keep :roster_id picks))))
+      ;; Every roster has to show up, *and* be one the replay can address.
+      ;; `replay/core.clj` builds team ids from (range 1 (inc num-teams)) and
+      ;; `apply-pick` matches on equality, so a roster_id outside that range
+      ;; matches no team and is dropped in silence: no exception, no bankroll
+      ;; deducted, and every later Worth in the draft computed against a room
+      ;; holding more money than it has. Counting distinct ids cannot see that,
+      ;; because {1..11, 13} counts twelve.
+      (not= (set (keep :roster_id picks)) (set (range 1 (inc (:teams s)))))
       (no :missing-teams)
 
       (> (/ (count (filter #(= 1 %) amts)) (double (max 1 (count amts)))) max-dollar-share)
@@ -297,21 +328,6 @@
       (no :barely-spent)
 
       :else {:ok? true :reason :accepted :meta meta})))
-
-(defn draft-shape
-  "The cheap half of the gate — what the draft object alone rules out, before
-  spending a request on its picks. nil means still a candidate.
-
-  Worth separating because the widened gate probes every league now, and most
-  drafts in the wild are snake. Fetching picks for all of them to learn that
-  would multiply the crawl's request count for no information."
-  [d]
-  (cond
-    (nil? d)                      :no-draft
-    (not= "auction" (:type d))    :not-auction
-    (not= "complete" (:status d)) :incomplete
-    (< (or (parse-long (str (:season d))) 0) min-season) :season-contaminated
-    (< (or (:teams (:settings d)) 0) min-teams) :too-small))
 
 ;; ---- crawl ----
 
@@ -508,8 +524,16 @@
                                        (filter :league-id)
                                        (map (juxt :league-id #(boolean (:superflex? %)))))
                                  probes)
-                tier       (fn [lid] (if-let [sf (get auction-lg lid)]
-                                       (if (= sf want) 0 1)
+                ;; `contains?`, not `if-let`: the values here are booleans, so
+                ;; a league recorded as `false` — a standard 1-QB auction, the
+                ;; very thing `wanted-superflex?` asks for once the corpus tips
+                ;; superflex — is falsy and would read as never-recorded. That
+                ;; put it in the same tier as a snake league and left tier 1
+                ;; (superflex) as the best available, so the steering ran
+                ;; backwards: asked for standard, it expanded toward superflex
+                ;; and deepened the 89% skew it exists to correct.
+                tier       (fn [lid] (if (contains? auction-lg lid)
+                                       (if (= (get auction-lg lid) want) 0 1)
                                        2))
                 expand-lgs (->> leagues
                                 (map :league_id)
@@ -555,11 +579,19 @@
                                    (into (fresh warm-owners))
                                    (into (fresh cold-owners)))
                   seen-users'  (conj seen-users uid)
-                  ;; a non-answer is not a judgement; leaving it out is what lets
-                  ;; a later run re-ask instead of inheriting a rate limit forever
+                  ;; Only what was actually judged is marked judged. A
+                  ;; non-answer is not a verdict — leaving throttles out is what
+                  ;; lets a later run re-ask instead of inheriting a rate limit
+                  ;; forever — and neither is a cap, which is a statement about
+                  ;; this visit's budget rather than about the draft. Capped ids
+                  ;; are disproportionately the type the corpus did *not* want at
+                  ;; this moment, and the wanted type flips by design, so they are
+                  ;; exactly what a later run reaches for; burning them here would
+                  ;; set the balancing cap against the balancing it serves.
                   seen-drafts' (into seen-drafts
                                      (comp (remove undecided?)
-                                           (keep :draft-id))
+                                           (keep :draft-id)
+                                           (remove capped-ids))
                                      probes)
                   seen-lgs'    (into seen-lgs expand-lgs)
                   examined'    (+ examined (count probes))]

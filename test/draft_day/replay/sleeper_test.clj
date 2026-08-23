@@ -186,6 +186,16 @@
       (is (= :few-amounts (:reason (s/auction-decision (auction) half (league)))))))
   (testing "a roster never appears"
     (is (= :missing-teams (:reason (s/auction-decision (auction) (picks 24 11 60) (league))))))
+
+  (testing "a roster id the replay could not address"
+    ;; `replay/core` builds team ids from (range 1 (inc num-teams)) and
+    ;; `apply-pick` matches on equality, so roster 13 in a twelve-team league buys
+    ;; nothing at all: no exception, no bankroll deducted, and every later Worth
+    ;; in the draft computed against a room richer than it really was. Counting
+    ;; distinct ids cannot see this one — {1..11, 13} counts twelve.
+    (let [gapped (conj (picks 22 11 60) (pick 98 13 60) (pick 99 13 60))]
+      (is (= 12 (count (distinct (map :roster_id gapped)))) "twelve by count")
+      (is (= :missing-teams (:reason (s/auction-decision (auction) gapped (league)))))))
   (testing "back-filled at a dollar"
     (let [dollars (into (picks 6 12 60) (mapv #(pick (+ 200 %) (inc (mod % 12)) 1) (range 18)))]
       (is (= :dollar-defaulted (:reason (s/auction-decision (auction) dollars (league)))))))
@@ -358,3 +368,104 @@
     (with-redefs [s/league (fn [_] {:ok? false :reason :not-found})]
       (is (= ["a"] (mapv :league_id (s/league-chain {:league_id "a"
                                                      :previous_league_id "b"} 10)))))))
+
+;; ---- the two halves of the gate ---------------------------------------------
+
+(deftest the-two-halves-of-the-gate-cannot-disagree
+  ;; `probe-drafts` uses `draft-shape` to skip and `auction-decision` to accept.
+  ;; Two hand-kept copies of the same five clauses would eventually reject the
+  ;; same draft under two different reasons, and the histogram — the instrument
+  ;; added to make the gate legible — would then be reporting from two gates that
+  ;; disagree. `auction-decision` calls it rather than restating it.
+  (doseq [d [(auction {:type "snake"})
+             (auction {:status "drafting"})
+             (auction {:season "2019"})
+             (auction {:settings {:teams 4 :budget 1000}})
+             nil]]
+    (is (= (s/draft-shape d)
+           (:reason (s/auction-decision d (picks 24 12 60) (league))))
+        (pr-str d))))
+
+(deftest a-refusal-is-settled-but-a-server-error-might-clear
+  ;; A 403 — what a crawl earns when a host decides it dislikes our User-Agent —
+  ;; will not clear, and four attempts with linear backoff spend 12s per URL to
+  ;; reach the same answer. Across a sweep that reads as a scatter of per-league
+  ;; quirks rather than the systematic block it is.
+  (testing "a 403 is not asked again"
+    (let [[calls f] (stub [{:status 403 :body ""}])]
+      (with-redefs [http/get f]
+        (is (= :error (:reason (s/fetch "/league/forbidden" fast))))
+        (is (= 1 @calls)))))
+
+  (testing "a 500 is"
+    (let [[calls f] (stub [{:status 500 :body ""}
+                           {:status 200 :body "{\"league_id\":\"lg1\"}"}])]
+      (with-redefs [http/get f]
+        (is (:ok? (s/fetch "/league/flaky" fast)))
+        (is (= 2 @calls))))))
+
+;; ---- steering ---------------------------------------------------------------
+
+(deftest the-steering-reaches-the-expansion-not-just-the-question
+  ;; `wanted-superflex?` answering correctly buys nothing if the tier consuming it
+  ;; cannot represent the answer. Classification values are booleans, so reading
+  ;; them with `if-let` made a standard league — `false` — indistinguishable from
+  ;; one never classified, dropping it to the tier snake leagues sit in and
+  ;; leaving superflex the best available. Asked for standard, the crawl expanded
+  ;; toward superflex, deepening the 89% skew the balancing exists to correct
+  ;; while the histogram reported success.
+  (let [lg-sf  {:league_id "lgSF"  :draft_id "dSF"  :roster_positions superflex}
+        lg-std {:league_id "lgSTD" :draft_id "dSTD" :roster_positions one-qb}
+        asked  (atom [])
+        expand-toward
+        (fn [accepted]
+          (reset! asked [])
+          (with-redefs [s/user-leagues   (fn [_ season]
+                                           {:ok? true
+                                            :body (when (= "2025" season)
+                                                    [lg-sf lg-std])})
+                        s/league         (fn [_] {:ok? false :reason :not-found})
+                        s/league-drafts  (fn [lid]
+                                           {:ok? true
+                                            :body [(auction {:draft_id (str "d" lid)
+                                                             :league_id lid})]})
+                        s/draft-picks    (fn [_] {:ok? false :reason :not-found})
+                        s/league-rosters (fn [lid]
+                                           (swap! asked conj lid)
+                                           {:ok? true :body []})]
+            (s/crawl ["u1"] {:max-users 1 :expand-per-user 1
+                             :state {:accepted accepted}})
+            @asked))]
+
+    (testing "an all-superflex corpus expands toward the standard league"
+      (let [corpus {"a" {:superflex? true} "b" {:superflex? true}}]
+        (is (false? (s/wanted-superflex? corpus)) "it wants standard")
+        (is (= ["lgSTD"] (expand-toward corpus)) "and it goes there")))
+
+    (testing "an all-standard corpus expands toward the superflex league"
+      (let [corpus {"a" {:superflex? false} "b" {:superflex? false}}]
+        (is (true? (s/wanted-superflex? corpus)) "it wants superflex")
+        (is (= ["lgSF"] (expand-toward corpus)) "and it goes there")))))
+
+(deftest a-capped-draft-is-not-marked-seen
+  ;; The cap bounds what one community contributes to *this visit*; it is not a
+  ;; verdict on the drafts it sheds. Those are disproportionately the type the
+  ;; corpus did not want at that moment, and the wanted type flips by design — so
+  ;; they are exactly what a later run reaches for. Writing them into
+  ;; `seen-drafts` would set the balancing cap against the balancing itself.
+  (let [drafts (mapv (fn [i] (auction {:draft_id (str "d" i) :league_id "lg1"}))
+                     (range 8))]
+    (with-redefs [s/user-leagues   (fn [_ season]
+                                     {:ok? true
+                                      :body (when (= "2025" season)
+                                              [(assoc (league) :draft_id "seed")])})
+                  s/league         (fn [_] {:ok? false :reason :not-found})
+                  s/league-drafts  (fn [_] {:ok? true :body drafts})
+                  s/draft-picks    (fn [_] {:ok? true :body (picks 24 12 60)})
+                  s/league-rosters (fn [_] {:ok? true :body []})]
+      (let [{:keys [accepted seen-drafts reasons]}
+            (s/crawl ["u1"] {:max-users 1 :max-drafts-per-user 3})]
+        (is (= 3 (count accepted)))
+        (is (= 5 (:cluster-capped reasons)) "the remainder is still reported")
+        (is (= (set (keys accepted)) (set seen-drafts))
+            "but only what was actually taken counts as judged")))))
