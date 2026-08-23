@@ -115,31 +115,57 @@
   (let [rec (get-in lg [:scoring_settings :rec])]
     (when (number? rec) (double rec))))
 
+(defn league-type
+  "How this league starts quarterbacks: `{:superflex? bool :qb-slots n}`.
+
+  The single most important thing to know about an auction corpus, and the thing
+  this harness could not previously see. The first widened crawl came back 89%
+  superflex, and the two types disagree about the very quantity the phase-decay
+  work would tune — superflex says Worth sits slightly *below* the price paid at
+  every phase, standard says it sits above, peaking mid-draft. Pooled, the
+  majority type simply wins, and a constant fitted that way is fitted to one
+  format and shipped to every league.
+
+  Free to compute: `roster_positions` rides along on the league summary that
+  `/user/{id}/leagues/nfl/{season}` already returns, so this costs no request.
+
+  Note the app cannot yet *score* a superflex league correctly — Sleeper's
+  SUPER_FLEX slot imports as bench (`league_import/sleeper.clj`), leaving QB (and,
+  through the flex count, RB/WR/TE) on the wrong replacement level. Recording the
+  type is what lets the corpus be split so the uncontaminated half stays usable
+  until that is fixed."
+  [lg]
+  (let [pos (:roster_positions lg)]
+    {:superflex? (boolean (some #{"SUPER_FLEX"} pos))
+     :qb-slots   (count (filter #{"QB" "SUPER_FLEX"} pos))}))
+
 (defn normalize-draft
   "Draft object + picks -> a replay-ready draft map. Picks carry only what the
   engine needs, sorted by nomination order.
 
-  `lg` is optional and only supplies the scoring weight for slicing; the real
-  scoring config comes from `league_import` at score time."
+  `lg` is optional and supplies only the slicing metadata — reception weight and
+  league type; the real scoring config comes from `league_import` at score time."
   ([d picks] (normalize-draft d picks nil))
   ([d picks lg]
    (let [s (:settings d)]
-     {:draft-id    (:draft_id d)
-      :season      (:season d)
-      :num-teams   (:teams s)
-      :budget      (or (:budget s) 200)
-      :league-id   (:league_id d)
-      :scoring-rec (reception-weight lg)
-      :picks (->> picks
-                  (keep (fn [p]
-                          (when-let [a (amount p)]
-                            {:player-id (:player_id p)
-                             :position  (get-in p [:metadata :position])
-                             :price     (double a)
-                             :team-id   (str (:roster_id p))
-                             :pick-no   (:pick_no p)})))
-                  (sort-by :pick-no)
-                  vec)})))
+     (merge
+      {:draft-id    (:draft_id d)
+       :season      (:season d)
+       :num-teams   (:teams s)
+       :budget      (or (:budget s) 200)
+       :league-id   (:league_id d)
+       :scoring-rec (reception-weight lg)
+       :picks (->> picks
+                   (keep (fn [p]
+                           (when-let [a (amount p)]
+                             {:player-id (:player_id p)
+                              :position  (get-in p [:metadata :position])
+                              :price     (double a)
+                              :team-id   (str (:roster_id p))
+                              :pick-no   (:pick_no p)})))
+                   (sort-by :pick-no)
+                   vec)}
+      (league-type lg)))))
 
 ;; ---- corpus quality gate ----
 
@@ -206,10 +232,11 @@
   [d picks lg]
   (let [s    (:settings d)
         amts (keep amount picks)
-        meta {:num-teams   (:teams s)
-              :budget      (or (:budget s) 200)
-              :scoring-rec (reception-weight lg)
-              :picks       (count picks)}
+        meta (merge {:num-teams   (:teams s)
+                     :budget      (or (:budget s) 200)
+                     :scoring-rec (reception-weight lg)
+                     :picks       (count picks)}
+                    (league-type lg))
         no   (fn [reason] {:ok? false :reason reason :meta meta})]
     (cond
       (nil? d)                      (no :no-draft)
@@ -319,15 +346,33 @@
         :let  [shape (draft-shape d)]]
     (if shape
       {:draft-id did :league-id (:league_id l)
-       :auction? (= "auction" (:type d))
+       :auction?   (= "auction" (:type d))
+       :superflex? (:superflex? (league-type l))
        :decision {:ok? false :reason shape :meta {}}}
       (let [picks (body (draft-picks did))]
         {:draft-id did :league-id (:league_id l)
-         :auction? true
+         :auction?   true
+         :superflex? (:superflex? (league-type l))
          :decision (auction-decision d (or picks []) l)
          :draft    d
          :picks    picks
          :league   l}))))
+
+(defn wanted-superflex?
+  "Which league type the corpus is short of, as the `:superflex?` value to seek.
+
+  A crawl that just chases auctions finds whichever community it stumbles into.
+  The first one ran 89% superflex off a seed account that is not itself superflex
+  — the skew came entirely from expansion — and left the standard-league subset
+  at 924 picks, too thin to conclude anything from. Steering toward whichever
+  type is behind keeps one community from defining the corpus.
+
+  Ties resolve toward superflex only because it loses the coin flip on an empty
+  corpus; the balance is what matters, not the direction."
+  [accepted]
+  (let [sf    (count (filter :superflex? (vals accepted)))
+        other (- (count accepted) sf)]
+    (<= sf other)))
 
 (defn crawl
   "BFS from `seed-uids` over leaguemates, collecting the draft ids of usable
@@ -354,9 +399,9 @@
   all 76 away. The state is a few tens of kilobytes, so writing it often costs
   nothing worth measuring against that."
   [seed-uids {:keys [max-drafts max-users expand-per-user chain-depth
-                     progress! checkpoint! checkpoint-every state]
+                     max-drafts-per-user progress! checkpoint! checkpoint-every state]
               :or   {max-drafts 500 max-users 3000 expand-per-user 8 chain-depth 4
-                     checkpoint-every 5}}]
+                     max-drafts-per-user 25 checkpoint-every 5}}]
   (let [snapshot (fn [frontier seen-users seen-drafts seen-lgs accepted reasons examined]
                    {:accepted accepted :reasons reasons :visited (count seen-users)
                     :examined examined :frontier frontier :seen-users seen-users
@@ -380,37 +425,58 @@
                 ;; one visit per league, however many seasons and chains reach it
                 probes  (->> (league-histories cands chain-depth)
                              (mapcat #(probe-drafts % {:skip? seen-drafts})))
-                ;; Expand toward auction players. Measured on the first widened
-                ;; crawl, 106 of 113 drafts examined were snake — the gate had
-                ;; stopped being the constraint and the population had become it.
-                ;; But auctions cluster: someone who plays one is disproportionately
-                ;; in others, and so are their leaguemates. Owners of a league that
-                ;; ran *any* auction (whether or not it passed the gate) go to the
-                ;; front of the frontier, everyone else to the back — a blind BFS
-                ;; spends its whole budget on the snake-drafting majority.
-                hot-lg?    (into #{} (comp (filter :auction?) (map :league-id)) probes)
+                ;; Expand toward auction players, and among them toward the league
+                ;; type the corpus is short of. Auctions cluster — 106 of 113 drafts
+                ;; on the first widened crawl were snake, so a blind walk spends its
+                ;; whole budget on the drafting majority — but chasing auctions alone
+                ;; is what produced an 89%-superflex corpus. Three tiers: an auction
+                ;; league of the wanted type goes to the front, an auction league of
+                ;; the other type behind the existing frontier, everyone else last.
+                want       (wanted-superflex? accepted)
+                auction-lg (into {} (comp (filter :auction?)
+                                          (map (juxt :league-id #(boolean (:superflex? %)))))
+                                 probes)
+                tier       (fn [lid] (if-let [sf (get auction-lg lid)]
+                                       (if (= sf want) 0 1)
+                                       2))
                 expand-lgs (->> leagues
                                 (map :league_id)
                                 (remove seen-lgs)
                                 distinct
-                                (sort-by #(if (hot-lg? %) 0 1))
+                                (sort-by tier)
                                 (take expand-per-user))
-                hot-owners  (distinct (mapcat league-owners (filter hot-lg? expand-lgs)))
-                cold-owners (distinct (mapcat league-owners (remove hot-lg? expand-lgs)))
+                owners-of   (fn [t] (distinct (mapcat league-owners
+                                                      (filter #(= t (tier %)) expand-lgs))))
+                hot-owners  (owners-of 0)
+                warm-owners (owners-of 1)
+                cold-owners (owners-of 2)
+                ;; No single community may define the corpus. One user in 528
+                ;; leagues contributed roughly 300 of 322 drafts on the last crawl;
+                ;; every aggregate after that was really a statement about them.
+                ;; When the cap bites, the wanted type is kept first.
+                newly-ok   (->> probes
+                                (filter #(get-in % [:decision :ok?]))
+                                (sort-by #(if (= want (boolean (get-in % [:decision :meta :superflex?])))
+                                            0 1)))
+                kept       (take max-drafts-per-user newly-ok)
+                capped-ids (into #{} (map :draft-id) (drop max-drafts-per-user newly-ok))
                 accepted'  (into accepted
-                                 (comp (filter #(get-in % [:decision :ok?]))
-                                       (map (juxt :draft-id #(get-in % [:decision :meta]))))
-                                 probes)
-                reasons'   (reduce (fn [m p] (update m (get-in p [:decision :reason]) (fnil inc 0)))
+                                 (map (juxt :draft-id #(get-in % [:decision :meta])))
+                                 kept)
+                reasons'   (reduce (fn [m p]
+                                     (update m (if (capped-ids (:draft-id p))
+                                                 :cluster-capped
+                                                 (get-in p [:decision :reason]))
+                                             (fnil inc 0)))
                                    reasons probes)]
             (when progress!
               (progress! {:uid uid :visited (inc (count seen-users))
                           :accepted (count accepted') :candidates (count cands)
                           :frontier (count frontier) :reasons reasons'}))
-            (let [fresh-hot    (remove seen-users hot-owners)
-                  fresh-cold   (remove seen-users cold-owners)
-                  frontier'    (-> (into (vec fresh-hot) (subvec frontier 1))
-                                   (into fresh-cold))
+            (let [fresh        (fn [os] (remove seen-users os))
+                  frontier'    (-> (into (vec (fresh hot-owners)) (subvec frontier 1))
+                                   (into (fresh warm-owners))
+                                   (into (fresh cold-owners)))
                   seen-users'  (conj seen-users uid)
                   seen-drafts' (into seen-drafts (map :draft-id) probes)
                   seen-lgs'    (into seen-lgs expand-lgs)

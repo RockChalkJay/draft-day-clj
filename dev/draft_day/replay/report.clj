@@ -38,6 +38,19 @@
 ;; seed the crawl from the user's own account; the BFS fans out over leaguemates.
 (def ^:private seed-uid "993960010998722560")   ; rockchalkjay
 
+(defn seed-uids
+  "Where a fresh crawl starts.
+
+  A single seed is how the corpus ended up 89% superflex — not because the seed
+  account is superflex (it is not), but because one seed means one walk, and a
+  walk that chases auctions falls into whichever community it first reaches.
+  Resuming a crawl carries its own frontier, so this only matters on a cold
+  start; when a prior crawl's frontier exists, its unvisited users are far better
+  seeds than the owner's account, being already several hops out."
+  [state n]
+  (let [prior (->> (:frontier state) (remove (:seen-users state #{})) distinct)]
+    (vec (distinct (cons seed-uid (take n prior))))))
+
 (defn- slurp-edn [path] (when (.exists (io/file path)) (edn/read-string (slurp path))))
 (defn- spit-edn  [path data] (io/make-parents path) (spit path (with-out-str (pp/pprint data))))
 
@@ -55,7 +68,14 @@
   now distinguishes a 404 from a throttle, so a rate-limited run no longer
   silently records a draft as empty."
   [did]
-  (let [path (str "data/replay_cache/draft-" did ".edn")]
+  ;; The `v2` token is not decoration. These files hold a *derived* map, and v2
+  ;; added the league type — without a new path, every draft cached under v1 would
+  ;; read back with `:superflex?` absent, which is indistinguishable from
+  ;; `false`. Every one of the 59 superflex drafts already on disk would have
+  ;; silently reclassified as standard, and the split this whole exercise turns on
+  ;; would have been quietly inverted. Same lesson `benchmark/fetch.clj/cache-path`
+  ;; records from the last time a derived cache gained a field.
+  (let [path (str "data/replay_cache/draft-v2-" did ".edn")]
     (or (slurp-edn path)
         (let [d     (sleeper/body (sleeper/draft did))
               picks (sleeper/body (sleeper/draft-picks did))
@@ -81,22 +101,34 @@
     (println "    examined and are not evidence of absence. Re-run to pick them up.")))
 
 (defn print-corpus-shape
-  "The spread of league shapes in the accepted corpus. If these are all 12-team
-  $200 PPR, the gate did not actually widen and the run proved nothing."
+  "The spread of league shapes in the accepted corpus.
+
+  League type leads because it is the split that decides whether the corpus can
+  answer anything. The first widened crawl came back 89% superflex, and the two
+  types disagree in opposite directions about the phase bias the decay constant
+  would be fitted to — so a pooled number is a statement about whichever type
+  happens to dominate. If the superflex share here is not near half, no aggregate
+  below it should be read as general."
   [accepted]
   (let [metas (vals accepted)
+        n     (count metas)
+        sf    (count (filter :superflex? metas))
         tally (fn [k] (->> metas (map k) frequencies (sort-by key) vec))]
     (println "\n-- Accepted corpus shape --")
-    (println (format "  drafts     %d" (count metas)))
-    (println (format "  teams      %s" (pr-str (tally :num-teams))))
-    (println (format "  budgets    %s" (pr-str (tally :budget))))
-    (println (format "  rec weight %s" (pr-str (tally :scoring-rec))))))
+    (println (format "  drafts         %d" n))
+    (println (format "  superflex      %d (%.0f%%)   standard 1-QB %d (%.0f%%)"
+                     sf (if (pos? n) (* 100.0 (/ sf n)) 0.0)
+                     (- n sf) (if (pos? n) (* 100.0 (/ (- n sf) n)) 0.0)))
+    (println (format "  teams          %s" (pr-str (tally :num-teams))))
+    (println (format "  budgets        %s" (pr-str (tally :budget))))
+    (println (format "  rec weight     %s" (pr-str (tally :scoring-rec))))))
 
 (defn build-corpus!
   "Crawl for auctions; persist accepted draft-ids and the resumable crawl state."
   [{:keys [fresh] :as opts}]
   (let [prior (if fresh {} (load-state))
-        st    (sleeper/crawl [seed-uid]
+        seeds (seed-uids (when fresh (load-state)) 24)
+        st    (sleeper/crawl seeds
                              (assoc opts
                                     :state prior
                                     :progress!
@@ -125,28 +157,57 @@
   (format "n=%-5d  MAE=$%-6.2f  RMSE=$%-6.2f  bias=$%-7.2f  rho=%+.3f"
           n mae rmse bias spearman))
 
-(defn report [rows]
+(defn- print-block [label rows]
+  (println (format "\n--- %s: %d picks across %d draft(s) ---"
+                   label (count rows) (count (distinct (map :draft-id rows)))))
+  (println "  predictor vs actual price (K/DST excluded)")
+  (doseq [k [:worth :value :market]]
+    (println (format "    %-7s %s" (name k) (fmt (metrics/metric rows k)))))
+  (println "  by draft phase (bias>0 => Worth above the price paid)")
+  (doseq [[ph m] (metrics/by-phase rows :worth)]
+    (println (format "    %-6s %s" (name ph) (fmt m))))
+  (println "  by position")
+  (doseq [[pos m] (metrics/by-position rows :worth)]
+    (println (format "    %-4s %s" pos (fmt m)))))
+
+(defn report
+  "Print the replay metrics, split by league type before pooling.
+
+  The split leads because pooling hid the only thing that mattered. On a corpus
+  that was 89% superflex, the pooled table read MAE $5.61 and a late-phase bias
+  near zero — while the standard-league minority read MAE $11.02 and a mid-phase
+  bias of +$5.17, the opposite sign. A single average over two populations that
+  disagree is a statement about the bigger one wearing the authority of the whole.
+
+  The pooled table still prints, underneath, because it is the right number when
+  the two blocks agree — and printing it last makes it obvious when they do not."
+  [rows]
   (println (format "\n=== Replay report: %d picks across %d draft(s) ==="
                    (count rows) (count (distinct (map :draft-id rows)))))
-  (println "\n-- Predictor vs actual price (K/DST excluded) --")
-  (doseq [k [:worth :value :market]]
-    (println (format "  %-7s %s" (name k) (fmt (metrics/metric rows k)))))
-  (println "\n-- Worth by draft phase (bias>0 => Worth above the price paid) --")
-  (doseq [[ph m] (metrics/by-phase rows :worth)]
-    (println (format "  %-6s %s" (name ph) (fmt m))))
-  (println "\n-- Worth by position --")
-  (doseq [[pos m] (metrics/by-position rows :worth)]
-    (println (format "  %-4s %s" pos (fmt m)))))
+  (let [{sf true st false} (group-by #(boolean (:superflex? %)) rows)]
+    (when (seq st) (print-block "standard 1-QB" st))
+    (when (seq sf) (print-block "superflex" sf))
+    (when (and (seq st) (seq sf))
+      (println "\n  ^ superflex valuations are contaminated until SUPER_FLEX stops")
+      (println "    importing as a bench slot; the standard block is the trustworthy one."))
+    (print-block "ALL LEAGUES POOLED" rows)))
 
 (defn score-ids
-  "Replay + score an explicit collection of draft-ids (bypasses the crawl)."
+  "Replay + score an explicit collection of draft-ids (bypasses the crawl).
+
+  Each row is stamped with its league type so `report` can split on it — the
+  engine's rows describe a pick, and which kind of room it was bought in is the
+  one thing about the draft the rows cannot see for themselves."
   [ids]
   (doall
    (mapcat (fn [did]
              (when-let [nd (load-normalized did)]
-               (let [rs (core/score-draft nd)]
-                 (println (format "  scored %s (%s): %d/%d picks"
-                                  did (:season nd) (count rs) (count (:picks nd))))
+               (let [rs (mapv #(assoc % :superflex? (boolean (:superflex? nd)))
+                              (core/score-draft nd))]
+                 (println (format "  scored %s (%s, %s): %d/%d picks"
+                                  did (:season nd)
+                                  (if (:superflex? nd) "superflex" "1-QB")
+                                  (count rs) (count (:picks nd))))
                  rs)))
            ids)))
 

@@ -96,9 +96,14 @@
            :league_id "lg1" :settings {:teams 12 :budget 200}}
           overrides)))
 
+(def ^:private one-qb   ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "K" "DEF" "BN" "BN"])
+(def ^:private superflex ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "SUPER_FLEX" "K" "DEF" "BN"])
+
 (defn- league
   ([] (league 1.0))
-  ([rec] {:league_id "lg1" :scoring_settings {:rec rec}}))
+  ([rec] (league rec one-qb))
+  ([rec positions]
+   {:league_id "lg1" :scoring_settings {:rec rec} :roster_positions positions}))
 
 ;; ---- the gate ---------------------------------------------------------------
 
@@ -106,7 +111,41 @@
   (let [d (s/auction-decision (auction) (picks 24 12 15) (league))]
     (is (:ok? d))
     (is (= :accepted (:reason d)))
-    (is (= {:num-teams 12 :budget 200 :scoring-rec 1.0 :picks 24} (:meta d)))))
+    (is (= {:num-teams 12 :budget 200 :scoring-rec 1.0 :picks 24
+            :superflex? false :qb-slots 1}
+           (:meta d)))))
+
+(deftest the-gate-records-which-kind-of-room-it-was
+  ;; The split that decides whether the corpus can answer anything. A crawl that
+  ;; cannot see this came back 89% superflex and did not say so — and the two
+  ;; types disagree, in opposite directions, about the very phase bias the decay
+  ;; constant would be fitted to.
+  (testing "a superflex league is recorded as one, and counts both QB seats"
+    (let [m (:meta (s/auction-decision (auction) (picks 24 12 15) (league 1.0 superflex)))]
+      (is (true? (:superflex? m)))
+      (is (= 2 (:qb-slots m)))))
+
+  (testing "a standard league is not"
+    (let [m (:meta (s/auction-decision (auction) (picks 24 12 15) (league 1.0 one-qb)))]
+      (is (false? (:superflex? m)))
+      (is (= 1 (:qb-slots m)))))
+
+  (testing "a league we could not read is not silently called standard"
+    ;; nil roster_positions yields qb-slots 0, which no real league has — the
+    ;; tell that the type is unknown rather than known-to-be-1QB.
+    (let [m (:meta (s/auction-decision (auction) (picks 24 12 15) nil))]
+      (is (false? (:superflex? m)))
+      (is (zero? (:qb-slots m))))))
+
+(deftest the-crawl-steers-toward-whichever-type-is-behind
+  (is (true? (s/wanted-superflex? {}))
+      "an empty corpus has to start somewhere")
+  (is (true? (s/wanted-superflex? {"a" {:superflex? false} "b" {:superflex? false}}))
+      "all-standard corpus wants superflex")
+  (is (false? (s/wanted-superflex? {"a" {:superflex? true} "b" {:superflex? true}}))
+      "all-superflex corpus wants standard — the state the last crawl ended in")
+  (is (true? (s/wanted-superflex? {"a" {:superflex? true} "b" {:superflex? false}}))
+      "balanced stays balanced rather than running away from parity"))
 
 (deftest the-shapes-the-old-gate-refused-are-accepted-now
   ;; The whole point of widening. `replay/core` configures the engine from each
@@ -178,6 +217,27 @@
   (is (nil? (s/draft-shape (auction))) "a completed auction is still a candidate")
   (is (nil? (s/draft-shape (auction {:season "2021"}))) "2021 is the boundary, inclusive"))
 
+(deftest no-single-community-may-define-the-corpus
+  ;; One user in 528 leagues contributed roughly 300 of 322 drafts on the last
+  ;; crawl, so every aggregate computed afterwards was really a statement about
+  ;; that one community. The cap bounds what any one user can contribute, and
+  ;; says so in the histogram rather than dropping the excess quietly.
+  (let [drafts (mapv (fn [i] (auction {:draft_id (str "d" i) :league_id "lg1"}))
+                     (range 40))]
+    (with-redefs [s/user-leagues   (fn [_ season]
+                                     {:ok? true
+                                      :body (when (= "2025" season)
+                                              [(assoc (league) :draft_id "seed")])})
+                  s/league         (fn [_] {:ok? false :reason :not-found})
+                  s/league-drafts  (fn [_] {:ok? true :body drafts})
+                  s/draft-picks    (fn [_] {:ok? true :body (picks 24 12 15)})
+                  s/league-rosters (fn [_] {:ok? true :body []})]
+      (let [{:keys [accepted reasons]} (s/crawl ["u1"] {:max-users 1
+                                                        :max-drafts-per-user 25})]
+        (is (= 25 (count accepted)) "the cap is what lands in the corpus")
+        (is (= 15 (:cluster-capped reasons)) "and the remainder is reported, not hidden")
+        (is (= 25 (:accepted reasons)))))))
+
 (deftest a-league-is-visited-once-however-many-ways-reach-it
   ;; A user's own league list carries both last season's node and this season's,
   ;; and this season's chains back to last season's — so without deduping, the
@@ -203,6 +263,18 @@
     (is (= 12 (:num-teams nd)))
     (is (= 200 (:budget nd)))
     (is (= 0.5 (:scoring-rec nd)) "scoring recorded so the corpus can be sliced")))
+
+(deftest normalize-carries-the-league-type-into-the-cached-draft
+  ;; This is what the report splits on, and the draft cache is where it has to
+  ;; survive. A cached file that omits it reads back as `false`, which is
+  ;; indistinguishable from a genuine 1-QB league — hence the v2 token on the
+  ;; cache path.
+  (let [sf (s/normalize-draft (auction) [] (league 1.0 superflex))
+        st (s/normalize-draft (auction) [] (league 1.0 one-qb))]
+    (is (true? (:superflex? sf)))
+    (is (= 2 (:qb-slots sf)))
+    (is (false? (:superflex? st)))
+    (is (= 1 (:qb-slots st)))))
 
 (deftest normalize-defaults-a-missing-budget
   (is (= 200 (:budget (s/normalize-draft (auction {:settings {:teams 12}}) [] nil)))))
