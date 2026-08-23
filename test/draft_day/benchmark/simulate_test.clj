@@ -17,6 +17,36 @@
     (testing "the field ranks by consensus ADP"
       (is (= ["b" "a" "c"] (mapv :player-id (sim/board-order ps false nil)))))))
 
+(deftest the-vorp-board-reorders-across-positions
+  ;; What the correction is for, and what nothing could previously run: this path
+  ;; was gated on a `:vorp?` config key no caller ever set. Raw points rank a
+  ;; whole pool on a scale that means something different at every position — the
+  ;; quarterback outscores everyone and the board spends early picks on him — and
+  ;; replacement level is what makes the positions comparable.
+  (let [ps  [(p "qb1" "QB" 1 100 0) (p "qb2" "QB" 2 90 0)
+             (p "rb1" "RB" 3 50 0)  (p "rb2" "RB" 4 20 0)]
+        cfg {:qb 1 :rb 1 :wr 0 :te 0 :flex 0}]
+    (testing "raw points put both quarterbacks first"
+      (is (= ["qb1" "qb2" "rb1" "rb2"]
+             (mapv :player-id (sim/board-order ps true nil nil)))))
+
+    (testing "VORP puts the back first — he clears his replacement by 30, the
+              quarterback clears his by only 10"
+      (is (= ["rb1" "qb1"]
+             (take 2 (mapv :player-id
+                           (sim/board-order ps true nil
+                                            {:teams 1 :replacement-config cfg}))))))))
+
+(deftest the-vorp-board-still-demotes-streamed-positions
+  ;; K/DST carry no replacement level and so no VORP; without the demotion their
+  ;; nil sorts as though it were a score.
+  (let [ps [(p "k1" "K" 1 200 0) (p "rb1" "RB" 2 50 0)]]
+    (is (= ["rb1" "k1"]
+           (mapv :player-id
+                 (sim/board-order ps true nil
+                                  {:teams 1 :replacement-config {:qb 0 :rb 1 :wr 0 :te 0 :flex 0}})))
+        "a kicker outscoring every skill player still does not lead the board")))
+
 (deftest players-with-no-consensus-price-go-last-not-missing
   ;; A player the field has no ADP for must still be draftable, or the pool
   ;; silently shrinks and late rounds run dry.
