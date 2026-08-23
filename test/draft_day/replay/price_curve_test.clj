@@ -101,3 +101,21 @@
   ;; separate because the corpus records league type per draft.
   (let [ds [(draft [10] {:superflex? true}) (draft [10]) (draft [10] {:superflex? false})]]
     (is (= 2 (count (pc/standard-drafts ds))))))
+
+;; ---- the pairing a consumer should use --------------------------------------
+
+(deftest for-picks-builds-the-grid-at-the-callers-own-pick-count
+  ;; So rank fraction and absolute rank coincide, which is the thing a caller
+  ;; would otherwise have to remember and would eventually get wrong.
+  (let [c (pc/for-picks [(draft [100 60 40])] 3)]
+    (is (= 3 (count (:shares c))))
+    (is (= 1 (:n-drafts c)))))
+
+(deftest an-empty-corpus-is-loud-rather-than-free-players
+  ;; A curve of zeros floors every clearing price at $1, so the simulated field
+  ;; bids nothing and the model seat wins the draft for pocket change — reported
+  ;; as a spectacular edge rather than as a missing cache.
+  (is (thrown? clojure.lang.ExceptionInfo (pc/for-picks [] 12)))
+  (is (thrown? clojure.lang.ExceptionInfo
+               (pc/for-picks [(draft [10] {:budget 0})] 12))
+      "drafts that yield no shares count as empty too"))
