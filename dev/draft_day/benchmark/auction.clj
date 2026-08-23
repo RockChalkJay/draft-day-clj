@@ -163,10 +163,11 @@
 (defn must-bid?
   "Would this player fill a starting slot the team still owes?
 
-  Worth is nil below replacement — the engine says \"no opinion\" rather than
-  zero — so a seat-blind bidder declines the whole tail of the board and starts
-  nobody at the position it never got round to. No manager does that: with an
-  empty RB2 slot and a dollar, they bid the dollar.
+  `value/calculate-price` prices only what the board valued at a dollar or more
+  and returns 0 for the rest, so Worth alone says nothing at all about the whole
+  below-replacement tail — and a seat reading only Worth declines it, then
+  starts nobody at the position it never got round to. No manager does that:
+  with an empty RB2 slot and a dollar, they bid the dollar.
 
   Only a floor, never a raise. The obligation puts $1 behind a hole-filling
   player and stops there, so the seat still loses every contested bid and fills

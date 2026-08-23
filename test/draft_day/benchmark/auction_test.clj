@@ -134,8 +134,9 @@
       (is (>= (:bankroll t) 0.0) (str "team " (:team-id t) " went into debt")))))
 
 (deftest every-seat-gets-filled
-  ;; Worth is nil below replacement, so a seat-blind bidder declines the tail of
-  ;; the board outright and finishes short. Nobody drafts an incomplete lineup.
+  ;; Worth is 0 for anyone the board valued under a dollar, so a seat reading only
+  ;; Worth declines the tail outright and finishes short. Nobody drafts an
+  ;; incomplete roster.
   (let [state (run-one (vec (repeat 14 3)))]
     (doseq [t (:teams state)]
       (is (zero? (a/open-slots t)) (str "team " (:team-id t) " left a seat empty")))
