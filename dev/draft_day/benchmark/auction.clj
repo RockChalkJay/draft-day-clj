@@ -203,8 +203,21 @@
 ;; ---- the auction -------------------------------------------------------------
 
 (defn nomination-order
-  "Who gets nominated, best first. Real rooms put the expensive players up early,
-  and the price curve is indexed by exactly that ordering."
+  "Who gets nominated, best first — by ADP, falling back to ECR, unranked last.
+
+  Note the substitution this makes, because it is not free. `price-curve/shares`
+  sorts each real draft by *price*, so `clearing[j]` means \"what the jth
+  priciest player went for\"; this hands `clearing[i]` to the ith player by
+  *draft-time consensus*. Those agree in aggregate and disagree per player,
+  exactly where the market fades someone with a good ADP.
+
+  It is the join the corpus forces: nothing there links a price to a player
+  identity that transfers across seasons, which is why PR #25 normalized to rank
+  at all, and ADP rank is the only per-player rank the benchmark pool carries.
+  The field's own disagreement (`jitter`) is now the same order of magnitude as
+  the substitution, so this sits inside the noise rather than on top of it — but
+  if the corpus ever grows player identities, the honest version indexes the
+  curve by ADP rank at measurement time instead."
   [players]
   (sort-by #(double (or (:adp %) (:ecr %) Double/MAX_VALUE)) players))
 
