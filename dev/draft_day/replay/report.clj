@@ -189,10 +189,24 @@
     (println (format "  rec weight     %s" (pr-str (tally :scoring-rec))))))
 
 (defn build-corpus!
-  "Crawl for auctions; persist accepted draft-ids and the resumable crawl state."
+  "Crawl for auctions; persist accepted draft-ids and the resumable crawl state.
+
+  `--fresh` clears the *decisions* but deliberately keeps the address book: every
+  draft is re-judged, while the users previous crawls discovered are still used
+  as seeds. Forgetting who exists would throw away the only thing that lets a
+  cold crawl start anywhere other than one account."
   [{:keys [fresh] :as opts}]
   (let [prior (if fresh {} (load-state))
         seeds (seed-uids prior 24)
+        _     (when (and (seq (:seen-users prior))
+                         (empty? (remove (set (:seen-users prior)) seeds))
+                         (empty? (:frontier prior)))
+                ;; every seed already visited and nothing queued: `crawl` would
+                ;; skip straight past them and return, printing a summary of the
+                ;; previous run as though this one had done the work
+                (println "nothing left to crawl: the frontier is drained and every"
+                         "known user has been visited.\nUse --fresh to re-judge"
+                         "them, or widen the graph with new seeds."))
         st    (sleeper/crawl seeds
                              (assoc opts
                                     :state prior
