@@ -152,6 +152,14 @@
       (is (= :dollar-defaulted (:reason (s/auction-decision (auction) dollars (league)))))))
   (testing "no draft at all"
     (is (= :no-draft (:reason (s/auction-decision nil [] (league))))))
+  (testing "a season whose projections are contaminated"
+    ;; The season sweep stops at 2021, but `league-chain` walks previous_league_id
+    ;; several hops back — so a 2021 league reaches its 2019 predecessor, whose
+    ;; drafts would be scored against projections that already knew the outcome.
+    (doseq [yr ["2020" "2019" "2018"]]
+      (is (= :season-contaminated
+             (:reason (s/auction-decision (auction {:season yr}) (picks 24 12 15) (league))))
+          (str yr " is before the vintage boundary"))))
   (testing "too small to be a market"
     ;; The first widened crawl accepted a four-team $1000 league — a mock. Four
     ;; bidders do not price like twelve, so its prices would be noise in a corpus
@@ -166,7 +174,9 @@
   (is (= :incomplete  (s/draft-shape (auction {:status "drafting"}))))
   (is (= :no-draft    (s/draft-shape nil)))
   (is (= :too-small   (s/draft-shape (auction {:settings {:teams 4 :budget 1000}}))))
-  (is (nil? (s/draft-shape (auction))) "a completed auction is still a candidate"))
+  (is (= :season-contaminated (s/draft-shape (auction {:season "2019"}))))
+  (is (nil? (s/draft-shape (auction))) "a completed auction is still a candidate")
+  (is (nil? (s/draft-shape (auction {:season "2021"}))) "2021 is the boundary, inclusive"))
 
 (deftest a-league-is-visited-once-however-many-ways-reach-it
   ;; A user's own league list carries both last season's node and this season's,

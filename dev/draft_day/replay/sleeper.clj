@@ -155,6 +155,22 @@
   a team $74 short, Ja'Marr Chase logged at $1."
   0.30)
 
+(def min-season
+  "The earliest season a draft may come from.
+
+  Not a preference — a contamination boundary. `replay/universe.clj` scores a
+  draft against that season's Sleeper projections, and 2019 and 2020 are not
+  genuine preseason freezes (projected-games flatness 0.22 and 0.29; see
+  `benchmark/vintage.clj`, which gates on exactly that). Replaying them scores
+  the engine against a universe that already knew how the season turned out.
+
+  The crawl's season sweep stops at 2021, but that is not sufficient on its own:
+  `league-chain` follows `previous_league_id` several hops back, so a 2021 league
+  reaches its 2020, 2019 and 2018 predecessors and their drafts would otherwise
+  be probed and accepted. A number produced from contaminated inputs is worse
+  than no number, because it looks like evidence."
+  2021)
+
 (def min-teams
   "Below this many teams the draft is a mock or a test league, not a market.
 
@@ -199,6 +215,7 @@
       (nil? d)                      (no :no-draft)
       (not= "auction" (:type d))    (no :not-auction)
       (not= "complete" (:status d)) (no :incomplete)
+      (< (or (parse-long (str (:season d))) 0) min-season) (no :season-contaminated)
       (< (or (:teams s) 0) min-teams) (no :too-small)
       (empty? picks)                (no :no-picks)
 
@@ -227,6 +244,7 @@
     (nil? d)                      :no-draft
     (not= "auction" (:type d))    :not-auction
     (not= "complete" (:status d)) :incomplete
+    (< (or (parse-long (str (:season d))) 0) min-season) :season-contaminated
     (< (or (:teams (:settings d)) 0) min-teams) :too-small))
 
 ;; ---- crawl ----
@@ -328,11 +346,17 @@
   `checkpoint!` is handed the same state map every `checkpoint-every` users. A
   full sweep runs for hours and will be interrupted; saving only on a clean
   finish means an interrupted crawl loses every request it made, which is the
-  same way this corpus stayed small the first time."
+  same way this corpus stayed small the first time.
+
+  The interval is small because the yield is spiky rather than steady. One user
+  in 528 leagues took a crawl from 10 accepted drafts to 86 in a single step; an
+  interruption four users later, under a twenty-user interval, would have thrown
+  all 76 away. The state is a few tens of kilobytes, so writing it often costs
+  nothing worth measuring against that."
   [seed-uids {:keys [max-drafts max-users expand-per-user chain-depth
                      progress! checkpoint! checkpoint-every state]
               :or   {max-drafts 500 max-users 3000 expand-per-user 8 chain-depth 4
-                     checkpoint-every 20}}]
+                     checkpoint-every 5}}]
   (let [snapshot (fn [frontier seen-users seen-drafts seen-lgs accepted reasons examined]
                    {:accepted accepted :reasons reasons :visited (count seen-users)
                     :examined examined :frontier frontier :seen-users seen-users
