@@ -84,3 +84,29 @@
     (let [{:keys [report]} (merge/left-join-report [] {"k" {:x 1}})]
       (is (= 0.0 (:coverage report)))
       (is (= 0 (:matched report))))))
+
+;; ---- alternate join keys ----
+
+(def ^:private gsis-universe
+  [{:player-name "Ja'Marr Chase" :position "WR" :ids {:gsis "00-0036900"}}
+   {:player-name "Some Rookie"   :position "WR" :ids {}}])
+
+(deftest opts-can-join-on-gsis-instead-of-a-name
+  (let [{:keys [players report]}
+        (merge/left-join-report gsis-universe
+                                {"00-0036900" {:nflverse/prior-targets 185.0}}
+                                {:key-fn       #(get-in % [:ids :gsis])
+                                 :key-position {"00-0036900" "WR"}})]
+    (is (= 185.0 (:nflverse/prior-targets (first players))))
+    (is (not (contains? (second players) :nflverse/prior-targets))
+        "a player with no gsis id simply keeps his columns — the rookie case")
+    (is (= 1 (:matched report)))
+    (is (= {"WR" {:n 2 :rows 1 :matched 1}} (:by-position report))
+        "the position index keeps the per-position report meaningful")))
+
+(deftest the-default-arity-still-joins-on-the-name-key
+  (let [by-key {(match/key-for "Ja'Marr Chase" "WR") {:fantasypros/ecr 1}}]
+    (is (= (merge/left-join-report gsis-universe by-key)
+           (merge/left-join-report gsis-universe by-key {}))
+        "passing no opts is the same as passing empty opts")
+    (is (= 1 (:fantasypros/ecr (first (merge/left-join gsis-universe by-key)))))))

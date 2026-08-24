@@ -9,6 +9,7 @@
 
 (defn- n0 [n] (if (number? n) (js/Math.round n) "–"))
 (defn- n1 [n] (if (number? n) (.toFixed n 1) "–"))
+(defn- pct [n] (if (number? n) (str (.toFixed (* 100 n) 1) "%") "–"))
 
 (defn- cliff-marker [p]
   (when (and (:tcm p) (> (:tcm p) 1.1))
@@ -62,6 +63,14 @@
     ;; already resolved to the active scale by :board-players
     :tier     [:td.num (or (:tier p) "–")]
     :fp-tier  [:td.num.muted (or (:fantasypros/ecr-tier p) "–")]
+    ;; Usage reads as context, not as live valuation, so it stays muted like
+    ;; :value and :adp. A rookie has no prior-season row at all, which is the
+    ;; nil these formatters already render as a dash.
+    :prior-tgt     [:td.num.muted (n0 (:nflverse/prior-targets p))]
+    :prior-rec     [:td.num.muted (n0 (:nflverse/prior-receptions p))]
+    :prior-tgt-pct [:td.num.muted (pct (:nflverse/prior-target-share p))]
+    :proj-tgt      [:td.num.muted (n0 (:espn/proj-targets p))]
+    :proj-rec      [:td.num.muted (n0 (:espn/proj-receptions p))]
     :inj      [:td (or (:sleeper/injury-status p) "–")]
     :bye      (let [clash? (db/board-bye-clash? (:position p) (:bye p)
                                                 @(rf/subscribe [:my-bye-exposure]))]

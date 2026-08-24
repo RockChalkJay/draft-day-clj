@@ -3,6 +3,7 @@
             [clojure.java.io :as io]
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.fantasypros :as fantasypros]
+            [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.sleeper :as sleeper]
@@ -91,12 +92,19 @@
         ;; is the point of `fantasypros/pos-formats`: RB/WR/TE publish a page per
         ;; scoring format and so are scoped, while QB/K/DST publish one page for
         ;; all three and join flat, exactly as ESPN does.
-        flat    (into {:fantasypros/sleepers :fantasypros/sleeper?
-                       :espn                 :espn/auction-value
-                       :sleeper/byes         :bye}
+        ;; A label may name more than one column. ESPN earns that: its auction
+        ;; value and its projected usage come from the same response but from
+        ;; different corners of it, and the projections shipped empty once
+        ;; already — the stat ids decode to keywords, not strings — while the
+        ;; auction value kept the label looking healthy.
+        flat    (into {:fantasypros/sleepers [:fantasypros/sleeper?]
+                       :espn                 [:espn/auction-value :espn/proj-targets]
+                       :nflverse/prior-usage [:nflverse/prior-targets
+                                              :nflverse/prior-target-share]
+                       :sleeper/byes         [:bye]}
                       (keep (fn [[label pos _]]
                               (when-not (get fantasypros/pos-formats pos)
-                                [label :fantasypros/ecr-pos-tier])))
+                                [label [:fantasypros/ecr-pos-tier]])))
                       pipeline/pos-tier-tasks)
         scoped  (into (into {}
                             (mapcat (fn [fmt]
@@ -114,9 +122,10 @@
         "a source label this test does not know about means the guard has drifted")
     (doseq [[label {:keys [ok?]}] sources
             :when ok?]
-      (if-let [k (get flat label)]
-        (is (some k players)
-            (format "sample claims %s but no row carries %s" label k))
+      (if-let [ks (get flat label)]
+        (doseq [k ks]
+          (is (some k players)
+              (format "sample claims %s but no row carries %s" label k)))
         (when-let [[fmt col] (get scoped label)]
           (is (some #(get-in % [:vendor/by-format fmt col]) players)
               (format "sample claims %s but no row carries %s under [:vendor/by-format %s]"
@@ -233,7 +242,7 @@
         "anchoring must not collide two players onto one id")))
 
 (deftest every-enrichment-fetch-goes-out-together
-  ;; Twenty-one independent fetches behind a 30-second timeout each, on the
+  ;; Twenty-two independent fetches behind a 30-second timeout each, on the
   ;; request thread that missed the cache. Awaited in turn they stack to ten
   ;; minutes, so what has to hold is that `enrich-universe` starts *all* of them
   ;; before it blocks on any — not merely that some helper can start six.
@@ -249,13 +258,16 @@
                    (when-not (.await latch 10 java.util.concurrent.TimeUnit/SECONDS)
                      (throw (ex-info "this fetch ran on its own" {:fetch what}))))
         rows     (fn [k] [{:key k :fantasypros/ecr 1}])]
-    (is (= 21 expected)
-        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers and ESPN")
+    (is (= 22 expected)
+        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers, ESPN and nflverse")
     (with-redefs [sleeper/fetch-byes    (fn [_] (arrive! :byes) {"ATL" 5})
                   fantasypros/fetch-sleepers (fn [] (arrive! :sleepers)
                                                (rows "player0_rb"))
                   espn/fetch            (fn [_] (arrive! :espn)
                                           {"player0_rb" {:espn/auction-value 1.0}})
+                  nflverse/fetch        (fn [_] (arrive! :nflverse)
+                                          {:by-key    {"00-0000000" {:nflverse/prior-targets 1.0}}
+                                           :positions {"00-0000000" "RB"}})
                   fantasypros/fetch-ecr (fn [fmt] (arrive! [:ecr fmt])
                                           (rows "player0_rb"))
                   fantasypros/fetch-aav (fn [fmt] (arrive! [:aav fmt])
@@ -274,6 +286,7 @@
   ;; whole contract `best-effort` had when the fetches were sequential.
   (with-redefs [sleeper/fetch-byes    (fn [_] {"ATL" 5})
                 fantasypros/fetch-sleepers (fn [] nil)
+                nflverse/fetch        (fn [_] {:by-key {} :positions {}})
                 espn/fetch            (fn [_] (throw (ex-info "espn down" {})))
                 fantasypros/fetch-ecr (fn [fmt]
                                         (if (= :standard fmt)
