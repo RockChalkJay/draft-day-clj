@@ -4,7 +4,7 @@
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.nflverse :as nflverse]
-            [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.pipeline :as pipeline :refer [apply-enrichment]]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.scoring :as scoring]))
@@ -300,3 +300,22 @@
           "a sibling format's scrape is unaffected")
       (is (every? #(true? (:ok? (get sources (pipeline/format-label :fantasypros/aav %))))
                   scoring/formats)))))
+
+(deftest a-source-whose-rows-cannot-all-land-says-so-in-its-report
+  ;; The per-position hit-rate warning exists to say "a join that should land is
+  ;; not landing". A prior-season source can never land every row — last year's
+  ;; retirees have no row on this year's board — so it opts out rather than
+  ;; teaching the reader to scroll past warnings.
+  (let [universe [{:player-name "A" :position "RB" :ids {:gsis "00-0000001"}}]
+        join     (fn [opts]
+                   (-> (apply-enrichment {:players universe :sources {}}
+                                         :src
+                                         {"00-0000001" {:x 1} "00-0000002" {:x 2}}
+                                         (merge {:key-fn #(get-in % [:ids :gsis])} opts))
+                       (get-in [:sources :src])))]
+    (is (true? (:expected-partial? (join {:expected-partial? true}))))
+    (is (false? (:expected-partial? (join {})))
+        "the default stays off, so every other source keeps the warning")
+    (testing "opting out changes only the reporting, never the join"
+      (is (= (dissoc (join {:expected-partial? true}) :expected-partial?)
+             (dissoc (join {}) :expected-partial?))))))

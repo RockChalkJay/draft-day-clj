@@ -108,3 +108,15 @@
     (let [[_ attrs] (board/player-row {:player-id "p2"} [] nil 6 false)]
       (is (some #{"tier-row"} (:class attrs)))
       (is (not-any? #{"tier-start"} (:class attrs))))))
+
+(deftest pct-renders-a-rate-not-a-fraction
+  (testing "a season rate reads as a percentage"
+    (is (= "30.4%" (board/pct 0.304276315789474)))
+    (is (= "0.0%" (board/pct 0))))
+  (testing "a rookie has no rate, and gets a dash rather than 0.0%"
+    (is (= "–" (board/pct nil)))))
+
+(deftest prior-season-title-names-the-year-the-header-cannot
+  (is (= "2025 season" (board/prior-season-title {:nflverse/prior-season 2025})))
+  (testing "a player nflverse never had says nothing rather than \"nil season\""
+    (is (nil? (board/prior-season-title {})))))

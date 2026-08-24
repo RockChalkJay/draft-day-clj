@@ -127,15 +127,24 @@
   "One line per source, plus a warning for any position whose published rows
   mostly failed to land. Warning on coverage instead would be pure noise: the
   FantasyPros auction list covers ~150 players by design, so it is *supposed*
-  to leave most of the board untouched."
-  [label {:keys [ok? rows matched hit-rate coverage by-position]}]
+  to leave most of the board untouched.
+
+  `:expected-partial?` turns that warning off for a source whose rows cannot all
+  land no matter how healthy the join is. A prior-season source is the case:
+  nflverse publishes everyone who played last year, and the ones who retired or
+  were cut have no row on this year's board to find. Warning about that every
+  run costs the floor its only job — saying that a join which *should* land is
+  not landing — by burying it under warnings that always mean 'as intended'."
+  [label {:keys [ok? rows matched hit-rate coverage by-position expected-partial?]}]
   (if-not ok?
     (log/warn (format "%s: unavailable, columns omitted" label))
     (do
       (log/info (format "%s: %d rows -> %d matched (%.0f%% of rows, %.0f%% of board)"
                         label rows matched (* 100.0 hit-rate) (* 100.0 coverage)))
       (doseq [[pos {:keys [n rows matched]}] (sort by-position)
-              :when (and (pos? rows) (< (/ (double matched) rows) hit-rate-floor))]
+              :when (and (not expected-partial?)
+                         (pos? rows)
+                         (< (/ (double matched) rows) hit-rate-floor))]
         (log/warn
          (format "%s: %s published %d row(s), only %d landed (board has %d)"
                  label pos rows matched n))))))
@@ -147,18 +156,20 @@
   that answered and simply matched nothing, which is a join bug, not an outage.
 
   `opts` is passed straight through to `merge/left-join-report`, for a source
-  that joins on something better than a name key."
+  that joins on something better than a name key; `:expected-partial?` is read
+  here rather than there, and reaches `log-enrichment!` via the report."
   ([acc label by-key] (apply-enrichment acc label by-key {}))
   ([acc label by-key opts]
-  (if (nil? by-key)
-    (do (log-enrichment! label {:ok? false})
-        (assoc-in acc [:sources label] {:ok? false}))
-    (let [{:keys [players report]} (merge/left-join-report (:players acc) by-key opts)
-          report (assoc report :ok? true)]
-      (log-enrichment! label report)
-      (-> acc
-          (assoc :players players)
-          (assoc-in [:sources label] report))))))
+   (if (nil? by-key)
+     (do (log-enrichment! label {:ok? false})
+         (assoc-in acc [:sources label] {:ok? false}))
+     (let [{:keys [players report]} (merge/left-join-report (:players acc) by-key opts)
+           report (assoc report :ok? true
+                         :expected-partial? (boolean (:expected-partial? opts)))]
+       (log-enrichment! label report)
+       (-> acc
+           (assoc :players players)
+           (assoc-in [:sources label] report))))))
 
 (def ^{:doc "Alias for the shared `scoring/format-label` — the label scheme is
   cljc because the browser reads these keys back off /api/players."}
@@ -291,8 +302,9 @@
       ;; player already carries one, so there is nothing to guess. Its keys hold
       ;; no position, hence the explicit index for the per-position report.
       (apply-enrichment acc :nflverse/prior-usage (:by-key prior)
-                        {:key-fn       #(get-in % [:ids :gsis])
-                         :key-position (:positions prior)}))))
+                        {:key-fn            #(get-in % [:ids :gsis])
+                         :key-position      (:positions prior)
+                         :expected-partial? true}))))
 
 (defn fetch-enriched-universe
   "The live universe: Sleeper rows, id-validated, then enriched.

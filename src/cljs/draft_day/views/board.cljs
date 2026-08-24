@@ -7,9 +7,20 @@
 
 ;; ---- cell formatting ----
 
-(defn- n0 [n] (if (number? n) (js/Math.round n) "–"))
-(defn- n1 [n] (if (number? n) (.toFixed n 1) "–"))
-(defn- pct [n] (if (number? n) (str (.toFixed (* 100 n) 1) "%") "–"))
+(defn format-whole [n] (if (number? n) (js/Math.round n) "–"))
+(defn format-one-decimal [n] (if (number? n) (.toFixed n 1) "–"))
+(defn pct
+  "A rate as a percentage. Plain `defn` so a test can reach it — the ×100 and
+  the dash for a rookie's missing rate are the two things worth pinning."
+  [n]
+  (if (number? n) (str (.toFixed (* 100 n) 1) "%") "–"))
+
+(defn prior-season-title
+  "Tooltip naming the season a usage number came from. The column header can
+  only say \"last season\" — it is one static string for the whole board — but
+  the row knows the year, so the cell can say it outright."
+  [p]
+  (when-let [y (:nflverse/prior-season p)] (str y " season")))
 
 (defn- cliff-marker [p]
   (when (and (:tcm p) (> (:tcm p) 1.1))
@@ -54,11 +65,11 @@
                 [:td.num {:class (cond (and (number? b) (pos? b)) "good"
                                        (and (number? b) (neg? b)) "warn")}
                  (if (and (number? b) (not (zero? b))) (str (when (pos? b) "+") b) "–")])
-    :adp      [:td.num (if-let [a (:sleeper/adp p)] (n1 a) "–")]
-    :proj     [:td.num (n0 (:points p))]
-    :ceiling  [:td.num.good (n0 (:ceiling p))]
-    :floor    [:td.num.muted (n0 (:floor p))]
-    :vorp     [:td.num (n0 (:vorp p))]
+      :adp      [:td.num (if-let [a (:sleeper/adp p)] (format-one-decimal a) "–")]
+      :proj     [:td.num (format-whole (:points p))]
+      :ceiling  [:td.num.good (format-whole (:ceiling p))]
+      :floor    [:td.num.muted (format-whole (:floor p))]
+      :vorp     [:td.num (format-whole (:vorp p))]
     :ecr      [:td.num (or (:fantasypros/ecr p) "–")]
     ;; already resolved to the active scale by :board-players
     :tier     [:td.num (or (:tier p) "–")]
@@ -66,11 +77,11 @@
     ;; Usage reads as context, not as live valuation, so it stays muted like
     ;; :value and :adp. A rookie has no prior-season row at all, which is the
     ;; nil these formatters already render as a dash.
-    :prior-tgt     [:td.num.muted (n0 (:nflverse/prior-targets p))]
-    :prior-rec     [:td.num.muted (n0 (:nflverse/prior-receptions p))]
-    :prior-tgt-pct [:td.num.muted (pct (:nflverse/prior-target-share p))]
-    :proj-tgt      [:td.num.muted (n0 (:espn/proj-targets p))]
-    :proj-rec      [:td.num.muted (n0 (:espn/proj-receptions p))]
+    :prior-tgt     [:td.num.muted {:title (prior-season-title p)} (n0 (:nflverse/prior-targets p))]
+    :prior-rec     [:td.num.muted {:title (prior-season-title p)} (n0 (:nflverse/prior-receptions p))]
+      :prior-tgt-pct [:td.num.muted {:title (prior-season-title p)} (pct (:nflverse/prior-target-share p))]
+      :proj-tgt      [:td.num.muted (format-whole (:espn/proj-targets p))]
+      :proj-rec      [:td.num.muted (format-whole (:espn/proj-receptions p))]
     :inj      [:td (or (:sleeper/injury-status p) "–")]
     :bye      (let [clash? (db/board-bye-clash? (:position p) (:bye p)
                                                 @(rf/subscribe [:my-bye-exposure]))]
