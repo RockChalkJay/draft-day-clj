@@ -189,6 +189,23 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 }
 .bye-cover { color: var(--good); font-weight: 600; }
 .roster td.slot-bye { color: var(--muted); text-align: right; font-size: 12px; }
+
+/* Injury risk. The board's Risk cell is a five-segment bar with no number in it:
+   filled segments carry the level, and their colour (set inline from
+   `board/risk-color`) carries it a second time, so the scale still reads without
+   hue. The track keeps the column a constant width, which is what makes the
+   ragged fill edge scannable down a long board.
+   .inj-serious — IR/PUP/suspension and friends, on the Inj cell and the tile. */
+td.risk { white-space: nowrap; }
+.risk-bar { display: inline-flex; gap: 2px; vertical-align: middle; }
+.risk-seg {
+  width: 5px; height: 10px; border-radius: 1px;
+  background: var(--muted); opacity: 0.25; }
+.risk-seg.on { opacity: 1; }
+.nt-risk { display: inline-flex; align-items: center; gap: 6px; }
+.nt-risk-word { font-weight: 600; }
+.inj-serious { color: var(--warn); font-weight: 700; }
+
 .roster td.slot-bye.bye-uncovered { color: #e0a72e; font-weight: 600; }
 
 /* tier row-coloring — active in every view, since the board reads a per-position

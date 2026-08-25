@@ -5,6 +5,106 @@
             [draft-day.db :as db]
             [draft-day.views.util :as util]))
 
+;; ---- tier colors ----
+
+;; The one thing this palette has to do is make *adjacent* tiers look different,
+;; since that is the boundary a manager reads a group off of. A smooth hue sweep
+;; cannot, because it divides one fixed perceptual budget across however many
+;; tiers a position turns out to have: the old green-to-red HSL ramp left
+;; neighbouring fills on the 6-tier RB board 6.4 dE2000 apart — rgb(24,57,29) vs
+;; (40,57,29) vs (56,57,29), three shades of one dark green — and a 7th tier
+;; would have squeezed them further.
+;;
+;; So the two jobs are split. The hue ramp carries only the *ordering* (green =
+;; tier 1, red = the below-replacement tail), and banding carries the
+;; *separation*: consecutive tiers alternate between a pale, lightly-washed fill
+;; and a deep, saturated one, which holds neighbours ~11 dE2000 apart no matter
+;; how many tiers there are. Colors are OKLCH so equal hue steps look equal;
+;; sRGB hue is badly compressed through green-to-yellow, which is exactly where
+;; the old ramp went muddy. Fills stay dark enough to keep body text past 8:1.
+;;
+;; Custom properties do the work; styles.css consumes them.
+
+(def ^:private tier-chroma 0.14)
+(def tier-hue-best 150.0)
+(def tier-hue-worst 22.0)
+
+;; The alternating bands. :pale is a bright color laid on thin, :deep a dimmer
+;; one laid on thick — they differ in lightness *and* in strength, so a pair
+;; stays apart even where the two hues are close.
+(def ^:private tier-bands
+  {:pale {:l 0.84 :alpha 0.20}
+   :deep {:l 0.62 :alpha 0.42}})
+
+(defn tier-hue
+  "Hue for 1-indexed tier `t` of `n`, ramping green (best) to red (worst)."
+  [t n]
+  (let [span (max 1 (dec n))
+        f    (/ (dec (max 1 t)) (double span))]
+    (+ tier-hue-best (* (- tier-hue-worst tier-hue-best) f))))
+
+(defn tier-band
+  "Which of the two alternating bands tier `t` sits in. Tier 1 is pale, so the
+  best tier is also the brightest."
+  [t]
+  (if (odd? (max 1 t)) :pale :deep))
+
+(defn tier-color
+  "Full-strength color for tier `t` of `n` — the row's left stripe and the rule
+  drawn across a tier boundary."
+  [t n]
+  (let [{:keys [l]} (tier-bands (tier-band t))]
+    (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) ")")))
+
+(defn tier-fill
+  "Row background for tier `t` of `n`: `tier-color` laid over the board at the
+  band's strength."
+  [t n]
+  (let [{:keys [l alpha]} (tier-bands (tier-band t))]
+    (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) " / " alpha ")")))
+
+;; ---- injury-risk bar ----
+
+;; The Risk cell is a glyph, not a number: five segments, filled to the level.
+;; Two consequences are load-bearing rather than decorative.
+;;
+;; Fill *length* and hue encode the same number, so the scale still reads for
+;; someone who cannot separate the hues — which a single coloured dot would not.
+;; And because the cell carries no text at all, the `title`/`aria-label` is the
+;; only thing a hover or a screen reader has to go on, so it is never omitted.
+;;
+;; Hues come from `tier-hue` at (level, 5) rather than a second green-to-red ramp
+;; invented here. `tier-color` itself is deliberately not reused: its pale/deep
+;; banding exists to hold *adjacent table rows* apart and means nothing on a
+;; five-step scale read one cell at a time.
+
+(def risk-levels 5)
+(def ^:private risk-lightness 0.70)
+(def ^:private risk-chroma 0.14)
+
+(defn risk-color
+  "Fill colour for risk `level` — green at 1, red at `risk-levels`."
+  [level]
+  (str "oklch(" risk-lightness " " risk-chroma " "
+       (.toFixed (tier-hue level risk-levels) 1) ")"))
+
+(def risk-words
+  "The word for each level. The board column has no room for these — that is why
+  it is a bar — but the on-the-block tile does, and a legend has to say what the
+  five segments mean somewhere."
+  {1 "Durable" 2 "Sturdy" 3 "Average" 4 "Fragile" 5 "Brittle"})
+
+(defn risk-bar
+  "The five-segment bar for `level`. Every filled segment takes the *level's*
+  colour rather than its own position's, so a risk-4 bar is four orange segments
+  and not a gradient — length and hue then say one thing, twice."
+  [level]
+  [:span.risk-bar
+   (for [i (range 1 (inc risk-levels))]
+     ^{:key i}
+     [:span.risk-seg {:class (when (<= i level) "on")
+                      :style (when (<= i level) {:background (risk-color level)})}])])
+
 ;; ---- cell formatting ----
 
 (defn format-whole [n] (if (number? n) (js/Math.round n) "–"))
@@ -77,12 +177,22 @@
     ;; Usage reads as context, not as live valuation, so it stays muted like
     ;; :value and :adp. A rookie has no prior-season row at all, which is the
     ;; nil these formatters already render as a dash.
-    :prior-tgt     [:td.num.muted {:title (prior-season-title p)} (n0 (:nflverse/prior-targets p))]
-    :prior-rec     [:td.num.muted {:title (prior-season-title p)} (n0 (:nflverse/prior-receptions p))]
+    :prior-tgt     [:td.num.muted {:title (prior-season-title p)} (format-whole (:nflverse/prior-targets p))]
+    :prior-rec     [:td.num.muted {:title (prior-season-title p)} (format-whole (:nflverse/prior-receptions p))]
       :prior-tgt-pct [:td.num.muted {:title (prior-season-title p)} (pct (:nflverse/prior-target-share p))]
       :proj-tgt      [:td.num.muted (format-whole (:espn/proj-targets p))]
       :proj-rec      [:td.num.muted (format-whole (:espn/proj-receptions p))]
-    :inj      [:td (or (:sleeper/injury-status p) "–")]
+    ;; A glyph with no number in it, so the title is the whole of its text.
+    ;; A player the scale has no opinion about (a rookie) gets the board's dash,
+    ;; never an empty five-segment track — an unfilled bar reads as "level 0,
+    ;; safest", which is the opposite of "no history to judge".
+    :risk     (let [lvl (:injury-risk p)
+                    txt (or (:injury/reason p) "No injury history to judge")]
+                [:td.risk {:title txt :aria-label txt}
+                 (if lvl [risk-bar lvl] [:span.muted "–"])])
+    :inj      (let [st (:sleeper/injury-status p)]
+                [:td {:class (when (db/serious-injury? st) "inj-serious")}
+                 (or st "–")])
     :bye      (let [clash? (db/board-bye-clash? (:position p) (:bye p)
                                                 @(rf/subscribe [:my-bye-exposure]))]
                 [:td {:class (when clash? "bye-clash")
@@ -155,64 +265,6 @@
                     ^{:key (:key col)}
                     [header-cell col sort drag ks])
                   cols)]))))
-
-;; ---- tier colors ----
-
-;; The one thing this palette has to do is make *adjacent* tiers look different,
-;; since that is the boundary a manager reads a group off of. A smooth hue sweep
-;; cannot, because it divides one fixed perceptual budget across however many
-;; tiers a position turns out to have: the old green-to-red HSL ramp left
-;; neighbouring fills on the 6-tier RB board 6.4 dE2000 apart — rgb(24,57,29) vs
-;; (40,57,29) vs (56,57,29), three shades of one dark green — and a 7th tier
-;; would have squeezed them further.
-;;
-;; So the two jobs are split. The hue ramp carries only the *ordering* (green =
-;; tier 1, red = the below-replacement tail), and banding carries the
-;; *separation*: consecutive tiers alternate between a pale, lightly-washed fill
-;; and a deep, saturated one, which holds neighbours ~11 dE2000 apart no matter
-;; how many tiers there are. Colors are OKLCH so equal hue steps look equal;
-;; sRGB hue is badly compressed through green-to-yellow, which is exactly where
-;; the old ramp went muddy. Fills stay dark enough to keep body text past 8:1.
-;;
-;; Custom properties do the work; styles.css consumes them.
-
-(def ^:private tier-chroma 0.14)
-(def tier-hue-best 150.0)
-(def tier-hue-worst 22.0)
-
-;; The alternating bands. :pale is a bright color laid on thin, :deep a dimmer
-;; one laid on thick — they differ in lightness *and* in strength, so a pair
-;; stays apart even where the two hues are close.
-(def ^:private tier-bands
-  {:pale {:l 0.84 :alpha 0.20}
-   :deep {:l 0.62 :alpha 0.42}})
-
-(defn tier-hue
-  "Hue for 1-indexed tier `t` of `n`, ramping green (best) to red (worst)."
-  [t n]
-  (let [span (max 1 (dec n))
-        f    (/ (dec (max 1 t)) (double span))]
-    (+ tier-hue-best (* (- tier-hue-worst tier-hue-best) f))))
-
-(defn tier-band
-  "Which of the two alternating bands tier `t` sits in. Tier 1 is pale, so the
-  best tier is also the brightest."
-  [t]
-  (if (odd? (max 1 t)) :pale :deep))
-
-(defn tier-color
-  "Full-strength color for tier `t` of `n` — the row's left stripe and the rule
-  drawn across a tier boundary."
-  [t n]
-  (let [{:keys [l]} (tier-bands (tier-band t))]
-    (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) ")")))
-
-(defn tier-fill
-  "Row background for tier `t` of `n`: `tier-color` laid over the board at the
-  band's strength."
-  [t n]
-  (let [{:keys [l alpha]} (tier-bands (tier-band t))]
-    (str "oklch(" l " " tier-chroma " " (.toFixed (tier-hue t n) 1) " / " alpha ")")))
 
 (defn- tier-style [t n]
   {"--tier-bg"   (tier-fill t n)

@@ -1,4 +1,4 @@
-{:schema-version 3,
+{:schema-version 4,
  :season 2026,
  :captured-at "2026-08-24T20:20:24.710763Z",
  :sources
@@ -15,45 +15,6 @@
     "WR" {:n 216, :rows 47, :matched 47},
     "RB" {:n 138, :rows 44, :matched 43}},
    :unmatched-sample ["ajdillon_rb"],
-   :ok? true},
-  :nflverse/prior-usage
-  {:rows 652,
-   :matched 483,
-   :hit-rate 0.74079754601227,
-   :coverage 0.7618296529968455,
-   :by-position
-   {"K" {:n 44, :rows 42, :matched 34},
-    "TE" {:n 127, :rows 137, :matched 100},
-    "QB" {:n 77, :rows 81, :matched 65},
-    "DST" {:n 32, :rows 0, :matched 0},
-    "WR" {:n 216, :rows 241, :matched 172},
-    "RB" {:n 138, :rows 151, :matched 112}},
-   :unmatched-sample
-   ["00-0039576"
-    "00-0035956"
-    "00-0029263"
-    "00-0039266"
-    "00-0036425"
-    "00-0033246"
-    "00-0038740"
-    "00-0037617"
-    "00-0034407"
-    "00-0040067"
-    "00-0038394"
-    "00-0039062"
-    "00-0034419"
-    "00-0036332"
-    "00-0035189"
-    "00-0037282"
-    "00-0039577"
-    "00-0038458"
-    "00-0039394"
-    "00-0033662"
-    "00-0034681"
-    "00-0038465"
-    "00-0040241"
-    "00-0038891"
-    "00-0039934"],
    :ok? true},
   :fantasypros/pos-tier-te-half-ppr
   {:rows 208,
@@ -677,7 +638,47 @@
     "jeffcaldwell_wr"
     "jalinhyatt_wr"
     "shedrickjackson_wr"],
-   :ok? true}},
+   :ok? true},
+  :nflverse/player-stats
+  {:rows 914,
+   :matched 501,
+   :hit-rate 0.5481400437636762,
+   :coverage 0.7902208201892744,
+   :by-position
+   {"K" {:n 44, :rows 42, :matched 37},
+    "TE" {:n 127, :rows 137, :matched 102},
+    "QB" {:n 77, :rows 81, :matched 69},
+    "DST" {:n 32, :rows 0, :matched 0},
+    "WR" {:n 216, :rows 241, :matched 177},
+    "RB" {:n 138, :rows 151, :matched 116}},
+   :unmatched-sample
+   ["00-0034193"
+    "00-0039576"
+    "00-0035956"
+    "00-0038468"
+    "00-0034208"
+    "00-0037609"
+    "00-0029263"
+    "00-0039266"
+    "00-0036425"
+    "00-0036096"
+    "00-0033246"
+    "00-0036877"
+    "00-0033925"
+    "00-0030431"
+    "00-0032725"
+    "00-0039236"
+    "00-0038740"
+    "00-0036469"
+    "00-0038598"
+    "00-0033897"
+    "00-0030068"
+    "00-0037617"
+    "00-0034407"
+    "00-0040067"
+    "00-0032543"],
+   :ok? true,
+   :expected-partial? true}},
  :players
  [{:ids
    {:sleeper "10210",
@@ -710,6 +711,8 @@
    :player-name "Cameron Latu",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 20.0},
+   :nflverse/games-by-season {2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 3.613458529,
    :ids
@@ -743,7 +746,9 @@
    :player-name "Josh Whyle",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 32.0},
+   :nflverse/games-by-season {2023 9.0, 2024 15.0, 2025 6.0},
    :espn/proj-targets 5.239753681,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0130434782608696}
   {:espn/proj-receptions 48.41354464,
    :ids
@@ -798,7 +803,9 @@
    :player-name "Tre Tucker",
    :sleeper/injury-status nil,
    :stats {:rush_yd 37.0, :rec 46.0, :rec_yd 582.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 13.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 81.62638071,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.186234817813765}
   {:espn/proj-receptions 7.815070554,
    :ids
@@ -832,7 +839,9 @@
    :player-name "Davis Allen",
    :sleeper/injury-status "Questionable",
    :stats {:rec 3.0, :rec_yd 29.0},
+   :nflverse/games-by-season {2023 7.0, 2024 7.0, 2025 15.0},
    :espn/proj-targets 11.24301532,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0567986230636833}
   {:ids
    {:sleeper "10216",
@@ -868,7 +877,9 @@
    :bye nil,
    :player-name "Kenny McIntosh",
    :sleeper/injury-status nil,
-   :stats {:rush_yd 16.0, :rec 2.0, :rec_yd 16.0}}
+   :stats {:rush_yd 16.0, :rec 2.0, :rec_yd 16.0},
+   :nflverse/games-by-season {2024 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:ids
    {:sleeper "10217",
     :gsis "00-0038582",
@@ -888,6 +899,8 @@
    :player-name "Clayton Tune",
    :sleeper/injury-status nil,
    :stats {:pass_yd 195.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 16.0},
+   :nflverse/games-by-season {2023 6.0, 2024 5.0, 2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 24.97406,
    :ids
@@ -939,7 +952,9 @@
    :player-name "Xavier Hutchinson",
    :sleeper/injury-status nil,
    :stats {:rec 14.0, :rec_yd 167.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 12.0, 2024 14.0, 2025 16.0},
    :espn/proj-targets 43.86610136,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.103074141048825}
   {:espn/proj-receptions 4.121655613,
    :ids
@@ -1001,7 +1016,9 @@
     :rec 15.0,
     :rec_yd 107.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 9.0, 2024 7.0, 2025 12.0},
    :espn/proj-targets 5.667857471,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00925925925925926}
   {:espn/proj-receptions 63.34439956,
    :ids
@@ -1063,7 +1080,9 @@
     :rec_yd 853.0,
     :rec_td 6.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 5.0},
    :espn/proj-targets 89.07581258,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0478260869565217}
   {:espn/proj-receptions 20.51307345,
    :ids
@@ -1113,7 +1132,9 @@
    :player-name "Andrei Iosivas",
    :sleeper/injury-status nil,
    :stats {:rush_yd 10.0, :rec 32.0, :rec_yd 403.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 11.0, 2024 17.0, 2025 15.0},
    :espn/proj-targets 34.48297526,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0953947368421053}
   {:espn/proj-receptions 7.234188995,
    :ids
@@ -1146,7 +1167,9 @@
    :player-name "Payne Durham",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 41.0},
+   :nflverse/games-by-season {2023 6.0, 2024 8.0, 2025 8.0},
    :espn/proj-targets 10.66913872,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00739371534195934}
   {:espn/proj-receptions 96.3530921,
    :ids
@@ -1209,7 +1232,9 @@
     :rec_td 7.0,
     :rec_2pt 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 4.0, 2025 8.0},
    :espn/proj-targets 135.747351,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.14207650273224}
   {:espn/proj-receptions 20.90123029,
    :ids
@@ -1258,7 +1283,9 @@
    :player-name "Elijah Higgins",
    :sleeper/injury-status "Questionable",
    :stats {:rec 18.0, :rec_yd 179.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 11.0, 2024 15.0, 2025 17.0},
    :espn/proj-targets 28.64660694,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.059967585089141}
   {:espn/proj-receptions 70.58131846,
    :ids
@@ -1315,7 +1342,9 @@
    :player-name "Michael Wilson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 59.0, :rec_yd 764.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 13.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 114.5864278,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.204213938411669}
   {:espn/proj-receptions 3.4915077,
    :ids
@@ -1349,7 +1378,9 @@
    :player-name "Derius Davis",
    :sleeper/injury-status nil,
    :stats {:rush_yd 11.0, :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 11.0},
    :espn/proj-targets 5.307014115,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00551470588235294}
   {:ids
    {:sleeper "10235",
@@ -1398,6 +1429,8 @@
    :player-name "Roschon Johnson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 42.0, :rec 2.0, :rec_yd 14.0},
+   :nflverse/games-by-season {2023 15.0, 2024 13.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 59.27509395,
    :ids
@@ -1454,7 +1487,9 @@
    :player-name "Dalton Kincaid",
    :sleeper/injury-status nil,
    :stats {:rec 66.0, :rec_yd 736.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 16.0, 2024 13.0, 2025 12.0},
    :espn/proj-targets 81.79958708,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.102296450939457}
   {:espn/proj-receptions 2.971928377,
    :ids
@@ -1505,7 +1540,9 @@
    :player-name "Cedric Tillman",
    :sleeper/injury-status "Questionable",
    :stats {:rec 3.0, :rec_yd 36.0},
+   :nflverse/games-by-season {2023 11.0, 2024 9.0, 2025 12.0},
    :espn/proj-targets 5.170041918,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0747126436781609}
   {:espn/proj-receptions 78.31389451,
    :ids
@@ -1559,7 +1596,9 @@
    :player-name "Sam LaPorta",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 3.0, :rec 76.0, :rec_yd 842.0, :rec_td 6.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 9.0},
    :espn/proj-targets 102.1296078,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0890909090909091}
   {:ids
    {:sleeper "10867",
@@ -1592,6 +1631,8 @@
    :player-name "Jake Bobo",
    :sleeper/injury-status "IR",
    :stats {:rec 2.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2023 14.0, 2024 12.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0043956043956044}
   {:espn/proj-receptions 11.36176818,
    :ids
@@ -1641,7 +1682,9 @@
    :player-name "Luke Schoonmaker",
    :sleeper/injury-status nil,
    :stats {:rec 13.0, :rec_yd 124.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 12.0, 2024 12.0, 2025 14.0},
    :espn/proj-targets 16.87391013,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0378912685337727}
   {:ids
    {:sleeper "10937",
@@ -1690,6 +1733,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 40.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "10955",
@@ -1740,6 +1785,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 34.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 13.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11034",
@@ -1772,6 +1819,8 @@
    :player-name "Jalen Brooks",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2023 3.0, 2024 12.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00988467874794069}
   {:ids
    {:sleeper "11058",
@@ -1823,6 +1872,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 39.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 3.584347335,
    :ids
@@ -1873,7 +1924,9 @@
    :player-name "Xavier Smith",
    :sleeper/injury-status nil,
    :stats {:rush_yd 16.0, :rec 7.0, :rec_yd 95.0, :rec_td 1.0},
+   :nflverse/games-by-season {2024 14.0, 2025 16.0},
    :espn/proj-targets 5.621507661,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0413080895008606}
   {:espn/proj-receptions 15.70310105,
    :ids
@@ -1925,7 +1978,9 @@
    :player-name "Emari Demercado",
    :sleeper/injury-status nil,
    :stats {:rush_yd 120.0, :rush_td 1.0, :rec 12.0, :rec_yd 83.0},
+   :nflverse/games-by-season {2023 11.0, 2024 13.0, 2025 12.0},
    :espn/proj-targets 21.71957616,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0324149108589951}
   {:ids
    {:sleeper "11201",
@@ -1957,6 +2012,8 @@
    :player-name "Blake Whiteheart",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 24.0},
+   :nflverse/games-by-season {2024 7.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0114942528735632}
   {:ids
    {:sleeper "11256",
@@ -1987,6 +2044,8 @@
    :sleeper/injury-status "Questionable",
    :stats {:pass_yd 195.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 17.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2023 5.0, 2024 4.0, 2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11261",
@@ -2013,6 +2072,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 32.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11292",
@@ -2029,7 +2090,9 @@
    :player-name "Tommy DeVito",
    :sleeper/injury-status nil,
    :stats {:pass_yd 202.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 13.0},
-   :fantasypros/ecr-pos-tier 8}
+   :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 9.0, 2024 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:ids
    {:sleeper "11299",
     :gsis "00-0038440",
@@ -2077,6 +2140,8 @@
    :player-name "Zavier Scott",
    :sleeper/injury-status nil,
    :stats {:rush_yd 21.0, :rec 2.0, :rec_yd 15.0},
+   :nflverse/games-by-season {2025 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0341880341880342}
   {:ids
    {:sleeper "11320",
@@ -2109,6 +2174,8 @@
    :player-name "Nikko Remigio",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0},
+   :nflverse/games-by-season {2024 5.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00182149362477231}
   {:espn/proj-receptions 11.78800946,
    :ids
@@ -2159,7 +2226,9 @@
    :player-name "Chris Brooks",
    :sleeper/injury-status nil,
    :stats {:rush_yd 203.0, :rush_td 2.0, :rec 14.0, :rec_yd 100.0},
+   :nflverse/games-by-season {2023 3.0, 2024 11.0, 2025 17.0},
    :espn/proj-targets 15.71926104,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0369565217391304}
   {:ids
    {:sleeper "11371",
@@ -2192,6 +2261,8 @@
    :player-name "Julian Hill",
    :sleeper/injury-status "IR",
    :stats {:rec 3.0, :rec_yd 26.0},
+   :nflverse/games-by-season {2023 10.0, 2024 14.0, 2025 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0432900432900433}
   {:espn/proj-receptions 4.026321799,
    :ids
@@ -2224,7 +2295,9 @@
    :player-name "Tyrell Shavers",
    :sleeper/injury-status "PUP",
    :stats {:rush_yd 1.0, :rec 2.0, :rec_yd 19.0},
+   :nflverse/games-by-season {2024 1.0, 2025 11.0},
    :espn/proj-targets 6.568601291,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0480167014613779}
   {:espn/proj-receptions 7.826305063,
    :ids
@@ -2257,7 +2330,9 @@
    :player-name "Nate Adkins",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 27.0},
+   :nflverse/games-by-season {2023 5.0, 2024 15.0, 2025 6.0},
    :espn/proj-targets 11.29400254,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0188356164383562}
   {:espn/proj-receptions 1.353910151,
    :ids
@@ -2309,7 +2384,9 @@
    :player-name "Emanuel Wilson",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 249.0, :rush_td 2.0, :rec 11.0, :rec_yd 86.0},
+   :nflverse/games-by-season {2023 5.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 1.771698029,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0369565217391304}
   {:ids
    {:sleeper "11439",
@@ -2358,6 +2435,8 @@
    :player-name "Jaleel McLaughlin",
    :sleeper/injury-status nil,
    :stats {:rush_yd 40.0, :rec 2.0, :rec_yd 15.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0102739726027397}
   {:ids
    {:sleeper "11533",
@@ -2411,6 +2490,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 42.0},
    :fantasypros/ecr-pos-tier 1,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11539",
@@ -2464,6 +2545,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 45.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11557",
@@ -2512,6 +2595,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 195.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 16.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2024 1.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11559",
@@ -2569,6 +2654,8 @@
     :rush_td 1.0,
     :fum_lost 2.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2024 5.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11560",
@@ -2629,6 +2716,8 @@
     :rush_td 3.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0037593984962406}
   {:ids
    {:sleeper "11562",
@@ -2659,6 +2748,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 202.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 16.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2024 7.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00353982300884956}
   {:ids
    {:sleeper "11563",
@@ -2719,6 +2810,8 @@
     :rush_td 4.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00171232876712329}
   {:ids
    {:sleeper "11564",
@@ -2779,6 +2872,8 @@
     :rush_td 4.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 1,
+   :nflverse/games-by-season {2024 13.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0020746887966805}
   {:ids
    {:sleeper "11565",
@@ -2834,6 +2929,8 @@
     :rush_yd 21.0,
     :rush_td 1.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11566",
@@ -2894,6 +2991,8 @@
     :rush_td 6.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2024 17.0, 2025 7.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11569",
@@ -2987,6 +3086,8 @@
    :player-name "Rasheen Ali",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 120.0, :rush_td 1.0, :rec 12.0, :rec_yd 87.0},
+   :nflverse/games-by-season {2024 5.0, 2025 15.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.027027027027027}
   {:espn/proj-receptions 12.86493649,
    :ids
@@ -3038,7 +3139,9 @@
    :player-name "Isaiah Davis",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 261.0, :rush_td 2.0, :rec 13.0, :rec_yd 94.0},
+   :nflverse/games-by-season {2024 13.0, 2025 16.0},
    :espn/proj-targets 15.92488791,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0593220338983051}
   {:ids
    {:sleeper "11574",
@@ -3087,6 +3190,8 @@
    :player-name "Dylan Laube",
    :sleeper/injury-status nil,
    :stats {:rush_yd 61.0, :rec 4.0, :rec_yd 29.0},
+   :nflverse/games-by-season {2024 6.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00809716599190283}
   {:espn/proj-receptions 7.749638091,
    :ids
@@ -3141,7 +3246,9 @@
    :player-name "Ray Davis",
    :sleeper/injury-status nil,
    :stats {:rush_yd 313.0, :rush_td 3.0, :rec 9.0, :rec_yd 68.0},
+   :nflverse/games-by-season {2024 17.0, 2025 17.0},
    :espn/proj-targets 10.22494838,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0271398747390397}
   {:espn/proj-receptions 12.70409305,
    :ids
@@ -3199,7 +3306,9 @@
    :player-name "Braelon Allen",
    :sleeper/injury-status nil,
    :stats {:rush_yd 233.0, :rush_td 2.0, :rec 10.0, :rec_yd 69.0},
+   :nflverse/games-by-season {2024 17.0, 2025 4.0},
    :espn/proj-targets 15.92488791,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00635593220338983}
   {:espn/proj-receptions 11.31174036,
    :ids
@@ -3251,7 +3360,9 @@
    :player-name "Will Shipley",
    :sleeper/injury-status nil,
    :stats {:rush_yd 105.0, :rush_td 1.0, :rec 10.0, :rec_yd 73.0},
+   :nflverse/games-by-season {2024 13.0, 2025 14.0},
    :espn/proj-targets 14.74802391,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0258620689655172}
   {:ids
    {:sleeper "11579",
@@ -3302,6 +3413,8 @@
    :player-name "Audric Estime",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 119.0, :rush_td 1.0, :rec 3.0, :rec_yd 17.0},
+   :nflverse/games-by-season {2024 13.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0230088495575221}
   {:espn/proj-receptions 16.04480722,
    :ids
@@ -3351,7 +3464,9 @@
    :player-name "MarShawn Lloyd",
    :sleeper/injury-status nil,
    :stats {:rush_yd 281.0, :rush_td 2.0, :rec 7.0, :rec_yd 47.0},
-   :espn/proj-targets 20.95901472}
+   :nflverse/games-by-season {2024 1.0},
+   :espn/proj-targets 20.95901472,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 32.69569491,
    :ids
    {:sleeper "11583",
@@ -3409,7 +3524,9 @@
     :rec_yd 245.0,
     :rec_td 1.0,
     :fum_lost 1.0},
-   :espn/proj-targets 41.80037343}
+   :nflverse/games-by-season {2024 3.0},
+   :espn/proj-targets 41.80037343,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 36.81449411,
    :ids
    {:sleeper "11584",
@@ -3471,7 +3588,9 @@
     :rec_yd 271.0,
     :rec_td 2.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2024 17.0, 2025 10.0},
    :espn/proj-targets 45.34383956,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0646950092421442}
   {:espn/proj-receptions 16.67663233,
    :ids
@@ -3533,7 +3652,9 @@
     :rec 15.0,
     :rec_yd 106.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2024 15.0, 2025 17.0},
    :espn/proj-targets 22.48603064,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0240963855421687}
   {:ids
    {:sleeper "11588",
@@ -3582,6 +3703,8 @@
    :player-name "Jawhar Jordan",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 127.0, :rush_td 1.0, :rec 5.0, :rec_yd 33.0},
+   :nflverse/games-by-season {2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0126582278481013}
   {:ids
    {:sleeper "11589",
@@ -3640,6 +3763,8 @@
     :rec_yd 22.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2024 12.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0259319286871961}
   {:espn/proj-receptions 3.852259656,
    :ids
@@ -3672,7 +3797,9 @@
    :player-name "Brevyn Spann-Ford",
    :sleeper/injury-status nil,
    :stats {:rec 12.0, :rec_yd 114.0, :rec_td 1.0},
+   :nflverse/games-by-season {2024 11.0, 2025 16.0},
    :espn/proj-targets 5.624636708,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0214168039538715}
   {:espn/proj-receptions 11.12377056,
    :ids
@@ -3722,7 +3849,9 @@
    :player-name "Ben Sinnott",
    :sleeper/injury-status nil,
    :stats {:rec 11.0, :rec_yd 105.0, :rec_td 1.0},
+   :nflverse/games-by-season {2024 7.0, 2025 9.0},
    :espn/proj-targets 15.45432893,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0300925925925926}
   {:espn/proj-receptions 25.42657619,
    :ids
@@ -3776,7 +3905,9 @@
    :player-name "Theo Johnson",
    :sleeper/injury-status nil,
    :stats {:rec 31.0, :rec_yd 340.0, :rec_td 2.0},
+   :nflverse/games-by-season {2024 11.0, 2025 15.0},
    :espn/proj-targets 37.98518998,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.147117296222664}
   {:espn/proj-receptions 15.517025,
    :ids
@@ -3825,7 +3956,9 @@
    :player-name "Cade Stover",
    :sleeper/injury-status nil,
    :stats {:rush_yd 2.0, :rec 14.0, :rec_yd 130.0, :rec_td 1.0},
+   :nflverse/games-by-season {2024 14.0, 2025 6.0},
    :espn/proj-targets 21.93305068,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0289330922242315}
   {:espn/proj-receptions 19.52781462,
    :ids
@@ -3875,7 +4008,9 @@
    :player-name "Ja'Tavion Sanders",
    :sleeper/injury-status nil,
    :stats {:rec 10.0, :rec_yd 89.0, :rec_td 1.0},
+   :nflverse/games-by-season {2024 15.0, 2025 12.0},
    :espn/proj-targets 26.12523339,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0708333333333333}
   {:espn/proj-receptions 44.71555532,
    :ids
@@ -3935,7 +4070,9 @@
     :rec 58.0,
     :rec_yd 530.0,
     :rec_td 4.0},
+   :nflverse/games-by-season {2024 15.0, 2025 17.0},
    :espn/proj-targets 60.4756403,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.149450549450549}
   {:espn/proj-receptions 98.85687487,
    :ids
@@ -3998,7 +4135,9 @@
     :rec_td 7.0,
     :rec_2pt 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2024 17.0, 2025 12.0},
    :espn/proj-targets 136.0439678,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.174089068825911}
   {:ids
    {:sleeper "11606",
@@ -4014,7 +4153,9 @@
    :bye nil,
    :player-name "Dallin Holker",
    :sleeper/injury-status nil,
-   :stats {:rec 4.0, :rec_yd 35.0}}
+   :stats {:rec 4.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2024 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 18.81627911,
    :ids
    {:sleeper "11608",
@@ -4068,7 +4209,9 @@
     :rec_yd 135.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2024 8.0, 2025 15.0},
    :espn/proj-targets 26.54147985,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.076271186440678}
   {:espn/proj-receptions 45.22053511,
    :ids
@@ -4127,7 +4270,9 @@
     :rec 48.0,
     :rec_yd 472.0,
     :rec_td 3.0},
+   :nflverse/games-by-season {2024 14.0, 2025 17.0},
    :espn/proj-targets 66.52300621,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.140692640692641}
   {:ids
    {:sleeper "11616",
@@ -4170,7 +4315,9 @@
    :bye 8,
    :player-name "Jacob Cowing",
    :sleeper/injury-status nil,
-   :stats {:rec 1.0, :rec_yd 7.0}}
+   :stats {:rec 1.0, :rec_yd 7.0},
+   :nflverse/games-by-season {2024 15.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 1.659944979,
    :ids
    {:sleeper "11617",
@@ -4202,7 +4349,9 @@
    :player-name "Malachi Corley",
    :sleeper/injury-status nil,
    :stats {:rush_yd 28.0, :rec 2.0, :rec_yd 20.0},
+   :nflverse/games-by-season {2024 5.0, 2025 12.0},
    :espn/proj-targets 2.585020959,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0268199233716475}
   {:espn/proj-receptions 47.26990559,
    :ids
@@ -4257,7 +4406,9 @@
    :player-name "Jalen McMillan",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 33.0, :rec 44.0, :rec_yd 561.0, :rec_td 4.0},
+   :nflverse/games-by-season {2024 13.0, 2025 4.0},
    :espn/proj-targets 74.68397104,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0277264325323475}
   {:espn/proj-receptions 59.3145659,
    :ids
@@ -4314,7 +4465,9 @@
    :player-name "Rome Odunze",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 68.0, :rec_yd 973.0, :rec_td 7.0},
+   :nflverse/games-by-season {2024 17.0, 2025 12.0},
    :espn/proj-targets 118.2709277,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.169172932330827}
   {:espn/proj-receptions 11.26388084,
    :ids
@@ -4364,7 +4517,9 @@
    :player-name "Jordan Whittington",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 8.0, :rec_yd 87.0, :rec_td 1.0},
+   :nflverse/games-by-season {2024 14.0, 2025 15.0},
    :espn/proj-targets 16.86452298,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0430292598967298}
   {:espn/proj-receptions 55.56020806,
    :ids
@@ -4424,7 +4579,9 @@
     :rec_yd 695.0,
     :rec_td 4.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2024 16.0, 2025 14.0},
    :espn/proj-targets 92.30819867,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.132969034608379}
   {:espn/proj-receptions 41.47311418,
    :ids
@@ -4479,7 +4636,9 @@
    :player-name "Adonai Mitchell",
    :sleeper/injury-status nil,
    :stats {:rush_yd 10.0, :rec 35.0, :rec_yd 443.0, :rec_td 3.0},
+   :nflverse/games-by-season {2024 17.0, 2025 16.0},
    :espn/proj-targets 74.31614359,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.139622641509434}
   {:espn/proj-receptions 35.85432763,
    :ids
@@ -4531,7 +4690,9 @@
    :player-name "Xavier Legette",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 10.0, :rec 24.0, :rec_yd 290.0, :rec_td 2.0},
+   :nflverse/games-by-season {2024 15.0, 2025 15.0},
    :espn/proj-targets 62.70056015,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.133333333333333}
   {:espn/proj-receptions 16.97288006,
    :ids
@@ -4585,7 +4746,9 @@
    :player-name "Troy Franklin",
    :sleeper/injury-status nil,
    :stats {:rush_yd 14.0, :rec 24.0, :rec_yd 287.0, :rec_td 2.0},
+   :nflverse/games-by-season {2024 16.0, 2025 17.0},
    :espn/proj-targets 28.23500634,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.178082191780822}
   {:espn/proj-receptions 68.75844489,
    :ids
@@ -4642,7 +4805,9 @@
    :player-name "Marvin Harrison",
    :sleeper/injury-status nil,
    :stats {:rec 62.0, :rec_yd 882.0, :rec_td 6.0},
+   :nflverse/games-by-season {2024 17.0, 2025 12.0},
    :espn/proj-targets 126.0450706,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.118314424635332}
   {:espn/proj-receptions 14.4888142,
    :ids
@@ -4692,7 +4857,9 @@
    :player-name "Devontez Walker",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 10.0, :rec_yd 133.0, :rec_td 1.0},
+   :nflverse/games-by-season {2024 3.0, 2025 8.0},
    :espn/proj-targets 23.31135638,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0196560196560197}
   {:espn/proj-receptions 11.77863954,
    :ids
@@ -4742,7 +4909,9 @@
    :player-name "Roman Wilson",
    :sleeper/injury-status nil,
    :stats {:rec 9.0, :rec_yd 118.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 9.0},
    :espn/proj-targets 19.82756807,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0402298850574713}
   {:espn/proj-receptions 57.10562634,
    :ids
@@ -4799,7 +4968,9 @@
    :player-name "Brian Thomas",
    :sleeper/injury-status nil,
    :stats {:rush_yd 17.0, :rec 62.0, :rec_yd 897.0, :rec_td 7.0},
+   :nflverse/games-by-season {2024 17.0, 2025 14.0},
    :espn/proj-targets 102.0214345,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.16636197440585}
   {:espn/proj-receptions 86.10498741,
    :ids
@@ -4858,7 +5029,9 @@
     :rec_yd 1057.0,
     :rec_td 6.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2024 15.0, 2025 4.0},
    :espn/proj-targets 136.7466839,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0695825049701789}
   {:espn/proj-receptions 79.62906807,
    :ids
@@ -4915,7 +5088,9 @@
    :player-name "Ladd McConkey",
    :sleeper/injury-status nil,
    :stats {:rush_yd 12.0, :rec 81.0, :rec_yd 1040.0, :rec_td 7.0},
+   :nflverse/games-by-season {2024 16.0, 2025 16.0},
    :espn/proj-targets 122.0613247,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.194852941176471}
   {:espn/proj-receptions 24.42577927,
    :ids
@@ -4969,7 +5144,9 @@
    :player-name "Keon Coleman",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 13.0, :rec 29.0, :rec_yd 375.0, :rec_td 3.0},
+   :nflverse/games-by-season {2024 13.0, 2025 12.0},
    :espn/proj-targets 40.89979354,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.123173277661795}
   {:ids
    {:sleeper "11640",
@@ -5006,7 +5183,9 @@
    :bye nil,
    :player-name "Jermaine Burton",
    :sleeper/injury-status nil,
-   :stats {:rush_yd 6.0, :rec 8.0, :rec_yd 114.0, :rec_td 1.0}}
+   :stats {:rush_yd 6.0, :rec 8.0, :rec_yd 114.0, :rec_td 1.0},
+   :nflverse/games-by-season {2024 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 7.466942364,
    :ids
    {:sleeper "11643",
@@ -5060,7 +5239,9 @@
    :player-name "Jaylen Wright",
    :sleeper/injury-status nil,
    :stats {:rush_yd 223.0, :rush_td 2.0, :rec 6.0, :rec_yd 38.0},
+   :nflverse/games-by-season {2024 13.0, 2025 9.0},
    :espn/proj-targets 10.05323646,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0194805194805195}
   {:espn/proj-receptions 61.39109647,
    :ids
@@ -5117,7 +5298,9 @@
    :player-name "Jalen Coker",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 60.0, :rec_yd 753.0, :rec_td 5.0},
+   :nflverse/games-by-season {2024 11.0, 2025 11.0},
    :espn/proj-targets 88.82579354,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0895833333333333}
   {:espn/proj-receptions 7.840671967,
    :ids
@@ -5172,7 +5355,9 @@
    :player-name "Kimani Vidal",
    :sleeper/injury-status nil,
    :stats {:rush_yd 243.0, :rush_td 2.0, :rec 14.0, :rec_yd 97.0},
+   :nflverse/games-by-season {2024 9.0, 2025 13.0},
    :espn/proj-targets 10.61402823,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0404411764705882}
   {:espn/proj-receptions 6.708438793,
    :ids
@@ -5222,7 +5407,9 @@
    :player-name "Luke McCaffrey",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 53.0},
+   :nflverse/games-by-season {2024 13.0, 2025 9.0},
    :espn/proj-targets 10.30288595,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0347222222222222}
   {:ids
    {:sleeper "11651",
@@ -5271,6 +5458,8 @@
    :player-name "Isaac Guerendo",
    :sleeper/injury-status "PUP",
    :stats {:rush_yd 116.0, :rush_td 1.0, :rec 2.0, :rec_yd 16.0},
+   :nflverse/games-by-season {2024 16.0, 2025 7.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids {:sleeper "11653"},
    :player-id "11653",
@@ -5373,7 +5562,9 @@
     :rec_yd 155.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2024 17.0, 2025 15.0},
    :espn/proj-targets 20.25876799,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0954274353876739}
   {:ids
    {:sleeper "1166",
@@ -5427,6 +5618,8 @@
     :rush_yd 6.0,
     :fum_lost 2.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 8.0, 2024 14.0, 2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 3.824810933,
    :ids
@@ -5459,7 +5652,9 @@
    :player-name "Tip Reiman",
    :sleeper/injury-status "PUP",
    :stats {:rec 8.0, :rec_yd 74.0},
+   :nflverse/games-by-season {2024 8.0, 2025 3.0},
    :espn/proj-targets 5.729321389,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00810372771474878}
   {:ids
    {:sleeper "11729",
@@ -5508,6 +5703,8 @@
    :player-name "Sione Vaki",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 4.0, :rec 2.0, :rec_yd 16.0},
+   :nflverse/games-by-season {2024 9.0, 2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11762",
@@ -5539,6 +5736,8 @@
    :player-name "Anthony Gould",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 6.0, :rec 1.0, :rec_yd 16.0},
+   :nflverse/games-by-season {2024 8.0, 2025 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00377358490566038}
   {:espn/proj-receptions 33.77004989,
    :ids
@@ -5593,7 +5792,9 @@
    :player-name "Ryan Flournoy",
    :sleeper/injury-status nil,
    :stats {:rush_yd 13.0, :rec 47.0, :rec_yd 549.0, :rec_td 3.0},
+   :nflverse/games-by-season {2024 9.0, 2025 15.0},
    :espn/proj-targets 50.62173038,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0922570016474465}
   {:ids
    {:sleeper "11786",
@@ -5644,6 +5845,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 42.0},
    :fantasypros/ecr-pos-tier 1,
+   :nflverse/games-by-season {2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11792",
@@ -5694,6 +5897,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 39.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2024 13.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "11820",
@@ -5725,6 +5930,8 @@
    :player-name "Devin Culp",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 33.0},
+   :nflverse/games-by-season {2024 2.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00184842883548983}
   {:espn/proj-receptions 49.51894843,
    :ids
@@ -5779,7 +5986,9 @@
    :player-name "Devaughn Vele",
    :sleeper/injury-status nil,
    :stats {:rush_yd 10.0, :rec 42.0, :rec_yd 496.0, :rec_td 3.0},
+   :nflverse/games-by-season {2024 13.0, 2025 9.0},
    :espn/proj-targets 75.6518322,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0690265486725664}
   {:ids
    {:sleeper "11921",
@@ -5810,6 +6019,8 @@
    :player-name "Xavier Weaver",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 6.0, :rec 3.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2024 2.0, 2025 7.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0210696920583468}
   {:ids
    {:sleeper "11994",
@@ -5841,6 +6052,8 @@
    :player-name "Kameron Johnson",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 28.0},
+   :nflverse/games-by-season {2024 4.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0129390018484288}
   {:ids
    {:sleeper "12015",
@@ -5893,6 +6106,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 46.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 8.010692559,
    :ids
@@ -5945,7 +6160,9 @@
    :player-name "George Holani",
    :sleeper/injury-status nil,
    :stats {:rush_yd 123.0, :rush_td 1.0, :rec 4.0, :rec_yd 29.0},
+   :nflverse/games-by-season {2024 3.0, 2025 10.0},
    :espn/proj-targets 10.63018817,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0043956043956044}
   {:ids
    {:sleeper "12455",
@@ -5996,6 +6213,8 @@
    :player-name "Brashard Smith",
    :sleeper/injury-status nil,
    :stats {:rush_yd 67.0, :rush_td 1.0, :rec 4.0, :rec_yd 32.0},
+   :nflverse/games-by-season {2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.063752276867031}
   {:espn/proj-receptions 8.710889949,
    :ids
@@ -6050,7 +6269,9 @@
    :player-name "Jaydon Blue",
    :sleeper/injury-status nil,
    :stats {:rush_yd 289.0, :rush_td 2.0, :rec 9.0, :rec_yd 67.0},
+   :nflverse/games-by-season {2025 5.0},
    :espn/proj-targets 11.24927342,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00164744645799012}
   {:ids
    {:sleeper "12462",
@@ -6203,7 +6424,9 @@
     :rec_yd 176.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 15.0},
    :espn/proj-targets 36.19029343,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0766283524904215}
   {:ids
    {:sleeper "12470",
@@ -6250,6 +6473,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 196.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 16.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 8.443135814,
    :ids
@@ -6301,7 +6526,9 @@
    :player-name "DJ Giddens",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 137.0, :rush_td 1.0, :rec 6.0, :rec_yd 43.0},
+   :nflverse/games-by-season {2025 5.0},
    :espn/proj-targets 10.52518335,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00377358490566038}
   {:ids
    {:sleeper "12472",
@@ -6350,6 +6577,8 @@
    :player-name "Raheim Sanders",
    :sleeper/injury-status nil,
    :stats {:rush_yd 20.0, :rec 2.0, :rec_yd 7.0},
+   :nflverse/games-by-season {2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00766283524904215}
   {:ids
    {:sleeper "12473",
@@ -6397,6 +6626,8 @@
    :player-name "Mitchell Evans",
    :sleeper/injury-status nil,
    :stats {:rec 8.0, :rec_yd 77.0},
+   :nflverse/games-by-season {2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0520833333333333}
   {:espn/proj-receptions 24.2105705,
    :ids
@@ -6459,7 +6690,9 @@
     :rec_yd 137.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 16.0},
    :espn/proj-targets 32.89957602,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0650994575045208}
   {:ids
    {:sleeper "12475",
@@ -6541,6 +6774,8 @@
     :rec 7.0,
     :rec_yd 49.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0336283185840708}
   {:espn/proj-receptions 44.87581666,
    :ids
@@ -6603,7 +6838,9 @@
     :rec_yd 301.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 8.0},
    :espn/proj-targets 55.71161197,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0636182902584493}
   {:espn/proj-receptions 20.48461238,
    :ids
@@ -6653,7 +6890,9 @@
    :player-name "Savion Williams",
    :sleeper/injury-status nil,
    :stats {:rush_yd 42.0, :rec 10.0, :rec_yd 118.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 12.0},
    :espn/proj-targets 31.43852209,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0217391304347826}
   {:espn/proj-receptions 27.73628336,
    :ids
@@ -6708,7 +6947,9 @@
    :player-name "Jack Bech",
    :sleeper/injury-status nil,
    :stats {:rush_yd 9.0, :rec 30.0, :rec_yd 350.0, :rec_td 2.0},
+   :nflverse/games-by-season {2025 14.0},
    :espn/proj-targets 43.53406971,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0587044534412955}
   {:espn/proj-receptions 6.657281335,
    :ids
@@ -6758,7 +6999,9 @@
    :player-name "Tez Johnson",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 10.0, :rec 14.0, :rec_yd 174.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 15.0},
    :espn/proj-targets 10.66913872,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0813308687615527}
   {:ids
    {:sleeper "12486",
@@ -6780,6 +7023,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 189.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 13.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 45.92674749,
    :ids
@@ -6834,7 +7079,9 @@
    :player-name "Terrance Ferguson",
    :sleeper/injury-status nil,
    :stats {:rec 35.0, :rec_yd 413.0, :rec_td 4.0},
+   :nflverse/games-by-season {2025 11.0},
    :espn/proj-targets 73.07959959,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0430292598967298}
   {:espn/proj-receptions 48.72792805,
    :ids
@@ -6897,7 +7144,9 @@
     :rec_yd 276.0,
     :rec_td 2.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 62.11701395,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0993150684931507}
   {:espn/proj-receptions 33.73133686,
    :ids
@@ -6960,7 +7209,9 @@
     :rec_yd 234.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 15.0},
    :espn/proj-targets 45.34285977,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0255941499085923}
   {:espn/proj-receptions 28.38822284,
    :ids
@@ -7015,7 +7266,9 @@
    :player-name "Pat Bryant",
    :sleeper/injury-status nil,
    :stats {:rush_yd 9.0, :rec 35.0, :rec_yd 425.0, :rec_td 3.0},
+   :nflverse/games-by-season {2025 13.0},
    :espn/proj-targets 45.17601015,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0839041095890411}
   {:espn/proj-receptions 30.25841525,
    :ids
@@ -7070,7 +7323,9 @@
    :player-name "Oronde Gadsden",
    :sleeper/injury-status nil,
    :stats {:rec 56.0, :rec_yd 618.0, :rec_td 4.0},
+   :nflverse/games-by-season {2025 15.0},
    :espn/proj-targets 42.45611292,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.126838235294118}
   {:espn/proj-receptions 3.935141445,
    :ids
@@ -7122,7 +7377,9 @@
    :player-name "Ollie Gordon",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 120.0, :rush_td 1.0, :rec 3.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 5.026618231,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0194805194805195}
   {:espn/proj-receptions 3.715607944,
    :ids
@@ -7173,7 +7430,9 @@
    :player-name "Tai Felton",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 10.0, :rec_yd 126.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 12.0},
    :espn/proj-targets 5.531212488,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00641025641025641}
   {:espn/proj-receptions 21.61964112,
    :ids
@@ -7227,7 +7486,9 @@
    :player-name "Tory Horton",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 9.0, :rec 31.0, :rec_yd 421.0, :rec_td 3.0},
+   :nflverse/games-by-season {2025 8.0},
    :espn/proj-targets 35.27745684,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0483516483516484}
   {:espn/proj-receptions 31.47348077,
    :ids
@@ -7282,7 +7543,9 @@
    :player-name "Mason Taylor",
    :sleeper/injury-status nil,
    :stats {:rec 40.0, :rec_yd 384.0, :rec_td 3.0},
+   :nflverse/games-by-season {2025 13.0},
    :espn/proj-targets 42.46636777,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.13771186440678}
   {:espn/proj-receptions 8.836134809,
    :ids
@@ -7334,7 +7597,9 @@
    :player-name "Elic Ayomanor",
    :sleeper/injury-status nil,
    :stats {:rec 20.0, :rec_yd 247.0, :rec_td 2.0},
+   :nflverse/games-by-season {2025 16.0},
    :espn/proj-targets 16.53091988,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.167924528301887}
   {:ids
    {:sleeper "12500",
@@ -7381,6 +7646,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 195.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 16.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00216450216450216}
   {:espn/proj-receptions 66.67058424,
    :ids
@@ -7437,7 +7704,9 @@
    :player-name "Matthew Golden",
    :sleeper/injury-status nil,
    :stats {:rush_yd 51.0, :rec 58.0, :rec_yd 770.0, :rec_td 5.0},
+   :nflverse/games-by-season {2025 14.0},
    :espn/proj-targets 104.7950736,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0956521739130435}
   {:espn/proj-receptions 57.72810835,
    :ids
@@ -7492,7 +7761,9 @@
    :player-name "Gunnar Helm",
    :sleeper/injury-status nil,
    :stats {:rec 57.0, :rec_yd 553.0, :rec_td 3.0},
+   :nflverse/games-by-season {2025 16.0},
    :espn/proj-targets 77.14429278,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.10377358490566}
   {:espn/proj-receptions 9.900975103,
    :ids
@@ -7542,7 +7813,9 @@
    :player-name "Isaiah Bond",
    :sleeper/injury-status nil,
    :stats {:rush_yd 19.0, :rec 22.0, :rec_yd 269.0, :rec_td 2.0},
+   :nflverse/games-by-season {2025 15.0},
    :espn/proj-targets 18.09514671,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0842911877394636}
   {:ids
    {:sleeper "12504",
@@ -7593,6 +7866,8 @@
    :player-name "Kaleb Johnson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 174.0, :rush_td 1.0, :rec 5.0, :rec_yd 36.0},
+   :nflverse/games-by-season {2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00383141762452107}
   {:espn/proj-receptions 6.82180748,
    :ids
@@ -7642,7 +7917,9 @@
    :player-name "Jalen Royals",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 13.0, :rec_yd 143.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 2.0},
    :espn/proj-targets 10.85978808,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00546448087431694}
   {:espn/proj-receptions 83.02538864,
    :ids
@@ -7699,7 +7976,9 @@
    :player-name "Harold Fannin",
    :sleeper/injury-status nil,
    :stats {:rush_yd 25.0, :rec 74.0, :rec_yd 739.0, :rec_td 5.0},
+   :nflverse/games-by-season {2025 16.0},
    :espn/proj-targets 118.9109641,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.204980842911877}
   {:espn/proj-receptions 51.62181786,
    :ids
@@ -7762,7 +8041,9 @@
     :rec_yd 364.0,
     :rec_td 2.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2025 9.0},
    :espn/proj-targets 63.68416938,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0643382352941176}
   {:ids
    {:sleeper "12508",
@@ -7823,6 +8104,8 @@
     :rush_td 6.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 34.52026875,
    :ids
@@ -7877,7 +8160,9 @@
    :player-name "Tre' Harris",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 6.0, :rec 39.0, :rec_yd 493.0, :rec_td 4.0},
+   :nflverse/games-by-season {2025 16.0},
    :espn/proj-targets 53.07014115,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0790441176470588}
   {:ids
    {:sleeper "12510",
@@ -7907,6 +8192,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 164.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 43.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "12511",
@@ -7987,7 +8274,9 @@
     :rec_yd 228.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 14.0},
    :espn/proj-targets 41.36033535,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0689655172413793}
   {:espn/proj-receptions 69.61402993,
    :ids
@@ -8041,7 +8330,9 @@
    :player-name "Emeka Egbuka",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 21.0, :rec 77.0, :rec_yd 1029.0, :rec_td 7.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 128.0296646,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.234750462107209}
   {:ids
    {:sleeper "12515",
@@ -8123,6 +8414,8 @@
    :player-name "Kalel Mullings",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 20.0, :rec 2.0, :rec_yd 16.0},
+   :nflverse/games-by-season {2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 80.18381317,
    :ids
@@ -8179,7 +8472,9 @@
    :player-name "Colston Loveland",
    :sleeper/injury-status nil,
    :stats {:rush_yd 4.0, :rec 84.0, :rec_yd 950.0, :rec_td 6.0},
+   :nflverse/games-by-season {2025 16.0},
    :espn/proj-targets 118.2709277,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.154135338345865}
   {:espn/proj-receptions 84.96347386,
    :ids
@@ -8233,7 +8528,9 @@
    :player-name "Tyler Warren",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 19.0, :rec 83.0, :rec_yd 862.0, :rec_td 5.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 115.7770169,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.211320754716981}
   {:espn/proj-receptions 75.04696909,
    :ids
@@ -8287,7 +8584,9 @@
    :player-name "Luther Burden",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 61.0, :rec 72.0, :rec_yd 889.0, :rec_td 7.0},
+   :nflverse/games-by-season {2025 15.0},
    :espn/proj-targets 113.1287134,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.112781954887218}
   {:ids
    {:sleeper "12520",
@@ -8336,6 +8635,8 @@
    :player-name "Xavier Restrepo",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 2.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0132075471698113}
   {:espn/proj-receptions 24.09787421,
    :ids
@@ -8387,7 +8688,9 @@
    :player-name "Elijah Arroyo",
    :sleeper/injury-status nil,
    :stats {:rec 29.0, :rec_yd 312.0, :rec_td 2.0},
+   :nflverse/games-by-season {2025 13.0},
    :espn/proj-targets 35.27745684,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0571428571428571}
   {:ids
    {:sleeper "12522",
@@ -8445,6 +8748,8 @@
     :rush_td 2.0,
     :fum_lost 4.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 6.662486914,
    :ids
@@ -8494,7 +8799,9 @@
    :player-name "Jimmy Horn",
    :sleeper/injury-status nil,
    :stats {:rush_yd 18.0, :rec 10.0, :rec_yd 124.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 10.0},
    :espn/proj-targets 10.45009336,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.03125}
   {:ids
    {:sleeper "12524",
@@ -8551,6 +8858,8 @@
     :rush_td 2.0,
     :fum_lost 2.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 83.60612598,
    :ids
@@ -8612,7 +8921,9 @@
     :rec_yd 1074.0,
     :rec_td 6.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 141.0762603,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.254166666666667}
   {:espn/proj-receptions 65.23481079,
    :ids
@@ -8672,7 +8983,9 @@
     :rec_yd 295.0,
     :rec_td 2.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 87.06813942,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.147773279352227}
   {:espn/proj-receptions 38.85514609,
    :ids
@@ -8735,7 +9048,9 @@
     :rec_yd 260.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 46.67825923,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0871369294605809}
   {:espn/proj-receptions 41.59412963,
    :ids
@@ -8837,7 +9152,9 @@
    :player-name "Trevor Etienne",
    :sleeper/injury-status nil,
    :stats {:rush_yd 164.0, :rush_td 1.0, :rec 8.0, :rec_yd 58.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 5.225046679,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00625}
   {:espn/proj-receptions 16.04915544,
    :ids
@@ -8897,7 +9214,9 @@
     :rec_yd 135.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 20.6057719,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0300925925925926}
   {:espn/proj-receptions 25.65345318,
    :ids
@@ -8957,7 +9276,9 @@
     :rec_yd 165.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 35.99549973,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.056390977443609}
   {:espn/proj-receptions 23.75746769,
    :ids
@@ -9012,7 +9333,9 @@
    :player-name "Isaac TeSlaa",
    :sleeper/injury-status nil,
    :stats {:rush_yd 9.0, :rec 28.0, :rec_yd 402.0, :rec_td 3.0},
+   :nflverse/games-by-season {2025 14.0},
    :espn/proj-targets 37.62669762,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0490909090909091}
   {:espn/proj-receptions 43.27616115,
    :ids
@@ -9067,7 +9390,9 @@
    :player-name "Jaylin Noel",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 50.0, :rec 42.0, :rec_yd 489.0, :rec_td 3.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 65.79915204,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0632911392405063}
   {:ids
    {:sleeper "12539",
@@ -9101,6 +9426,8 @@
    :player-name "Arian Smith",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 3.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0338983050847458}
   {:espn/proj-receptions 10.64187837,
    :ids
@@ -9159,7 +9486,9 @@
     :rec_yd 384.0,
     :rec_td 2.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2025 17.0},
    :espn/proj-targets 16.53091988,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.139622641509434}
   {:espn/proj-receptions 6.039169433,
    :ids
@@ -9209,7 +9538,9 @@
    :player-name "Dont'e Thornton",
    :sleeper/injury-status "Questionable",
    :stats {:rec 2.0, :rec_yd 27.0},
+   :nflverse/games-by-season {2025 11.0},
    :espn/proj-targets 10.88351743,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0607287449392713}
   {:ids
    {:sleeper "12542",
@@ -9242,6 +9573,8 @@
    :player-name "Efton Chism",
    :sleeper/injury-status nil,
    :stats {:rush_yd 1.0, :rec 2.0, :rec_yd 25.0},
+   :nflverse/games-by-season {2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00622406639004149}
   {:ids
    {:sleeper "12543",
@@ -9290,6 +9623,8 @@
    :player-name "Tahj Brooks",
    :sleeper/injury-status nil,
    :stats {:rush_yd 132.0, :rush_td 1.0, :rec 3.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2025 12.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00328947368421053}
   {:espn/proj-receptions 21.68203059,
    :ids
@@ -9345,7 +9680,9 @@
     :rec 18.0,
     :rec_yd 127.0,
     :rec_td 1.0},
+   :nflverse/games-by-season {2025 16.0},
    :espn/proj-targets 28.33928735,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.020109689213894}
   {:ids
    {:sleeper "12545",
@@ -9407,6 +9744,8 @@
     :rush_td 3.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2025 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 6.438139925,
    :ids
@@ -9458,7 +9797,9 @@
    :player-name "Kyle Williams",
    :sleeper/injury-status nil,
    :stats {:rush_yd 4.0, :rec 10.0, :rec_yd 148.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 14.0},
    :espn/proj-targets 10.37294649,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0435684647302905}
   {:ids
    {:sleeper "12548",
@@ -9520,6 +9861,8 @@
    :player-name "Jordan Watkins",
    :sleeper/injury-status nil,
    :stats {:rec 1.0, :rec_yd 14.0},
+   :nflverse/games-by-season {2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00545454545454546}
   {:espn/proj-receptions 12.43475557,
    :ids
@@ -9569,7 +9912,9 @@
    :player-name "Jaylin Lane",
    :sleeper/injury-status nil,
    :stats {:rush_yd 14.0, :rec 14.0, :rec_yd 163.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 15.0},
    :espn/proj-targets 20.6057719,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0740740740740741}
   {:espn/proj-receptions 11.09393168,
    :ids
@@ -9620,7 +9965,9 @@
    :player-name "Jackson Hawes",
    :sleeper/injury-status nil,
    :stats {:rec 13.0, :rec_yd 129.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 13.0},
    :espn/proj-targets 15.33742258,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0396659707724426}
   {:espn/proj-receptions 6.420144343,
    :ids
@@ -9670,7 +10017,9 @@
    :player-name "KeAndre Lambert-Smith",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 13.0, :rec_yd 159.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 10.0},
    :espn/proj-targets 10.61402823,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0220588235294118}
   {:ids
    {:sleeper "12699",
@@ -9703,6 +10052,8 @@
    :player-name "LaJohntay Wester",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 1.0, :rec_yd 14.0, :fum_lost 1.0},
+   :nflverse/games-by-season {2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "12711",
@@ -9755,6 +10106,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 42.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "12713",
@@ -9804,6 +10157,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 41.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 9.87214446,
    :ids
@@ -9853,7 +10208,9 @@
    :player-name "Konata Mumpfield",
    :sleeper/injury-status nil,
    :stats {:rec 16.0, :rec_yd 197.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 10.0},
    :espn/proj-targets 16.86452298,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0395869191049914}
   {:espn/proj-receptions 4.365949493,
    :ids
@@ -9903,7 +10260,9 @@
    :player-name "Phil Mafah",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 32.0, :rec 2.0, :rec_yd 15.0},
+   :nflverse/games-by-season {2025 1.0},
    :espn/proj-targets 5.624636708,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00329489291598023}
   {:ids
    {:sleeper "12860",
@@ -9952,6 +10311,8 @@
    :player-name "Theo Wease",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 49.0},
+   :nflverse/games-by-season {2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0216450216450216}
   {:ids
    {:sleeper "12961",
@@ -10001,6 +10362,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 36.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids {:sleeper "13047"},
    :player-id "13047",
@@ -10102,7 +10465,9 @@
    :player-name "Jahdae Walker",
    :sleeper/injury-status nil,
    :stats {:rec 9.0, :rec_yd 109.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 6.0},
    :espn/proj-targets 5.142214247,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.018796992481203}
   {:ids
    {:sleeper "13101",
@@ -10134,6 +10499,8 @@
    :player-name "Gage Larvadain",
    :sleeper/injury-status nil,
    :stats {:rec 1.0, :rec_yd 9.0},
+   :nflverse/games-by-season {2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0268199233716475}
   {:ids
    {:sleeper "13121",
@@ -10165,6 +10532,8 @@
    :player-name "Ben Yurosek",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 20.0},
+   :nflverse/games-by-season {2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00641025641025641}
   {:espn/proj-receptions 3.257662075,
    :ids
@@ -10198,7 +10567,9 @@
    :player-name "Darius Cooper",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 37.0},
+   :nflverse/games-by-season {2025 6.0},
    :espn/proj-targets 4.91600797,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0237068965517241}
   {:espn/proj-receptions 11.12441094,
    :ids
@@ -12616,6 +12987,8 @@
    :player-name "Zach Ertz",
    :sleeper/injury-status nil,
    :stats {:rec 16.0, :rec_yd 147.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 7.0, 2024 17.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.166666666666667}
   {:ids
    {:sleeper "13394",
@@ -13700,6 +14073,8 @@
     :rush_td 1.0,
     :fum_lost 4.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 15.0, 2024 17.0, 2025 15.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids {:sleeper "13833"},
    :player-id "13833",
@@ -13868,6 +14243,8 @@
    :player-name "DeAndre Hopkins",
    :sleeper/injury-status nil,
    :stats {:rec 1.0, :rec_yd 15.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0958230958230958}
   {:ids
    {:sleeper "1433",
@@ -13915,6 +14292,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 8.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 17.0, 2024 11.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 73.81581541,
    :ids
@@ -13971,7 +14350,9 @@
    :player-name "Travis Kelce",
    :sleeper/injury-status nil,
    :stats {:rec 70.0, :rec_yd 714.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 15.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 103.1679868,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.19672131147541}
   {:espn/proj-receptions 55.10087071,
    :ids
@@ -14026,7 +14407,9 @@
    :player-name "Keenan Allen",
    :sleeper/injury-status nil,
    :stats {:rec 44.0, :rec_yd 448.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 13.0, 2024 15.0, 2025 17.0},
    :espn/proj-targets 78.93887514,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.224264705882353}
   {:ids
    {:sleeper "17",
@@ -14050,6 +14433,8 @@
    :player-name "Matt Prater",
    :sleeper/injury-status nil,
    :stats {:xpm 9.0},
+   :nflverse/games-by-season {2023 17.0, 2024 4.0, 2025 15.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "1837",
@@ -14072,6 +14457,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 218.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 6.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2023 7.0, 2024 1.0, 2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "19",
@@ -14118,6 +14505,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 448.0, :pass_td 3.0, :pass_int 2.0, :rush_yd 8.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 5.0, 2024 7.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "1945",
@@ -14168,6 +14557,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 36.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "2020",
@@ -14221,6 +14612,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 40.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 15.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "2028",
@@ -14241,7 +14634,9 @@
     :pass_td 3.0,
     :pass_int 2.0,
     :rush_yd 13.0,
-    :fum_lost 1.0}}
+    :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 9.22506809,
    :ids
    {:sleeper "2078",
@@ -14288,7 +14683,9 @@
    :player-name "Odell Beckham",
    :sleeper/injury-status nil,
    :stats {:rec 10.0, :rec_yd 120.0, :rec_td 1.0},
-   :espn/proj-targets 15.19407599}
+   :nflverse/games-by-season {2023 14.0, 2024 8.0},
+   :espn/proj-targets 15.19407599,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 67.5081765,
    :ids
    {:sleeper "2133",
@@ -14344,7 +14741,9 @@
    :player-name "Davante Adams",
    :sleeper/injury-status nil,
    :stats {:rec 63.0, :rec_yd 795.0, :rec_td 8.0, :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 14.0},
    :espn/proj-targets 123.6731685,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.196213425129088}
   {:ids
    {:sleeper "2152",
@@ -14365,6 +14764,8 @@
    :player-name "Teddy Bridgewater",
    :sleeper/injury-status "NA",
    :stats {:pass_yd 202.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 5.0},
+   :nflverse/games-by-season {2023 1.0, 2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "2197",
@@ -14397,6 +14798,8 @@
    :player-name "Brandin Cooks",
    :sleeper/injury-status nil,
    :stats {:rec 10.0, :rec_yd 128.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 10.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.063716814159292}
   {:espn/proj-receptions 57.13089978,
    :ids
@@ -14450,7 +14853,9 @@
    :player-name "Mike Evans",
    :sleeper/injury-status "Questionable",
    :stats {:rec 70.0, :rec_yd 1022.0, :rec_td 8.0, :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 8.0},
    :espn/proj-targets 101.3103403,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.11460258780037}
   {:ids
    {:sleeper "2306",
@@ -14499,6 +14904,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 214.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 13.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 6.0, 2024 11.0, 2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00198807157057654}
   {:ids
    {:sleeper "2307",
@@ -14547,6 +14954,8 @@
    :sleeper/injury-status "Questionable",
    :stats {:pass_yd 188.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 26.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 2.0, 2024 3.0, 2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "2359",
@@ -14579,6 +14988,8 @@
    :player-name "Ameer Abdullah",
    :sleeper/injury-status nil,
    :stats {:rush_yd 13.0, :rec 2.0, :rec_yd 15.0},
+   :nflverse/games-by-season {2023 16.0, 2024 15.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0320754716981132}
   {:ids
    {:sleeper "2374",
@@ -14619,6 +15030,8 @@
    :player-name "Tyler Lockett",
    :sleeper/injury-status nil,
    :stats {:rec 11.0, :rec_yd 113.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.10377358490566}
   {:espn/proj-receptions 71.08113652,
    :ids
@@ -14676,7 +15089,9 @@
    :player-name "Stefon Diggs",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 64.0, :rec_yd 687.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 17.0, 2024 8.0, 2025 17.0},
    :espn/proj-targets 92.72597355,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.211618257261411}
   {:espn/proj-receptions 43.07024509,
    :ids
@@ -14728,7 +15143,9 @@
    :player-name "Darren Waller",
    :sleeper/injury-status nil,
    :stats {:rec 47.0, :rec_yd 516.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 12.0, 2025 9.0},
    :espn/proj-targets 62.70056015,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0735930735930736}
   {:ids
    {:sleeper "260",
@@ -14750,6 +15167,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 176.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 13.0},
    :fantasypros/ecr-pos-tier 9,
+   :nflverse/games-by-season {2024 4.0, 2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "2747",
@@ -14803,6 +15222,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 42.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "2749",
@@ -14834,6 +15255,8 @@
    :player-name "Raheem Mostert",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 42.0, :rec 5.0, :rec_yd 33.0},
+   :nflverse/games-by-season {2023 15.0, 2024 13.0, 2025 12.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0242914979757085}
   {:ids
    {:sleeper "2750",
@@ -14854,6 +15277,8 @@
    :player-name "DeAndre Carter",
    :sleeper/injury-status nil,
    :stats {:rush_yd 11.0, :rec 1.0, :rec_yd 17.0, :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 13.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 1.821198065,
    :ids
@@ -14887,7 +15312,9 @@
    :player-name "Chris Manhertz",
    :sleeper/injury-status nil,
    :stats {:rec 1.0, :rec_yd 13.0},
+   :nflverse/games-by-season {2023 7.0, 2024 8.0, 2025 4.0},
    :espn/proj-targets 2.532345999,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00397614314115308}
   {:ids
    {:sleeper "3161",
@@ -14909,6 +15336,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 221.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 6.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 1.0, 2024 2.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "3163",
@@ -14970,6 +15399,8 @@
     :rush_td 1.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 21.38540637,
    :ids
@@ -15033,7 +15464,9 @@
     :rec_yd 133.0,
     :rec_td 1.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 27.97362765,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0515970515970516}
   {:ids
    {:sleeper "3200",
@@ -15056,6 +15489,8 @@
    :player-name "Sterling Shepard",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0},
+   :nflverse/games-by-season {2023 10.0, 2024 13.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0979667282809612}
   {:espn/proj-receptions 20.56123824,
    :ids
@@ -15105,7 +15540,9 @@
    :player-name "Austin Hooper",
    :sleeper/injury-status nil,
    :stats {:rec 14.0, :rec_yd 132.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 13.0},
    :espn/proj-targets 27.38177183,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.053941908713693}
   {:espn/proj-receptions 55.80202946,
    :ids
@@ -15163,7 +15600,9 @@
    :player-name "Hunter Henry",
    :sleeper/injury-status nil,
    :stats {:rec 58.0, :rec_yd 655.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 13.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 77.79709871,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.180497925311203}
   {:ids
    {:sleeper "3257",
@@ -15220,6 +15659,8 @@
     :rush_td 1.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 2.0, 2024 7.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "3269",
@@ -15249,6 +15690,8 @@
    :player-name "Chris Moore",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 21.0},
+   :nflverse/games-by-season {2023 15.0, 2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0532407407407407}
   {:espn/proj-receptions 15.28235659,
    :ids
@@ -15298,7 +15741,9 @@
    :player-name "Tyler Higbee",
    :sleeper/injury-status nil,
    :stats {:rec 14.0, :rec_yd 129.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 3.0, 2025 10.0},
    :espn/proj-targets 22.48603064,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0619621342512909}
   {:espn/proj-receptions 3.281795293,
    :ids
@@ -15348,7 +15793,9 @@
    :player-name "Demarcus Robinson",
    :sleeper/injury-status nil,
    :stats {:rec 14.0, :rec_yd 181.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 8.0, 2024 17.0, 2025 14.0},
    :espn/proj-targets 5.267771261,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0636363636363636}
   {:ids
    {:sleeper "3294",
@@ -15409,6 +15856,8 @@
     :rush_td 1.0,
     :fum_lost 2.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 17.0, 2024 8.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "3321",
@@ -15461,6 +15910,8 @@
    :player-name "Tyreek Hill",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 5.0, :rec 33.0, :rec_yd 422.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0627705627705628}
   {:ids
    {:sleeper "3451",
@@ -15514,6 +15965,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 39.0},
    :fantasypros/ecr-pos-tier 1,
+   :nflverse/games-by-season {2023 12.0, 2024 17.0, 2025 15.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 19.17323515,
    :ids
@@ -15563,7 +16016,9 @@
    :player-name "Kalif Raymond",
    :sleeper/injury-status nil,
    :stats {:rush_yd 11.0, :rec 9.0, :rec_yd 116.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 12.0, 2025 15.0},
    :espn/proj-targets 25.71107124,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0545454545454545}
   {:ids
    {:sleeper "3678",
@@ -15614,6 +16069,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 40.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "3976",
@@ -15635,6 +16092,8 @@
    :sleeper/injury-status "Questionable",
    :stats {:pass_yd 186.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 15.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 5.0, 2024 8.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "4017",
@@ -15684,7 +16143,9 @@
     :rush_yd 131.0,
     :rush_td 2.0,
     :fum_lost 2.0},
-   :fantasypros/ecr-pos-tier 5}
+   :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 6.0, 2024 7.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 39.87440648,
    :ids
    {:sleeper "4033",
@@ -15738,7 +16199,9 @@
    :player-name "David Njoku",
    :sleeper/injury-status nil,
    :stats {:rec 23.0, :rec_yd 230.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 16.0, 2024 11.0, 2025 11.0},
    :espn/proj-targets 58.37715527,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0919540229885057}
   {:espn/proj-receptions 79.14193292,
    :ids
@@ -15801,7 +16264,9 @@
     :rec_yd 606.0,
     :rec_td 4.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 16.0, 2024 4.0, 2025 17.0},
    :espn/proj-targets 100.0876539,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.234545454545455}
   {:espn/proj-receptions 32.87693909,
    :ids
@@ -15862,7 +16327,9 @@
     :rec_yd 145.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 13.0, 2024 14.0, 2025 11.0},
    :espn/proj-targets 40.88529336,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0690265486725664}
   {:espn/proj-receptions 60.36802726,
    :ids
@@ -15919,7 +16386,9 @@
    :player-name "Chris Godwin",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 68.0, :rec_yd 750.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 17.0, 2024 7.0, 2025 9.0},
    :espn/proj-targets 90.68767911,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0942698706099815}
   {:espn/proj-receptions 37.8532802,
    :ids
@@ -15973,7 +16442,9 @@
    :player-name "Cooper Kupp",
    :sleeper/injury-status nil,
    :stats {:rec 32.0, :rec_yd 364.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 12.0, 2024 12.0, 2025 16.0},
    :espn/proj-targets 57.20770164,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.153846153846154}
   {:ids
    {:sleeper "4040",
@@ -16006,6 +16477,8 @@
    :player-name "JuJu Smith-Schuster",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 1.0, :rec 2.0, :rec_yd 20.0},
+   :nflverse/games-by-season {2023 11.0, 2024 11.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0819672131147541}
   {:ids
    {:sleeper "4046",
@@ -16063,6 +16536,8 @@
     :rush_td 1.0,
     :fum_lost 2.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 16.0, 2024 16.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00182149362477231}
   {:espn/proj-receptions 10.65717144,
    :ids
@@ -16105,7 +16580,9 @@
    :player-name "Mo Alie-Cox",
    :sleeper/injury-status nil,
    :stats {:rec 8.0, :rec_yd 74.0},
+   :nflverse/games-by-season {2023 14.0, 2024 12.0, 2025 11.0},
    :espn/proj-targets 15.78777503,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0377358490566038}
   {:espn/proj-receptions 47.25678657,
    :ids
@@ -16157,7 +16634,9 @@
    :player-name "Evan Engram",
    :sleeper/injury-status nil,
    :stats {:rec 31.0, :rec_yd 277.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 17.0, 2024 9.0, 2025 16.0},
    :espn/proj-targets 67.76401522,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.13013698630137}
   {:ids
    {:sleeper "4082",
@@ -16189,6 +16668,8 @@
    :player-name "Curtis Samuel",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 2.0, :rec_yd 27.0},
+   :nflverse/games-by-season {2023 16.0, 2024 14.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0187891440501044}
   {:ids
    {:sleeper "4098",
@@ -16239,6 +16720,8 @@
    :player-name "Kareem Hunt",
    :sleeper/injury-status nil,
    :stats {:rush_yd 130.0, :rush_td 1.0, :rec 3.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2023 15.0, 2024 13.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0455373406193078}
   {:ids
    {:sleeper "4137",
@@ -16298,6 +16781,8 @@
     :rec_yd 82.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 13.0, 2024 16.0, 2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0145867098865478}
   {:ids
    {:sleeper "4144",
@@ -16346,6 +16831,8 @@
    :player-name "Jonnu Smith",
    :sleeper/injury-status nil,
    :stats {:rush_yd 10.0, :rec 15.0, :rec_yd 139.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.103448275862069}
   {:espn/proj-receptions 18.7987605,
    :ids
@@ -16405,7 +16892,9 @@
     :rec 14.0,
     :rec_yd 103.0,
     :rec_td 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 15.0},
    :espn/proj-targets 22.98865018,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0345394736842105}
   {:ids
    {:sleeper "4171",
@@ -16426,6 +16915,8 @@
    :player-name "Josh Reynolds",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2023 16.0, 2024 8.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0444915254237288}
   {:espn/proj-receptions 10.7756823,
    :ids
@@ -16475,7 +16966,9 @@
    :player-name "Mack Hollins",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 21.0, :rec_yd 263.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 12.0, 2024 17.0, 2025 14.0},
    :espn/proj-targets 15.55941974,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.134854771784232}
   {:ids
    {:sleeper "4179",
@@ -16498,6 +16991,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 195.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 16.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 13.0, 2024 2.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 3.421457029,
    :ids
@@ -16530,7 +17025,9 @@
    :player-name "Eric Saubert",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 27.0},
+   :nflverse/games-by-season {2023 3.0, 2024 12.0, 2025 9.0},
    :espn/proj-targets 5.039636692,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0153846153846154}
   {:ids
    {:sleeper "4195",
@@ -16581,6 +17078,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 39.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 47.01500495,
    :ids
@@ -16643,7 +17142,9 @@
     :rec_yd 248.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 11.0, 2024 17.0, 2025 12.0},
    :espn/proj-targets 60.84333736,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0876068376068376}
   {:ids
    {:sleeper "421",
@@ -16703,6 +17204,8 @@
     :rush_yd 19.0,
     :fum_lost 2.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 15.0, 2024 16.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 69.77869684,
    :ids
@@ -16756,7 +17259,9 @@
    :player-name "George Kittle",
    :sleeper/injury-status "Questionable",
    :stats {:rec 62.0, :rec_yd 713.0, :rec_td 6.0},
+   :nflverse/games-by-season {2023 16.0, 2024 15.0, 2025 11.0},
    :espn/proj-targets 88.47213392,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.125454545454545}
   {:ids
    {:sleeper "4219",
@@ -16804,6 +17309,8 @@
    :player-name "Jeremy McNichols",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 42.0, :rec 3.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2023 2.0, 2024 15.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0717592592592593}
   {:ids
    {:sleeper "4227",
@@ -16857,6 +17364,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 40.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 17.0, 2024 13.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "4233",
@@ -16902,6 +17411,8 @@
    :sleeper/injury-status "Questionable",
    :stats {:xpm 15.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2024 6.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "4234",
@@ -16933,6 +17444,8 @@
    :player-name "Noah Brown",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 53.0},
+   :nflverse/games-by-season {2023 10.0, 2024 11.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0231481481481482}
   {:ids
    {:sleeper "4274",
@@ -16964,6 +17477,8 @@
    :player-name "David Moore",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 23.0},
+   :nflverse/games-by-season {2023 6.0, 2024 15.0, 2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00208333333333333}
   {:ids
    {:sleeper "4351",
@@ -17013,6 +17528,8 @@
    :player-name "Tim Patrick",
    :sleeper/injury-status nil,
    :stats {:rec 6.0, :rec_yd 77.0},
+   :nflverse/games-by-season {2024 15.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0438756855575868}
   {:ids
    {:sleeper "4381",
@@ -17061,6 +17578,8 @@
    :player-name "Taysom Hill",
    :sleeper/injury-status nil,
    :stats {:rush_yd 20.0, :rec 4.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2023 16.0, 2024 8.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0283185840707965}
   {:espn/proj-receptions 22.76062015,
    :ids
@@ -17110,7 +17629,9 @@
    :player-name "Kendrick Bourne",
    :sleeper/injury-status nil,
    :stats {:rec 31.0, :rec_yd 344.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 8.0, 2024 12.0, 2025 14.0},
    :espn/proj-targets 34.37592833,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0963636363636364}
   {:ids
    {:sleeper "4464",
@@ -17133,6 +17654,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 211.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 6.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 5.0, 2024 4.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "4602",
@@ -17156,6 +17679,8 @@
    :player-name "Robert Tonyan",
    :sleeper/injury-status nil,
    :stats {:rec 1.0, :rec_yd 9.0},
+   :nflverse/games-by-season {2023 12.0, 2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00182149362477231}
   {:ids
    {:sleeper "4663",
@@ -17204,6 +17729,8 @@
    :player-name "Austin Ekeler",
    :sleeper/injury-status nil,
    :stats {:rush_yd 118.0, :rush_td 1.0, :rec 9.0, :rec_yd 63.0},
+   :nflverse/games-by-season {2023 14.0, 2024 12.0, 2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0162037037037037}
   {:ids
    {:sleeper "4666",
@@ -17229,6 +17756,8 @@
    :player-name "Younghoe Koo",
    :sleeper/injury-status nil,
    :stats {:xpm 9.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "4718",
@@ -17259,6 +17788,8 @@
    :player-name "Dare Ogunbowale",
    :sleeper/injury-status nil,
    :stats {:rush_yd 24.0, :rec 4.0, :rec_yd 28.0},
+   :nflverse/games-by-season {2023 9.0, 2024 16.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0235081374321881}
   {:espn/proj-receptions 43.21313058,
    :ids
@@ -17322,7 +17853,9 @@
     :rec_yd 277.0,
     :rec_td 2.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 14.0, 2024 16.0, 2025 16.0},
    :espn/proj-targets 58.99209564,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.107758620689655}
   {:ids
    {:sleeper "4881",
@@ -17383,6 +17916,8 @@
     :rush_td 5.0,
     :fum_lost 4.0},
    :fantasypros/ecr-pos-tier 1,
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "4892",
@@ -17444,6 +17979,8 @@
     :rush_td 2.0,
     :fum_lost 4.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "4943",
@@ -17501,6 +18038,8 @@
     :rush_td 2.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 10.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 13.05083306,
    :ids
@@ -17554,7 +18093,9 @@
    :player-name "Christian Kirk",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 9.0, :rec 19.0, :rec_yd 205.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 12.0, 2024 8.0, 2025 11.0},
    :espn/proj-targets 21.6824282,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0940325497287523}
   {:ids
    {:sleeper "4972",
@@ -17593,6 +18134,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 202.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 6.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 4.0, 2024 8.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 43.34890649,
    :ids
@@ -17649,7 +18192,9 @@
    :player-name "Calvin Ridley",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 27.0, :rec_yd 377.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 7.0},
    :espn/proj-targets 82.65459941,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0679245283018868}
   {:espn/proj-receptions 67.1556794,
    :ids
@@ -17711,7 +18256,9 @@
     :rec_yd 851.0,
     :rec_td 5.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 107.361958,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.159774436090226}
   {:ids
    {:sleeper "4984",
@@ -17773,6 +18320,8 @@
     :rush_2pt 1.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 1,
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "4988",
@@ -17795,6 +18344,8 @@
    :player-name "Nick Chubb",
    :sleeper/injury-status nil,
    :stats {:rush_yd 138.0, :rush_td 1.0, :rec 5.0, :rec_yd 31.0},
+   :nflverse/games-by-season {2023 2.0, 2024 8.0, 2025 15.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0361663652802893}
   {:ids
    {:sleeper "4992",
@@ -17826,6 +18377,8 @@
    :player-name "Dante Pettis",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 3.0, :rec_yd 37.0},
+   :nflverse/games-by-season {2024 8.0, 2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0194690265486726}
   {:espn/proj-receptions 32.18187731,
    :ids
@@ -17877,7 +18430,9 @@
    :player-name "Mike Gesicki",
    :sleeper/injury-status nil,
    :stats {:rec 42.0, :rec_yd 449.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 15.0, 2024 16.0, 2025 12.0},
    :espn/proj-targets 45.97730035,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0690789473684211}
   {:espn/proj-receptions 3.80518202,
    :ids
@@ -17911,7 +18466,9 @@
    :player-name "Ian Thomas",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 20.0},
+   :nflverse/games-by-season {2023 8.0, 2024 3.0, 2025 9.0},
    :espn/proj-targets 5.441758714,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0263157894736842}
   {:espn/proj-receptions 59.63774893,
    :ids
@@ -17969,7 +18526,9 @@
    :player-name "Dalton Schultz",
    :sleeper/injury-status nil,
    :stats {:rec 58.0, :rec_yd 572.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 15.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 82.24894004,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.191681735985533}
   {:espn/proj-receptions 9.825796738,
    :ids
@@ -18010,7 +18569,9 @@
    :player-name "Durham Smythe",
    :sleeper/injury-status nil,
    :stats {:rec 5.0, :rec_yd 49.0},
+   :nflverse/games-by-season {2023 13.0, 2024 14.0, 2025 7.0},
    :espn/proj-targets 13.98681383,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0112781954887218}
   {:ids
    {:sleeper "5010",
@@ -18042,6 +18603,8 @@
    :player-name "Will Dissly",
    :sleeper/injury-status "Questionable",
    :stats {:rec 11.0, :rec_yd 100.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 13.0, 2024 15.0, 2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0294117647058824}
   {:espn/proj-receptions 57.94511154,
    :ids
@@ -18098,7 +18661,9 @@
    :player-name "Mark Andrews",
    :sleeper/injury-status nil,
    :stats {:rush_yd 12.0, :rec 60.0, :rec_yd 653.0, :rec_td 6.0},
+   :nflverse/games-by-season {2023 10.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 83.92088295,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.171990171990172}
   {:espn/proj-receptions 70.62557645,
    :ids
@@ -18155,7 +18720,9 @@
    :player-name "Dallas Goedert",
    :sleeper/injury-status nil,
    :stats {:rec 53.0, :rec_yd 590.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 14.0, 2024 10.0, 2025 15.0},
    :espn/proj-targets 93.40415143,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.176724137931034}
   {:ids
    {:sleeper "503",
@@ -18176,6 +18743,8 @@
    :player-name "Graham Gano",
    :sleeper/injury-status "Questionable",
    :stats {:xpm 9.0},
+   :nflverse/games-by-season {2023 8.0, 2024 10.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 69.18686053,
    :ids
@@ -18232,7 +18801,9 @@
    :player-name "Courtland Sutton",
    :sleeper/injury-status nil,
    :stats {:rec 59.0, :rec_yd 793.0, :rec_td 6.0},
+   :nflverse/games-by-season {2023 16.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 118.5870266,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.212328767123288}
   {:ids
    {:sleeper "5086",
@@ -18282,6 +18853,8 @@
    :player-name "Marquez Valdes-Scantling",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 8.0, :rec_yd 123.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 13.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0527272727272727}
   {:ids
    {:sleeper "5095",
@@ -18328,6 +18901,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 12.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "5119",
@@ -18369,7 +18944,9 @@
    :player-name "Jason Sanders",
    :sleeper/injury-status nil,
    :stats {:xpm 36.0},
-   :fantasypros/ecr-pos-tier 5}
+   :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:ids
    {:sleeper "5127",
     :gsis "00-0034577",
@@ -18393,6 +18970,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 195.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 12.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 6.0, 2024 1.0, 2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 3.682346863,
    :ids
@@ -18443,7 +19022,9 @@
    :player-name "Tyler Conklin",
    :sleeper/injury-status nil,
    :stats {:rec 1.0, :rec_yd 7.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 6.0},
    :espn/proj-targets 5.375242517,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0183823529411765}
   {:ids
    {:sleeper "5154",
@@ -18474,6 +19055,8 @@
    :player-name "Trent Sherfield",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 19.0},
+   :nflverse/games-by-season {2023 11.0, 2024 13.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00856164383561644}
   {:ids
    {:sleeper "5185",
@@ -18495,6 +19078,8 @@
    :player-name "Allen Lazard",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 34.0},
+   :nflverse/games-by-season {2023 14.0, 2024 12.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.038135593220339}
   {:ids
    {:sleeper "5189",
@@ -18548,6 +19133,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 41.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2023 15.0, 2024 17.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "5230",
@@ -18568,6 +19155,8 @@
    :player-name "Michael Badgley",
    :sleeper/injury-status nil,
    :stats {:xpm 9.0},
+   :nflverse/games-by-season {2023 4.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 13.08659285,
    :ids
@@ -18617,7 +19206,9 @@
    :player-name "Tanner Hudson",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 28.0},
+   :nflverse/games-by-season {2023 12.0, 2024 9.0, 2025 10.0},
    :espn/proj-targets 17.24148763,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0394736842105263}
   {:espn/proj-receptions 77.6986902,
    :ids
@@ -18672,7 +19263,9 @@
    :player-name "T.J. Hockenson",
    :sleeper/injury-status nil,
    :stats {:rec 66.0, :rec_yd 650.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 15.0, 2024 10.0, 2025 15.0},
    :espn/proj-targets 99.56182478,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.141025641025641}
   {:espn/proj-receptions 64.77762595,
    :ids
@@ -18726,7 +19319,9 @@
    :player-name "DK Metcalf",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 10.0, :rec 62.0, :rec_yd 843.0, :rec_td 6.0},
+   :nflverse/games-by-season {2023 16.0, 2024 15.0, 2025 15.0},
    :espn/proj-targets 113.300389,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.189655172413793}
   {:ids
    {:sleeper "5848",
@@ -18747,6 +19342,8 @@
    :player-name "Marquise Brown",
    :sleeper/injury-status nil,
    :stats {:rec 25.0, :rec_yd 305.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 13.0, 2024 2.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.134790528233151}
   {:ids
    {:sleeper "5849",
@@ -18808,6 +19405,8 @@
     :rush_td 3.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 8.0, 2024 17.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 35.95069433,
    :ids
@@ -18871,7 +19470,9 @@
     :rec_yd 258.0,
     :rec_td 1.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 13.0, 2024 17.0, 2025 15.0},
    :espn/proj-targets 47.15778313,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0956521739130435}
   {:espn/proj-receptions 16.89560642,
    :ids
@@ -18921,7 +19522,9 @@
    :player-name "Noah Fant",
    :sleeper/injury-status nil,
    :stats {:rec 15.0, :rec_yd 156.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 14.0, 2025 13.0},
    :espn/proj-targets 21.78402923,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0674342105263158}
   {:espn/proj-receptions 86.03100548,
    :ids
@@ -18983,7 +19586,9 @@
     :rec_yd 1176.0,
     :rec_td 8.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 13.0, 2025 15.0},
    :espn/proj-targets 129.6618312,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.260775862068966}
   {:ids
    {:sleeper "5870",
@@ -19042,6 +19647,8 @@
     :rush_td 2.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 6.0, 2024 10.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 51.49942425,
    :ids
@@ -19105,7 +19712,9 @@
     :rec_yd 628.0,
     :rec_td 4.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 15.0, 2025 16.0},
    :espn/proj-targets 74.36014081,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.229166666666667}
   {:espn/proj-receptions 31.54936455,
    :ids
@@ -19168,7 +19777,9 @@
     :rec_yd 235.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 14.0, 2024 14.0, 2025 17.0},
    :espn/proj-targets 38.38283869,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0527272727272727}
   {:espn/proj-receptions 24.94385352,
    :ids
@@ -19220,7 +19831,9 @@
    :player-name "Dawson Knox",
    :sleeper/injury-status nil,
    :stats {:rec 28.0, :rec_yd 304.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 10.0, 2024 14.0, 2025 16.0},
    :espn/proj-targets 35.78731935,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.102296450939457}
   {:espn/proj-receptions 77.02581311,
    :ids
@@ -19277,7 +19890,9 @@
    :player-name "Terry McLaurin",
    :sleeper/injury-status nil,
    :stats {:rush_yd 7.0, :rec 74.0, :rec_yd 1031.0, :rec_td 6.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 10.0},
    :espn/proj-targets 118.4831884,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.138888888888889}
   {:ids
    {:sleeper "5938",
@@ -19328,6 +19943,8 @@
    :player-name "Lil'Jordan Humphrey",
    :sleeper/injury-status nil,
    :stats {:rec 8.0, :rec_yd 100.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 11.0, 2024 14.0, 2025 7.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0497017892644135}
   {:espn/proj-receptions 69.83025108,
    :ids
@@ -19381,7 +19998,9 @@
    :player-name "Jakobi Meyers",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 21.0, :rec 64.0, :rec_yd 732.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 16.0, 2024 15.0, 2025 16.0},
    :espn/proj-targets 107.6892919,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.222672064777328}
   {:espn/proj-receptions 29.70088459,
    :ids
@@ -19444,7 +20063,9 @@
     :rec_yd 187.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 38.57214639,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0773584905660377}
   {:espn/proj-receptions 4.100786532,
    :ids
@@ -19499,7 +20120,9 @@
     :rec_yd 215.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 12.0},
    :espn/proj-targets 5.375242517,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.053484602917342}
   {:espn/proj-receptions 16.650001,
    :ids
@@ -19551,7 +20174,9 @@
    :player-name "Josh Oliver",
    :sleeper/injury-status nil,
    :stats {:rec 13.0, :rec_yd 124.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 13.0, 2024 12.0, 2025 12.0},
    :espn/proj-targets 22.12484995,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0405982905982906}
   {:espn/proj-receptions 7.671895299,
    :ids
@@ -19601,7 +20226,9 @@
    :player-name "Foster Moreau",
    :sleeper/injury-status nil,
    :stats {:rec 5.0, :rec_yd 48.0},
+   :nflverse/games-by-season {2023 13.0, 2024 16.0, 2025 7.0},
    :espn/proj-targets 10.96652534,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0176991150442478}
   {:espn/proj-receptions 39.43264237,
    :ids
@@ -19661,7 +20288,9 @@
     :rec 24.0,
     :rec_yd 176.0,
     :rec_td 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 15.0, 2025 10.0},
    :espn/proj-targets 51.28498403,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0663390663390663}
   {:espn/proj-receptions 17.313585,
    :ids
@@ -19703,7 +20332,9 @@
    :player-name "Drew Sample",
    :sleeper/injury-status nil,
    :stats {:rec 13.0, :rec_yd 126.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 14.0, 2024 11.0, 2025 12.0},
    :espn/proj-targets 22.98865018,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0328947368421053}
   {:ids
    {:sleeper "6011",
@@ -19751,6 +20382,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 394.0, :pass_td 3.0, :pass_int 2.0, :rush_yd 22.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2023 16.0, 2024 10.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 21.62693519,
    :ids
@@ -19807,7 +20440,9 @@
     :rec 17.0,
     :rec_yd 131.0,
     :rec_td 1.0},
+   :nflverse/games-by-season {2023 9.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 30.67484515,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0688935281837161}
   {:ids
    {:sleeper "6083",
@@ -19834,6 +20469,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 36.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 12.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "6130",
@@ -19882,6 +20519,8 @@
    :player-name "Devin Singletary",
    :sleeper/injury-status nil,
    :stats {:rush_yd 41.0, :rec 5.0, :rec_yd 32.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0377733598409543}
   {:ids
    {:sleeper "6136",
@@ -19903,6 +20542,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 198.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 13.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 2.0, 2024 2.0, 2025 1.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 31.49519285,
    :ids
@@ -19954,7 +20595,9 @@
    :player-name "Darius Slayton",
    :sleeper/injury-status nil,
    :stats {:rec 27.0, :rec_yd 386.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 14.0},
    :espn/proj-targets 50.64691997,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.125248508946322}
   {:ids
    {:sleeper "6154",
@@ -20003,6 +20646,8 @@
    :player-name "David Sills",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 9.0, :rec_yd 113.0, :rec_td 1.0},
+   :nflverse/games-by-season {2025 12.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.069364161849711}
   {:espn/proj-receptions 14.29449235,
    :ids
@@ -20052,7 +20697,9 @@
    :player-name "Olamide Zaccheaus",
    :sleeper/injury-status nil,
    :stats {:rush_yd 12.0, :rec 30.0, :rec_yd 326.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 11.0, 2024 16.0, 2025 14.0},
    :espn/proj-targets 21.90541746,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.12218045112782}
   {:espn/proj-receptions 10.01759709,
    :ids
@@ -20102,7 +20749,9 @@
    :player-name "Ashton Dulin",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 1.0, :rec_yd 14.0},
+   :nflverse/games-by-season {2024 13.0, 2025 12.0},
    :espn/proj-targets 15.78777503,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0188679245283019}
   {:ids
    {:sleeper "650",
@@ -20153,6 +20802,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 39.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "6528",
@@ -20203,6 +20854,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 32.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "6650",
@@ -20256,6 +20909,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 40.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "6659",
@@ -20286,6 +20941,8 @@
    :player-name "Craig Reynolds",
    :sleeper/injury-status nil,
    :stats {:rush_yd 8.0, :rec 2.0, :rec_yd 16.0},
+   :nflverse/games-by-season {2023 12.0, 2024 8.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "6768",
@@ -20342,6 +20999,8 @@
     :rush_yd 43.0,
     :fum_lost 4.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 17.0, 2024 11.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "6770",
@@ -20402,6 +21061,8 @@
     :rush_td 2.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2023 10.0, 2024 17.0, 2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 51.40909415,
    :ids
@@ -20457,7 +21118,9 @@
    :player-name "Jerry Jeudy",
    :sleeper/injury-status nil,
    :stats {:rush_yd 5.0, :rec 43.0, :rec_yd 581.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 93.06075453,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.203065134099617}
   {:espn/proj-receptions 103.3466596,
    :ids
@@ -20520,7 +21183,9 @@
     :rec_td 8.0,
     :rec_2pt 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 13.0},
    :espn/proj-targets 157.4898278,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.192751235584844}
   {:espn/proj-receptions 30.43048325,
    :ids
@@ -20583,7 +21248,9 @@
     :rec_yd 272.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 16.0},
    :espn/proj-targets 41.13771398,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0902255639097744}
   {:espn/proj-receptions 110.7388563,
    :ids
@@ -20640,7 +21307,9 @@
    :player-name "Justin Jefferson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 90.0, :rec_yd 1178.0, :rec_td 7.0},
+   :nflverse/games-by-season {2023 10.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 165.9363746,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.301282051282051}
   {:ids
    {:sleeper "6797",
@@ -20701,6 +21370,8 @@
     :rush_td 3.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2023 13.0, 2024 17.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 73.25722079,
    :ids
@@ -20762,7 +21433,9 @@
     :rec_yd 1048.0,
     :rec_td 7.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 12.0, 2024 12.0, 2025 15.0},
    :espn/proj-targets 114.9432509,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.161184210526316}
   {:ids
    {:sleeper "6803",
@@ -20808,7 +21481,9 @@
    :bye 8,
    :player-name "Brandon Aiyuk",
    :sleeper/injury-status "DNR",
-   :stats {:rush_yd 3.0, :rec 16.0, :rec_yd 213.0, :rec_td 2.0}}
+   :stats {:rush_yd 3.0, :rec 16.0, :rec_yd 213.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 16.0, 2024 7.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:ids
    {:sleeper "6804",
     :gsis "00-0036264",
@@ -20866,6 +21541,8 @@
     :rush_td 2.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 15.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 21.35726923,
    :ids
@@ -20927,7 +21604,9 @@
     :rec 26.0,
     :rec_yd 190.0,
     :rec_td 1.0},
+   :nflverse/games-by-season {2023 1.0, 2024 13.0, 2025 10.0},
    :espn/proj-targets 28.23500634,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.023972602739726}
   {:espn/proj-receptions 50.68698931,
    :ids
@@ -20991,7 +21670,9 @@
     :rec_yd 278.0,
     :rec_td 1.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 10.0, 2024 14.0, 2025 17.0},
    :espn/proj-targets 63.15110012,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.10377358490566}
   {:espn/proj-receptions 88.44190053,
    :ids
@@ -21045,7 +21726,9 @@
    :player-name "Michael Pittman",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 7.0, :rec 69.0, :rec_yd 772.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 16.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 130.2954473,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.209433962264151}
   {:ids
    {:sleeper "6820",
@@ -21075,6 +21758,8 @@
    :player-name "Clyde Edwards-Helaire",
    :sleeper/injury-status nil,
    :stats {:rush_yd 8.0},
+   :nflverse/games-by-season {2023 15.0, 2024 2.0, 2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00364298724954463}
   {:espn/proj-receptions 21.68512891,
    :ids
@@ -21126,7 +21811,9 @@
    :player-name "Cole Kmet",
    :sleeper/injury-status nil,
    :stats {:rec 34.0, :rec_yd 337.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 16.0, 2024 16.0, 2025 16.0},
    :espn/proj-targets 30.85328548,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0902255639097744}
   {:ids
    {:sleeper "6847",
@@ -21157,6 +21844,8 @@
    :player-name "Devin Duvernay",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :fum_lost 1.0},
+   :nflverse/games-by-season {2023 13.0, 2024 13.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0093984962406015}
   {:ids
    {:sleeper "6850",
@@ -21179,6 +21868,8 @@
    :player-name "Harrison Bryant",
    :sleeper/injury-status "Questionable",
    :stats {:rec 2.0, :rec_yd 20.0},
+   :nflverse/games-by-season {2023 14.0, 2024 6.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0108499095840868}
   {:ids
    {:sleeper "6853",
@@ -21227,6 +21918,8 @@
    :player-name "Van Jefferson",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 38.0},
+   :nflverse/games-by-season {2023 14.0, 2024 15.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0981132075471698}
   {:espn/proj-receptions 27.99810289,
    :ids
@@ -21280,7 +21973,9 @@
    :player-name "Colby Parkinson",
    :sleeper/injury-status nil,
    :stats {:rec 29.0, :rec_yd 293.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 15.0, 2024 16.0, 2025 14.0},
    :espn/proj-targets 39.35055363,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0963855421686747}
   {:espn/proj-receptions 11.69094397,
    :ids
@@ -21330,7 +22025,9 @@
    :player-name "Adam Trautman",
    :sleeper/injury-status nil,
    :stats {:rec 11.0, :rec_yd 108.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 13.0, 2025 13.0},
    :espn/proj-targets 16.94100381,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0393835616438356}
   {:ids
    {:sleeper "6904",
@@ -21391,6 +22088,8 @@
     :rush_td 9.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "6920",
@@ -21422,6 +22121,8 @@
    :player-name "Isaiah Hodgins",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 52.0},
+   :nflverse/games-by-season {2023 14.0, 2024 2.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0377733598409543}
   {:ids
    {:sleeper "6938",
@@ -21454,6 +22155,8 @@
    :player-name "Cam Akers",
    :sleeper/injury-status nil,
    :stats {:rush_yd 16.0, :rec 2.0, :rec_yd 15.0},
+   :nflverse/games-by-season {2023 7.0, 2024 16.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00213675213675214}
   {:ids
    {:sleeper "6945",
@@ -21502,6 +22205,8 @@
    :player-name "Antonio Gibson",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 4.0, :rec 2.0, :rec_yd 15.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00622406639004149}
   {:ids
    {:sleeper "6957",
@@ -21522,6 +22227,8 @@
    :player-name "James Proche",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0},
+   :nflverse/games-by-season {2023 10.0, 2024 9.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0226415094339623}
   {:ids
    {:sleeper "6960",
@@ -21553,6 +22260,8 @@
    :player-name "Tyler Johnson",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2023 1.0, 2024 11.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.038135593220339}
   {:espn/proj-receptions 63.06886672,
    :ids
@@ -21610,7 +22319,9 @@
    :player-name "Juwan Johnson",
    :sleeper/injury-status nil,
    :stats {:rec 56.0, :rec_yd 609.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 13.0, 2024 15.0, 2025 17.0},
    :espn/proj-targets 87.13611694,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.180530973451327}
   {:espn/proj-receptions 29.24255981,
    :ids
@@ -21673,7 +22384,9 @@
     :rec_yd 273.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 39.65513614,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.104166666666667}
   {:ids
    {:sleeper "7039",
@@ -21704,6 +22417,8 @@
    :player-name "Cody White",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 45.0},
+   :nflverse/games-by-season {2024 2.0, 2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00879120879120879}
   {:ids
    {:sleeper "7042",
@@ -21749,7 +22464,9 @@
    :player-name "Tyler Bass",
    :sleeper/injury-status nil,
    :stats {:xpm 43.0},
-   :fantasypros/ecr-pos-tier 4}
+   :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 46.479915,
    :ids
    {:sleeper "7049",
@@ -21803,7 +22520,9 @@
    :player-name "Jauan Jennings",
    :sleeper/injury-status nil,
    :stats {:rec 39.0, :rec_yd 487.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 13.0, 2024 15.0, 2025 15.0},
    :espn/proj-targets 71.90576234,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.163636363636364}
   {:espn/proj-receptions 3.930609863,
    :ids
@@ -21837,7 +22556,9 @@
    :player-name "Charlie Woerner",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 40.0},
+   :nflverse/games-by-season {2023 10.0, 2024 12.0, 2025 7.0},
    :espn/proj-targets 5.476354366,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0173410404624277}
   {:ids
    {:sleeper "7083",
@@ -21868,6 +22589,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 182.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 24.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2023 5.0, 2024 5.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 21.44237012,
    :ids
@@ -21921,7 +22644,9 @@
    :player-name "Darnell Mooney",
    :sleeper/injury-status nil,
    :stats {:rush_yd 3.0, :rec 19.0, :rec_yd 273.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 14.0, 2024 16.0, 2025 15.0},
    :espn/proj-targets 40.51753598,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.138728323699422}
   {:espn/proj-receptions 6.109149596,
    :ids
@@ -21971,7 +22696,9 @@
    :player-name "Nick Westbrook-Ikhine",
    :sleeper/injury-status nil,
    :stats {:rec 10.0, :rec_yd 135.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 13.0, 2024 14.0, 2025 13.0},
    :espn/proj-targets 10.52518335,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0432900432900433}
   {:ids
    {:sleeper "7523",
@@ -22032,6 +22759,8 @@
     :rush_td 5.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 2,
+   :nflverse/games-by-season {2023 16.0, 2024 10.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 90.53793628,
    :ids
@@ -22088,7 +22817,9 @@
    :player-name "DeVonta Smith",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 80.0, :rec_yd 1066.0, :rec_td 7.0},
+   :nflverse/games-by-season {2023 16.0, 2024 13.0, 2025 17.0},
    :espn/proj-targets 127.8162072,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.243534482758621}
   {:espn/proj-receptions 76.55778741,
    :ids
@@ -22145,7 +22876,9 @@
    :player-name "Jaylen Waddle",
    :sleeper/injury-status nil,
    :stats {:rush_yd 18.0, :rec 77.0, :rec_yd 1002.0, :rec_td 7.0},
+   :nflverse/games-by-season {2023 14.0, 2024 15.0, 2025 16.0},
    :espn/proj-targets 118.5870266,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.216450216450216}
   {:ids
    {:sleeper "7527",
@@ -22197,6 +22930,8 @@
     :rush_yd 18.0,
     :fum_lost 1.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 11.0, 2024 10.0, 2025 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 8.109533152,
    :ids
@@ -22250,7 +22985,9 @@
    :player-name "Najee Harris",
    :sleeper/injury-status nil,
    :stats {:rush_yd 117.0, :rush_td 1.0, :rec 5.0, :rec_yd 36.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 3.0},
    :espn/proj-targets 10.12938399,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00551470588235294}
   {:ids
    {:sleeper "7531",
@@ -22271,6 +23008,8 @@
    :player-name "Feleipe Franks",
    :sleeper/injury-status nil,
    :stats {:rush_yd 2.0, :rec 1.0, :rec_yd 7.0},
+   :nflverse/games-by-season {2024 9.0, 2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "7536",
@@ -22302,6 +23041,8 @@
    :player-name "Quintin Morris",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 40.0},
+   :nflverse/games-by-season {2023 2.0, 2024 10.0, 2025 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0164533820840951}
   {:espn/proj-receptions 44.79528309,
    :ids
@@ -22365,7 +23106,9 @@
     :rec_yd 287.0,
     :rec_td 2.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 17.0},
    :espn/proj-targets 60.57677167,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0950639853747715}
   {:espn/proj-receptions 118.1037514,
    :ids
@@ -22428,7 +23171,9 @@
     :rec_td 8.0,
     :rec_2pt 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 166.632518,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.312727272727273}
   {:espn/proj-receptions 80.47129593,
    :ids
@@ -22485,7 +23230,9 @@
    :player-name "Kyle Pitts",
    :sleeper/injury-status nil,
    :stats {:rec 66.0, :rec_yd 756.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 115.0034417,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.227360308285164}
   {:ids
    {:sleeper "7561",
@@ -22534,6 +23281,8 @@
    :player-name "Elijah Mitchell",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 59.0, :rec 2.0, :rec_yd 14.0},
+   :nflverse/games-by-season {2023 11.0, 2025 1.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00182149362477231}
   {:espn/proj-receptions 21.75825992,
    :ids
@@ -22583,7 +23332,9 @@
    :player-name "Tutu Atwell",
    :sleeper/injury-status nil,
    :stats {:rush_yd 5.0, :rec 4.0, :rec_yd 62.0},
+   :nflverse/games-by-season {2023 14.0, 2024 15.0, 2025 8.0},
    :espn/proj-targets 37.54026603,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0258175559380379}
   {:espn/proj-receptions 119.7089118,
    :ids
@@ -22646,7 +23397,9 @@
     :rec_td 11.0,
     :rec_2pt 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 16.0},
    :espn/proj-targets 172.4148763,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.304276315789474}
   {:espn/proj-receptions 52.11418863,
    :ids
@@ -22709,7 +23462,9 @@
     :rec_yd 355.0,
     :rec_td 2.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 64.01483232,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.162835249042146}
   {:ids
    {:sleeper "7568",
@@ -22736,7 +23491,9 @@
    :bye 8,
    :player-name "Brevin Jordan",
    :sleeper/injury-status "Questionable",
-   :stats {:rec 4.0, :rec_yd 21.0}}
+   :stats {:rec 4.0, :rec_yd 21.0},
+   :nflverse/games-by-season {2023 10.0, 2024 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 86.70946742,
    :ids
    {:sleeper "7569",
@@ -22797,7 +23554,9 @@
     :rec_yd 1262.0,
     :rec_td 8.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 12.0, 2025 15.0},
    :espn/proj-targets 137.0815667,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.216998191681736}
   {:espn/proj-receptions 37.67266324,
    :ids
@@ -22853,7 +23612,9 @@
    :player-name "Rashod Bateman",
    :sleeper/injury-status nil,
    :stats {:rec 36.0, :rec_yd 483.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 15.0, 2024 16.0, 2025 13.0},
    :espn/proj-targets 65.27179785,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0933660933660934}
   {:ids
    {:sleeper "7585",
@@ -22884,6 +23645,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 211.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 6.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2023 5.0, 2024 4.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 15.85282567,
    :ids
@@ -22932,7 +23695,9 @@
    :player-name "Dyami Brown",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 2.0, :rec_yd 23.0},
+   :nflverse/games-by-season {2023 16.0, 2024 15.0, 2025 11.0},
    :espn/proj-targets 25.75721488,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0676416819012797}
   {:espn/proj-receptions 36.87083103,
    :ids
@@ -22995,7 +23760,9 @@
     :rec_yd 239.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 16.0},
    :espn/proj-targets 50.62173038,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0840197693574959}
   {:ids
    {:sleeper "7591",
@@ -23048,6 +23815,8 @@
     :rush_td 1.0,
     :fum_lost 1.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 13.0, 2024 10.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00211864406779661}
   {:espn/proj-receptions 41.25842189,
    :ids
@@ -23107,7 +23876,9 @@
     :rec_yd 153.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 15.0},
    :espn/proj-targets 52.25046679,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.08125}
   {:ids
    {:sleeper "7595",
@@ -23138,6 +23909,8 @@
    :player-name "Tylan Wallace",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2023 6.0, 2024 12.0, 2025 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0196560196560197}
   {:espn/proj-receptions 59.93512324,
    :ids
@@ -23191,7 +23964,9 @@
    :player-name "Pat Freiermuth",
    :sleeper/injury-status nil,
    :stats {:rec 51.0, :rec_yd 534.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 11.0, 2024 17.0, 2025 15.0},
    :espn/proj-targets 84.97529173,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.103448275862069}
   {:ids
    {:sleeper "7602",
@@ -23223,6 +23998,8 @@
    :player-name "Kylen Granson",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 20.0},
+   :nflverse/games-by-season {2023 15.0, 2024 16.0, 2025 12.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0193965517241379}
   {:ids
    {:sleeper "7607",
@@ -23272,6 +24049,8 @@
    :player-name "Michael Carter",
    :sleeper/injury-status nil,
    :stats {:rush_yd 29.0, :rec 3.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2023 15.0, 2024 3.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0729335494327391}
   {:ids
    {:sleeper "7610",
@@ -23302,6 +24081,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 183.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 43.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2024 4.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 42.57572918,
    :ids
@@ -23364,7 +24145,9 @@
     :rec_yd 214.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 12.0, 2024 15.0, 2025 14.0},
    :espn/proj-targets 51.86473247,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0767634854771784}
   {:ids
    {:sleeper "7612",
@@ -23385,6 +24168,8 @@
    :player-name "Dee Eskridge",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 2.0, :rec_yd 23.0},
+   :nflverse/games-by-season {2023 4.0, 2024 5.0, 2025 11.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0151515151515152}
   {:espn/proj-receptions 16.87260443,
    :ids
@@ -23434,7 +24219,9 @@
    :player-name "Joshua Palmer",
    :sleeper/injury-status nil,
    :stats {:rec 12.0, :rec_yd 146.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 10.0, 2024 15.0, 2025 12.0},
    :espn/proj-targets 27.39054451,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0772442588726514}
   {:espn/proj-receptions 18.43979685,
    :ids
@@ -23484,7 +24271,9 @@
    :player-name "Tommy Tremble",
    :sleeper/injury-status nil,
    :stats {:rec 13.0, :rec_yd 128.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 10.0, 2025 15.0},
    :espn/proj-targets 26.12523339,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0770833333333333}
   {:espn/proj-receptions 14.12769186,
    :ids
@@ -23533,7 +24322,9 @@
    :player-name "John Bates",
    :sleeper/injury-status "Questionable",
    :stats {:rec 13.0, :rec_yd 128.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 13.0, 2025 10.0},
    :espn/proj-targets 20.6057719,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.037037037037037}
   {:espn/proj-receptions 1.782701702,
    :ids
@@ -23566,7 +24357,9 @@
    :player-name "Ben Skowronek",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0},
+   :nflverse/games-by-season {2023 13.0, 2024 9.0, 2025 16.0},
    :espn/proj-targets 2.832509724,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0114942528735632}
   {:espn/proj-receptions 26.12683267,
    :ids
@@ -23616,7 +24409,9 @@
    :player-name "Noah Gray",
    :sleeper/injury-status nil,
    :stats {:rec 24.0, :rec_yd 231.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 16.0, 2024 16.0, 2025 14.0},
    :espn/proj-targets 38.00925828,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0673952641165756}
   {:ids
    {:sleeper "7839",
@@ -23667,6 +24462,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 42.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 17.0, 2024 12.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 4.217263743,
    :ids
@@ -23699,7 +24496,9 @@
    :player-name "Luke Farrell",
    :sleeper/injury-status nil,
    :stats {:rec 5.0, :rec_yd 51.0},
+   :nflverse/games-by-season {2023 10.0, 2024 12.0, 2025 13.0},
    :espn/proj-targets 5.87911442,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0254545454545455}
   {:espn/proj-receptions 7.714894849,
    :ids
@@ -23733,7 +24532,9 @@
    :player-name "Brock Wright",
    :sleeper/injury-status nil,
    :stats {:rec 11.0, :rec_yd 103.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 9.0, 2024 11.0, 2025 8.0},
    :espn/proj-targets 10.75048503,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.04}
   {:ids
    {:sleeper "7922",
@@ -23758,6 +24559,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 17.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 15.0, 2024 5.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 3.570418749,
    :ids
@@ -23790,7 +24593,9 @@
    :player-name "Jack Stoll",
    :sleeper/injury-status "IR",
    :stats {:rec 4.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2023 6.0, 2024 5.0, 2025 9.0},
    :espn/proj-targets 5.170041918,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0194690265486726}
   {:ids
    {:sleeper "8041",
@@ -23822,6 +24627,8 @@
    :player-name "Shane Zylstra",
    :sleeper/injury-status nil,
    :stats {:rec 1.0, :rec_yd 13.0},
+   :nflverse/games-by-season {2024 2.0, 2025 1.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00909090909090909}
   {:espn/proj-receptions 72.81304584,
    :ids
@@ -23878,7 +24685,9 @@
    :player-name "Jake Ferguson",
    :sleeper/injury-status nil,
    :stats {:rec 70.0, :rec_yd 618.0, :rec_td 5.0, :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 17.0},
    :espn/proj-targets 95.61882404,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.168039538714992}
   {:espn/proj-receptions 44.53372901,
    :ids
@@ -23932,7 +24741,9 @@
    :player-name "Cade Otton",
    :sleeper/injury-status "Questionable",
    :stats {:rec 53.0, :rec_yd 513.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 15.0},
    :espn/proj-targets 64.01483232,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.149722735674677}
   {:espn/proj-receptions 102.1001829,
    :ids
@@ -23994,7 +24805,9 @@
     :rec_yd 1156.0,
     :rec_td 7.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 12.0},
    :espn/proj-targets 158.8142766,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.215799614643545}
   {:ids
    {:sleeper "8116",
@@ -24021,7 +24834,9 @@
    :bye 11,
    :player-name "Pierre Strong",
    :sleeper/injury-status nil,
-   :stats {:rush_yd 41.0, :rec 2.0, :rec_yd 14.0}}
+   :stats {:rush_yd 41.0, :rec 2.0, :rec_yd 14.0},
+   :nflverse/games-by-season {2023 16.0, 2024 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 33.84626134,
    :ids
    {:sleeper "8117",
@@ -24070,7 +24885,9 @@
    :player-name "Jalen Tolbert",
    :sleeper/injury-status nil,
    :stats {:rec 13.0, :rec_yd 152.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 14.0, 2024 17.0, 2025 12.0},
    :espn/proj-targets 57.64673895,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0560131795716639}
   {:espn/proj-receptions 35.15300026,
    :ids
@@ -24122,7 +24939,9 @@
    :player-name "Jahan Dotson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 16.0, :rec 26.0, :rec_yd 316.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 15.0},
    :espn/proj-targets 60.23989803,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0775862068965517}
   {:espn/proj-receptions 52.55501932,
    :ids
@@ -24179,7 +24998,9 @@
    :player-name "Romeo Doubs",
    :sleeper/injury-status nil,
    :stats {:rec 57.0, :rec_yd 742.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 17.0, 2024 13.0, 2025 16.0},
    :espn/proj-targets 77.79709871,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.184782608695652}
   {:espn/proj-receptions 6.112709629,
    :ids
@@ -24229,7 +25050,9 @@
    :player-name "Calvin Austin",
    :sleeper/injury-status nil,
    :stats {:rush_yd 17.0, :rec 21.0, :rec_yd 261.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 14.0},
    :espn/proj-targets 10.12938399,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.10536398467433}
   {:espn/proj-receptions 78.8380833,
    :ids
@@ -24286,7 +25109,9 @@
    :player-name "Wan'Dale Robinson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 16.0, :rec 71.0, :rec_yd 741.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 15.0, 2024 17.0, 2025 16.0},
    :espn/proj-targets 115.7164392,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.278330019880716}
   {:espn/proj-receptions 14.66922547,
    :ids
@@ -24336,7 +25161,9 @@
    :player-name "Charlie Kolar",
    :sleeper/injury-status nil,
    :stats {:rush_yd 2.0, :rec 16.0, :rec_yd 162.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 9.0, 2024 10.0, 2025 13.0},
    :espn/proj-targets 21.22805646,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0368550368550369}
   {:ids
    {:sleeper "8129",
@@ -24385,6 +25212,8 @@
    :player-name "Dameon Pierce",
    :sleeper/injury-status nil,
    :stats {:rush_yd 106.0, :rush_td 1.0, :rec 3.0, :rec_yd 22.0},
+   :nflverse/games-by-season {2023 14.0, 2024 10.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00180831826401447}
   {:espn/proj-receptions 107.8157335,
    :ids
@@ -24446,7 +25275,9 @@
     :rec_td 7.0,
     :rec_2pt 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 148.9623561,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.273905996758509}
   {:espn/proj-receptions 63.33365143,
    :ids
@@ -24503,7 +25334,9 @@
    :player-name "Isaiah Likely",
    :sleeper/injury-status nil,
    :stats {:rec 62.0, :rec_yd 653.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 14.0, 2024 15.0, 2025 12.0},
    :espn/proj-targets 86.09976396,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0884520884520885}
   {:espn/proj-receptions 18.09508402,
    :ids
@@ -24565,7 +25398,9 @@
     :rec 8.0,
     :rec_yd 54.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 22.91728555,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0308285163776493}
   {:espn/proj-receptions 70.08042791,
    :ids
@@ -24619,7 +25454,9 @@
    :player-name "Khalil Shakir",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 10.0, :rec 71.0, :rec_yd 747.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 16.0, 2024 15.0, 2025 16.0},
    :espn/proj-targets 92.02453546,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.198329853862213}
   {:espn/proj-receptions 15.03875968,
    :ids
@@ -24669,7 +25506,9 @@
    :player-name "Treylon Burks",
    :sleeper/injury-status nil,
    :stats {:rush_yd 16.0, :rec 12.0, :rec_yd 152.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 9.0, 2024 5.0, 2025 8.0},
    :espn/proj-targets 25.75721488,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0509259259259259}
   {:espn/proj-receptions 40.35589053,
    :ids
@@ -24729,7 +25568,9 @@
     :rec_yd 253.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 17.0},
    :espn/proj-targets 46.36298678,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0831792975970425}
   {:espn/proj-receptions 79.52546558,
    :ids
@@ -24791,7 +25632,9 @@
     :rec_yd 1211.0,
     :rec_td 7.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 17.0},
    :espn/proj-targets 123.7420076,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.225700164744646}
   {:espn/proj-receptions 35.92189989,
    :ids
@@ -24855,7 +25698,9 @@
     :rec_yd 268.0,
     :rec_td 2.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 46.01226773,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0835073068893528}
   {:ids
    {:sleeper "8139",
@@ -24887,6 +25732,8 @@
    :player-name "Zamir White",
    :sleeper/injury-status nil,
    :stats {:rush_yd 21.0, :rec 2.0, :rec_yd 10.0},
+   :nflverse/games-by-season {2023 13.0, 2024 8.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0121457489878543}
   {:espn/proj-receptions 60.57617874,
    :ids
@@ -24940,7 +25787,9 @@
    :player-name "Alec Pierce",
    :sleeper/injury-status "PUP",
    :stats {:rush_yd 7.0, :rec 54.0, :rec_yd 872.0, :rec_td 6.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 15.0},
    :espn/proj-targets 105.2518335,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.158490566037736}
   {:ids
    {:sleeper "8143",
@@ -24989,6 +25838,8 @@
    :player-name "Jerome Ford",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 99.0, :rush_td 1.0, :rec 6.0, :rec_yd 44.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0613026819923372}
   {:espn/proj-receptions 91.30527082,
    :ids
@@ -25050,7 +25901,9 @@
     :rec_yd 1093.0,
     :rec_td 7.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 8.0, 2025 16.0},
    :espn/proj-targets 143.8455831,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.276106194690265}
   {:espn/proj-receptions 12.39835746,
    :ids
@@ -25091,7 +25944,9 @@
    :player-name "Jeremy Ruckert",
    :sleeper/injury-status nil,
    :stats {:rec 5.0, :rec_yd 43.0},
+   :nflverse/games-by-season {2023 10.0, 2024 14.0, 2025 14.0},
    :espn/proj-targets 15.92488791,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0614406779661017}
   {:espn/proj-receptions 99.92515672,
    :ids
@@ -25148,7 +26003,9 @@
    :player-name "Garrett Wilson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 16.0, :rec 83.0, :rec_yd 1043.0, :rec_td 6.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 7.0},
    :espn/proj-targets 148.6322872,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.125}
   {:ids
    {:sleeper "8147",
@@ -25197,6 +26054,8 @@
    :player-name "John Metchie",
    :sleeper/injury-status nil,
    :stats {:rush_yd 8.0, :rec 20.0, :rec_yd 220.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 14.0, 2024 10.0, 2025 13.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.103448275862069}
   {:espn/proj-receptions 64.20713722,
    :ids
@@ -25253,7 +26112,9 @@
    :player-name "Jameson Williams",
    :sleeper/injury-status nil,
    :stats {:rush_yd 44.0, :rec 60.0, :rec_yd 998.0, :rec_td 7.0},
+   :nflverse/games-by-season {2023 12.0, 2024 15.0, 2025 17.0},
    :espn/proj-targets 102.1296078,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.185454545454545}
   {:espn/proj-receptions 33.39732809,
    :ids
@@ -25316,7 +26177,9 @@
     :rec_yd 219.0,
     :rec_td 2.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 12.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 44.97206129,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0860585197934596}
   {:espn/proj-receptions 48.29602535,
    :ids
@@ -25379,7 +26242,9 @@
     :rec_yd 272.0,
     :rec_td 2.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 11.0, 2025 17.0},
    :espn/proj-targets 59.72883443,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0791208791208791}
   {:espn/proj-receptions 8.745765878,
    :ids
@@ -25436,7 +26301,9 @@
    :player-name "Brian Robinson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 358.0, :rush_td 2.0, :rec 13.0, :rec_yd 91.0},
+   :nflverse/games-by-season {2023 15.0, 2024 14.0, 2025 17.0},
    :espn/proj-targets 10.95270873,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0218181818181818}
   {:espn/proj-receptions 52.05946716,
    :ids
@@ -25496,7 +26363,9 @@
     :rec_yd 314.0,
     :rec_td 2.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 16.0},
    :espn/proj-targets 63.69955165,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.101694915254237}
   {:ids
    {:sleeper "8161",
@@ -25554,6 +26423,8 @@
     :rush_td 5.0,
     :fum_lost 2.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 2.0, 2024 6.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 54.83975328,
    :ids
@@ -25610,7 +26481,9 @@
    :player-name "Christian Watson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 14.0, :rec 63.0, :rec_yd 1012.0, :rec_td 7.0},
+   :nflverse/games-by-season {2023 9.0, 2024 14.0, 2025 10.0},
    :espn/proj-targets 94.31556626,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.119565217391304}
   {:ids
    {:sleeper "8168",
@@ -25643,6 +26516,8 @@
    :player-name "Skyy Moore",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 1.0, :rec_yd 14.0},
+   :nflverse/games-by-season {2023 13.0, 2024 3.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0127272727272727}
   {:espn/proj-receptions 51.72491495,
    :ids
@@ -25696,7 +26571,9 @@
    :player-name "Greg Dulcich",
    :sleeper/injury-status nil,
    :stats {:rec 47.0, :rec_yd 459.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 2.0, 2024 4.0, 2025 9.0},
    :espn/proj-targets 75.39927346,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0714285714285714}
   {:ids
    {:sleeper "8177",
@@ -25729,6 +26606,8 @@
    :player-name "Grant Calcaterra",
    :sleeper/injury-status "Questionable",
    :stats {:rec 10.0, :rec_yd 96.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 3.0, 2024 15.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0280172413793103}
   {:espn/proj-receptions 44.34175962,
    :ids
@@ -25783,7 +26662,9 @@
    :player-name "Jalen Nailor",
    :sleeper/injury-status nil,
    :stats {:rush_yd 19.0, :rec 46.0, :rec_yd 587.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 3.0, 2024 15.0, 2025 17.0},
    :espn/proj-targets 76.18462199,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.113247863247863}
   {:ids
    {:sleeper "8181",
@@ -25870,6 +26751,8 @@
     :rush_td 3.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 3,
+   :nflverse/games-by-season {2023 16.0, 2024 15.0, 2025 9.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 23.83206443,
    :ids
@@ -25921,7 +26804,9 @@
    :player-name "Tyquan Thornton",
    :sleeper/injury-status nil,
    :stats {:rec 20.0, :rec_yd 306.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 9.0, 2024 4.0, 2025 12.0},
    :espn/proj-targets 43.43915232,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0673952641165756}
   {:ids
    {:sleeper "8195",
@@ -25969,6 +26854,8 @@
    :player-name "Ronnie Rivers",
    :sleeper/injury-status nil,
    :stats {:rush_yd 21.0, :rec 3.0, :rec_yd 20.0},
+   :nflverse/games-by-season {2023 9.0, 2024 6.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "8200",
@@ -26000,6 +26887,8 @@
    :player-name "Kevin Austin",
    :sleeper/injury-status nil,
    :stats {:rush_yd 1.0, :rec 3.0, :rec_yd 34.0},
+   :nflverse/games-by-season {2024 8.0, 2025 5.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0407079646017699}
   {:espn/proj-receptions 2.937129882,
    :ids
@@ -26033,7 +26922,9 @@
    :player-name "Bo Melton",
    :sleeper/injury-status nil,
    :stats {:rush_yd 6.0, :rec 4.0, :rec_yd 52.0},
+   :nflverse/games-by-season {2023 4.0, 2024 13.0, 2025 13.0},
    :espn/proj-targets 5.239753681,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0282608695652174}
   {:espn/proj-receptions 17.17167421,
    :ids
@@ -26093,7 +26984,9 @@
     :rec 10.0,
     :rec_yd 73.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 14.0, 2024 7.0, 2025 13.0},
    :espn/proj-targets 21.50097007,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0473588342440802}
   {:ids
    {:sleeper "8207",
@@ -26141,6 +27034,8 @@
    :player-name "Tyler Goodson",
    :sleeper/injury-status nil,
    :stats {:rush_yd 13.0, :rec 2.0, :rec_yd 15.0},
+   :nflverse/games-by-season {2023 6.0, 2024 14.0, 2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00566037735849057}
   {:ids
    {:sleeper "8208",
@@ -26180,6 +27075,8 @@
    :player-name "Tyler Badie",
    :sleeper/injury-status nil,
    :stats {:rush_yd 16.0, :rec 4.0, :rec_yd 28.0},
+   :nflverse/games-by-season {2024 3.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0530821917808219}
   {:espn/proj-receptions 51.29568413,
    :ids
@@ -26234,7 +27131,9 @@
    :player-name "Chig Okonkwo",
    :sleeper/injury-status nil,
    :stats {:rec 61.0, :rec_yd 591.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 17.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 72.12020165,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.149056603773585}
   {:espn/proj-receptions 12.66283625,
    :ids
@@ -26284,7 +27183,9 @@
    :player-name "Daniel Bellinger",
    :sleeper/injury-status nil,
    :stats {:rec 17.0, :rec_yd 171.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 14.0, 2024 12.0, 2025 13.0},
    :espn/proj-targets 16.53091988,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0516898608349901}
   {:espn/proj-receptions 46.10675035,
    :ids
@@ -26347,7 +27248,9 @@
     :rec_yd 267.0,
     :rec_td 1.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 16.0},
    :espn/proj-targets 56.65019449,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0862068965517242}
   {:ids
    {:sleeper "8230",
@@ -26396,6 +27299,8 @@
    :player-name "Ty Chandler",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 21.0, :rec 6.0, :rec_yd 39.0},
+   :nflverse/games-by-season {2023 16.0, 2024 14.0, 2025 3.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00854700854700855}
   {:ids
    {:sleeper "8249",
@@ -26427,6 +27332,8 @@
    :player-name "Lucas Krull",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 41.0},
+   :nflverse/games-by-season {2023 7.0, 2024 10.0, 2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00684931506849315}
   {:ids
    {:sleeper "8254",
@@ -26459,6 +27366,8 @@
    :player-name "Julius Chestnut",
    :sleeper/injury-status nil,
    :stats {:rush_yd 20.0, :rec 2.0, :rec_yd 16.0},
+   :nflverse/games-by-season {2023 1.0, 2024 12.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00377358490566038}
   {:ids
    {:sleeper "8258",
@@ -26478,7 +27387,9 @@
    :player-name "Cade York",
    :sleeper/injury-status nil,
    :stats {:xpm 6.0},
-   :fantasypros/ecr-pos-tier 6}
+   :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2024 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:ids
    {:sleeper "8259",
     :gsis "00-0037224",
@@ -26531,6 +27442,8 @@
    :sleeper/injury-status nil,
    :stats {:xpm 42.0},
    :fantasypros/ecr-pos-tier 1,
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "827",
@@ -26578,6 +27491,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 205.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 17.0},
    :fantasypros/ecr-pos-tier 7,
+   :nflverse/games-by-season {2023 10.0, 2024 2.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "829",
@@ -26608,6 +27523,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 208.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 5.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 2.0, 2024 6.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 13.40209084,
    :ids
@@ -26670,7 +27587,9 @@
     :rec_yd 140.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 12.0, 2025 16.0},
    :espn/proj-targets 16.59363746,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0341880341880342}
   {:espn/proj-receptions 3.665948963,
    :ids
@@ -26703,7 +27622,9 @@
    :player-name "Ko Kieft",
    :sleeper/injury-status nil,
    :stats {:rec 1.0, :rec_yd 13.0},
+   :nflverse/games-by-season {2023 10.0, 2024 3.0, 2025 2.0},
    :espn/proj-targets 5.33456936,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 3.604357688,
    :ids
@@ -26736,7 +27657,9 @@
    :player-name "Drew Ogletree",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 24.0},
+   :nflverse/games-by-season {2023 11.0, 2024 12.0, 2025 11.0},
    :espn/proj-targets 5.262591676,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0113207547169811}
   {:ids
    {:sleeper "8527",
@@ -26768,6 +27691,8 @@
    :player-name "Dareke Young",
    :sleeper/injury-status nil,
    :stats {:rec 2.0, :rec_yd 26.0},
+   :nflverse/games-by-season {2023 1.0, 2024 7.0, 2025 8.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00659340659340659}
   {:ids
    {:sleeper "8583",
@@ -26799,6 +27724,8 @@
    :player-name "Stone Smartt",
    :sleeper/injury-status nil,
    :stats {:rec 3.0, :rec_yd 27.0},
+   :nflverse/games-by-season {2023 12.0, 2024 9.0, 2025 6.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0190677966101695}
   {:espn/proj-receptions 42.84192179,
    :ids
@@ -26861,7 +27788,9 @@
     :rec_yd 665.0,
     :rec_td 4.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 6.0, 2025 17.0},
    :espn/proj-targets 70.55491368,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.16283185840708}
   {:espn/proj-receptions 13.22328189,
    :ids
@@ -26916,7 +27845,9 @@
    :player-name "Jake Tonges",
    :sleeper/injury-status nil,
    :stats {:rec 30.0, :rec_yd 288.0, :rec_td 2.0},
+   :nflverse/games-by-season {2024 2.0, 2025 10.0},
    :espn/proj-targets 18.48300359,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0836363636363636}
   {:ids
    {:sleeper "8800",
@@ -26965,6 +27896,8 @@
    :player-name "Malik Davis",
    :sleeper/injury-status nil,
    :stats {:rush_yd 178.0, :rush_td 1.0, :rec 6.0, :rec_yd 39.0},
+   :nflverse/games-by-season {2023 1.0, 2025 10.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00823723228995058}
   {:ids
    {:sleeper "8885",
@@ -26985,6 +27918,8 @@
    :player-name "Tucker Fisk",
    :sleeper/injury-status nil,
    :stats {:rec 4.0, :rec_yd 35.0},
+   :nflverse/games-by-season {2023 2.0, 2024 7.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00735294117647059}
   {:espn/proj-receptions 18.10246402,
    :ids
@@ -27042,7 +27977,9 @@
     :rec_yd 268.0,
     :rec_td 2.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 15.0},
    :espn/proj-targets 28.12318354,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0626029654036244}
   {:espn/proj-receptions 67.79514079,
    :ids
@@ -27106,7 +28043,9 @@
     :rec_yd 533.0,
     :rec_td 3.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 15.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 86.00388027,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.170909090909091}
   {:espn/proj-receptions 64.28474794,
    :ids
@@ -27169,7 +28108,9 @@
     :rec_yd 417.0,
     :rec_td 3.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 12.0, 2024 16.0, 2025 17.0},
    :espn/proj-targets 80.46027562,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.144736842105263}
   {:espn/proj-receptions 3.63213164,
    :ids
@@ -27230,7 +28171,9 @@
     :rec 8.0,
     :rec_yd 59.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 13.0, 2024 16.0, 2025 15.0},
    :espn/proj-targets 4.91600797,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00731261425959781}
   {:espn/proj-receptions 64.75590915,
    :ids
@@ -27293,7 +28236,9 @@
     :rec_yd 416.0,
     :rec_td 2.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 11.0, 2024 17.0, 2025 16.0},
    :espn/proj-targets 80.42589169,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.183982683982684}
   {:ids
    {:sleeper "9228",
@@ -27351,6 +28296,8 @@
     :rush_td 3.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 16.0, 2024 14.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:ids
    {:sleeper "9229",
@@ -27402,6 +28349,8 @@
     :rush_yd 46.0,
     :rush_td 1.0},
    :fantasypros/ecr-pos-tier 6,
+   :nflverse/games-by-season {2023 4.0, 2024 11.0, 2025 2.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00188679245283019}
   {:ids
    {:sleeper "9230",
@@ -27432,6 +28381,8 @@
    :sleeper/injury-status nil,
    :stats {:pass_yd 198.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 15.0},
    :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2024 2.0, 2025 4.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 30.98538049,
    :ids
@@ -27483,7 +28434,9 @@
    :player-name "Darnell Washington",
    :sleeper/injury-status nil,
    :stats {:rec 33.0, :rec_yd 341.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 8.0, 2024 13.0, 2025 13.0},
    :espn/proj-targets 45.32015559,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0823754789272031}
   {:espn/proj-receptions 59.07707792,
    :ids
@@ -27541,7 +28494,9 @@
    :player-name "Brenton Strange",
    :sleeper/injury-status nil,
    :stats {:rec 63.0, :rec_yd 680.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 7.0, 2024 14.0, 2025 12.0},
    :espn/proj-targets 85.01786206,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.109689213893967}
   {:espn/proj-receptions 7.469902136,
    :ids
@@ -27591,7 +28546,9 @@
    :player-name "Luke Musgrave",
    :sleeper/injury-status "PUP",
    :stats {:rec 17.0, :rec_yd 176.0, :rec_td 1.0},
+   :nflverse/games-by-season {2023 11.0, 2024 7.0, 2025 13.0},
    :espn/proj-targets 10.47950736,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0673913043478261}
   {:espn/proj-receptions 37.04110311,
    :ids
@@ -27643,7 +28600,9 @@
    :player-name "Michael Mayer",
    :sleeper/injury-status nil,
    :stats {:rec 34.0, :rec_yd 348.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 13.0, 2024 11.0, 2025 13.0},
    :espn/proj-targets 54.41758714,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.101214574898785}
   {:espn/proj-receptions 71.38587278,
    :ids
@@ -27697,7 +28656,9 @@
    :player-name "Tucker Kraft",
    :sleeper/injury-status "Questionable",
    :stats {:rec 67.0, :rec_yd 774.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 14.0, 2024 17.0, 2025 8.0},
    :espn/proj-targets 99.55531994,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0956521739130435}
   {:espn/proj-receptions 39.5130371,
    :ids
@@ -27750,7 +28711,9 @@
    :player-name "Dontayvion Wicks",
    :sleeper/injury-status nil,
    :stats {:rush_yd 8.0, :rec 26.0, :rec_yd 316.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 15.0, 2024 17.0, 2025 13.0},
    :espn/proj-targets 63.90810361,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.1}
   {:espn/proj-receptions 63.76467641,
    :ids
@@ -27809,7 +28772,9 @@
     :rec_yd 906.0,
     :rec_td 7.0,
     :rec_2pt 1.0},
+   :nflverse/games-by-season {2023 8.0, 2024 14.0, 2025 16.0},
    :espn/proj-targets 107.6892919,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.173674588665448}
   {:espn/proj-receptions 116.7328282,
    :ids
@@ -27872,7 +28837,9 @@
     :rec_td 8.0,
     :rec_2pt 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 166.3080108,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.358241758241758}
   {:espn/proj-receptions 122.8775499,
    :ids
@@ -27932,7 +28899,9 @@
     :rec_td 10.0,
     :rec_2pt 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 11.0, 2025 16.0},
    :espn/proj-targets 174.2667375,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.285714285714286}
   {:espn/proj-receptions 24.12423704,
    :ids
@@ -27991,7 +28960,9 @@
     :rec_yd 293.0,
     :rec_td 2.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 15.0},
    :espn/proj-targets 33.88200761,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0873287671232877}
   {:espn/proj-receptions 70.45998416,
    :ids
@@ -28047,7 +29018,9 @@
    :player-name "Josh Downs",
    :sleeper/injury-status nil,
    :stats {:rush_yd 13.0, :rec 70.0, :rec_yd 770.0, :rec_td 4.0},
+   :nflverse/games-by-season {2023 17.0, 2024 14.0, 2025 16.0},
    :espn/proj-targets 99.98924185,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.166037735849057}
   {:espn/proj-receptions 22.73917036,
    :ids
@@ -28097,7 +29070,9 @@
    :player-name "DeMario Douglas",
    :sleeper/injury-status nil,
    :stats {:rush_yd 28.0, :rec 24.0, :rec_yd 300.0, :rec_td 2.0},
+   :nflverse/games-by-season {2023 14.0, 2024 16.0, 2025 16.0},
    :espn/proj-targets 31.11883948,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0954356846473029}
   {:espn/proj-receptions 55.37275613,
    :ids
@@ -28148,7 +29123,9 @@
    :player-name "Tank Dell",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 29.0, :rec 41.0, :rec_yd 539.0, :rec_td 3.0},
-   :espn/proj-targets 87.73220271}
+   :nflverse/games-by-season {2023 10.0, 2024 14.0},
+   :espn/proj-targets 87.73220271,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:espn/proj-receptions 30.30313669,
    :ids
    {:sleeper "9504",
@@ -28201,7 +29178,9 @@
    :player-name "Kayshon Boutte",
    :sleeper/injury-status nil,
    :stats {:rec 31.0, :rec_yd 456.0, :rec_td 3.0},
+   :nflverse/games-by-season {2023 3.0, 2024 15.0, 2025 14.0},
    :espn/proj-targets 46.67825923,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0954356846473029}
   {:espn/proj-receptions 1.983752354,
    :ids
@@ -28261,7 +29240,9 @@
     :rec 8.0,
     :rec_yd 57.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 3.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 2.66728468,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0203327171903882}
   {:espn/proj-receptions 49.5473711,
    :ids
@@ -28325,7 +29306,9 @@
     :rec_yd 248.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 17.0, 2024 12.0, 2025 13.0},
    :espn/proj-targets 60.6133729,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0943396226415094}
   {:espn/proj-receptions 75.77653505,
    :ids
@@ -28389,7 +29372,9 @@
     :rec_yd 537.0,
     :rec_td 3.0,
     :fum_lost 2.0},
+   :nflverse/games-by-season {2023 17.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 98.57437859,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.198458574181118}
   {:espn/proj-receptions 20.04899582,
    :ids
@@ -28451,7 +29436,9 @@
     :rec_yd 134.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 7.0, 2024 4.0, 2025 13.0},
    :espn/proj-targets 26.53507058,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0294840294840295}
   {:ids
    {:sleeper "96",
@@ -28507,6 +29494,8 @@
     :rush_yd 60.0,
     :fum_lost 2.0},
    :fantasypros/ecr-pos-tier 5,
+   :nflverse/games-by-season {2023 1.0, 2024 17.0, 2025 16.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00191570881226054}
   {:espn/proj-receptions 20.32473669,
    :ids
@@ -28567,7 +29556,9 @@
     :rec_yd 78.0,
     :rec_td 1.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 16.0},
    :espn/proj-targets 26.1435093,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0527472527472528}
   {:espn/proj-receptions 52.80411443,
    :ids
@@ -28621,7 +29612,9 @@
    :player-name "Quentin Johnston",
    :sleeper/injury-status "Questionable",
    :stats {:rush_yd 11.0, :rec 58.0, :rec_yd 748.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 13.0},
    :espn/proj-targets 90.21923996,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.154411764705882}
   {:espn/proj-receptions 60.49382246,
    :ids
@@ -28678,7 +29671,9 @@
    :player-name "Jordan Addison",
    :sleeper/injury-status nil,
    :stats {:rush_yd 22.0, :rec 60.0, :rec_yd 795.0, :rec_td 5.0},
+   :nflverse/games-by-season {2023 17.0, 2024 15.0, 2025 14.0},
    :espn/proj-targets 99.56182478,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.168803418803419}
   {:espn/proj-receptions 1.512486688,
    :ids
@@ -28730,7 +29725,9 @@
    :player-name "Kendre Miller",
    :sleeper/injury-status nil,
    :stats {:rush_yd 20.0, :rec 2.0, :rec_yd 16.0},
+   :nflverse/games-by-season {2023 7.0, 2024 6.0, 2025 7.0},
    :espn/proj-targets 2.012073829,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.00884955752212389}
   {:ids
    {:sleeper "9758",
@@ -28788,6 +29785,8 @@
     :rush_td 2.0,
     :fum_lost 3.0},
    :fantasypros/ecr-pos-tier 4,
+   :nflverse/games-by-season {2023 15.0, 2024 17.0, 2025 14.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.0}
   {:espn/proj-receptions 81.71384623,
    :ids
@@ -28849,7 +29848,9 @@
     :rec_yd 1103.0,
     :rec_td 6.0,
     :fum_lost 1.0},
+   :nflverse/games-by-season {2023 16.0, 2024 17.0, 2025 17.0},
    :espn/proj-targets 116.5567819,
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17},
    :nflverse/prior-target-share 0.28992628992629}
   {:ids
    {:sleeper "9999",
@@ -28875,7 +29876,9 @@
    :player-name "Will Levis",
    :sleeper/injury-status nil,
    :stats {:pass_yd 205.0, :pass_td 1.0, :pass_int 1.0, :rush_yd 15.0},
-   :fantasypros/ecr-pos-tier 8}
+   :fantasypros/ecr-pos-tier 8,
+   :nflverse/games-by-season {2023 9.0, 2024 12.0},
+   :nflverse/games-seasons {2023 17, 2024 17, 2025 17}}
   {:ids {:sleeper "ARI", :team "ARI"},
    :player-id "ARI",
    :sleeper/years-exp nil,

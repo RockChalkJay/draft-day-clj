@@ -2,6 +2,7 @@
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.db :as db]
+            [draft-day.views.board :as board]
             [draft-day.views.util :as util]))
 
 (defn- silhouette []
@@ -38,6 +39,20 @@
                             cover? (str "Covers one of your uncovered " pos " starters"))}
         b]])))
 
+(defn- risk-tag
+  "The nominated player's injury risk, as the board's bar plus the word the board
+  has no room for. This is the one place a manager is about to commit money, so
+  it is worth the extra characters here even though the column stays a glyph."
+  [p]
+  (when-let [lvl (:injury-risk p)]
+    (let [txt (:injury/reason p)]
+      [:span " · "
+       [:span.nt-risk {:title txt :aria-label txt}
+        [board/risk-bar lvl]
+        [:span.nt-risk-word {:class (when (db/serious-injury? (:sleeper/injury-status p))
+                                      "inj-serious")}
+         (get board/risk-words lvl)]]])))
+
 (defn- nominate-form
   "Form-2 so the bid/team live in local reagent atoms (synchronous updates — no
   dropped keystrokes on a fast controlled input). Keyed on the player so it
@@ -53,7 +68,7 @@
           [face p]
           [:div.nt-main
            [:div.nt-name (:player-name p)]
-           [:div.nt-meta (:position p) " · " (:team p) [bye-tag p]]
+           [:div.nt-meta (:position p) " · " (:team p) [bye-tag p] [risk-tag p]]
            [:div.nt-vals
             [val-cell "Worth" (util/money (:worth p))]
             [val-cell "Mkt" (util/money (:market p))]

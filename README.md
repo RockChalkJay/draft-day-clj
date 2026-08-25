@@ -47,7 +47,7 @@ paired season-block-bootstrapped statistics, the draft-simulation metric).
 
 - ~~Remove strategy tabs - they don't add value~~
 
-- **Injury history not just current health. Color code for serious injury or suspension**
+- ~~Injury history not just current health. Color code for serious injury or suspension~~
 
 - **Remove the 🚨 for tier cliffs. Postion views with tier coloring accomplish the same thing in a clean way.**
 
