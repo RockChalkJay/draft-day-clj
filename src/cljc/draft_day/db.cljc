@@ -217,7 +217,15 @@
    {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros' expert tier at the same scale as Tier — within the position while filtered, overall otherwise; blank where FantasyPros has no match" :default? false}
    {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? false}
    {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
-   {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}])
+   {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}
+   ;; Usage. What a player actually did last season, and what ESPN expects this
+   ;; one — blank where the source has no row, which for the prior-season three
+   ;; is exactly the rookies.
+   {:key :prior-tgt     :label "Tgt"  :tooltip "Targets last season — blank for rookies" :default? false}
+   {:key :prior-rec     :label "Rec"  :tooltip "Receptions last season — blank for rookies" :default? false}
+   {:key :prior-tgt-pct :label "Tgt%" :tooltip "Share of his team's targets last season — blank for rookies" :default? false}
+   {:key :proj-tgt      :label "pTgt" :tooltip "Projected targets this season (ESPN)" :default? false}
+   {:key :proj-rec      :label "pRec" :tooltip "Projected receptions this season (ESPN)" :default? false}])
 
 (def columns-by-key (into {} (map (juxt :key identity)) column-catalog))
 
@@ -259,7 +267,12 @@
    :tier     :tier
    :fp-tier  :fantasypros/ecr-tier
    :inj      :sleeper/injury-status
-   :bye      :bye})
+   :bye      :bye
+   :prior-tgt     :nflverse/prior-targets
+   :prior-rec     :nflverse/prior-receptions
+   :prior-tgt-pct :nflverse/prior-target-share
+   :proj-tgt      :espn/proj-targets
+   :proj-rec      :espn/proj-receptions})
 
 (defn reconcile-config
   "Reconcile a persisted config with the current shape: drop keys the app no

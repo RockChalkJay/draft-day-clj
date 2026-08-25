@@ -49,40 +49,54 @@
   a *broken* join has a low hit rate at a position the source clearly covers.
   So `:by-position` carries both the universe count and the published-row
   count, which is what makes `{\"DST\" {:n 32 :rows 32 :matched 0}}` legible as
-  a structural break rather than a thin source."
-  [universe enrichment-by-key]
-  (let [keyed (mapv (juxt identity
-                          #(match/key-for (:player-name %) (:position %)))
-                    universe)
-        hit?  (fn [k] (contains? enrichment-by-key k))
-        universe-by-pos (frequencies (keep (comp :position first) keyed))
-        matched-by-pos  (frequencies (keep (fn [[p k]]
-                                             (when (hit? k) (:position p)))
-                                           keyed))
-        rows-by-pos     (frequencies (keep key-position
-                                           (keys enrichment-by-key)))
-        by-position
-        (into {}
-              (map (fn [pos] [pos {:n       (get universe-by-pos pos 0)
-                                   :rows    (get rows-by-pos pos 0)
-                                   :matched (get matched-by-pos pos 0)}]))
-              (into (set (keys universe-by-pos)) (keys rows-by-pos)))
-        matched (reduce + 0 (vals matched-by-pos))]
-    {:players (mapv (fn [[p k]]
-                      (if-let [ext (get enrichment-by-key k)] (deep-merge p ext) p))
-                    keyed)
-     :report
-     {:rows        (count enrichment-by-key)
-      :matched     matched
-      :hit-rate    (rate matched (count enrichment-by-key))
-      :coverage    (rate matched (count universe))
-      :by-position by-position
-      :unmatched-sample
-      (into [] (comp (remove (into #{} (comp (map second) (filter hit?)) keyed))
-                     (take unmatched-sample-limit))
-            (keys enrichment-by-key))}}))
+  a structural break rather than a thin source.
+
+  `opts` swaps out the join key for sources that can do better than a name.
+  nflverse is keyed by GSIS id, which every universe player already carries, so
+  it joins exactly instead of guessing:
+
+    :key-fn       universe player -> join key (default: the name/position key)
+    :key-position enrichment key -> position, for the per-position report. The
+                  default reads it back out of the name key; a GSIS id has no
+                  room for one, so such sources pass a lookup map instead."
+  ([universe enrichment-by-key]
+   (left-join-report universe enrichment-by-key {}))
+  ([universe enrichment-by-key opts]
+   (let [key-fn  (or (:key-fn opts)
+                     #(match/key-for (:player-name %) (:position %)))
+         pos-of  (or (:key-position opts) key-position)
+         keyed   (mapv (juxt identity key-fn) universe)
+         hit?    (fn [k] (contains? enrichment-by-key k))
+         universe-by-pos (frequencies (keep (comp :position first) keyed))
+         matched-by-pos  (frequencies (keep (fn [[p k]]
+                                              (when (hit? k) (:position p)))
+                                            keyed))
+         rows-by-pos     (frequencies (keep pos-of (keys enrichment-by-key)))
+         by-position
+         (into {}
+               (map (fn [pos] [pos {:n       (get universe-by-pos pos 0)
+                                    :rows    (get rows-by-pos pos 0)
+                                    :matched (get matched-by-pos pos 0)}]))
+               (into (set (keys universe-by-pos)) (keys rows-by-pos)))
+         matched (reduce + 0 (vals matched-by-pos))]
+     {:players (mapv (fn [[p k]]
+                       (if-let [ext (get enrichment-by-key k)] (deep-merge p ext) p))
+                     keyed)
+      :report
+      {:rows        (count enrichment-by-key)
+       :matched     matched
+       :hit-rate    (rate matched (count enrichment-by-key))
+       :coverage    (rate matched (count universe))
+       :by-position by-position
+       :unmatched-sample
+       (into [] (comp (remove (into #{} (comp (map second) (filter hit?)) keyed))
+                      (take unmatched-sample-limit))
+             (keys enrichment-by-key))}})))
 
 (defn left-join
-  "Attach enrichment columns onto each universe player by (name, position) key."
-  [universe enrichment-by-key]
-  (:players (left-join-report universe enrichment-by-key)))
+  "Attach enrichment columns onto each universe player by (name, position) key,
+  or by whatever `opts` names — see `left-join-report`."
+  ([universe enrichment-by-key]
+   (:players (left-join-report universe enrichment-by-key)))
+  ([universe enrichment-by-key opts]
+   (:players (left-join-report universe enrichment-by-key opts))))

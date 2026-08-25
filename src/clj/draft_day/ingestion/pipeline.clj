@@ -21,6 +21,7 @@
             [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.merge :as merge]
+            [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.match :as match]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.player-ids :as player-ids]
@@ -40,8 +41,11 @@
   harness learned this the hard way — see benchmark/fetch.clj's cache-path.
 
   2: vendor columns moved under :vendor/by-format, one entry per scoring format,
-  and the write-only :sleeper/pts-* fields were dropped."
-  2)
+  and the write-only :sleeper/pts-* fields were dropped.
+
+  3: prior-season usage (:nflverse/prior-*) and ESPN's projected targets and
+  receptions (:espn/proj-*) were added."
+  3)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -123,15 +127,24 @@
   "One line per source, plus a warning for any position whose published rows
   mostly failed to land. Warning on coverage instead would be pure noise: the
   FantasyPros auction list covers ~150 players by design, so it is *supposed*
-  to leave most of the board untouched."
-  [label {:keys [ok? rows matched hit-rate coverage by-position]}]
+  to leave most of the board untouched.
+
+  `:expected-partial?` turns that warning off for a source whose rows cannot all
+  land no matter how healthy the join is. A prior-season source is the case:
+  nflverse publishes everyone who played last year, and the ones who retired or
+  were cut have no row on this year's board to find. Warning about that every
+  run costs the floor its only job — saying that a join which *should* land is
+  not landing — by burying it under warnings that always mean 'as intended'."
+  [label {:keys [ok? rows matched hit-rate coverage by-position expected-partial?]}]
   (if-not ok?
     (log/warn (format "%s: unavailable, columns omitted" label))
     (do
       (log/info (format "%s: %d rows -> %d matched (%.0f%% of rows, %.0f%% of board)"
                         label rows matched (* 100.0 hit-rate) (* 100.0 coverage)))
       (doseq [[pos {:keys [n rows matched]}] (sort by-position)
-              :when (and (pos? rows) (< (/ (double matched) rows) hit-rate-floor))]
+              :when (and (not expected-partial?)
+                         (pos? rows)
+                         (< (/ (double matched) rows) hit-rate-floor))]
         (log/warn
          (format "%s: %s published %d row(s), only %d landed (board has %d)"
                  label pos rows matched n))))))
@@ -140,17 +153,23 @@
   "Left-join one best-effort enrichment source onto the accumulating universe,
   recording its match report under `label`. A nil source means the fetch failed
   (see `best-effort`) and is reported as unavailable — distinct from a source
-  that answered and simply matched nothing, which is a join bug, not an outage."
-  [acc label by-key]
-  (if (nil? by-key)
-    (do (log-enrichment! label {:ok? false})
-        (assoc-in acc [:sources label] {:ok? false}))
-    (let [{:keys [players report]} (merge/left-join-report (:players acc) by-key)
-          report (assoc report :ok? true)]
-      (log-enrichment! label report)
-      (-> acc
-          (assoc :players players)
-          (assoc-in [:sources label] report)))))
+  that answered and simply matched nothing, which is a join bug, not an outage.
+
+  `opts` is passed straight through to `merge/left-join-report`, for a source
+  that joins on something better than a name key; `:expected-partial?` is read
+  here rather than there, and reaches `log-enrichment!` via the report."
+  ([acc label by-key] (apply-enrichment acc label by-key {}))
+  ([acc label by-key opts]
+   (if (nil? by-key)
+     (do (log-enrichment! label {:ok? false})
+         (assoc-in acc [:sources label] {:ok? false}))
+     (let [{:keys [players report]} (merge/left-join-report (:players acc) by-key opts)
+           report (assoc report :ok? true
+                         :expected-partial? (boolean (:expected-partial? opts)))]
+       (log-enrichment! label report)
+       (-> acc
+           (assoc :players players)
+           (assoc-in [:sources label] report))))))
 
 (def ^{:doc "Alias for the shared `scoring/format-label` — the label scheme is
   cljc because the browser reads these keys back off /api/players."}
@@ -178,7 +197,7 @@
   recaptured, its column renders blank offline with nothing to say the column
   is structurally absent rather than merely unmatched. That is exactly what
   happened when the FantasyPros AAV and sleepers joins were introduced."
-  (into (into [:sleeper/byes :fantasypros/sleepers :espn]
+  (into (into [:sleeper/byes :fantasypros/sleepers :espn :nflverse/prior-usage]
               (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
                                  (format-label :fantasypros/aav fmt)]))
               scoring/formats)
@@ -205,7 +224,9 @@
   [season]
   (into (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
                :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
-               :espn                 #(best-effort (espn/fetch season))}
+               :espn                 #(best-effort (espn/fetch season))
+               ;; Last season, not this one: these are realized outcomes.
+               :nflverse/prior-usage #(best-effort (nflverse/fetch (dec season)))}
               (mapcat (fn [fmt]
                         [[(format-label :fantasypros/ecr fmt)
                           #(best-effort (fantasypros/fetch-ecr fmt))]
@@ -244,7 +265,8 @@
         ;; matches. Best-effort: a failed schedule fetch just leaves :bye nil.
         byes     (:sleeper/byes fetched)
         sleepers (:fantasypros/sleepers fetched)
-        espn     (:espn fetched)]
+        espn     (:espn fetched)
+        prior    (:nflverse/prior-usage fetched)]
     ;; Byes join on :team rather than a name key, so they get a row count but
     ;; none of the match-rate machinery — reporting them as a 0% join would be
     ;; a lie, not a diagnostic.
@@ -275,7 +297,14 @@
                                       by-key))))
               acc pos-tier-tasks)
       (apply-enrichment acc :fantasypros/sleepers (some-> sleepers match/by-key))
-      (apply-enrichment acc :espn espn))))
+      (apply-enrichment acc :espn espn)
+      ;; nflverse alone joins on GSIS rather than a name key — every universe
+      ;; player already carries one, so there is nothing to guess. Its keys hold
+      ;; no position, hence the explicit index for the per-position report.
+      (apply-enrichment acc :nflverse/prior-usage (:by-key prior)
+                        {:key-fn            #(get-in % [:ids :gsis])
+                         :key-position      (:positions prior)
+                         :expected-partial? true}))))
 
 (defn fetch-enriched-universe
   "The live universe: Sleeper rows, id-validated, then enriched.

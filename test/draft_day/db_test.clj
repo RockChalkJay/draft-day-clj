@@ -365,3 +365,24 @@
     (is (= 5 (db/player-tier p :overall)))
     (is (nil? (db/player-tier {} :overall))
         "a board that predates the scales reads as untiered rather than throwing")))
+
+(deftest usage-columns-are-catalogued-and-sortable
+  ;; Every column the board can render needs a sort accessor, or clicking its
+  ;; header silently sorts by nil. The usage columns arrive from two different
+  ;; sources, so this checks the wiring rather than the values.
+  (let [usage [:prior-tgt :prior-rec :prior-tgt-pct :proj-tgt :proj-rec]]
+    (doseq [k usage]
+      (is (contains? db/columns-by-key k) (str k " is missing from the catalog"))
+      (is (contains? db/sort-accessors k) (str k " has no sort accessor")))
+    (testing "they are opt-in — the board is already wide"
+      (is (every? #(false? (:visible? %))
+                  (filter (comp (set usage) :key) (db/default-columns)))))
+    (testing "a layout persisted before they existed gains them, still hidden"
+      (let [out (db/reconcile-columns [{:key :name :visible? true}])]
+        (is (= [{:key :name :visible? true}]
+               (filterv #(= :name (:key %)) out)) "the stored entry is untouched")
+        (is (every? (set (map :key out)) usage) "and the new ones are appended")))
+    (testing "the accessors point at the keys ingestion actually ships"
+      (is (= :nflverse/prior-targets (db/sort-accessors :prior-tgt)))
+      (is (= :nflverse/prior-target-share (db/sort-accessors :prior-tgt-pct)))
+      (is (= :espn/proj-targets (db/sort-accessors :proj-tgt))))))
