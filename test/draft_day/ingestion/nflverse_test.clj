@@ -52,3 +52,89 @@
 (deftest parses-csv-text-into-header-keyed-maps
   (let [rows (nflverse/parse-csv "player_id,position,targets\n00-0036900,WR,185\n")]
     (is (= [{"player_id" "00-0036900" "position" "WR" "targets" "185"}] rows))))
+
+;; ---- availability (the second question this one fetch answers) ----
+
+(defn- row [gsis games & [pos]]
+  {"player_id" gsis "position" (or pos "RB") "games" games})
+
+(deftest season-length-follows-the-2021-expansion
+  ;; The app only asks about recent seasons, but the benchmark harness reaches
+  ;; back past the boundary, and a hardcoded 17 hands it a free missed game for
+  ;; every player in every older season.
+  (is (= 16 (nflverse/games-in-season 2020)))
+  (is (= 17 (nflverse/games-in-season 2021)))
+  (is (= 17 (nflverse/games-in-season 2025))))
+
+(deftest games-are-clamped-to-the-season-they-were-played-in
+  ;; The 2025 file really does carry an 18. Left alone it becomes a negative
+  ;; missed-game total that averages away somebody else's real absence.
+  (is (= ["00-1" 17.0] (nflverse/row->games 2025 (row "00-1" "18"))))
+  (is (= ["00-1" 16.0] (nflverse/row->games 2019 (row "00-1" "17"))))
+  (is (= ["00-1" 4.0]  (nflverse/row->games 2025 (row "00-1" "4")))))
+
+(deftest a-row-with-no-games-figure-joins-nothing
+  ;; Same BLANK-IS-NOT-ZERO rule as the usage columns: absent, not 0.
+  (is (nil? (nflverse/row->games 2025 (row "00-1" ""))))
+  (is (nil? (nflverse/row->games 2025 (row "00-1" "NA"))))
+  (is (nil? (nflverse/row->games 2025 (row "" "17"))))
+  (is (nil? (nflverse/row->games 2025 (row "00-1" "17" "CB")))))
+
+(deftest availability-carries-the-fetched-window-not-just-the-hits
+  ;; A gap means "he played none" only if that season was fetched at all, so the
+  ;; season lengths ride along on every player. Without them a consumer cannot
+  ;; tell a lost season from a lost download.
+  (let [out (nflverse/availability {2024 [(row "00-1" "17")]
+                                    2025 [(row "00-1" "4") (row "00-2" "17")]})]
+    (is (= {2024 17.0 2025 4.0} (:nflverse/games-by-season (get out "00-1"))))
+    (testing "a player with no row in a fetched season is simply absent from it"
+      (is (= {2025 17.0} (:nflverse/games-by-season (get out "00-2")))))
+    (testing "every player carries which seasons were fetched, and how long each was"
+      (is (= {2024 17 2025 17} (:nflverse/games-seasons (get out "00-1"))))
+      (is (= {2024 17 2025 17} (:nflverse/games-seasons (get out "00-2")))))))
+
+(deftest availability-sizes-an-older-season-correctly
+  ;; The lengths map is what lets `rankings.injury` size a missing season without
+  ;; importing this namespace's calendar.
+  (is (= {2020 16 2021 17}
+         (:nflverse/games-seasons
+          (get (nflverse/availability {2020 [(row "00-1" "16")]
+                                       2021 [(row "00-1" "17")]}) "00-1")))))
+
+(deftest a-player-in-no-fetched-season-gets-no-columns-at-all
+  ;; Not a window full of zeroes — that is the shape that would make a
+  ;; never-active depth player read as maximally fragile.
+  (is (nil? (get (nflverse/availability {2025 [(row "00-1" "17")]}) "00-2"))))
+
+;; ---- what counts as having fetched a season ----
+;;
+;; `availability` treats every season it is handed as one that really happened,
+;; and charges each player the difference between its length and what he played.
+;; That makes `fetch-season-rows` the gate: anything it lets through as a
+;; non-nil is a season the whole league is measured against, so every way a
+;; fetch can fail short of a clean 404 has to collapse to nil here.
+
+(deftest a-season-that-throws-does-not-take-the-source-down-with-it
+  ;; The seasons go out concurrently and the thunks are not individually
+  ;; wrapped, so an escaping exception would nil the entire nflverse result —
+  ;; usage columns and every Risk bar, board-wide, for the cache window.
+  (with-redefs [nflverse/http-get-string
+                (fn [_] (throw (java.io.IOException. "connection reset")))]
+    (is (nil? (nflverse/fetch-season-rows 2024)))))
+
+(deftest a-200-with-an-empty-body-is-a-miss-not-an-empty-season
+  ;; The shape that matters: survive as [] and the season is recorded as
+  ;; fetched-and-nobody-played, which renders a 17/17/17 veteran as Brittle.
+  (with-redefs [nflverse/http-get-string (fn [_] "")]
+    (is (nil? (nflverse/fetch-season-rows 2024)))))
+
+(deftest a-200-carrying-the-wrong-file-is-a-miss-too
+  ;; A release URL that redirects to an error page parses without throwing and
+  ;; yields rows with no GSIS id — indistinguishable downstream from a season
+  ;; nobody played.
+  (with-redefs [nflverse/http-get-string (fn [_] "<html><body>Not Found</body></html>")]
+    (is (nil? (nflverse/fetch-season-rows 2024))))
+  (testing "a real stats file is not rejected by the same check"
+    (with-redefs [nflverse/http-get-string
+                  (fn [_] "player_id,position,games,targets\n00-1,WR,17,120\n")]
+      (is (= 1 (count (nflverse/fetch-season-rows 2024)))))))

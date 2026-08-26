@@ -11,6 +11,7 @@
             [draft-day.rankings.inflation :as inflation]
             [draft-day.rankings.inflation-index :as idx]
             [draft-day.rankings.tcm :as tcm]
+            [draft-day.rankings.injury :as injury]
             [draft-day.rankings.league-state :as ls]))
 
 (defn static-rankings
@@ -34,6 +35,9 @@
   what still rule it out.) Both of its scales ship as display columns instead —
   see `db/column-catalog`.
 
+  :injury-risk rides along last, after everything that reads :points — it is a
+  board column, not a term in any score, and nothing downstream consumes it.
+
   Opts :model (default :points, the raw scored projection) and :weights select
   which `rankings.model` produces :points; every later stage is indifferent to
   the choice. See `draft-day.rankings.model`."
@@ -45,8 +49,14 @@
          levels   (replacement/replacement-levels enriched num-teams
                                                   (or replacement-config {}) :points)
          vorped   (replacement/with-vorp enriched levels :points)]
-     {:players            (tiers/with-tiers vorped {:replacement-levels levels
-                                                    :num-teams          num-teams})
+     {:players            (-> (tiers/with-tiers vorped {:replacement-levels levels
+                                                        :num-teams          num-teams})
+                              ;; Injury risk is static — completed seasons and a
+                              ;; preseason designation, neither of which a pick
+                              ;; moves — so it belongs here rather than beside
+                              ;; `tcm` in the live layer. Display only: it feeds
+                              ;; no later stage. See `rankings.injury`.
+                              injury/with-injury-risk)
       :replacement-levels levels})))
 
 (defn live-valuation

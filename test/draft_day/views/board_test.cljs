@@ -4,6 +4,7 @@
   have: adjacent tiers stay visibly apart however many tiers a position has.
   Run with `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing]]
+            [clojure.string :as str]
             [draft-day.views.board :as board]
             [draft-day.views.util :as util]))
 
@@ -93,21 +94,35 @@
       (is (nil? (board/drop-side ks :name :floor)))
       (is (nil? (board/drop-side ks nil :name))))))
 
+(defn classes
+  "The row's classes as a set. `player-row` joins them into one string, so
+  membership has to be tested on the split — `(some #{\"tier-row\"} a-string)`
+  walks *characters*, never matches, and its `not-any?` twin passes vacuously
+  whatever the row actually rendered."
+  [attrs]
+  (set (str/split (:class attrs) #" ")))
+
 (deftest every-row-is-striped-whatever-the-view
   ;; Striping used to be switched off unless the board was filtered to one
   ;; position, because :tier was per-position and a tier 2 RB beside a tier 2 WR
   ;; meant nothing. The sub now hands down whichever scale the filter implies, so
   ;; there is always a coherent number to colour by.
-  (let [[_ attrs] (board/player-row {:player-id "p1" :tier 3} [] nil 6 true)]
-    (is (some #{"tier-row"} (:class attrs)))
-    (is (some #{"tier-start"} (:class attrs)))
+  (let [[_ attrs] (board/player-row {:player-id "p1" :tier 3} [] nil 6 true true)]
+    (is (contains? (classes attrs) "tier-row"))
+    (is (contains? (classes attrs) "tier-start"))
     (is (contains? (:style attrs) "--tier-bg"))
     (is (contains? (:style attrs) "--tier-line")))
 
   (testing "a row the server never tiered still renders rather than throwing"
-    (let [[_ attrs] (board/player-row {:player-id "p2"} [] nil 6 false)]
-      (is (some #{"tier-row"} (:class attrs)))
-      (is (not-any? #{"tier-start"} (:class attrs))))))
+    (let [[_ attrs] (board/player-row {:player-id "p2"} [] nil 6 false true)]
+      (is (contains? (classes attrs) "tier-row"))
+      (is (not (contains? (classes attrs) "tier-start")))))
+
+  (testing "bands off: no tier classes and no custom properties to colour from"
+    (let [[_ attrs] (board/player-row {:player-id "p3" :tier 3} [] nil 6 true false)]
+      (is (not (contains? (classes attrs) "tier-row")))
+      (is (not (contains? (classes attrs) "tier-start")))
+      (is (nil? (:style attrs))))))
 
 (deftest pct-renders-a-rate-not-a-fraction
   (testing "a season rate reads as a percentage"
@@ -120,3 +135,49 @@
   (is (= "2025 season" (board/prior-season-title {:nflverse/prior-season 2025})))
   (testing "a player nflverse never had says nothing rather than \"nil season\""
     (is (nil? (board/prior-season-title {})))))
+
+;; ---- injury-risk bar ----
+;; The Risk cell carries no number, so what has to hold is that the *glyph* is
+;; faithful: the right number of segments lit, and a colour that agrees with them.
+
+(deftest risk-bar-fills-one-segment-per-level
+  (let [lit (fn [level]
+              (count (filter (fn [[_ attrs]] (= "on" (:class attrs)))
+                             (nth (board/risk-bar level) 1))))]
+    (testing "fill length is the level — the redundant encoding that survives
+              a reader who cannot separate the hues"
+      (is (= [1 2 3 4 5] (mapv lit [1 2 3 4 5]))))
+    (testing "the track is always full width, so the column stays scannable"
+      (is (every? #(= board/risk-levels (count (nth (board/risk-bar %) 1)))
+                  [1 3 5])))))
+
+(deftest a-filled-bar-is-one-colour-not-a-gradient
+  ;; Every lit segment takes the *level's* colour, so length and hue say the same
+  ;; thing twice. Per-segment colours would make a risk-4 bar start green.
+  (let [segs (filter (fn [[_ attrs]] (= "on" (:class attrs)))
+                     (nth (board/risk-bar 4) 1))
+        bgs  (set (map (fn [[_ attrs]] (get-in attrs [:style :background])) segs))]
+    (is (= 1 (count bgs)))
+    (is (= #{(board/risk-color 4)} bgs)))
+  (testing "an unlit segment carries no inline colour at all"
+    (is (every? (fn [[_ attrs]] (nil? (:style attrs)))
+                (remove (fn [[_ attrs]] (= "on" (:class attrs)))
+                        (nth (board/risk-bar 2) 1))))))
+
+(deftest risk-colors-ramp-green-to-red
+  (testing "level 1 is the green end and the worst level the red end, borrowed
+            from the tier ramp rather than a second one invented here"
+    (is (= (board/risk-color 1)
+           (str "oklch(0.7 0.14 " (.toFixed board/tier-hue-best 1) ")")))
+    (is (= (board/risk-color board/risk-levels)
+           (str "oklch(0.7 0.14 " (.toFixed board/tier-hue-worst 1) ")"))))
+  (testing "well-formed, and monotone so hue alone still reads as an ordering"
+    (is (every? #(re-matches #"oklch\(0\.\d+ 0\.\d+ \d+\.\d\)" (board/risk-color %))
+                (range 1 (inc board/risk-levels))))
+    (is (apply > (map #(board/tier-hue % board/risk-levels)
+                      (range 1 (inc board/risk-levels)))))))
+
+(deftest every-level-has-a-word-for-the-tile
+  ;; The board column has no room for these; the on-the-block tile does, and a
+  ;; bar with no legend anywhere is a glyph nobody can learn.
+  (is (every? (comp string? board/risk-words) (range 1 (inc board/risk-levels)))))

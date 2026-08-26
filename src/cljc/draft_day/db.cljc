@@ -190,6 +190,39 @@
     (:fantasypros/ecr-pos-tier p)
     (:fantasypros/ecr-tier p)))
 
+;; ---- injury ----
+
+(def serious-injury-statuses
+  "Designations that read as serious: the ones that cost a manager games he has
+  already paid for. IR and PUP are multi-week by rule, a suspension is served
+  whatever the player's health, and NA/DNR mean he is not with the team at all.
+  Sleeper spells them tersely and inconsistently across seasons, so membership is
+  tested case-insensitively against a set of spellings rather than by equality.
+
+  The one copy, in cljc for the same reason `priced-positions` is: the server
+  floors the risk scale on this set (`rankings.injury`) and the board colours the
+  Inj cell on it, and a second hand-written copy would drift. Drift here is
+  especially loud — it puts a Risk of 5 next to a calm, plain-black Inj cell
+  saying the opposite.
+
+  MEMBERSHIP IS DECIDED BY DURATION, NOT BY SEVERITY, because the only thing
+  this set does is override a multi-season durability score. A designation
+  earns a place here by costing weeks *by rule* — which is the same test that
+  keeps Questionable and Doubtful out, and, less obviously, Out.
+
+  Out sounds like the serious one and is not: it is a gameday call covering the
+  next game, and this is a preseason auction board, where it is either absent or
+  a week old by kickoff. Floored on it, a 17/17/17 veteran with a one-week knock
+  rendered `Risk 5 of 5 — Out, 0.0 games missed per season over 3 seasons` — a
+  cell that states its own evidence and then contradicts it. COV is gone for the
+  same reason plus a simpler one: the COVID list itself is defunct."
+  #{"ir" "ir-r" "pup" "nfi" "sus" "susp" "na" "dnr"})
+
+(defn serious-injury?
+  "Is this `:sleeper/injury-status` one of the serious ones?"
+  [status]
+  (boolean (some-> status str/trim str/lower-case not-empty serious-injury-statuses)))
+
 ;; ---- board columns ----
 ;; The board is data-driven: :columns is an ordered vector of {:key :visible?},
 ;; so a column can be hidden/shown and drag-reordered. Rendering + sort accessors
@@ -210,7 +243,8 @@
    {:key :fp-aav   :label "FP$"    :tooltip "FantasyPros auction value ($, raw)" :default? true}
    {:key :bargain  :label "Barg"   :tooltip "Value − Worth (green target / red reach)" :default? true}
    {:key :vorp     :label "VORP"   :tooltip "Value over replacement"    :default? true}
-   {:key :inj      :label "Inj"    :tooltip "Injury status"             :default? false}
+   {:key :risk     :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile); a serious designation forces 5. Blank where there is no history to judge" :default? true}
+   {:key :inj      :label "Inj"    :tooltip "Current injury status"     :default? false}
    {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
    {:key :tier     :label "Tier"   :tooltip "Tier — within the position while filtered to one, across the whole board otherwise" :default? false}
@@ -267,6 +301,7 @@
    :tier     :tier
    :fp-tier  :fantasypros/ecr-tier
    :inj      :sleeper/injury-status
+   :risk     :injury-risk
    :bye      :bye
    :prior-tgt     :nflverse/prior-targets
    :prior-rec     :nflverse/prior-receptions

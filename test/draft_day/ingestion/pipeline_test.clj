@@ -99,8 +99,8 @@
         ;; auction value kept the label looking healthy.
         flat    (into {:fantasypros/sleepers [:fantasypros/sleeper?]
                        :espn                 [:espn/auction-value :espn/proj-targets]
-                       :nflverse/prior-usage [:nflverse/prior-targets
-                                              :nflverse/prior-target-share]
+                       :nflverse/player-stats [:nflverse/prior-targets
+                                               :nflverse/prior-target-share]
                        :sleeper/byes         [:bye]}
                       (keep (fn [[label pos _]]
                               (when-not (get fantasypros/pos-formats pos)

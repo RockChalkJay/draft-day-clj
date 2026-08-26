@@ -44,8 +44,12 @@
   and the write-only :sleeper/pts-* fields were dropped.
 
   3: prior-season usage (:nflverse/prior-*) and ESPN's projected targets and
-  receptions (:espn/proj-*) were added."
-  3)
+  receptions (:espn/proj-*) were added.
+
+  4: multi-season availability (:nflverse/games-by-season, :nflverse/games-seasons)
+  was added, and the nflverse label became :nflverse/player-stats now that one
+  fetch answers two questions."
+  4)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -197,7 +201,7 @@
   recaptured, its column renders blank offline with nothing to say the column
   is structurally absent rather than merely unmatched. That is exactly what
   happened when the FantasyPros AAV and sleepers joins were introduced."
-  (into (into [:sleeper/byes :fantasypros/sleepers :espn :nflverse/prior-usage]
+  (into (into [:sleeper/byes :fantasypros/sleepers :espn :nflverse/player-stats]
               (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
                                  (format-label :fantasypros/aav fmt)]))
               scoring/formats)
@@ -225,8 +229,10 @@
   (into (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
                :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
                :espn                 #(best-effort (espn/fetch season))
-               ;; Last season, not this one: these are realized outcomes.
-               :nflverse/prior-usage #(best-effort (nflverse/fetch (dec season)))}
+               ;; Last season, not this one: these are realized outcomes. One
+               ;; fetch, two questions — last season's usage and the availability
+               ;; window ending there. See `nflverse/fetch`.
+               :nflverse/player-stats #(best-effort (nflverse/fetch (dec season)))}
               (mapcat (fn [fmt]
                         [[(format-label :fantasypros/ecr fmt)
                           #(best-effort (fantasypros/fetch-ecr fmt))]
@@ -266,7 +272,7 @@
         byes     (:sleeper/byes fetched)
         sleepers (:fantasypros/sleepers fetched)
         espn     (:espn fetched)
-        prior    (:nflverse/prior-usage fetched)]
+        prior    (:nflverse/player-stats fetched)]
     ;; Byes join on :team rather than a name key, so they get a row count but
     ;; none of the match-rate machinery — reporting them as a 0% join would be
     ;; a lie, not a diagnostic.
@@ -301,7 +307,7 @@
       ;; nflverse alone joins on GSIS rather than a name key — every universe
       ;; player already carries one, so there is nothing to guess. Its keys hold
       ;; no position, hence the explicit index for the per-position report.
-      (apply-enrichment acc :nflverse/prior-usage (:by-key prior)
+      (apply-enrichment acc :nflverse/player-stats (:by-key prior)
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions prior)
                          :expected-partial? true}))))
