@@ -349,9 +349,9 @@
                              :visible? (boolean (:default? c))})))]
     (vec (concat kept added))))
 
-(defn move-column-onto
-  "Drop the column keyed `from-k` onto `to-k`: remove it, then insert it at
-  `to-k`'s index *in the original vector*.
+(defn move-onto
+  "Drop the element `key-fn` identifies as `from-k` onto the one it identifies as
+  `to-k`: remove it, then insert it at `to-k`'s index *in the original vector*.
 
   Taking the target index before the removal rather than after is what makes the
   drag read the way it looks. Dragging rightwards, the removal shifts the target
@@ -364,16 +364,40 @@
   different vectors — the picker lists every column, the board header only the
   visible ones — so an index means two different things depending on where it
   came from. A key means one thing either way, and hidden columns keep their
-  slots. An absent key, or a drop onto itself, is a no-op."
-  [cols from-k to-k]
-  (let [cols     (vec cols)
-        index-of (fn [k] (first (keep-indexed #(when (= k (:key %2)) %1) cols)))
+  slots. The watch list has the same problem for a different reason: what it
+  renders is the undrafted subset of what it stores, so a row's screen index is
+  not its index in the vector. An absent key, or a drop onto itself, is a no-op."
+  [v from-k to-k key-fn]
+  (let [v        (vec v)
+        index-of (fn [k] (first (keep-indexed #(when (= k (key-fn %2)) %1) v)))
         from     (index-of from-k)
         to       (index-of to-k)]
     (if (or (nil? from) (nil? to) (= from-k to-k))
-      cols
-      (let [without (vec (concat (subvec cols 0 from) (subvec cols (inc from))))]
-        (vec (concat (subvec without 0 to) [(nth cols from)] (subvec without to)))))))
+      v
+      (let [without (vec (concat (subvec v 0 from) (subvec v (inc from))))]
+        (vec (concat (subvec without 0 to) [(nth v from)] (subvec without to)))))))
+
+(defn move-column-onto
+  "`move-onto` over the column vector, whose elements are keyed by :key."
+  [cols from-k to-k]
+  (move-onto cols from-k to-k :key))
+
+(defn move-watch-onto
+  "`move-onto` over the watch list, whose elements are bare player-ids."
+  [ids from-id to-id]
+  (move-onto ids from-id to-id identity))
+
+(defn reconcile-watchlist
+  "Reconcile a persisted watch list with the current shape: an ordered vector of
+  distinct player-ids.
+
+  The list was a set until it became orderable, and localStorage carries no
+  schema stamp — so, exactly like `reconcile-columns` and `reconcile-config`,
+  every shape the app has ever written has to be repairable in place. A set
+  reaching the ordered code unrepaired is the worst kind of wrong: `conj` puts a
+  new id wherever the hash says, and a drag would silently do nothing."
+  [stored]
+  (into [] (distinct) (or stored [])))
 
 ;; ---- player-id migration ----
 ;; :player-id used to be Sleeper's id verbatim; it is now the GSIS id wherever
@@ -407,7 +431,7 @@
     (-> db
         (update :drafted #(into {} (map (fn [[k v]] [(->id k) v])) %))
         (update :picks #(mapv (fn [p] (update p :player-id ->id)) %))
-        (update :watchlist #(into #{} (map ->id) %))
+        (update :watchlist #(into [] (comp (map ->id) (distinct)) %))
         (update :nominated-id #(some-> % ->id))
         (update :teams
                 (fn [teams]
@@ -431,7 +455,7 @@
      :drafted     {}            ; player-id -> {:price :team-id}
      :picks       []            ; [{:player-id :position :price :team-id}]
      :nominated-id nil
-     :watchlist    #{}          ; player-ids the manager is tracking
+     :watchlist    []           ; player-ids the manager is tracking, in his own order
      :modal        nil
      :sort        {:key :worth :dir -1}
      :pos-filter  nil

@@ -217,11 +217,15 @@
 
 ;; ---- watch list ----
 
-;; The raw set, for the board's star membership test.
-(rf/reg-sub :watch-set :<- [:watchlist] (fn [w _] (or w #{})))
+;; The ids as a set, for the board's star membership test.
+(rf/reg-sub :watch-set :<- [:watchlist] (fn [w _] (set w)))
 
-;; Watched players, richest first. Drafted players fall out here rather than
-;; through an event, so a pick (or its undo) is reflected automatically.
+;; Watched players in the manager's own order — the vector's. Nothing sorts them:
+;; the list says who he means to nominate next, which is not a fact about Worth,
+;; and a row that moved on its own after a pick would make the order untrustable.
+;;
+;; Drafted players fall out here rather than through an event, so a pick (or its
+;; undo) is reflected automatically without disturbing the order of the rest.
 (rf/reg-sub :watchlist-players
   :<- [:players-by-id]
   :<- [:watchlist]
@@ -230,8 +234,4 @@
     (->> watchlist
          (remove #(contains? drafted %))
          (keep by-id)
-         ;; Same tie problem as the board, and worse: `:watchlist` is a set, so
-         ;; the order feeding the stable sort is hash iteration. Five starred $1
-         ;; sleepers visibly reshuffled whenever an unrelated sixth was starred.
-         (sort-by rank-key)
          vec)))
