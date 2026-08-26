@@ -424,7 +424,9 @@
      :universe-status nil       ; "N players · source", restored after a recompute error
      :universe    nil           ; /api/players provenance: season, fetched-at, per-source :ok?
      :recompute-error nil       ; the failure message, while it is still on :status
-     :import-report nil         ; {:name :season :unsupported-scoring [...]}
+     :import-report nil         ; {:name :season :unsupported-scoring [...]} 
+     :backend-up  false
+     :app-version  nil
      :config      cfg
      :teams       (make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
      :my-team-id  "t0"
