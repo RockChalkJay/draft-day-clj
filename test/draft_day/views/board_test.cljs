@@ -4,6 +4,7 @@
   have: adjacent tiers stay visibly apart however many tiers a position has.
   Run with `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing]]
+            [clojure.string :as str]
             [draft-day.views.board :as board]
             [draft-day.views.util :as util]))
 
@@ -93,21 +94,35 @@
       (is (nil? (board/drop-side ks :name :floor)))
       (is (nil? (board/drop-side ks nil :name))))))
 
+(defn classes
+  "The row's classes as a set. `player-row` joins them into one string, so
+  membership has to be tested on the split — `(some #{\"tier-row\"} a-string)`
+  walks *characters*, never matches, and its `not-any?` twin passes vacuously
+  whatever the row actually rendered."
+  [attrs]
+  (set (str/split (:class attrs) #" ")))
+
 (deftest every-row-is-striped-whatever-the-view
   ;; Striping used to be switched off unless the board was filtered to one
   ;; position, because :tier was per-position and a tier 2 RB beside a tier 2 WR
   ;; meant nothing. The sub now hands down whichever scale the filter implies, so
   ;; there is always a coherent number to colour by.
   (let [[_ attrs] (board/player-row {:player-id "p1" :tier 3} [] nil 6 true true)]
-    (is (some #{"tier-row"} (:class attrs)))
-    (is (some #{"tier-start"} (:class attrs)))
+    (is (contains? (classes attrs) "tier-row"))
+    (is (contains? (classes attrs) "tier-start"))
     (is (contains? (:style attrs) "--tier-bg"))
     (is (contains? (:style attrs) "--tier-line")))
 
   (testing "a row the server never tiered still renders rather than throwing"
     (let [[_ attrs] (board/player-row {:player-id "p2"} [] nil 6 false true)]
-      (is (some #{"tier-row"} (:class attrs)))
-      (is (not-any? #{"tier-start"} (:class attrs))))))
+      (is (contains? (classes attrs) "tier-row"))
+      (is (not (contains? (classes attrs) "tier-start")))))
+
+  (testing "bands off: no tier classes and no custom properties to colour from"
+    (let [[_ attrs] (board/player-row {:player-id "p3" :tier 3} [] nil 6 true false)]
+      (is (not (contains? (classes attrs) "tier-row")))
+      (is (not (contains? (classes attrs) "tier-start")))
+      (is (nil? (:style attrs))))))
 
 (deftest pct-renders-a-rate-not-a-fraction
   (testing "a season rate reads as a percentage"

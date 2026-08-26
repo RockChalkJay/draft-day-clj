@@ -54,6 +54,7 @@
   so the discipline above is restated here rather than shared.)"
   (:require [clojure.data.csv :as csv]
             [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [draft-day.ingestion.parallel :as parallel])
   (:import [java.net.http HttpClient HttpClient$Redirect HttpRequest
             HttpResponse$BodyHandlers]
@@ -186,7 +187,7 @@
             {}
             (sort (keys rows-by-season)))))
 
-(defn- http-get-string
+(defn http-get-string
   "The JDK client rather than http-kit, and following redirects explicitly:
   nflverse release URLs 302 to object storage, and the JDK client does not
   follow redirects by default."
@@ -199,10 +200,42 @@
                       (HttpResponse$BodyHandlers/ofString))]
     (when (= 200 (.statusCode resp)) (.body resp))))
 
+(def required-columns
+  "Columns a response has to carry before it counts as this file at all.
+
+  The check exists because the failure that matters here is not a 404 — it is a
+  200 with the wrong body. A release URL that redirects to an error page, an
+  object store that answers with XML, a truncated download: each parses without
+  throwing, and each yields rows that carry no GSIS id, which reaches
+  `availability` as a season that was fetched and in which nobody played."
+  #{"player_id" "position" "games"})
+
 (defn fetch-season-rows
-  "Network: one season's parsed rows, or nil when the release is unreachable."
+  "Network: one season's parsed rows, or nil when the release did not yield any.
+
+  Every failure shape collapses to that one nil, because `fetch` distinguishes
+  only fetched from not-fetched, and here a half-answer is worse than no answer:
+  a season recorded as fetched but empty is one `availability` charges every
+  player in the league seventeen missed games for.
+
+  So two things are deliberately caught rather than allowed through. A throw —
+  connection reset, read timeout, malformed CSV — stays local instead of
+  escaping into `parallel/all`, where it would nil the *whole* source and take
+  the sibling seasons and the usage columns down with it; a lost season is
+  supposed to narrow the window, not close it. And a 200 whose body is empty or
+  is not this file (see `required-columns`) is reported as the miss it is."
   [season]
-  (some-> (http-get-string (season-url season)) parse-csv))
+  (try
+    (let [rows (some-> (http-get-string (season-url season)) parse-csv)]
+      (when (and (seq rows)
+                 (every? (set (keys (first rows))) required-columns))
+        rows))
+    (catch Exception e
+      ;; Type and message, not the throwable: the stack trace of a read timeout
+      ;; is JDK frames all the way down and says nothing the message does not.
+      (log/warn "nflverse: season" season "unavailable:"
+                (.getSimpleName (class e)) (ex-message e))
+      nil)))
 
 (defn fetch
   "Network: prior-season usage for `season` plus games played across the

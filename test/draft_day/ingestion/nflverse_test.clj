@@ -105,3 +105,36 @@
   ;; Not a window full of zeroes — that is the shape that would make a
   ;; never-active depth player read as maximally fragile.
   (is (nil? (get (nflverse/availability {2025 [(row "00-1" "17")]}) "00-2"))))
+
+;; ---- what counts as having fetched a season ----
+;;
+;; `availability` treats every season it is handed as one that really happened,
+;; and charges each player the difference between its length and what he played.
+;; That makes `fetch-season-rows` the gate: anything it lets through as a
+;; non-nil is a season the whole league is measured against, so every way a
+;; fetch can fail short of a clean 404 has to collapse to nil here.
+
+(deftest a-season-that-throws-does-not-take-the-source-down-with-it
+  ;; The seasons go out concurrently and the thunks are not individually
+  ;; wrapped, so an escaping exception would nil the entire nflverse result —
+  ;; usage columns and every Risk bar, board-wide, for the cache window.
+  (with-redefs [nflverse/http-get-string
+                (fn [_] (throw (java.io.IOException. "connection reset")))]
+    (is (nil? (nflverse/fetch-season-rows 2024)))))
+
+(deftest a-200-with-an-empty-body-is-a-miss-not-an-empty-season
+  ;; The shape that matters: survive as [] and the season is recorded as
+  ;; fetched-and-nobody-played, which renders a 17/17/17 veteran as Brittle.
+  (with-redefs [nflverse/http-get-string (fn [_] "")]
+    (is (nil? (nflverse/fetch-season-rows 2024)))))
+
+(deftest a-200-carrying-the-wrong-file-is-a-miss-too
+  ;; A release URL that redirects to an error page parses without throwing and
+  ;; yields rows with no GSIS id — indistinguishable downstream from a season
+  ;; nobody played.
+  (with-redefs [nflverse/http-get-string (fn [_] "<html><body>Not Found</body></html>")]
+    (is (nil? (nflverse/fetch-season-rows 2024))))
+  (testing "a real stats file is not rejected by the same check"
+    (with-redefs [nflverse/http-get-string
+                  (fn [_] "player_id,position,games,targets\n00-1,WR,17,120\n")]
+      (is (= 1 (count (nflverse/fetch-season-rows 2024)))))))
