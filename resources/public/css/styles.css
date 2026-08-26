@@ -54,7 +54,13 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 
 /* ---- three-panel row above the board: Watch List | On the block | My Roster ---- */
 .three-panels { display: flex; gap: 14px; align-items: stretch; margin-bottom: 12px; }
-.watchlist-col { flex: 0 0 320px; min-width: 0; }
+/* The watch list is the one panel whose content is unbounded, so it is taken out
+   of the row's height calculation entirely: the column is a positioned box the
+   panel fills absolutely, which leaves the row sized by the tile and the roster
+   exactly as before, and leaves the list to scroll inside whatever that comes to.
+   Capping it in px instead would have to guess at that height and would drift
+   from it the moment a sibling changed. */
+.watchlist-col { flex: 0 0 320px; min-width: 0; position: relative; min-height: 240px; }
 .tile-col { flex: 1 1 0; min-width: 0; }
 .roster-col { flex: 0 0 300px; min-width: 0; }
 
@@ -62,11 +68,12 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
    Deliberately shaped like the My Roster box: dense rows, no chrome of its own.
    Players are added from the board's ★; a row click puts one on the block. */
 .watchlist-panel { background: var(--panel); border: 1px solid var(--border);
-  border-radius: 10px; padding: 12px; height: 100%; }
-.watchlist-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  border-radius: 10px; padding: 12px;
+  position: absolute; inset: 0; display: flex; flex-direction: column; }
+.watchlist-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; flex: none; }
 .watchlist-head h3 { margin: 0; font-size: 14px; }
 .w-count { font-size: 11px; color: var(--muted); }
-.watchlist { display: flex; flex-direction: column; }
+.watchlist { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow-y: auto; }
 .w-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px;
   border-bottom: 1px solid var(--border); cursor: pointer; }
 .w-row:last-child { border-bottom: none; }
