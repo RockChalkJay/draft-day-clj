@@ -205,10 +205,18 @@
   especially loud — it puts a Risk of 5 next to a calm, plain-black Inj cell
   saying the opposite.
 
-  Questionable and Doubtful are deliberately absent; see `rankings.injury` for
-  why a designation that usually resolves by Sunday must not move a durability
-  score."
-  #{"ir" "ir-r" "pup" "nfi" "sus" "susp" "na" "dnr" "out" "cov"})
+  MEMBERSHIP IS DECIDED BY DURATION, NOT BY SEVERITY, because the only thing
+  this set does is override a multi-season durability score. A designation
+  earns a place here by costing weeks *by rule* — which is the same test that
+  keeps Questionable and Doubtful out, and, less obviously, Out.
+
+  Out sounds like the serious one and is not: it is a gameday call covering the
+  next game, and this is a preseason auction board, where it is either absent or
+  a week old by kickoff. Floored on it, a 17/17/17 veteran with a one-week knock
+  rendered `Risk 5 of 5 — Out, 0.0 games missed per season over 3 seasons` — a
+  cell that states its own evidence and then contradicts it. COV is gone for the
+  same reason plus a simpler one: the COVID list itself is defunct."
+  #{"ir" "ir-r" "pup" "nfi" "sus" "susp" "na" "dnr"})
 
 (defn serious-injury?
   "Is this `:sleeper/injury-status` one of the serious ones?"

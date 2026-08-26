@@ -89,7 +89,18 @@
     (is (= 5 (level 0 {} "IR"))))
   (testing "Questionable is August noise and must not move a durability score"
     (is (= 1 (level 3 {2023 17.0 2024 17.0 2025 17.0} "Questionable")))
-    (is (= 1 (level 3 {2023 17.0 2024 17.0 2025 17.0} "Doubtful")))))
+    (is (= 1 (level 3 {2023 17.0 2024 17.0 2025 17.0} "Doubtful"))))
+
+  (testing "Out is a gameday call, not a duration, and does not floor either"
+    ;; Floored on it, this player read "Risk 5 of 5 — Out, 0.0 games missed per
+    ;; season over 3 seasons": a cell contradicting the evidence it cites.
+    (is (= 1 (level 3 {2023 17.0 2024 17.0 2025 17.0} "Out")))
+    (let [r (injury/risk-for (player 3 {2023 17.0 2024 17.0 2025 17.0} "Out"))]
+      (is (re-find #"Risk 1 of 5" (:injury/reason r)))
+      (is (not (re-find #"Out" (:injury/reason r))))))
+
+  (testing "the COVID list is defunct and no longer floors"
+    (is (= 1 (level 3 {2023 17.0 2024 17.0 2025 17.0} "COV")))))
 
 (deftest games-are-clamped-to-the-season-they-were-played-in
   ;; The 2025 file carries an 18 for at least one player. Unclamped he earns a
