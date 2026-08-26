@@ -28,6 +28,18 @@
     (set! (.-effectAllowed dt) "move")
     (.setData dt column-mime (name k))))
 
+(def watch-mime
+  "Private drag type for a watch-list row, distinct from `column-mime` so the two
+  drags cannot be dropped on each other: a column landing in the watch list, or a
+  watched player landing in the board header, would each reorder against a key
+  that does not exist there — a silent no-op that reads as a broken drag."
+  "application/x-draft-day-watch")
+
+(defn watch-drag-start! [e id]
+  (let [dt (.-dataTransfer e)]
+    (set! (.-effectAllowed dt) "move")
+    (.setData dt watch-mime (str id))))
+
 (defn left-element?
   "Did a dragleave actually leave `currentTarget`, or just cross into a child of
   it? The event fires on the parent either way, so without this a pointer moving

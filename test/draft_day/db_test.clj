@@ -226,6 +226,37 @@
             drops (mapcat (fn [f] (map #(db/move-column-onto cols f %) all)) all)]
         (is (every? #(= (frequencies cols) (frequencies %)) drops))))))
 
+(deftest move-onto-orders-bare-ids-the-same-way-it-orders-columns
+  ;; The watch list holds player-ids, not maps, so it reorders through the same
+  ;; function with `identity` for a key. If these two ever disagree, one of the
+  ;; two drags on screen is lying about where the row will land.
+  (let [ids [:a :b :c :d]]
+    (is (= [:b :c :a :d] (db/move-watch-onto ids :a :c)) "downwards, just past")
+    (is (= [:a :d :b :c] (db/move-watch-onto ids :d :b)) "upwards, just before")
+    (is (= [:b :c :d :a] (db/move-watch-onto ids :a :d)) "the far end is reachable")
+    (is (= ids (db/move-watch-onto ids :b :b)) "a drop onto itself is a no-op")
+    (is (= ids (db/move-watch-onto ids :gone :b)) "an absent id is a no-op")
+    (testing "every drop is a permutation"
+      (is (every? #(= (frequencies ids) (frequencies %))
+                  (mapcat (fn [f] (map #(db/move-watch-onto ids f %) ids)) ids))))
+    (testing "it agrees with the column reorder on the same order"
+      (let [cols (mapv #(hash-map :key %) ids)]
+        (is (= (db/move-watch-onto ids :a :c)
+               (mapv :key (db/move-column-onto cols :a :c))))))))
+
+(deftest reconcile-watchlist-repairs-every-shape-ever-persisted
+  (testing "the old unordered set becomes a vector, so conj and drags work"
+    (let [out (db/reconcile-watchlist #{"a" "b" "c"})]
+      (is (vector? out))
+      (is (= #{"a" "b" "c"} (set out)) "and nobody is dropped on the way")))
+  (testing "a blob written before the watch list existed"
+    (is (= [] (db/reconcile-watchlist nil))))
+  (testing "an order already stored is kept exactly"
+    (is (= ["c" "a" "b"] (db/reconcile-watchlist ["c" "a" "b"]))))
+  (testing "duplicates cannot survive — a doubled id would make one of the two
+            rows undraggable, since a drop is keyed by id"
+    (is (= ["a" "b"] (db/reconcile-watchlist ["a" "b" "a"])))))
+
 (deftest column-catalog-is-internally-consistent
   (testing "keys are unique"
     (is (= (count db/column-catalog) (count db/columns-by-key))))
@@ -269,7 +300,7 @@
                             "ARI"  {:price 1 :team-id "t0"}}
                 :picks     [{:player-id "4984" :price 42}
                             {:player-id "ARI" :price 1}]
-                :watchlist #{"4984"}
+                :watchlist ["4984"]
                 :nominated-id "4984"
                 :teams     [{:team-id "t0"
                              :roster [{:pos "QB" :player-id "4984"}
@@ -279,7 +310,7 @@
             "ARI"        {:price 1 :team-id "t0"}}
            (:drafted after)))
     (is (= ["00-0034857" "ARI"] (mapv :player-id (:picks after))))
-    (is (= #{"00-0034857"} (:watchlist after)))
+    (is (= ["00-0034857"] (:watchlist after)))
     (is (= "00-0034857" (:nominated-id after)))
     (is (= [{:pos "QB" :player-id "00-0034857"} {:pos "RB" :player-id nil}]
            (get-in after [:teams 0 :roster]))
@@ -287,11 +318,18 @@
     (is (= 42 (get-in after [:drafted "00-0034857" :price]))
         "what a manager paid survives the remap")))
 
+(deftest remap-draft-ids-keeps-the-watch-order
+  (let [after (db/remap-draft-ids {:drafted {} :picks [] :teams [] :nominated-id nil
+                                   :watchlist ["ARI" "4984" "unknown"]}
+                                  (db/sleeper->player-id universe))]
+    (is (= ["ARI" "00-0034857" "unknown"] (:watchlist after))
+        "ids are rewritten in place; the manager's order is not a thing to migrate")))
+
 (deftest remap-draft-ids-is-idempotent
   (let [xwalk (db/sleeper->player-id universe)
         once  (db/remap-draft-ids {:drafted {"4984" {:price 42}}
                                    :picks [{:player-id "4984"}]
-                                   :watchlist #{"4984"} :nominated-id nil
+                                   :watchlist ["4984"] :nominated-id nil
                                    :teams []}
                                   xwalk)]
     (is (= once (db/remap-draft-ids once xwalk))
@@ -303,7 +341,7 @@
   ;; what was actually paid.
   (let [after (db/remap-draft-ids {:drafted {"unknown" {:price 7}}
                                    :picks [{:player-id "unknown"}]
-                                   :watchlist #{} :nominated-id nil :teams []}
+                                   :watchlist [] :nominated-id nil :teams []}
                                   (db/sleeper->player-id universe))]
     (is (= {"unknown" {:price 7}} (:drafted after)))
     (is (= ["unknown"] (mapv :player-id (:picks after))))))
