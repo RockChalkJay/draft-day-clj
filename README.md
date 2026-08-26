@@ -11,6 +11,10 @@ renders the board and owns all draft state in the browser.
 above a sortable player table showing Worth, Value, Market, Bargain, VORP and
 injury risk for every player.](docs/img/board.png)
 
+<sub>Screenshots throughout are captured against the bundled offline universe,
+which is why the status line reads `sample` — that is real data from
+`resources/sample_players.edn`, not placeholder rows.</sub>
+
 ## Why this exists
 
 Almost every draft tool is built for **snake** drafts, where a ranked list is
@@ -149,11 +153,13 @@ sample universe:
 DRAFTDAY_OFFLINE=1 lein run
 ```
 
-**Development loop** — two processes. `npx shadow-cljs watch app` compiles the
-SPA with hot reload and serves `resources/public` on **:8280**; `lein run`
-serves the API on **:8080**. Use :8280 and let it proxy nothing — the SPA
-calls `/api/*` on its own origin, so for a full-stack loop point your browser
-at :8080 and let `watch` rebuild `main.js` underneath it.
+**Development loop** — run two processes and use **one port**. `npx shadow-cljs
+watch app` rebuilds `main.js` into `resources/public/js` on every save; `lein
+run` serves that same directory *and* the API on **:8080**. Point your browser
+at :8080 and let `watch` recompile underneath it.
+
+shadow-cljs also serves `resources/public` on :8280, but nothing answers
+`/api/*` there, so the board cannot load players from it.
 
 | Env var | Default | Effect |
 | --- | --- | --- |
