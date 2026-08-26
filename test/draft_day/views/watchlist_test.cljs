@@ -42,3 +42,20 @@
         (is (= (if (= edge "drop-below") (inc (pos to)) (dec (pos to)))
                (pos from))
             (str "dragging " from " onto " to " drew " edge))))))
+
+(deftest the-line-still-tells-the-truth-when-a-watched-player-is-drafted
+  ;; The rows on screen are the undrafted watch list, so `drop-edge` reads a
+  ;; shorter vector than `move-watch-onto` does. Filtering preserves relative
+  ;; order, so the two still agree — but that is the argument the keyed event
+  ;; exists to make, and it is worth pinning down.
+  (let [stored   ["a" "drafted" "b" "c"]
+        rendered ["a" "b" "c"]
+        pos      (fn [v x] (.indexOf (to-array v) x))]
+    (doseq [from rendered to rendered
+            :when (not= from to)]
+      (let [after (db/move-watch-onto stored from to)
+            edge  (wl/drop-edge rendered from to)]
+        (is (= (if (= edge "drop-below") (inc (pos after to)) (dec (pos after to)))
+               (pos after from))
+            (str "dragging " from " onto " to " drew " edge))
+        (is (= 4 (count after)) (str "the drafted id is not lost: " after))))))

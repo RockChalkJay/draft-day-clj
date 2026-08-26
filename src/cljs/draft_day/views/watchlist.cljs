@@ -46,7 +46,7 @@
                            (when (= over id) (drop-edge ids dragging id))]
                           (filter some?)
                           (str/join " "))}
-     [:span.w-grip {:aria-hidden true} "⠿"]
+     [:span.w-grip {:title "Drag to reorder"} "⠿"]
      [:span.w-name (:player-name p) [:span.w-pos (:position p)]]
      [:span.w-worth (util/money (:worth p))]
      [:span.w-mkt (util/money-rnd (:market p))]

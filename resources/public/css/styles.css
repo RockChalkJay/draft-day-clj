@@ -96,8 +96,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .w-row.dragging { opacity: .4; cursor: grabbing; }
 .w-row.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
 .w-row.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
-.w-grip { color: var(--border); font-size: 10px; cursor: grab; flex: none; }
-.w-row:hover .w-grip { color: var(--muted); }
+.w-grip { color: var(--muted); opacity: .5; font-size: 10px; cursor: grab; flex: none; }
+.w-row:hover .w-grip { opacity: 1; }
 .w-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .w-pos { color: var(--muted); font-weight: 400; font-size: 10px; text-transform: uppercase; margin-left: 5px; }
