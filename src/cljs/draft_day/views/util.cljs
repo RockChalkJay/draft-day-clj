@@ -14,6 +14,17 @@
   [p]
   (str (:position p) (:pos-rank p)))
 
+(defn points
+  "A points figure to one decimal, or a dash.
+
+  VORP rather than money, so deliberately not `money`: it is nil for K and DST
+  (see `db/vorp-sort-key`) and it can be negative, which is real and load-bearing
+  — a below-replacement player is exactly who the $1 bids come from."
+  [n]
+  (if (number? n)
+    (.toFixed n 1)
+    "\u2013"))
+
 (defn money-rnd [n]
   (if (and (number? n) (pos? n)) 
     (str "$" (js/Math.round n)) 

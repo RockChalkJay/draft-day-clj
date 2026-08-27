@@ -115,19 +115,52 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .nom-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px; height: 100%; display: flex; flex-direction: column; }
 .nt-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
-.nt-body { display: flex; gap: 16px; align-items: center; flex: 1; }
+/* Three columns: headshot | name + meta + value strip | season trend table.
+   flex-start rather than center — the table is taller than the headshot, and
+   centring it floated the face away from the name it belongs to. */
+.nt-body { display: flex; gap: 16px; align-items: flex-start; flex: 1; }
 /* headshot sits on top of the silhouette; it hides itself on load failure */
 .nt-face { position: relative; flex: 0 0 108px; width: 108px; height: 108px; border-radius: 12px;
   background: var(--panel2); border: 1px dashed var(--border); overflow: hidden;
   display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .nt-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.nt-main { flex: 1; min-width: 0; }
+.nt-main { flex: 1 1 auto; min-width: 0; }
 .nt-name { font-size: 22px; font-weight: 700; line-height: 1.1; }
-.nt-meta { color: var(--muted); font-size: 13px; margin: 4px 0 14px; }
-.nt-vals { display: grid; grid-template-columns: repeat(4, auto); gap: 6px 26px; justify-content: start; }
+.nt-meta { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
+/* Six cells on one line beside the table, so the gap tightens and the amount
+   comes down from 18px. Any wider and the table loses a season column. */
+.nt-vals { display: grid; grid-template-columns: repeat(6, auto); gap: 4px 12px; justify-content: start; }
 .nt-val { display: flex; flex-direction: column; }
 .nt-val .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-.nt-val .amt { font-size: 18px; font-weight: 700; color: var(--good); font-variant-numeric: tabular-nums; }
+.nt-val .amt { font-size: 16px; font-weight: 700; color: var(--good); font-variant-numeric: tabular-nums; }
+/* VORP is points, not dollars, and green means money in every other cell of
+   this strip. */
+.nt-val .amt.pts { color: var(--text); }
+
+/* ---- season trend table ----
+   Shaped like the My Roster box (table.roster below): dense rows, 10px uppercase
+   muted headers, no chrome of its own. It sits 14px from that panel, so matching
+   it is what keeps the three-panel row reading as one row.
+
+   flex: 0 0 auto — the table sizes to its own columns and the name column takes
+   the slack, rather than the table shrinking until 1456 wraps inside a cell. */
+.nt-stats-col { flex: 0 0 auto; }
+.nt-stats { border-collapse: collapse; }
+.nt-stats th, .nt-stats td { padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+.nt-stats thead th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); font-weight: 600; text-align: right; border-bottom: 1px solid var(--border); }
+.nt-stats th.lbl { color: var(--muted); font-size: 10px; text-transform: uppercase;
+  letter-spacing: .04em; font-weight: 600; text-align: left; }
+.nt-stats td { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.nt-stats tbody tr + tr th, .nt-stats tbody tr + tr td { border-top: 1px solid var(--border); }
+.nt-nohist { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+
+/* The projection is the one column here that is not a fact: three grey seasons
+   that happened, then one bright claim about the next. A rule rather than a
+   fill — a filled column reads as a selected one, and lights up the Games row's
+   empty cell as though something were there. */
+.nt-stats .proj { color: var(--text); font-weight: 600; border-left: 1px solid var(--border); }
+.nt-stats thead th.proj { color: var(--accent); }
 .nt-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px;
   border-top: 1px solid var(--border); width: 50%; margin-right: auto; }
 .nt-actions input, .nt-actions select { background: var(--panel2); color: var(--text);
