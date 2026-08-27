@@ -63,6 +63,20 @@
   [p]
   (when (priced-positions (:position p)) (:vorp p)))
 
+(defn pos-sort-key
+  "Sortable Pos column: `[position ordinal]`, grouping by position and ordering
+  by :pos-rank inside each group.
+
+  Not the \"RB25\" string the cell renders — `compare` on a string reads it
+  digit by digit, so the column would run RB1, RB10, RB11, RB2. A vector
+  compares elementwise, which is what the column is actually asking for.
+
+  A row the engine could not rank sorts to the back of its own position rather
+  than to the back of the board: it is still an RB, and burying it under the
+  kickers would be a worse lie than showing it last among its peers."
+  [p]
+  [(str (:position p)) (or (:pos-rank p) ##Inf)])
+
 ;; ---- bye-week conflict detection ----
 ;; Staged by draft phase. Only QB/RB/WR/TE matter (K/DST are streamed weekly, so
 ;; bye stacking there is a non-issue; FLEX is ignored too):
@@ -235,7 +249,7 @@
    {:key :name     :label "Player" :tooltip "Player"                    :default? true}
    {:key :team     :label "Tm"     :tooltip "NFL team"                  :default? true}
    {:key :bye      :label "Bye"    :tooltip "Bye week"                  :default? true}
-   {:key :position :label "Pos"    :tooltip "Position"                  :default? true}
+   {:key :position :label "Pos"    :tooltip "Position and rank within it — RB1 is the top RB on the board. Fixed for the whole draft; it does not renumber as players go" :default? true}
    {:key :worth    :label "Worth"  :tooltip "Live auction price"        :default? true}
    {:key :value    :label "Value"  :tooltip "Stable VBD dollars"        :default? true}
    {:key :market   :label "Mkt"    :tooltip "Market price — ESPN + FantasyPros consensus, scaled to your league" :default? true}
@@ -283,7 +297,9 @@
   {:rank     :rank
    :name     :player-name
    :team     :team
-   :position :position
+   ;; [position ordinal], not the "RB25" string the board renders: sorted as a
+   ;; string that reads RB1, RB10, RB2. Unranked rows sort last either way.
+   :position pos-sort-key
    :worth    :worth
    :value    :value
    :espn-value :espn/auction-value

@@ -12,6 +12,7 @@
             [draft-day.rankings.inflation-index :as idx]
             [draft-day.rankings.tcm :as tcm]
             [draft-day.rankings.injury :as injury]
+            [draft-day.rankings.pos-rank :as pos-rank]
             [draft-day.rankings.league-state :as ls]))
 
 (defn static-rankings
@@ -35,8 +36,9 @@
   what still rule it out.) Both of its scales ship as display columns instead —
   see `db/column-catalog`.
 
-  :injury-risk rides along last, after everything that reads :points — it is a
-  board column, not a term in any score, and nothing downstream consumes it.
+  :injury-risk and :pos-rank ride along last, after everything that reads
+  :points — they are board columns, not terms in any score, and nothing
+  downstream consumes either.
 
   Opts :model (default :points, the raw scored projection) and :weights select
   which `rankings.model` produces :points; every later stage is indifferent to
@@ -56,7 +58,15 @@
                               ;; moves — so it belongs here rather than beside
                               ;; `tcm` in the live layer. Display only: it feeds
                               ;; no later stage. See `rankings.injury`.
-                              injury/with-injury-risk)
+                              injury/with-injury-risk
+                              ;; Same shelf as :injury-risk — static, display
+                              ;; only, read by nothing downstream. It belongs
+                              ;; here and not in `live-valuation` precisely so
+                              ;; it does *not* renumber as players are drafted:
+                              ;; RB1 is an identifier for the whole draft, and
+                              ;; the `#` column already answers the live
+                              ;; question. See `rankings.pos-rank`.
+                              pos-rank/with-pos-rank)
       :replacement-levels levels})))
 
 (defn live-valuation

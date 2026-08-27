@@ -424,3 +424,26 @@
       (is (= :nflverse/prior-targets (db/sort-accessors :prior-tgt)))
       (is (= :nflverse/prior-target-share (db/sort-accessors :prior-tgt-pct)))
       (is (= :espn/proj-targets (db/sort-accessors :proj-tgt))))))
+
+(deftest pos-sort-key-orders-by-rank-not-by-spelling
+  ;; The bug this accessor exists to prevent: the cell renders "RB1"/"RB10"/"RB2"
+  ;; and `compare` on those strings reads digit by digit, so the column would
+  ;; run 1, 10, 11, 2. Sorting the key itself has to give the numeric order.
+  (let [p    (fn [pos n] {:position pos :pos-rank n})
+        rbs  (shuffle [(p "RB" 2) (p "RB" 11) (p "RB" 1) (p "RB" 10)])]
+    (is (= [1 10 11 2]
+           (mapv :pos-rank
+                 (sort-by #(str (:position %) (:pos-rank %)) rbs)))
+        "sanity: this is what sorting the rendered label would have done")
+    (is (= [1 2 10 11]
+           (mapv :pos-rank (sort-by db/pos-sort-key rbs)))))
+  (testing "positions stay grouped, ordered among themselves"
+    (let [b (shuffle [{:position "WR" :pos-rank 1} {:position "RB" :pos-rank 2}
+                      {:position "RB" :pos-rank 1} {:position "WR" :pos-rank 2}])]
+      (is (= [["RB" 1] ["RB" 2] ["WR" 1] ["WR" 2]]
+             (mapv (juxt :position :pos-rank) (sort-by db/pos-sort-key b))))))
+  (testing "an unranked row sorts to the back of its own position, not the board"
+    (let [b [{:position "RB" :pos-rank nil} {:position "RB" :pos-rank 1}
+             {:position "WR" :pos-rank 1}]]
+      (is (= [["RB" 1] ["RB" nil] ["WR" 1]]
+             (mapv (juxt :position :pos-rank) (sort-by db/pos-sort-key b)))))))
