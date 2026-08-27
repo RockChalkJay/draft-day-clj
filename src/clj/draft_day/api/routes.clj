@@ -90,6 +90,21 @@
 (defn- coerce-league-state [ls]
   (update ls :drafted-player-ids set))
 
+(defn without-history
+  "Drop `:nflverse/history` before ranking.
+
+  Nothing in the valuation pipeline reads it, and this response is the whole
+  board — re-POSTed after every pick and after every debounced settings edit —
+  so three seasons of stat lines per player is weight on the hottest path in the
+  app for data the engine never touches. Same argument as `vendor/with-format`
+  dropping `:vendor/by-format`.
+
+  The client does not lose it: `/api/players` ships the untrimmed universe once
+  (`players-handler`), and the board's static facts are read from there while
+  live valuation is read from here."
+  [players]
+  (mapv #(dissoc % :nflverse/history) players))
+
 (defn rankings-handler [req]
   (try
     (let [{:keys [scoring num-teams replacement-config league-state]}
@@ -113,7 +128,9 @@
         (json-response 400 {:error "each team's bankroll must cover $1 per roster slot"})
 
         :else
-        (let [players  (vendor/for-scoring (:players (universe false)) scoring*)
+        (let [players  (-> (:players (universe false))
+                           (vendor/for-scoring scoring*)
+                           without-history)
               nt       (or num-teams 12)
               opts     {:replacement-config replacement-config}
               ls       (coerce-league-state league-state)

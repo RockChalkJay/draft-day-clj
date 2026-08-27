@@ -48,8 +48,11 @@
 
   4: multi-season availability (:nflverse/games-by-season, :nflverse/games-seasons)
   was added, and the nflverse label became :nflverse/player-stats now that one
-  fetch answers two questions."
-  4)
+  fetch answers two questions.
+
+  5: per-season realized stat lines (:nflverse/history) were added, from the same
+  window that fetch already had in hand."
+  5)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
