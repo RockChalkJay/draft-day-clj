@@ -151,9 +151,7 @@
     :rank     [:td.num.muted (:rank p)]
     :name     [:td.name [star-toggle p] (:player-name p) (cliff-marker p) (sleeper-badge p)]
     :team     [:td.muted (:team p)]
-    ;; "RB25", or the bare position for a row the engine could not rank —
-    ;; (str "RB" nil) is "RB", so the fallback needs no branch.
-    :position [:td [:span.pill (str (:position p) (:pos-rank p))]]
+    :position [:td [:span.pill (util/pos-label p)]]
     :worth    [:td.num.bold (util/money (:worth p))]
     :value    [:td.num.muted (util/money (:value p))]
     :espn-value [:td.num.muted (util/money-rnd (:espn/auction-value p))]

@@ -5,6 +5,15 @@
     (str "$" n) 
     "–"))
 
+(defn pos-label
+  "\"RB7\", or the bare position for a player the engine could not rank.
+
+  One copy, because three surfaces render it — the board's Pos cell, the watch
+  list and the On-the-block tile — and a manager reading `RB7` in one and `RB`
+  in another has to work out whether that means something."
+  [p]
+  (str (:position p) (:pos-rank p)))
+
 (defn money-rnd [n]
   (if (and (number? n) (pos? n)) 
     (str "$" (js/Math.round n)) 
