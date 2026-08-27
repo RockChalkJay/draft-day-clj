@@ -186,6 +186,37 @@
     (testing "reordering is display-only; it must not re-rank the board"
       (is (empty? (:http @captured))))))
 
+;; ---- the watch list keeps the manager's own order ----
+
+(deftest starring-appends-and-a-drag-reorders
+  (let [wl #(:watchlist @rdb/app-db)]
+    (doseq [id ["gibbs" "chase" "nua"]]
+      (rf/dispatch-sync [:watch-toggle id]))
+    (is (= ["gibbs" "chase" "nua"] (wl))
+        "a new star goes to the bottom — it never jumps the ones already ranked")
+
+    (rf/dispatch-sync [:watch-toggle "chase"])
+    (is (= ["gibbs" "nua"] (wl)) "toggling off removes without disturbing the rest")
+
+    (rf/dispatch-sync [:watch-toggle "chase"])
+    (rf/dispatch-sync [:move-watch-onto "chase" "gibbs"])
+    (is (= ["chase" "gibbs" "nua"] (wl)) "a drag upwards lands before the target")
+    (is (= (wl) (:watchlist (last (:persist @captured))))
+        "and the order is in the persisted slice — the hard-refresh guarantee")
+
+    (rf/dispatch-sync [:watch-remove "gibbs"])
+    (is (= ["chase" "nua"] (wl)))
+
+    (testing "none of it re-ranks the board: the watch list feeds no valuation"
+      (is (empty? (:http @captured))))))
+
+(deftest a-watch-list-persisted-as-a-set-is-repaired-at-boot
+  ;; localStorage carries no schema stamp, and the list was a set before it had
+  ;; an order. Rehing the ordered code unrepaired, `conj` would put a new star
+  ;; wherever the hash said and a drag would silently do nothing.
+  (is (vector? (db/reconcile-watchlist #{"gibbs" "chase"})))
+  (is (= #{"gibbs" "chase"} (set (db/reconcile-watchlist #{"gibbs" "chase"})))))
+
 ;; ---- a config change made before the universe lands is not lost ----
 
 (deftest a-scoring-change-with-no-players-yet-is-picked-up-on-load

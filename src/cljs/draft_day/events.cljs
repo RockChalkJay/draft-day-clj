@@ -19,7 +19,8 @@
  (fn [_ _]
    {:db (-> (merge (db/default-db) (fx/load-persisted))
             (update :columns db/reconcile-columns)    ; drop removed cols, add new ones
-            (update :config db/reconcile-config))     ; repair a config from an older shape
+            (update :config db/reconcile-config)      ; repair a config from an older shape
+            (update :watchlist db/reconcile-watchlist)) ; a set, back when it had no order
     :fx [[:dispatch [:fetch-players]]]}))
 
 (rf/reg-event-fx
@@ -119,10 +120,24 @@
 
 (rf/reg-event-db :watch-toggle [persist]
   (fn [db [_ id]]
-    (update db :watchlist #(if (contains? % id) (disj % id) (conj % id)))))
+    (update db :watchlist
+            (fn [ids]
+              (if (some #{id} ids)
+                (vec (remove #{id} ids))
+                ;; appended, never inserted: the order is the manager's, and a
+                ;; new star is a guess about a later nomination, not a jump
+                ;; over the ones already ranked.
+                (conj (vec ids) id))))))
 
 (rf/reg-event-db :watch-remove [persist]
-  (fn [db [_ id]] (update db :watchlist disj id)))
+  (fn [db [_ id]] (update db :watchlist #(vec (remove #{id} %)))))
+
+;; Keyed by player-id rather than by row index, for the same reason
+;; :move-column-onto is: the rows on screen are the *undrafted* watch list, so a
+;; row's index there is not its index in the stored vector.
+(rf/reg-event-db :move-watch-onto [persist]
+  (fn [db [_ from-id to-id]]
+    (update db :watchlist db/move-watch-onto from-id to-id)))
 
 (rf/reg-event-db
  :set-sort
