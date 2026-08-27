@@ -15,6 +15,26 @@ injury risk for every player.](docs/img/board.png)
 which is why the status line reads `sample` — that is real data from
 `resources/sample_players.edn`, not placeholder rows.</sub>
 
+## Contents
+
+- [Why this exists](#why-this-exists)
+- [Fantasy football, and the math, in one pass](#fantasy-football-and-the-math-in-one-pass)
+- [Quick start](#quick-start)
+- [Using it](#using-it)
+- [Architecture](#architecture)
+  - [Ingestion](#ingestion) · [Rankings engine](#rankings-engine)
+- [The data](#the-data)
+  - [Sources](#sources) · [Shape of a player](#shape-of-a-player) · [Cache and provenance](#cache-and-provenance)
+- [The math](#the-math)
+  - [Points](#points--scoringcljc--points) · [Floor / ceiling](#floor--ceiling--projectionsclj--floor-ceiling) · [Replacement level and VORP](#replacement-level-and-vorp--replacementclj--vorp) · [Tiers](#tiers--tiersclj--tiers-tier) · [Value](#value--valueclj--value) · [Inflation](#inflation--inflationclj-inflation_indexclj) · [Worth and Bargain](#worth-and-bargain--valueclj-engineclj--worth-bargain) · [Injury risk](#injury-risk--injuryclj--injury-risk) · [Signals that feed nothing](#signals-that-feed-nothing)
+- [API](#api)
+  - [`POST /api/rankings`](#post-apirankings) · [`POST /api/league/import`](#post-apileagueimport)
+- [Development](#development)
+- [Research harnesses](#research-harnesses)
+  - [Benchmark](#benchmark) · [Replay](#replay)
+- [Further reading](#further-reading)
+- [License](#license)
+
 ## Why this exists
 
 Almost every draft tool is built for **snake** drafts, where a ranked list is
