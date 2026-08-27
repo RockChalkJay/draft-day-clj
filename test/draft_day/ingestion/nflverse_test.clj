@@ -138,3 +138,58 @@
     (with-redefs [nflverse/http-get-string
                   (fn [_] "player_id,position,games,targets\n00-1,WR,17,120\n")]
       (is (= 1 (count (nflverse/fetch-season-rows 2024)))))))
+
+;; ---- per-season stat lines (the third question this one fetch answers) ----
+
+(def ^:private chase-line
+  ;; Same row shape as the usage tests, with the production columns filled in.
+  (assoc chase
+         "passing_yards" "0" "passing_tds" "0"
+         "rushing_yards" "32" "rushing_tds" "0"
+         "receiving_yards" "1708" "receiving_tds" "17"))
+
+(deftest a-season-line-speaks-sleeper-stat-keys
+  ;; The tile puts a realized season beside a projected :stats line, so the two
+  ;; have to be keyed the same way or the view has to translate between them.
+  (let [[gsis stats] (nflverse/row->season-line chase-line)]
+    (is (= "00-0036900" gsis))
+    (is (= {:pass_yd 0.0 :pass_td 0.0
+            :rush_yd 32.0 :rush_td 0.0
+            :rec 125.0 :rec_yd 1708.0 :rec_td 17.0}
+           stats))))
+
+(deftest a-season-line-carries-no-games-count
+  ;; :nflverse/games-by-season already answers that, clamped to the season's
+  ;; length. A second, unclamped copy would disagree with the first for exactly
+  ;; the players the clamp exists for — the 2025 file's 18-game rows.
+  (let [[_ stats] (nflverse/row->season-line (assoc chase-line "games" "18"))]
+    (is (not (contains? stats :games)))
+    (is (not-any? #(= 18.0 %) (vals stats)))))
+
+(deftest a-blank-stat-column-is-absent-from-the-line-not-zero
+  ;; Worse here than in the usage columns: a line is read as a trend across three
+  ;; seasons, so one zero-filled column is not a wrong number in isolation, it is
+  ;; a decline the player never had.
+  (let [[_ stats] (nflverse/row->season-line
+                   (assoc chase-line "rushing_yards" "" "receiving_tds" "NA"))]
+    (is (not (contains? stats :rush_yd)))
+    (is (not (contains? stats :rec_td)))
+    (is (= 1708.0 (:rec_yd stats)) "the columns it does have survive")))
+
+(deftest a-row-with-no-stat-columns-at-all-yields-no-line
+  ;; An empty line would render as a season the player was present for and did
+  ;; nothing in, which is not what a row missing the columns means.
+  (is (nil? (nflverse/row->season-line (row "00-1" "17"))))
+  (is (nil? (nflverse/row->season-line (assoc chase-line "player_id" ""))))
+  (is (nil? (nflverse/row->season-line (assoc chase-line "position" "CB")))))
+
+(deftest history-keys-each-line-by-its-season
+  (let [out (nflverse/history
+             {2024 [(assoc chase-line "receiving_yards" "1216")]
+              2025 [chase-line (assoc chase-line "player_id" "00-0000002")]})]
+    (is (= 1216.0 (get-in out ["00-0036900" :nflverse/history 2024 :rec_yd])))
+    (is (= 1708.0 (get-in out ["00-0036900" :nflverse/history 2025 :rec_yd])))
+    (testing "a player with no row in a fetched season is simply absent from it"
+      (is (= #{2025} (set (keys (get-in out ["00-0000002" :nflverse/history]))))))
+    (testing "a player in no fetched season gets no history key at all"
+      (is (nil? (get out "00-0000009"))))))

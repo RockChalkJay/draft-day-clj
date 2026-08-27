@@ -263,3 +263,39 @@
       (is (= 9.0 (adp-of "standard")))
       (is (not-any? :vendor/by-format (:players (parse (rankings "ppr"))))
           "the three-format bundle never ships to the client"))))
+
+(deftest rankings-endpoint-does-not-ship-the-season-history
+  ;; /api/players carries the history once; this endpoint carries the whole board
+  ;; and is re-POSTed after every pick, so three seasons of stat lines per player
+  ;; would ride the hottest path in the app for data the engine never reads.
+  (routes/reset-universe!)
+  (let [with-history (update fixture :players
+                             (fn [ps] (mapv #(assoc % :nflverse/history
+                                                    {2024 {:rush_yd 1200.0 :rush_td 9.0}
+                                                     2025 {:rush_yd 1400.0 :rush_td 11.0}})
+                                            ps)))]
+    (with-redefs [pipeline/load-universe (fn [& _] with-history)]
+      (let [ls   {:teams (vec (for [i (range 12)]
+                                {:team-id (str "t" i) :bankroll 200
+                                 :roster (mapv (fn [p] {:pos p :player-id nil})
+                                               (into ["RB" "RB" "FLEX"] (repeat 3 "BENCH")))}))
+                  :drafted-player-ids [] :starting-bankroll 200 :picks []}
+            req  #(hash-map :body (input-stream
+                                   (json/write-value-as-string
+                                    {:num-teams 12 :scoring "ppr" :league-state ls})))
+            resp (routes/rankings-handler (req))
+            b    (parse resp)]
+        (is (= 200 (:status resp)))
+        (is (= 40 (count (:players b))) "every row is still there")
+        (is (every? #(nil? (:nflverse/history %)) (:players b)))
+        (is (not (re-find #"history" (:body (routes/rankings-handler (req))))))
+        (is (some #(pos? (:worth %)) (:players b))
+            "and the board is still valued")))))
+
+(deftest without-history-leaves-every-other-column-alone
+  ;; The strip is a dissoc of one key, not a select-keys — a player that never
+  ;; had a history key must come through untouched.
+  (is (= [{:player-id "rb0" :worth 40} {:player-id "rb1" :worth 30}]
+         (routes/without-history
+          [{:player-id "rb0" :worth 40 :nflverse/history {2025 {:rush_yd 1.0}}}
+           {:player-id "rb1" :worth 30}]))))

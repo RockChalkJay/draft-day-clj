@@ -1,6 +1,6 @@
 (ns draft-day.ingestion.nflverse
-  "Enrichment: what a player actually did last season, and how much of the last
-  few seasons he was available for.
+  "Enrichment: what a player actually did last season, what he produced in each
+  of the last few, and how much of them he was available for.
 
   Free, keyless CSV releases on GitHub, keyed by GSIS id, which makes this the
   one enrichment source in the app that joins *exactly* rather than by name.
@@ -11,10 +11,21 @@
   they are deliberately NOT scoped per scoring format — unlike FantasyPros ECR
   or auction values, a target is a target in every league.
 
-  One fetch, two questions. The usage columns come from the newest season alone;
-  the availability columns need the whole window, and re-downloading the newest
-  season for the second question would be silly. Hence one task and one
-  `:sources` label (`:nflverse/player-stats`) rather than two.
+  One fetch, three questions. The usage columns come from the newest season
+  alone; the availability columns and the per-season stat lines need the whole
+  window, and re-downloading the newest season for each of them would be silly.
+  Hence one task and one `:sources` label (`:nflverse/player-stats`) rather than
+  three.
+
+  The three answers stay separate keys rather than one merged record, because
+  they are asked by different consumers and are true in different ways:
+  `:nflverse/prior-*` is a single season's usage (and carries `target_share`,
+  which is a rate, not a line), `:nflverse/games-by-season` is availability, and
+  `:nflverse/history` is production. In particular `:nflverse/history` carries no
+  games count of its own — `:nflverse/games-by-season` already answers that, it
+  is clamped to the season's length (see `row->games`), and a second unclamped
+  copy would disagree with the first for exactly the players the clamp exists
+  for.
 
   Three traps, all of which have bitten this codebase or its author before:
 
@@ -130,6 +141,49 @@
             ;; already a season rate — do NOT divide by games
             :nflverse/prior-target-share (num-or-nil (get row "target_share"))})]))
 
+(def line-columns
+  "nflverse column -> the Sleeper stat key `draft-day.scoring` already speaks.
+
+  Deliberately narrower than the benchmark harness's map over the same feed
+  (`draft-day.benchmark.sources.nflverse/stat-columns`). That one exists to
+  *score* a realized season under a league's weights, so it needs every column a
+  weight can touch — interceptions, two-point conversions, fumbles. This one
+  exists to *show* three seasons in a tile, so it carries only the lines a
+  manager reads off one.
+
+  Keyed by Sleeper stat keys even so, because that is the vocabulary a player's
+  projected `:stats` line is already in: it lets a realized season and a
+  projected one sit in the same row without translating between two spellings of
+  the same stat.
+
+  No kicking columns. nflverse does publish `fg_made`/`pat_made` and K rows are
+  joined, but a kicker's history is not what this shipped for; adding it is a
+  column change, not a design change, if it is ever wanted."
+  {"passing_yards"   :pass_yd
+   "passing_tds"     :pass_td
+   "rushing_yards"   :rush_yd
+   "rushing_tds"     :rush_td
+   "receptions"      :rec
+   "receiving_yards" :rec_yd
+   "receiving_tds"   :rec_td})
+
+(defn row->season-line
+  "Pure: one nflverse row -> [gsis {stat-key value}], or nil when there is
+  nothing to join on or the row carries none of `line-columns`.
+
+  Same BLANK IS NOT ZERO rule as `row->usage`, and it matters more here: a stat
+  line is read as a trend across three seasons, so one zero-filled column is not
+  a wrong number in isolation but a decline the player never had. A column the
+  source left blank is simply absent, and a season with no columns at all yields
+  no entry rather than an empty line."
+  [row]
+  (when-let [gsis (gsis-id row)]
+    (let [stats (into {}
+                      (keep (fn [[col k]]
+                              (when-let [v (num-or-nil (get row col))] [k v])))
+                      line-columns)]
+      (when (seq stats) [gsis stats]))))
+
 (defn row->games
   "Pure: one nflverse row -> [gsis games-played], or nil when there is nothing to
   join on or no games figure at all.
@@ -186,6 +240,26 @@
                          (season-games season (get rows-by-season season))))
             {}
             (sort (keys rows-by-season)))))
+
+(defn history
+  "Pure: {season rows} -> {gsis-id {:nflverse/history {season {stat-key value}}}}.
+
+  Only the seasons a player actually has a row in, exactly like
+  `:nflverse/games-by-season`, and for the same reason: a season he is missing
+  from is not a season he produced nothing in until you know the season was
+  fetched at all. `:nflverse/games-seasons` — already carried by `availability`
+  on every player — is the half that answers that, so this map does not repeat
+  it."
+  [rows-by-season]
+  (reduce-kv (fn [acc season rows]
+               (reduce (fn [acc r]
+                         (if-let [[gsis stats] (row->season-line r)]
+                           (assoc-in acc [gsis :nflverse/history season] stats)
+                           acc))
+                       acc
+                       rows))
+             {}
+             rows-by-season))
 
 (defn http-get-string
   "The JDK client rather than http-kit, and following redirects explicitly:
@@ -260,5 +334,6 @@
     (when-let [newest (get rows season)]
       {:by-key    (merge-with merge
                               (enrichment season newest)
-                              (availability rows))
+                              (availability rows)
+                              (history rows))
        :positions (row-positions newest)})))
