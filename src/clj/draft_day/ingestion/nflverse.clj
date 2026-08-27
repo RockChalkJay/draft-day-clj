@@ -21,8 +21,9 @@
   they are asked by different consumers and are true in different ways:
   `:nflverse/prior-*` is a single season's usage (and carries `target_share`,
   which is a rate, not a line), `:nflverse/games-by-season` is availability, and
-  `:nflverse/history` is production. In particular `:nflverse/history` carries no
-  games count of its own — `:nflverse/games-by-season` already answers that, it
+  `:nflverse/history` is production (and is a season-ordered vector rather than a
+  season-keyed map, because it is the one that crosses to the browser as JSON —
+  see `history`). In particular `:nflverse/history` carries no games count of its own — `:nflverse/games-by-season` already answers that, it
   is clamped to the season's length (see `row->games`), and a second unclamped
   copy would disagree with the first for exactly the players the clamp exists
   for.
@@ -167,9 +168,22 @@
    "receiving_yards" :rec_yd
    "receiving_tds"   :rec_td})
 
+(def history-positions
+  "The positions a `line-columns` stat line says anything about.
+
+  Narrower than `fantasy-positions`, which gates the join as a whole. Kickers do
+  have rows in this file and do join, but every column in `line-columns` is
+  structurally zero for one — a kicker would carry three seasons of
+  `{:pass_yd 0.0 :rush_yd 0.0 :rec 0.0 ...}`, which is not a quiet career, it is
+  the absence of a question. Worse, it is indistinguishable downstream from a
+  skill player who genuinely did nothing, so it cannot be filtered later either.
+  No DST rows exist here at all (see `fantasy-positions`)."
+  #{"QB" "RB" "WR" "TE"})
+
 (defn row->season-line
   "Pure: one nflverse row -> [gsis {stat-key value}], or nil when there is
-  nothing to join on or the row carries none of `line-columns`.
+  nothing to join on, the position has no line worth keeping, or the row carries
+  none of `line-columns`.
 
   Same BLANK IS NOT ZERO rule as `row->usage`, and it matters more here: a stat
   line is read as a trend across three seasons, so one zero-filled column is not
@@ -177,7 +191,7 @@
   source left blank is simply absent, and a season with no columns at all yields
   no entry rather than an empty line."
   [row]
-  (when-let [gsis (gsis-id row)]
+  (when-let [gsis (and (history-positions (get row "position")) (gsis-id row))]
     (let [stats (into {}
                       (keep (fn [[col k]]
                               (when-let [v (num-or-nil (get row col))] [k v])))
@@ -242,24 +256,41 @@
             (sort (keys rows-by-season)))))
 
 (defn history
-  "Pure: {season rows} -> {gsis-id {:nflverse/history {season {stat-key value}}}}.
+  "Pure: {season rows} -> {gsis-id {:nflverse/history [{:season s :stats {..}}]}},
+  oldest season first.
+
+  A **vector**, not a map keyed by season, and that is the whole point of the
+  shape. This is the one nflverse column written to be read in the browser, and
+  it gets there as JSON: jsonista writes an integer map key as the string
+  \"2023\", and `fx.cljs` decodes with `:keywordize-keys true`, so a
+  season-keyed map arrives as `{:2023 {..}}` and every `(get h 2023)` on the
+  other side quietly returns nil. A vector of records survives that trip
+  unchanged.
+
+  `:nflverse/games-by-season` keeps its map shape because nothing reads it off
+  the wire — `rankings.injury` runs server-side, where the keys are still
+  integers.
+
+  Ordering is carried rather than left to be re-derived, because the tile renders
+  these left to right in time and sorting keywords back into seasons is the same
+  trap one step later.
 
   Only the seasons a player actually has a row in, exactly like
   `:nflverse/games-by-season`, and for the same reason: a season he is missing
   from is not a season he produced nothing in until you know the season was
   fetched at all. `:nflverse/games-seasons` — already carried by `availability`
-  on every player — is the half that answers that, so this map does not repeat
-  it."
+  on every player — is the half that answers that, so this does not repeat it."
   [rows-by-season]
-  (reduce-kv (fn [acc season rows]
-               (reduce (fn [acc r]
-                         (if-let [[gsis stats] (row->season-line r)]
-                           (assoc-in acc [gsis :nflverse/history season] stats)
-                           acc))
-                       acc
-                       rows))
-             {}
-             rows-by-season))
+  (reduce (fn [acc season]
+            (reduce (fn [acc r]
+                      (if-let [[gsis stats] (row->season-line r)]
+                        (update-in acc [gsis :nflverse/history]
+                                   (fnil conj []) {:season season :stats stats})
+                        acc))
+                    acc
+                    (get rows-by-season season)))
+          {}
+          (sort (keys rows-by-season))))
 
 (defn http-get-string
   "The JDK client rather than http-kit, and following redirects explicitly:

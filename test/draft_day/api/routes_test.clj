@@ -271,8 +271,8 @@
   (routes/reset-universe!)
   (let [with-history (update fixture :players
                              (fn [ps] (mapv #(assoc % :nflverse/history
-                                                    {2024 {:rush_yd 1200.0 :rush_td 9.0}
-                                                     2025 {:rush_yd 1400.0 :rush_td 11.0}})
+                                                    [{:season 2024 :stats {:rush_yd 1200.0 :rush_td 9.0}}
+                                                     {:season 2025 :stats {:rush_yd 1400.0 :rush_td 11.0}}])
                                             ps)))]
     (with-redefs [pipeline/load-universe (fn [& _] with-history)]
       (let [ls   {:teams (vec (for [i (range 12)]
@@ -297,5 +297,6 @@
   ;; had a history key must come through untouched.
   (is (= [{:player-id "rb0" :worth 40} {:player-id "rb1" :worth 30}]
          (routes/without-history
-          [{:player-id "rb0" :worth 40 :nflverse/history {2025 {:rush_yd 1.0}}}
+          [{:player-id "rb0" :worth 40
+            :nflverse/history [{:season 2025 :stats {:rush_yd 1.0}}]}
            {:player-id "rb1" :worth 30}]))))

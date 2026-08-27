@@ -1,5 +1,6 @@
 (ns draft-day.ingestion.nflverse-test
   (:require [clojure.test :refer [deftest is testing]]
+            [jsonista.core :as json]
             [draft-day.ingestion.nflverse :as nflverse]))
 
 (def ^:private chase
@@ -183,13 +184,47 @@
   (is (nil? (nflverse/row->season-line (assoc chase-line "player_id" ""))))
   (is (nil? (nflverse/row->season-line (assoc chase-line "position" "CB")))))
 
-(deftest history-keys-each-line-by-its-season
+(deftest history-is-a-season-ordered-vector-not-a-season-keyed-map
+  ;; The shape is load-bearing: this is the one nflverse column read in the
+  ;; browser, and it arrives as JSON. A map keyed by 2023 is written as the
+  ;; string "2023" and decoded as the keyword :2023, so every lookup by the
+  ;; integer season silently returns nil on the other side.
   (let [out (nflverse/history
-             {2024 [(assoc chase-line "receiving_yards" "1216")]
-              2025 [chase-line (assoc chase-line "player_id" "00-0000002")]})]
-    (is (= 1216.0 (get-in out ["00-0036900" :nflverse/history 2024 :rec_yd])))
-    (is (= 1708.0 (get-in out ["00-0036900" :nflverse/history 2025 :rec_yd])))
+             {2025 [chase-line (assoc chase-line "player_id" "00-0000002")]
+              2024 [(assoc chase-line "receiving_yards" "1216")]})
+        h   (get-in out ["00-0036900" :nflverse/history])]
+    (is (vector? h))
+    (testing "oldest season first, regardless of the order the seasons arrive in"
+      (is (= [2024 2025] (mapv :season h))))
+    (is (= 1216.0 (get-in h [0 :stats :rec_yd])))
+    (is (= 1708.0 (get-in h [1 :stats :rec_yd])))
     (testing "a player with no row in a fetched season is simply absent from it"
-      (is (= #{2025} (set (keys (get-in out ["00-0000002" :nflverse/history]))))))
+      (is (= [2025] (mapv :season (get-in out ["00-0000002" :nflverse/history])))))
     (testing "a player in no fetched season gets no history key at all"
       (is (nil? (get out "00-0000009"))))))
+
+(deftest a-season-keyed-history-would-not-survive-json
+  ;; Guarding the reason for the vector, not just the vector: this asserts on the
+  ;; actual round trip the browser performs, so a well-meaning change back to a
+  ;; season-keyed map fails here rather than in a blank tile.
+  (let [h (get-in (nflverse/history {2025 [chase-line]})
+                  ["00-0036900" :nflverse/history])
+        round-tripped (json/read-value (json/write-value-as-string h)
+                                       (json/object-mapper {:decode-key-fn keyword}))]
+    (is (= 2025 (:season (first round-tripped)))
+        "the season survives as a number, not as the key \"2025\"")
+    (is (= 1708.0 (get-in round-tripped [0 :stats :rec_yd])))))
+
+(deftest kickers-get-no-history-at-all
+  ;; A kicker joins, but every line-column is structurally zero for one. Three
+  ;; seasons of {:pass_yd 0.0 :rush_yd 0.0 :rec 0.0 ...} is not a quiet career,
+  ;; and downstream it is indistinguishable from a skill player who did nothing.
+  (let [kicker (assoc chase-line "player_id" "00-0000003" "position" "K"
+                      "passing_yards" "0" "passing_tds" "0"
+                      "rushing_yards" "0" "rushing_tds" "0"
+                      "receptions" "0" "receiving_yards" "0" "receiving_tds" "0")]
+    (is (nil? (nflverse/row->season-line kicker)))
+    (is (nil? (get (nflverse/history {2025 [kicker]}) "00-0000003")))
+    (testing "but a kicker still joins for usage and availability"
+      (is (some? (nflverse/row->usage 2025 kicker)))
+      (is (some? (nflverse/row->games 2025 kicker))))))
