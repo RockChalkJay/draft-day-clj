@@ -68,7 +68,7 @@
           [face p]
           [:div.nt-main
            [:div.nt-name (:player-name p)]
-           [:div.nt-meta (:position p) " · " (:team p) [bye-tag p] [risk-tag p]]
+           [:div.nt-meta (util/pos-label p) " · " (:team p) [bye-tag p] [risk-tag p]]
            [:div.nt-vals
             [val-cell "Worth" (util/money (:worth p))]
             [val-cell "Mkt" (util/money (:market p))]

@@ -3,6 +3,7 @@
   numeric Sleeper id, but the app's canonical :player-id is GSIS for most players.
   Run with `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing]]
+            [draft-day.db :as db]
             [draft-day.views.util :as util]))
 
 (deftest headshot-url-uses-sleeper-id-from-ids
@@ -23,3 +24,24 @@
   (testing "legacy rows without :ids still use :player-id"
     (is (= "https://sleepercdn.com/content/nfl/players/thumb/9509.jpg"
            (util/headshot-url {:player-id "9509" :position "RB"})))))
+
+;; ---- positional label and its sort key ----
+;; `db/pos-sort-key` lives in cljc but is reached only through `db/sort-accessors`,
+;; which only `subs/sort-players` reads — so the browser is the one platform it
+;; actually runs on, and `db_test.clj` covers the other one. The mixed-type
+;; compare it does is the part worth pinning here rather than reasoning about.
+
+(deftest pos-label-falls-back-to-the-bare-position
+  (is (= "RB7" (util/pos-label {:position "RB" :pos-rank 7})))
+  (is (= "RB" (util/pos-label {:position "RB"}))
+      "a player the engine could not rank shows no number, not RBnil"))
+
+(deftest pos-sort-key-orders-numerically-in-the-browser-too
+  (let [rbs [{:position "RB" :pos-rank 2} {:position "RB" :pos-rank 11}
+             {:position "RB" :pos-rank 1} {:position "RB" :pos-rank 10}]]
+    (is (= [1 2 10 11] (mapv :pos-rank (sort-by db/pos-sort-key rbs)))))
+  (testing "positions group, and an unranked row sorts last within its own"
+    (let [b [{:position "WR" :pos-rank 1} {:position "RB" :pos-rank nil}
+             {:position "RB" :pos-rank 1}]]
+      (is (= [["RB" 1] ["RB" nil] ["WR" 1]]
+             (mapv (juxt :position :pos-rank) (sort-by db/pos-sort-key b)))))))
