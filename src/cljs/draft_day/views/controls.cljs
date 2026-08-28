@@ -3,6 +3,7 @@
             [re-frame.core :as rf]
             [draft-day.db :as db]
             [draft-day.views.board :as board]
+            [draft-day.views.player-stats :as player-stats]
             [draft-day.views.util :as util]))
 
 (defn- silhouette []
@@ -21,8 +22,15 @@
                  :alt      ""
                  :on-error #(set! (.. % -target -style -display) "none")}]])
 
-(defn- val-cell [label amount]
-  [:div.nt-val [:span.lbl label] [:span.amt amount]])
+(defn- val-cell
+  "One cell of the value strip. `pts?` marks the one cell that is not money:
+  green means dollars everywhere else in this app, so rendering VORP in it would
+  read as a price."
+  ([label amount] (val-cell label amount false))
+  ([label amount pts?]
+   [:div.nt-val
+    [:span.lbl label]
+    [:span.amt {:class (when pts? "pts")} amount]]))
 
 (defn- bye-tag
   "The nominated player's bye, colored like the board: red pulse when drafting
@@ -69,11 +77,19 @@
           [:div.nt-main
            [:div.nt-name (:player-name p)]
            [:div.nt-meta (util/pos-label p) " · " (:team p) [bye-tag p] [risk-tag p]]
+           ;; One line of six, in the order a manager reads them: what the model
+           ;; says he is worth now, what it says he is worth flat, then the three
+           ;; the market says, then the points the whole thing is derived from.
            [:div.nt-vals
             [val-cell "Worth" (util/money (:worth p))]
-            [val-cell "Mkt" (util/money (:market p))]
+            [val-cell "Value" (util/money (:value p))]
+            [val-cell "Mkt" (util/money-rnd (:market p))]
             [val-cell "ESPN" (util/money-rnd (:espn/auction-value p))]
-            [val-cell "FP" (util/money-rnd (:fantasypros/aav p))]]]]
+            [val-cell "FP$" (util/money-rnd (:fantasypros/aav p))]
+            [val-cell "VORP" (util/points (:vorp p)) true]]]
+          ;; Third column of the body, beside the headshot. Reads the universe,
+          ;; not `p` — the ranked board carries no season history.
+          [player-stats/nominated-stats]]
          [:div.nt-actions
           [:label.nt-bid-label "Bid $"]
           [:input.bid {:type        "number"

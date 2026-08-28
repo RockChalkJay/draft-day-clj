@@ -5,7 +5,7 @@
             [draft-day.scoring :as scoring]))
 
 ;; ---- simple extracts ----
-(doseq [k [:view :status :config :teams :my-team-id
+(doseq [k [:view :status :config :teams :my-team-id :players
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
            :watchlist :import-report :universe]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
@@ -61,6 +61,14 @@
 
 (rf/reg-sub :players-by-id :<- [:ranked]
   (fn [r _] (into {} (map (juxt :player-id identity)) (:players r))))
+
+;; The raw universe, not the ranked board. `/api/rankings` deliberately strips
+;; :nflverse/history before it ranks (see `routes/without-history`) because that
+;; response is re-sent after every pick, so the season lines are only ever on the
+;; universe `/api/players` fetched once. Static facts come from here; live
+;; valuation comes from :players-by-id.
+(rf/reg-sub :universe-by-id :<- [:players]
+  (fn [ps _] (into {} (map (juxt :player-id identity)) ps)))
 
 (rf/reg-sub :market :<- [:ranked]
   (fn [r _] (select-keys r [:inflation :inflation-index :market-heat :market-multiplier])))
