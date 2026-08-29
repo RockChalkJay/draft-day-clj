@@ -83,31 +83,7 @@
       (str/includes? (str/lower-case (or (:player-name p) "")) q)
       (str/includes? (str/lower-case (or (:team p) "")) q)))
 
-(defn- rank-key
-  "Descending sort key for the board's overall rank: Worth, then skill positions
-  ahead of K/DST, then VORP, then projected points.
-
-  Worth alone is not a total order. Everything past the last roster slot prices
-  at $0, and the minimum-bid tail all prices at $1, so a stable sort left those
-  blocks in whatever order the server emitted, which is position grouping. VORP
-  and points still separate those players even where dollars cannot.
-
-  The K/DST term is what keeps signed VORP honest. The engine gives those two no
-  replacement level, so their :vorp is nil — and `(or nil 0)` below would put them
-  right back at the top of the tail, ahead of 469 players actually worth
-  drafting. They now carry the same $1 as the minimum-bid tail, so Worth no longer
-  separates them either; this term is the only thing that does.
-
-  Missing values read as 0 rather than nil: the model leaves :vorp and :points
-  off players it never scored, and a nil inside a vector sort key throws instead
-  of sorting last."
-  [p]
-  [(- (double (or (:worth p) 0)))
-   (if (db/priced-positions (:position p)) 0 1)
-   (- (double (or (:vorp p) 0)))
-   (- (double (or (:points p) 0)))])
-
-(defn- sort-players
+(defn sort-players
   "Sort by the active column, breaking ties on `rank-key` — the board's own total
   order.
 
@@ -117,11 +93,12 @@
   showing each row's real rank, which reads as a broken board rather than as a
   tie.
 
-  The fallback is `rank-key` rather than the `:rank` field because `:rank` is
+  The fallback is `db/rank-key` rather than the `:rank` field because `:rank` is
   assoc'd by `:board-players` a few lines below and nothing here could enforce
-  that: `(compare nil nil)` is 0, so any other caller — a sortable watch list,
-  My Roster — would silently get the arbitrary server order back with no error.
-  `rank-key` is self-contained and cannot be called wrong.
+  that: `(compare nil nil)` is 0, so any other caller — the watch list's
+  one-shot re-sort, My Roster — would silently get the arbitrary server order
+  back with no error. `rank-key` is self-contained and cannot be called wrong,
+  which is also why it now lives in `db.cljc` alongside its other callers.
 
   Ties deliberately do *not* invert with `dir`: a tie is not an ordering, so both
   directions show the better player first. Only the sorted column reverses."
@@ -130,11 +107,11 @@
     (sort (fn [a b]
             (let [va (acc a) vb (acc b)]
               (cond
-                (and (nil? va) (nil? vb)) (compare (rank-key a) (rank-key b))
+                (and (nil? va) (nil? vb)) (compare (db/rank-key a) (db/rank-key b))
                 (nil? va) 1
                 (nil? vb) -1
                 :else (let [c (* dir (compare va vb))]
-                        (if (zero? c) (compare (rank-key a) (rank-key b)) c)))))
+                        (if (zero? c) (compare (db/rank-key a) (db/rank-key b)) c)))))
           players)))
 
 ;; undrafted, unfiltered by position/search — the pool the board and watch list
@@ -159,7 +136,7 @@
           ;; live overall rank by Worth then VORP then points (see `rank-key`),
           ;; independent of the active sort column
           rank-map    (into {} (map-indexed (fn [i p] [(:player-id p) (inc i)])
-                                            (sort-by rank-key filtered)))
+                                            (sort-by db/rank-key filtered)))
           scale       (db/tier-scale pos-filter)
           ;; :tier is resolved here, shadowing the flat alias the server ships,
           ;; so every consumer downstream — row striping, the legend, the Tier

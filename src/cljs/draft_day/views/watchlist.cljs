@@ -1,6 +1,7 @@
 (ns draft-day.views.watchlist
   "Manager-curated list of players to nominate, filled from the board's ★ and
-  ordered by hand."
+  ordered by hand — or, once by hand is tedious, by one press of a sort button
+  that rewrites that order and then leaves it alone."
   (:require [clojure.string :as str]
             [reagent.core :as r]
             [re-frame.core :as rf]
@@ -56,6 +57,26 @@
                                     (rf/dispatch [:watch-remove id]))}
       "×"]]))
 
+(def sort-buttons
+  "The three one-shot re-sorts, in the order they are offered. Labels are short
+  because the panel is a narrow column; the title carries the rest."
+  [{:key :rank     :label "Rank"  :title "Reorder the list best-first by overall rank"}
+   {:key :worth    :label "Worth" :title "Reorder the list by Worth, highest first"}
+   {:key :position :label "Pos"   :title "Group the list by position, best first inside each"}])
+
+(defn sort-controls
+  "Buttons, not a sort mode — each press rewrites the stored order once and hands
+  it back. So there is no active button to light up and no direction arrow to
+  flip, which is exactly what tells the manager the list is still his to drag."
+  []
+  [:div.w-sort
+   [:span.w-sort-label "Sort"]
+   (for [{:keys [key label title]} sort-buttons]
+     ^{:key key}
+     [:button {:title    (str title " — you can still drag rows afterwards")
+               :on-click #(rf/dispatch [:watch-sort key])}
+      label])])
+
 (defn watchlist-panel []
   ;; Owns the transient drag state in a local atom — it is pointer state, not app
   ;; state; only the committed reorder reaches app-db. Same split as the board
@@ -68,6 +89,11 @@
          [:div.watchlist-head
           [:h3 "👀 Watch List"]
           [:span.w-count (str (count players) " watched")]]
+         ;; Its own row rather than a third item in the head: the panel is a
+         ;; 320px column, and squeezing three things onto that line wrapped the
+         ;; heading. Nothing to reorder below two rows, and an inert control
+         ;; reads as broken rather than as unnecessary.
+         (when (> (count players) 1) [sort-controls])
          (if (seq players)
            [:div.watchlist
             (map (fn [p] ^{:key (:player-id p)} [watch-row p ids drag]) players)]
