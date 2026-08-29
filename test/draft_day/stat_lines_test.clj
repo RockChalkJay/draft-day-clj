@@ -36,10 +36,10 @@
     (is (= 3.0 (:proj (row t "Rec TD"))))
     (is (nil? (row t "TD")) "and no combined row survives alongside them")))
 
-(deftest every-position-orders-its-phases-the-same-way
-  ;; Passing, rushing, receiving -- `db/scoring-catalog`'s order -- with each
-  ;; phase's volume above its scores. A position is still only asked for the
-  ;; phases it is described by, which is why the lists differ in content.
+(deftest each-position-leads-with-the-phase-it-is-described-by
+  ;; Not one fixed sequence: a receiver's `Rec` must not sit below rushing rows
+  ;; he mostly does not have. What is uniform is the shape within a phase --
+  ;; volume above scores -- and that every phase present carries its own TD row.
   (is (= ["Pass Yd" "Pass TD" "Rush Yd" "Rush TD"]
          (mapv first (get sl/position-rows "QB"))))
   (is (= ["Rush Yd" "Rush TD" "Rec" "Rec Yd" "Rec TD"]

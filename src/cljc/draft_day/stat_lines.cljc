@@ -51,9 +51,12 @@
   quarterback is described by, and three rows of dashes to say so is worse than
   not asking.
 
-  Within a position the phases run in `db/scoring-catalog` order — passing,
-  rushing, receiving — with each phase's volume above its scores, so the table
-  reads the same way whoever is on the block."
+  Ordering follows from those two rules rather than from a fixed sequence, and
+  it is deliberately NOT `db/scoring-catalog`'s passing/rushing/receiving: a
+  position leads with the phase it is described by, so a receiver's `Rec` is not
+  pushed below rushing rows he mostly does not have. Within a phase, volume sits
+  above scores. What is uniform is the shape — yards, then catches where they
+  apply, then the touchdowns for that phase — not the order of the phases."
   (let [passing   [["Pass Yd" :pass_yd] ["Pass TD" :pass_td]]
         rushing   [["Rush Yd" :rush_yd] ["Rush TD" :rush_td]]
         receiving [["Rec"     :rec]     ["Rec Yd"  :rec_yd] ["Rec TD" :rec_td]]]
