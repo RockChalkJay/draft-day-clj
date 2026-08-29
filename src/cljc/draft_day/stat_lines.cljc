@@ -29,30 +29,38 @@
   #{"QB" "RB" "WR" "TE"})
 
 (def position-rows
-  "position -> ordered [label stat-keys] the table describes it by.
+  "position -> the ordered [label stat-key] pairs the table describes it by.
 
   Keyed by the same Sleeper stat keys a projected `:stats` line uses, which is
   why a realized season and a projected one can share a row without translation.
 
-  A label may name more than one key: `TD` is rushing plus receiving, because a
-  back who scores twelve does not care which way they came, and two rows of
-  single digits reads worse than one honest total. Quarterbacks keep theirs
-  split — a passing touchdown and a rushing touchdown are different skills, and
-  a QB who runs for fourteen is a different asset from one who does not."
-  (let [receiving [["Rec"     [:rec]]
-                   ["Rec Yd"  [:rec_yd]]
-                   ["Rush Yd" [:rush_yd]]
-                   ["TD"      [:rush_td :rec_td]]]]
-    {"QB" [["Pass Yd" [:pass_yd]]
-           ["Pass TD" [:pass_td]]
-           ["Rush Yd" [:rush_yd]]
-           ["Rush TD" [:rush_td]]]
-     "RB" [["Rush Yd" [:rush_yd]]
-           ["Rec"     [:rec]]
-           ["Rec Yd"  [:rec_yd]]
-           ["TD"      [:rush_td :rec_td]]]
-     "WR" receiving
-     "TE" receiving}))
+  Two rules, and they pull in opposite directions — which is the whole design.
+
+  EVERY POSITION SPLITS ITS TOUCHDOWNS BY PHASE. A back's rushing and receiving
+  scores used to share one `TD` row while a quarterback's were split, so the tile
+  answered \"how did he score?\" for one position and refused to for the others.
+  A back who scores fourteen on the ground is a different asset from one who
+  scores six and catches eight, exactly as a running quarterback is a different
+  asset from a pocket one, and the table now says so everywhere.
+
+  BUT EACH POSITION IS STILL DESCRIBED BY ITS OWN PHASES. One shared row list for
+  all four would be more consistent still, and it would be worse: `stat-table`
+  drops a row only when it is dead across the *entire* window, so a quarterback
+  who caught one trick-play touchdown in one season would grow permanent `Rec`,
+  `Rec Yd` and `Rec TD` rows reading `– 1 –`. A stray catch is not a thing a
+  quarterback is described by, and three rows of dashes to say so is worse than
+  not asking.
+
+  Within a position the phases run in `db/scoring-catalog` order — passing,
+  rushing, receiving — with each phase's volume above its scores, so the table
+  reads the same way whoever is on the block."
+  (let [passing   [["Pass Yd" :pass_yd] ["Pass TD" :pass_td]]
+        rushing   [["Rush Yd" :rush_yd] ["Rush TD" :rush_td]]
+        receiving [["Rec"     :rec]     ["Rec Yd"  :rec_yd] ["Rec TD" :rec_td]]]
+    {"QB" (into passing rushing)
+     "RB" (into rushing receiving)
+     "WR" (into receiving rushing)
+     "TE" (into receiving rushing)}))
 
 (defn season-key
   "A season as a number, whether it arrived as one or as the keyword JSON turned
@@ -74,16 +82,20 @@
   [m]
   (into {} (keep (fn [[k v]] (when-let [s (season-key k)] [s v]))) m))
 
-(defn combine
-  "Sum the `ks` a stat line actually has, or nil when it has none of them.
+(defn stat-value
+  "The value a stat line carries for `k`, or nil when it carries none.
 
-  Nil rather than zero, and that is the BLANK IS NOT ZERO rule reaching the view:
-  a season the source has no row for must render as a dash, not as a season the
-  player produced nothing in. But a stat line that carries a real 0.0 keeps it —
-  a back with no receiving touchdowns genuinely scored none."
-  [stats ks]
-  (let [vs (keep #(get stats %) ks)]
-    (when (seq vs) (reduce + vs))))
+  A thin `get`, named because the nil it returns is load-bearing — this is the
+  BLANK IS NOT ZERO rule reaching the view. A season the source has no row for
+  must render as a dash, not as a season the player produced nothing in, while a
+  line carrying a real 0.0 keeps it: a back with no receiving touchdowns
+  genuinely scored none.
+
+  It used to sum a vector of keys, because `TD` was rushing plus receiving. Every
+  row names exactly one stat now (see `position-rows`), so there is nothing left
+  to add up."
+  [stats k]
+  (get stats k))
 
 (defn season-columns
   "Which seasons the table has columns for: the window that was *fetched*, oldest
@@ -108,7 +120,12 @@
 
   A row whose every cell is absent or zero across the whole window is dropped:
   a quarterback carries receiving columns in the raw data and they are all
-  zeroes, and four dead rows would push the rows that matter off the tile."
+  zeroes, and dead rows would push the rows that matter off the tile.
+
+  Note what that rule does *not* do — it drops a row that is dead everywhere, not
+  a row that is dead in most places. One non-zero cell in one season keeps a row
+  for the whole window. That is why `position-rows` still asks each position for
+  its own phases rather than handing every position the same list."
   [player season]
   (when-let [rows (get position-rows (:position player))]
     (let [seasons (season-columns player)
@@ -116,9 +133,9 @@
           games   (by-season (:nflverse/games-by-season player))
           proj    (:stats player)
           built   (into []
-                        (keep (fn [[label ks]]
-                                (let [values (mapv #(combine (get hist %) ks) seasons)
-                                      pv     (combine proj ks)]
+                        (keep (fn [[label k]]
+                                (let [values (mapv #(stat-value (get hist %) k) seasons)
+                                      pv     (stat-value proj k)]
                                   (when-not (every? #(or (nil? %) (zero? %))
                                                     (conj values pv))
                                     {:label label :values values :proj pv}))))

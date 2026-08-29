@@ -21,24 +21,42 @@
     (is (= [2023 2024 2025] (:seasons t)))
     (is (= 2026 (:proj-season t)))
     (is (false? (:rookie? t)))
-    (is (= ["Rush Yd" "Rec" "Rec Yd" "TD" "Games"] (mapv :label (:rows t))))
+    (is (= ["Rush Yd" "Rush TD" "Rec" "Rec Yd" "Rec TD" "Games"] (mapv :label (:rows t)))
+        "a back is described rushing-first, each phase's volume above its scores")
     (is (= [976.0 1456.0 1478.0] (:values (row t "Rush Yd"))))
     (is (= 1372.0 (:proj (row t "Rush Yd"))))))
 
-(deftest touchdowns-combine-rushing-and-receiving
+(deftest touchdowns-are-split-by-phase-for-every-position
+  ;; They used to share one `TD` row for everyone but quarterbacks, so the tile
+  ;; answered "how did he score?" for one position and refused to for the rest.
   (let [t (sl/stat-table bijan 2026)]
-    (is (= [8.0 15.0 11.0] (:values (row t "TD"))))
-    (is (= 12.0 (:proj (row t "TD"))))))
+    (is (= [4.0 14.0 7.0] (:values (row t "Rush TD"))))
+    (is (= 9.0 (:proj (row t "Rush TD"))))
+    (is (= [4.0 1.0 4.0] (:values (row t "Rec TD"))))
+    (is (= 3.0 (:proj (row t "Rec TD"))))
+    (is (nil? (row t "TD")) "and no combined row survives alongside them")))
 
-(deftest a-combined-row-sums-only-what-is-there
-  ;; Absent is not zero: a line with one of the two keys contributes that one,
-  ;; and a line with neither contributes nothing rather than a confident 0.
-  (is (= 4.0 (sl/combine {:rush_td 4.0} [:rush_td :rec_td])))
-  (is (= 7.0 (sl/combine {:rush_td 4.0 :rec_td 3.0} [:rush_td :rec_td])))
-  (is (nil? (sl/combine {:rec 10.0} [:rush_td :rec_td])))
-  (is (nil? (sl/combine nil [:rush_td])))
+(deftest every-position-orders-its-phases-the-same-way
+  ;; Passing, rushing, receiving -- `db/scoring-catalog`'s order -- with each
+  ;; phase's volume above its scores. A position is still only asked for the
+  ;; phases it is described by, which is why the lists differ in content.
+  (is (= ["Pass Yd" "Pass TD" "Rush Yd" "Rush TD"]
+         (mapv first (get sl/position-rows "QB"))))
+  (is (= ["Rush Yd" "Rush TD" "Rec" "Rec Yd" "Rec TD"]
+         (mapv first (get sl/position-rows "RB"))))
+  (doseq [pos ["WR" "TE"]]
+    (is (= ["Rec" "Rec Yd" "Rec TD" "Rush Yd" "Rush TD"]
+           (mapv first (get sl/position-rows pos)))
+        (str pos " leads with receiving, the phase it is described by"))))
+
+(deftest a-cell-is-absent-or-zero-but-never-confused
+  ;; Absent is not zero: a line the source has no entry in contributes nothing
+  ;; rather than a confident 0.
+  (is (= 4.0 (sl/stat-value {:rush_td 4.0} :rush_td)))
+  (is (nil? (sl/stat-value {:rec 10.0} :rush_td)))
+  (is (nil? (sl/stat-value nil :rush_td)))
   (testing "but a real zero survives — he genuinely scored none"
-    (is (= 0.0 (sl/combine {:rush_td 0.0} [:rush_td :rec_td])))))
+    (is (= 0.0 (sl/stat-value {:rush_td 0.0} :rush_td)))))
 
 (deftest a-row-dead-across-the-whole-window-is-dropped
   ;; A quarterback carries receiving columns in the raw data and they are all
@@ -55,6 +73,11 @@
         t (sl/stat-table allen 2026)]
     (is (= ["Pass Yd" "Pass TD" "Rush Yd" "Rush TD" "Games"] (mapv :label (:rows t)))
         "a QB is described by passing and rushing, never by his stray catches")
+    (testing "and the stray catch is real — 7 yards and a score in 2024 — so it
+              is `position-rows` withholding the receiving phase from him, not
+              the dead-row rule dropping it"
+      (is (= 1.0 (get-in allen [:nflverse/history 0 :stats :rec_td])))
+      (is (nil? (row t "Rec TD"))))
     (testing "the rows he does have keep their real numbers"
       (is (= [28.0 25.0] (:values (row t "Pass TD")))))))
 
