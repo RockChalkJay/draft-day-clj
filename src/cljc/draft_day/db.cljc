@@ -447,9 +447,16 @@
   whatever order the manager's vector happened to be in — the same discipline
   `subs/sort-players` enforces on the board.
 
-  Rank and Worth will usually agree, since `rank-key` leads with Worth. They part
-  company across the $0 and minimum-bid tails, which is exactly where Worth stops
-  being an ordering at all."
+  `:worth` and `:rank` are the *same* ordering, not merely a similar one:
+  `rank-key` leads with Worth, so the extra leading term decides exactly when
+  `rank-key`'s first term decides, and every tie falls through to `rank-key`
+  anyway. The tails are the one place a naive Worth sort would differ, and the
+  tiebreak is what erases the difference — deliberately, because a $1 block left
+  in server order is not an ordering.
+
+  Both are offered regardless. Worth is the number on the row, and a manager
+  reaching for the button that matches the column he is looking at should not
+  have to know it is the board's rank under another name."
   {:rank     rank-key
    :worth    (fn [p] [(- (double (or (:worth p) 0))) (rank-key p)])
    :position (fn [p] [(pos-sort-key p) (rank-key p)])})

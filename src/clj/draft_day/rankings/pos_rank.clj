@@ -22,7 +22,7 @@
   $1 minimum, everything past the last roster slot at $0, and `to-dollars`
   rounds the rest to whole dollars. Ranking on it directly would leave the whole
   RB/WR tail, which is the majority of each position, in whatever order the
-  server happened to emit. That is the same failure `subs/rank-key` exists to
+  server happened to emit. That is the same failure `db/rank-key` exists to
   fix for the `#` column.
 
   :points also covers K and DST, which :vorp cannot: the engine gives those two
