@@ -244,6 +244,57 @@
         (is (= (db/move-watch-onto ids :a :c)
                (mapv :key (db/move-column-onto cols :a :c))))))))
 
+(deftest rank-key-is-a-total-order-over-the-whole-board
+  ;; It moved out of subs.cljs so the watch-list sort could reach it, which also
+  ;; put it under `lein test` for the first time.
+  (let [p (fn [pos worth vorp pts] {:position pos :worth worth :vorp vorp :points pts})]
+    (is (neg? (compare (db/rank-key (p "RB" 58 120.0 240.0))
+                       (db/rank-key (p "WR" 55 110.0 230.0))))
+        "more Worth sorts first")
+    (testing "a $1 kicker sits below a $1 skill player, which is the only thing
+              separating them once Worth ties"
+      (is (pos? (compare (db/rank-key (p "K" 1 nil 130.0))
+                         (db/rank-key (p "WR" 1 -20.0 90.0))))))
+    (testing "a player the model never scored compares rather than throwing"
+      (is (some? (compare (db/rank-key {:position "TE"})
+                          (db/rank-key (p "TE" 4 10.0 100.0))))))))
+
+(deftest sort-watchlist-rewrites-the-stored-order-once
+  (let [by-id {"bijan" {:player-id "bijan" :position "RB" :pos-rank 1 :worth 58 :vorp 120.0 :points 260.0}
+               "lamb"  {:player-id "lamb"  :position "WR" :pos-rank 1 :worth 55 :vorp 110.0 :points 250.0}
+               "gibbs" {:player-id "gibbs" :position "RB" :pos-rank 2 :worth 51 :vorp 100.0 :points 240.0}
+               "kicker" {:player-id "kicker" :position "K" :pos-rank 1 :worth 1 :vorp nil :points 130.0}}
+        ids   ["kicker" "gibbs" "lamb" "bijan"]]
+    (is (= ["bijan" "lamb" "gibbs" "kicker"] (db/sort-watchlist ids by-id :rank))
+        "rank puts the best first and the kicker last")
+    (is (= ["bijan" "lamb" "gibbs" "kicker"] (db/sort-watchlist ids by-id :worth))
+        "worth is highest-first")
+    (is (= ["kicker" "bijan" "gibbs" "lamb"] (db/sort-watchlist ids by-id :position))
+        "position groups alphabetically and orders by pos-rank inside the group")
+
+    (testing "every sort is a permutation — a watched player is never dropped"
+      (is (every? #(= (frequencies ids) (frequencies (db/sort-watchlist ids by-id %)))
+                  [:rank :worth :position])))
+
+    (testing "an id the board cannot resolve keeps its place at the back rather
+              than being sorted by a nil player — a drafted watch-list entry is
+              still in the vector, and an undo has to restore him"
+      (is (= ["bijan" "gibbs" "unknown" "drafted"]
+             (db/sort-watchlist ["unknown" "gibbs" "drafted" "bijan"]
+                                (select-keys by-id ["bijan" "gibbs"]) :rank))))
+
+    (testing "before the first /api/rankings reply there is nothing to sort by,
+              so the hand-built order survives untouched"
+      (is (= ids (db/sort-watchlist ids {} :rank))))
+
+    (is (= ids (db/sort-watchlist ids by-id :bargain))
+        "an unknown key is a no-op: a reordered list is not a safe guess")
+    (is (= [] (db/sort-watchlist [] by-id :rank)))
+
+    (testing "it returns a vector — the order is stored, and conj/drag depend on it"
+      (is (vector? (db/sort-watchlist ids by-id :rank)))
+      (is (vector? (db/sort-watchlist ids by-id :bargain))))))
+
 (deftest reconcile-watchlist-repairs-every-shape-ever-persisted
   (testing "the old unordered set becomes a vector, so conj and drags work"
     (let [out (db/reconcile-watchlist #{"a" "b" "c"})]

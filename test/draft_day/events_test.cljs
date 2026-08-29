@@ -210,6 +210,30 @@
     (testing "none of it re-ranks the board: the watch list feeds no valuation"
       (is (empty? (:http @captured))))))
 
+(deftest sorting-the-watch-list-rewrites-the-order-and-leaves-it-alone
+  (let [wl #(:watchlist @rdb/app-db)]
+    (swap! rdb/app-db assoc :ranked
+           {:players [{:player-id "gibbs" :position "RB" :pos-rank 2 :worth 51 :vorp 100.0 :points 240.0}
+                      {:player-id "bijan" :position "RB" :pos-rank 1 :worth 58 :vorp 120.0 :points 260.0}
+                      {:player-id "lamb"  :position "WR" :pos-rank 1 :worth 55 :vorp 110.0 :points 250.0}]})
+    (doseq [id ["gibbs" "lamb" "bijan"]] (rf/dispatch-sync [:watch-toggle id]))
+    (reset! captured {:http [] :persist [] :debounce []})
+
+    (rf/dispatch-sync [:watch-sort :rank])
+    (is (= ["bijan" "lamb" "gibbs"] (wl)))
+    (is (= (wl) (:watchlist (last (:persist @captured))))
+        "the new order is persisted — it is the stored one now, not a view")
+
+    (testing "it is one-shot: a later drag is not undone by anything"
+      (rf/dispatch-sync [:move-watch-onto "gibbs" "bijan"])
+      (is (= ["gibbs" "bijan" "lamb"] (wl))))
+
+    (rf/dispatch-sync [:watch-sort :position])
+    (is (= ["bijan" "gibbs" "lamb"] (wl)) "grouped by position, best first inside")
+
+    (testing "sorting re-ranks nothing: the watch list feeds no valuation"
+      (is (empty? (:http @captured))))))
+
 (deftest a-watch-list-persisted-as-a-set-is-repaired-at-boot
   ;; localStorage carries no schema stamp, and the list was a set before it had
   ;; an order. Rehing the ordered code unrepaired, `conj` would put a new star

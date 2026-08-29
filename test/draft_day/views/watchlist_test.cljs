@@ -15,6 +15,16 @@
   (testing "and neither is droppable text — the search box takes text"
     (is (re-find #"^application/" util/watch-mime))))
 
+(deftest every-sort-button-names-a-key-the-sort-can-actually-use
+  ;; The panel and the sort live in different namespaces, and a button naming a
+  ;; key `watch-sort-keys` has no entry for is not an error anywhere — it is a
+  ;; press that silently does nothing, which is the worst way to ship this.
+  (is (seq wl/sort-buttons))
+  (is (= (set (map :key wl/sort-buttons)) (set (keys db/watch-sort-keys))))
+  (testing "and every button says what it does, since none of them can show a
+            selected state to explain themselves afterwards"
+    (is (every? (every-pred :label :title) wl/sort-buttons))))
+
 (deftest drop-edge-follows-the-direction-of-travel
   (let [ids ["gibbs" "chase" "nacua" "bowers"]]
     (testing "dragging down, the line sits under the target — where the row lands"

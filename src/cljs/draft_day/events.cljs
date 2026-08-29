@@ -139,6 +139,15 @@
   (fn [db [_ from-id to-id]]
     (update db :watchlist db/move-watch-onto from-id to-id)))
 
+;; A one-shot rewrite of the stored order, not a sort mode: there is no
+;; `:watch-sort` key in db to consult afterwards, the rows stay draggable, and
+;; nothing re-sorts the list out from under the manager after a pick. That is the
+;; whole reason `:watchlist-players` can keep promising an order he can trust.
+(rf/reg-event-db :watch-sort [persist]
+  (fn [db [_ k]]
+    (update db :watchlist db/sort-watchlist
+            (db/index-by-id (get-in db [:ranked :players])) k)))
+
 (rf/reg-event-db
  :set-sort
  (fn [db [_ k]]

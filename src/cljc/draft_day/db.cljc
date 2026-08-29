@@ -77,6 +77,34 @@
   [p]
   [(str (:position p)) (or (:pos-rank p) ##Inf)])
 
+(defn rank-key
+  "Descending sort key for the board's overall rank: Worth, then skill positions
+  ahead of K/DST, then VORP, then projected points.
+
+  Worth alone is not a total order. Everything past the last roster slot prices
+  at $0, and the minimum-bid tail all prices at $1, so a stable sort left those
+  blocks in whatever order the server emitted, which is position grouping. VORP
+  and points still separate those players even where dollars cannot.
+
+  The K/DST term is what keeps signed VORP honest. The engine gives those two no
+  replacement level, so their :vorp is nil — and `(or nil 0)` below would put them
+  right back at the top of the tail, ahead of 469 players actually worth
+  drafting. They now carry the same $1 as the minimum-bid tail, so Worth no longer
+  separates them either; this term is the only thing that does.
+
+  Missing values read as 0 rather than nil: the model leaves :vorp and :points
+  off players it never scored, and a nil inside a vector sort key throws instead
+  of sorting last.
+
+  It lives here rather than in `subs.cljs`, where it started, because it is now
+  the tiebreak for two orderings — the board's sorted column and the watch
+  list's one-shot re-sort — and only one of them runs in a subscription."
+  [p]
+  [(- (double (or (:worth p) 0)))
+   (if (priced-positions (:position p)) 0 1)
+   (- (double (or (:vorp p) 0)))
+   (- (double (or (:points p) 0)))])
+
 ;; ---- bye-week conflict detection ----
 ;; Staged by draft phase. Only QB/RB/WR/TE matter (K/DST are streamed weekly, so
 ;; bye stacking there is a non-issue; FLEX is ignored too):
@@ -402,6 +430,51 @@
   "`move-onto` over the watch list, whose elements are bare player-ids."
   [ids from-id to-id]
   (move-onto ids from-id to-id identity))
+
+(defn index-by-id
+  "`{player-id player}` over a ranked board, for `sort-watchlist`'s caller: the
+  `:watch-sort` event holds raw db and cannot reach the `:players-by-id` sub."
+  [players]
+  (into {} (map (juxt :player-id identity)) players))
+
+(def watch-sort-keys
+  "Watch-list sort key -> `player -> comparable`, direction baked in.
+
+  Fixed direction rather than the board's toggleable `dir`, because these are
+  one-shot actions and not a sort mode: there is no active column to click a
+  second time, so there is nowhere for a reversal to live. Each key ends in
+  `rank-key` so ties fall back to the board's own total order rather than to
+  whatever order the manager's vector happened to be in — the same discipline
+  `subs/sort-players` enforces on the board.
+
+  Rank and Worth will usually agree, since `rank-key` leads with Worth. They part
+  company across the $0 and minimum-bid tails, which is exactly where Worth stops
+  being an ordering at all."
+  {:rank     rank-key
+   :worth    (fn [p] [(- (double (or (:worth p) 0))) (rank-key p)])
+   :position (fn [p] [(pos-sort-key p) (rank-key p)])})
+
+(defn sort-watchlist
+  "Reorder watch-list `ids` by `k`, resolving each through `by-id`.
+
+  A one-shot rewrite of the stored order, not a view: the list stays the
+  manager's, hand-draggable, and nothing re-sorts it out from under him after a
+  pick.
+
+  Ids `by-id` cannot resolve keep their relative order at the back rather than
+  being dropped. Two of them are routine, not corrupt state: a watched player who
+  has been drafted stays in the vector (he only falls out of the sub, so an undo
+  restores him to his place), and before the first `/api/rankings` reply `by-id`
+  is empty for every id there is. Sorting them by a nil player would silently
+  shuffle a list the manager built by hand.
+
+  An unknown `k` is a no-op for the same reason: a re-ordered list is not a safe
+  guess at what was meant."
+  [ids by-id k]
+  (if-let [keyfn (get watch-sort-keys k)]
+    (let [{known true unknown false} (group-by #(contains? by-id %) (vec ids))]
+      (into (vec (sort-by (comp keyfn by-id) known)) unknown))
+    (vec ids)))
 
 (defn reconcile-watchlist
   "Reconcile a persisted watch list with the current shape: an ordered vector of

@@ -77,8 +77,18 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
   border-radius: 10px; padding: 12px;
   position: absolute; inset: 0; display: flex; flex-direction: column; }
 .watchlist-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; flex: none; }
-.watchlist-head h3 { margin: 0; font-size: 14px; }
-.w-count { font-size: 11px; color: var(--muted); }
+.watchlist-head h3 { margin: 0; font-size: 14px; white-space: nowrap; }
+.w-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* One-shot re-sorts, so these are actions and never carry a selected state --
+   styled as quiet text buttons rather than as the board's sortable headers,
+   which are a mode. margin-right pushes them off the count, not the heading. */
+.w-sort { display: flex; align-items: baseline; gap: 4px; flex: none;
+  margin: -2px 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.w-sort-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.w-sort button { background: none; border: 1px solid transparent; border-radius: 4px;
+  color: var(--muted); font: inherit; font-size: 11px; line-height: 1;
+  padding: 2px 5px; cursor: pointer; }
+.w-sort button:hover { color: var(--text); border-color: var(--border); background: var(--panel2); }
 /* scrollbar-gutter so the rows don't all narrow by the width of a classic
    scrollbar the moment the list outgrows the tile; min-height:0 or a flex item
    refuses to shrink below its content and there is nothing to scroll. */
