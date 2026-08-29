@@ -26,9 +26,43 @@
     "\u2013"))
 
 (defn money-rnd [n]
-  (if (and (number? n) (pos? n)) 
-    (str "$" (js/Math.round n)) 
+  (if (and (number? n) (pos? n))
+    (str "$" (js/Math.round n))
     "–"))
+
+;; ---- signed differences ----
+;; Barg and Edge are differences, not prices: the sign is the whole message, and
+;; `money` is the wrong formatter for them because it dashes out anything not
+;; positive — here a negative is the most interesting value there is.
+;;
+;; The board and the tile format the number differently on purpose. The board's
+;; are narrow numeric columns under their own headers, where a repeated "$" down
+;; two hundred rows is noise; the tile shows them once, in a strip where every
+;; neighbour carries a unit. But the *colour* rule is one rule, so `sign-class`
+;; is shared and the two formatters are not.
+
+(defn signed-money
+  "A signed dollar difference for the on-the-block strip: \"+$4\", \"−$4\", or a
+  dash.
+
+  Zero dashes out along with nil, matching the board's Edge and Barg cells: a
+  difference of exactly nothing is not a verdict, and \"$0\" would sit in a strip
+  where colour carries meaning while having no colour to take."
+  [n]
+  (if (and (number? n) (not (zero? n)))
+    (str (if (pos? n) "+" "−") "$" (js/Math.abs n))
+    "–"))
+
+(defn sign-class
+  "\"good\" above zero, \"warn\" below, nil at zero or for a non-number.
+
+  The board colours Edge and Barg by sign and so does the tile; this is that one
+  rule, rather than a third and fourth copy of the same `cond`."
+  [n]
+  (cond
+    (not (number? n)) nil
+    (pos? n) "good"
+    (neg? n) "warn"))
 
 ;; ---- column drag ----
 ;; Both places a column can be dragged from — the board header and the ⚙ Columns

@@ -157,13 +157,14 @@
     :espn-value [:td.num.muted (util/money-rnd (:espn/auction-value p))]
     :fp-aav   [:td.num.muted (util/money (:fantasypros/aav p))]
     :market   [:td.num.muted (util/money (:market p))]
+    ;; The sign rule is shared with the on-the-block tile (`util/sign-class`);
+    ;; the number itself is not — a "$" repeated down two hundred rows is noise
+    ;; in a column that already has a header.
     :edge     (let [e (:edge p)]
-                [:td.num {:class (cond (and (number? e) (pos? e)) "good"
-                                       (and (number? e) (neg? e)) "warn")}
+                [:td.num {:class (util/sign-class e)}
                  (if (and (number? e) (not (zero? e))) (str (when (pos? e) "+") e) "–")])
     :bargain  (let [b (:bargain p)]
-                [:td.num {:class (cond (and (number? b) (pos? b)) "good"
-                                       (and (number? b) (neg? b)) "warn")}
+                [:td.num {:class (util/sign-class b)}
                  (if (and (number? b) (not (zero? b))) (str (when (pos? b) "+") b) "–")])
       :adp      [:td.num (if-let [a (:sleeper/adp p)] (format-one-decimal a) "–")]
       :proj     [:td.num (format-whole (:points p))]
