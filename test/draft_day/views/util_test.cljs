@@ -30,15 +30,19 @@
 ;; pinned here rather than in two places that could drift apart silently: a
 ;; wrong colour is not a crash and nothing else would catch it.
 
-(deftest signed-money-carries-the-sign
+(deftest signed-carries-the-sign
+  (is (= "+4" (util/signed 4)))
+  (is (= "-4" (util/signed -4)))
   (is (= "+$4" (util/signed-money 4)))
-  (is (= "−$4" (util/signed-money -4)) "a real minus sign, not a hyphen"))
+  (is (= "-$4" (util/signed-money -4))
+      "the unit goes between the sign and the digits, not in front of the sign"))
 
-(deftest signed-money-dashes-what-is-not-a-verdict
-  (is (= "–" (util/signed-money 0))
-      "a difference of exactly nothing is not a verdict, and $0 has no colour to take")
-  (is (= "–" (util/signed-money nil)))
-  (is (= "–" (util/signed-money "4")) "a string is not a number, however numeric it looks"))
+(deftest signed-dashes-what-is-not-a-verdict
+  (doseq [f [util/signed util/signed-money]]
+    (is (= "–" (f 0))
+        "a difference of exactly nothing is not a verdict, and has no colour to take")
+    (is (= "–" (f nil)))
+    (is (= "–" (f "4")) "a string is not a number, however numeric it looks")))
 
 (deftest sign-class-matches-the-boards-rule
   (is (= "good" (util/sign-class 4)))

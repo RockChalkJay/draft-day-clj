@@ -157,15 +157,11 @@
     :espn-value [:td.num.muted (util/money-rnd (:espn/auction-value p))]
     :fp-aav   [:td.num.muted (util/money (:fantasypros/aav p))]
     :market   [:td.num.muted (util/money (:market p))]
-    ;; The sign rule is shared with the on-the-block tile (`util/sign-class`);
-    ;; the number itself is not — a "$" repeated down two hundred rows is noise
-    ;; in a column that already has a header.
-    :edge     (let [e (:edge p)]
-                [:td.num {:class (util/sign-class e)}
-                 (if (and (number? e) (not (zero? e))) (str (when (pos? e) "+") e) "–")])
-    :bargain  (let [b (:bargain p)]
-                [:td.num {:class (util/sign-class b)}
-                 (if (and (number? b) (not (zero? b))) (str (when (pos? b) "+") b) "–")])
+    ;; Shared with the on-the-block tile, which renders the same two differences
+    ;; with a "$" — a unit that would be noise repeated down two hundred rows,
+    ;; and the only thing that differs between the two.
+    :edge     [:td.num {:class (util/sign-class (:edge p))} (util/signed (:edge p))]
+    :bargain  [:td.num {:class (util/sign-class (:bargain p))} (util/signed (:bargain p))]
       :adp      [:td.num (if-let [a (:sleeper/adp p)] (format-one-decimal a) "–")]
       :proj     [:td.num (format-whole (:points p))]
       :ceiling  [:td.num.good (format-whole (:ceiling p))]

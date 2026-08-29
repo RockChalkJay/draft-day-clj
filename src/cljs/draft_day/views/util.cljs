@@ -35,23 +35,37 @@
 ;; `money` is the wrong formatter for them because it dashes out anything not
 ;; positive — here a negative is the most interesting value there is.
 ;;
-;; The board and the tile format the number differently on purpose. The board's
+;; The board and the tile differ only in whether the unit is printed. The board's
 ;; are narrow numeric columns under their own headers, where a repeated "$" down
 ;; two hundred rows is noise; the tile shows them once, in a strip where every
-;; neighbour carries a unit. But the *colour* rule is one rule, so `sign-class`
-;; is shared and the two formatters are not.
+;; neighbour carries a unit. So both go through `difference`, and both take their
+;; colour from `sign-class`. Nothing here is stated twice.
+
+(defn- difference
+  "A signed difference with `unit` in front of the digits, or a dash.
+
+  Zero dashes out along with nil and with anything that is not a number: a
+  difference of exactly nothing is not a verdict, and it would sit in a place
+  where colour carries meaning while having no colour to take.
+
+  The sign is an ASCII \"-\" rather than a typographic minus. The board has
+  always rendered these with one, and two surfaces spelling the same difference
+  with two different glyphs is the drift `pos-label` exists to prevent."
+  [n unit]
+  (if (and (number? n) (not (zero? n)))
+    (str (if (pos? n) "+" "-") unit (js/Math.abs n))
+    "–"))
+
+(defn signed
+  "A signed difference for a board column: \"+4\", \"-4\", or a dash."
+  [n]
+  (difference n ""))
 
 (defn signed-money
-  "A signed dollar difference for the on-the-block strip: \"+$4\", \"−$4\", or a
-  dash.
-
-  Zero dashes out along with nil, matching the board's Edge and Barg cells: a
-  difference of exactly nothing is not a verdict, and \"$0\" would sit in a strip
-  where colour carries meaning while having no colour to take."
+  "A signed dollar difference for the on-the-block strip: \"+$4\", \"-$4\", or a
+  dash."
   [n]
-  (if (and (number? n) (not (zero? n)))
-    (str (if (pos? n) "+" "−") "$" (js/Math.abs n))
-    "–"))
+  (difference n "$"))
 
 (defn sign-class
   "\"good\" above zero, \"warn\" below, nil at zero or for a non-number.
