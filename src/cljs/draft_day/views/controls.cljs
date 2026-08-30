@@ -22,15 +22,38 @@
                  :alt      ""
                  :on-error #(set! (.. % -target -style -display) "none")}]])
 
-(defn- val-cell
-  "One cell of the value strip. `pts?` marks the one cell that is not money:
-  green means dollars everywhere else in this app, so rendering VORP in it would
-  read as a price."
-  ([label amount] (val-cell label amount false))
-  ([label amount pts?]
-   [:div.nt-val
+(defn val-cell
+  "One cell of the value strip: a label over a number, in one of three tones.
+
+  `:money` — an already-formatted dollar string, green, the app's colour for
+             dollars.
+  `:pts`   — an already-formatted points string, plain text. Green means dollars
+             in every other cell of this strip, so rendering VORP in it would
+             read as a price.
+  `:signed` — the *raw* number, formatted and coloured here. Barg and Edge are
+             the two cells that are a verdict rather than an amount, and green-up
+             / red-down is the same rule the board's own Barg and Edge use.
+
+  `:signed` takes the number rather than a string on purpose: the colour and the
+  digits have to come from the same value, and a cell handed both separately can
+  be given one player's number and another's sign with nothing to catch it.
+
+  `opts` may carry a `:title`, which is how Mkt still says which two vendors it
+  is the consensus of."
+  ([label v tone] (val-cell label v tone nil))
+  ([label v tone {:keys [title]}]
+   ;; `title` is a hover, and `aria-label` on a plain div is in the part of the
+   ;; name calculation browsers are free to ignore. Mkt's tooltip is now the only
+   ;; place ESPN's and FantasyPros' own prices exist on this tile, so the same
+   ;; sentence also goes in as text that is read but not drawn.
+   [:div.nt-val (when title {:title title})
+    (when title [:span.sr-only title])
     [:span.lbl label]
-    [:span.amt {:class (when pts? "pts")} amount]]))
+    [:span.amt {:class (case tone
+                         :pts    "pts"
+                         :signed (str "signed " (or (util/sign-class v) "zero"))
+                         nil)}
+     (if (= :signed tone) (util/signed-money v) v)]]))
 
 (defn- bye-tag
   "The nominated player's bye, colored like the board: red pulse when drafting
@@ -61,6 +84,39 @@
                                       "inj-serious")}
          (get board/risk-words lvl)]]])))
 
+(defn market-title
+  "The two vendor prices Mkt is the consensus of, for its tooltip.
+
+  A vendor that has no price is still named, with a dash, so the sentence says
+  *which* one is missing rather than quietly becoming a sentence about the other.
+  But when neither has one there is no consensus to describe — `market-price`
+  returns nil and the cell renders a dash — so the tooltip says that instead of
+  offering an average of two dashes."
+  [p]
+  (let [espn (:espn/auction-value p)
+        fp   (:fantasypros/aav p)]
+    (if (or espn fp)
+      (str "Market price — consensus of ESPN " (util/money-rnd espn)
+           " and FantasyPros " (util/money-rnd fp)
+           ", scaled to your league")
+      "No market price — neither ESPN nor FantasyPros lists this player")))
+
+(defn tier-chip
+  "The player's tier, at the scale the board is currently reading.
+
+  Deliberately not the flat `:tier` the server ships. That alias is always the
+  *positional* tier, while the board resolves `:tier` per position filter in
+  `:board-players` — so reading it here would put \"Tier 1\" on the tile beside a
+  Tier column showing an overall tier for the same player, with nothing on screen
+  to say they are two different questions."
+  [p]
+  (let [scale (db/tier-scale @(rf/subscribe [:pos-filter]))]
+    (when-let [t (db/player-tier p scale)]
+      [:div.nt-tier {:title (if (= :position scale)
+                              (str "Tier " t " among " (:position p) "s")
+                              (str "Tier " t " across the whole board"))}
+       "Tier" [:b t]])))
+
 (defn- nominate-form
   "Form-2 so the bid/team live in local reagent atoms (synchronous updates — no
   dropped keystrokes on a fast controlled input). Keyed on the player so it
@@ -72,24 +128,35 @@
       (let [teams @(rf/subscribe [:teams])]
         [:div.nom-tile
          [:div.nt-label "On the block"]
-         [:div.nt-body
+         ;; Who he is. Two children, not three: the season table used to be a
+         ;; third column here and spent the tile's width competing with the
+         ;; headshot for it.
+         [:div.nt-head
           [face p]
           [:div.nt-main
            [:div.nt-name (:player-name p)]
-           [:div.nt-meta (util/pos-label p) " · " (:team p) [bye-tag p] [risk-tag p]]
-           ;; One line of six, in the order a manager reads them: what the model
-           ;; says he is worth now, what it says he is worth flat, then the three
-           ;; the market says, then the points the whole thing is derived from.
-           [:div.nt-vals
-            [val-cell "Worth" (util/money (:worth p))]
-            [val-cell "Value" (util/money (:value p))]
-            [val-cell "Mkt" (util/money-rnd (:market p))]
-            [val-cell "ESPN" (util/money-rnd (:espn/auction-value p))]
-            [val-cell "FP$" (util/money-rnd (:fantasypros/aav p))]
-            [val-cell "VORP" (util/points (:vorp p)) true]]]
-          ;; Third column of the body, beside the headshot. Reads the universe,
-          ;; not `p` — the ranked board carries no season history.
-          [player-stats/nominated-stats]]
+           [:div.nt-meta (util/pos-label p) " · " (:team p) [bye-tag p] [risk-tag p]]]
+          [tier-chip p]]
+         ;; What he costs. Two the model says, two the market says, and the two
+         ;; differences between them — which are the numbers a manager is
+         ;; actually reading when they decide whether to raise.
+         ;;
+         ;; ESPN and FP$ used to have cells of their own here. They are what Mkt
+         ;; is the consensus *of* (see `rankings/market.clj`), so three of six
+         ;; cells were spent on one idea while Barg and Edge, which the board has
+         ;; had all along, were absent. They keep their numbers on Mkt's tooltip.
+         [:div.nt-vals
+          [val-cell "Worth" (util/money (:worth p)) :money]
+          [val-cell "Value" (util/money (:value p)) :money]
+          [val-cell "Barg" (:bargain p) :signed]
+          [val-cell "Mkt" (util/money-rnd (:market p)) :money {:title (market-title p)}]
+          [val-cell "Edge" (:edge p) :signed]
+          [val-cell "VORP" (util/points (:vorp p)) :pts]]
+         ;; What he has done. Reads the universe, not `p` — the ranked board
+         ;; carries no season history. Renders nothing at all for a kicker or a
+         ;; defense, which is why the band's rule lives on the table's own
+         ;; wrapper rather than on anything here.
+         [player-stats/nominated-stats]
          [:div.nt-actions
           [:label.nt-bid-label "Bid $"]
           [:input.bid {:type        "number"
@@ -118,6 +185,6 @@
       ^{:key nominated} [nominate-form p]
       [:div.nom-tile
        [:div.nt-label "On the block"]
-       [:div.nt-body
+       [:div.nt-head
         [:div.nt-face [silhouette]]
         [:div.nt-main [:div.muted "Click a player or watch-list entry to nominate…"]]]])))

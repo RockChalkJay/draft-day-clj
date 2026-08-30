@@ -20,6 +20,10 @@ button { font: inherit; cursor: pointer; }
 .warn { color: var(--warn); }
 .bold { font-weight: 700; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Read, not drawn. For a fact a sighted manager gets from a `title` hover, which
+   a screen reader is not guaranteed to announce off a non-interactive element. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 /* ---- header ---- */
 header.top { display: flex; align-items: center; gap: 16px; padding: 10px 18px;
@@ -126,10 +130,21 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .nom-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px; height: 100%; display: flex; flex-direction: column; }
 .nt-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
-/* Three columns: headshot | name + meta + value strip | season trend table.
-   flex-start rather than center — the table is taller than the headshot, and
-   centring it floated the face away from the name it belongs to. */
-.nt-body { display: flex; gap: 16px; align-items: flex-start; flex: 1; }
+/* The tile reads top to bottom in four bands: who he is, what he costs, what he
+   has done, what you bid. It used to read left to right in three columns, which
+   put a five-column season table and a six-cell value strip in the ~720px this
+   tile gets between the watch list and the roster — and every sizing decision
+   below was a concession to that.
+
+   Head: headshot | name + meta | tier. flex-start rather than center, so the
+   face stays with the name rather than floating against a taller neighbour. */
+.nt-head { display: flex; gap: 16px; align-items: flex-start; }
+/* The tier sits opposite the name because it is the other half of the same
+   sentence — who this is, and where he stands. */
+.nt-tier { margin-left: auto; text-align: right; white-space: nowrap; cursor: help;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.nt-tier b { display: block; font-size: 18px; font-weight: 700; color: var(--text);
+  letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
 /* headshot sits on top of the silhouette; it hides itself on load failure */
 .nt-face { position: relative; flex: 0 0 108px; width: 108px; height: 108px; border-radius: 12px;
   background: var(--panel2); border: 1px dashed var(--border); overflow: hidden;
@@ -137,26 +152,50 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .nt-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .nt-main { flex: 1 1 auto; min-width: 0; }
 .nt-name { font-size: 22px; font-weight: 700; line-height: 1.1; }
-.nt-meta { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
-/* Six cells on one line beside the table, so the gap tightens and the amount
-   comes down from 18px. Any wider and the table loses a season column. */
-.nt-vals { display: grid; grid-template-columns: repeat(6, auto); gap: 4px 12px; justify-content: start; }
+/* No bottom margin: the strip below carries the whole gap, so all three of the
+   tile's rules sit on one 14px rhythm rather than on 10px + 14px here and 14px
+   everywhere else. */
+.nt-meta { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+
+/* ---- value strip ----
+   Six cells across the full tile, evenly divided, so they line up with the
+   season table's columns beneath them rather than bunching at the left. The
+   grid carries the band's own rule and spacing — it is the band, and a wrapper
+   around one element would only be a place for them to live. */
+.nt-vals { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px 12px;
+  margin-top: 14px; padding-top: 14px; margin-bottom: 14px;
+  border-top: 1px solid var(--border); }
 .nt-val { display: flex; flex-direction: column; }
 .nt-val .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-.nt-val .amt { font-size: 16px; font-weight: 700; color: var(--good); font-variant-numeric: tabular-nums; }
+/* 18px, up from the 16px the old three-column body could afford. */
+.nt-val .amt { font-size: 18px; font-weight: 700; color: var(--good); font-variant-numeric: tabular-nums; }
 /* VORP is points, not dollars, and green means money in every other cell of
    this strip. */
 .nt-val .amt.pts { color: var(--text); }
+/* Barg and Edge are differences, so they are a verdict rather than an amount and
+   take their colour from their sign — the same rule the board's own Barg and
+   Edge columns use, shared through `util/sign-class`. A difference of zero has
+   no verdict in it and reads as the dash it renders. */
+.nt-val .amt.signed.good { color: var(--good); }
+.nt-val .amt.signed.warn { color: var(--warn); }
+.nt-val .amt.signed.zero { color: var(--muted); }
 
 /* ---- season trend table ----
    Shaped like the My Roster box (table.roster below): dense rows, 10px uppercase
    muted headers, no chrome of its own. It sits 14px from that panel, so matching
    it is what keeps the three-panel row reading as one row.
 
-   flex: 0 0 auto — the table sizes to its own columns and the name column takes
-   the slack, rather than the table shrinking until 1456 wraps inside a cell. */
-.nt-stats-col { flex: 0 0 auto; }
-.nt-stats { border-collapse: collapse; }
+   A full-width band rather than the third column it used to be, so the season
+   columns are spread by the table instead of squeezed by the headshot beside it.
+
+   The rule that opens the band lives HERE, on the table's own wrapper, and not
+   on anything in `controls.cljs`. `stat-lines/stat-table` returns nil for a
+   kicker, a defense, and anyone with no numbers at all, so this element simply
+   does not render for them — a rule drawn by the tile would be left behind
+   across an empty strip. */
+.nt-stats-col { flex: none; margin-bottom: 14px;
+  padding-top: 14px; border-top: 1px solid var(--border); }
+.nt-stats { width: 100%; border-collapse: collapse; }
 .nt-stats th, .nt-stats td { padding: 3px 8px; font-size: 12px; white-space: nowrap; }
 .nt-stats thead th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
   color: var(--muted); font-weight: 600; text-align: right; border-bottom: 1px solid var(--border); }
@@ -172,12 +211,23 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
    empty cell as though something were there. */
 .nt-stats .proj { color: var(--text); font-weight: 600; border-left: 1px solid var(--border); }
 .nt-stats thead th.proj { color: var(--accent); }
-.nt-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px;
-  border-top: 1px solid var(--border); width: 50%; margin-right: auto; }
+/* margin-top: auto pins the bid row to the bottom of the tile, so a kicker —
+   who gets no season band at all — still fills the three-panel row instead of
+   leaving its actions floating halfway up. The bands above each carry their own
+   14px bottom margin, so there is a gap to the rule either way.
+
+   Full width, where it used to be 50%. That half-width rule read as deliberate
+   when the content above it was ragged; under two full-width rules it reads as a
+   mistake. The controls keep their old size — the select is capped rather than
+   left to stretch — and Record Pick goes to the far edge, which is where the eye
+   already is once the bid is typed. */
+.nt-actions { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 14px;
+  border-top: 1px solid var(--border); }
 .nt-actions input, .nt-actions select { background: var(--panel2); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .nt-actions input.bid { width: 80px; }
-.nt-actions select { flex: 1; min-width: 0; }
+.nt-actions select { flex: 0 1 240px; min-width: 0; }
+.nt-actions .primary { margin-left: auto; }
 .nt-bid-label { font-size: 14px; font-weight: 600; letter-spacing: .02em; color: var(--text); }
 .settings input, .settings select, .search {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }

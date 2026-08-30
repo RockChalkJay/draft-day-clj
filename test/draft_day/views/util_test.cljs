@@ -25,6 +25,31 @@
     (is (= "https://sleepercdn.com/content/nfl/players/thumb/9509.jpg"
            (util/headshot-url {:player-id "9509" :position "RB"})))))
 
+;; ---- signed differences ----
+;; Barg and Edge share `sign-class` with the board's own columns, so the rule is
+;; pinned here rather than in two places that could drift apart silently: a
+;; wrong colour is not a crash and nothing else would catch it.
+
+(deftest signed-carries-the-sign
+  (is (= "+4" (util/signed 4)))
+  (is (= "-4" (util/signed -4)))
+  (is (= "+$4" (util/signed-money 4)))
+  (is (= "-$4" (util/signed-money -4))
+      "the unit goes between the sign and the digits, not in front of the sign"))
+
+(deftest signed-dashes-what-is-not-a-verdict
+  (doseq [f [util/signed util/signed-money]]
+    (is (= "–" (f 0))
+        "a difference of exactly nothing is not a verdict, and has no colour to take")
+    (is (= "–" (f nil)))
+    (is (= "–" (f "4")) "a string is not a number, however numeric it looks")))
+
+(deftest sign-class-matches-the-boards-rule
+  (is (= "good" (util/sign-class 4)))
+  (is (= "warn" (util/sign-class -4)))
+  (is (nil? (util/sign-class 0)) "zero takes neither colour")
+  (is (nil? (util/sign-class nil))))
+
 ;; ---- positional label and its sort key ----
 ;; `db/pos-sort-key` lives in cljc but is reached only through `db/sort-accessors`,
 ;; which only `subs/sort-players` reads — so the browser is the one platform it
