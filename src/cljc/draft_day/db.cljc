@@ -283,11 +283,14 @@
    {:key :market   :label "Mkt"    :tooltip "Market price — ESPN + FantasyPros consensus, scaled to your league" :default? true}
    {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($, raw)" :default? true}
    {:key :fp-aav   :label "FP$"    :tooltip "FantasyPros auction value ($, raw)" :default? true}
-   {:key :bargain  :label "Barg"   :tooltip "Value − Worth (green target / red reach)" :default? true}
+   ;; Barg (Value − Worth) used to sit here. Both numbers come out of the same
+   ;; chain, so it only ever restated inflation: zero for the whole board until
+   ;; a pick moved the market. Edge is the difference against an outside opinion,
+   ;; so it takes the slot.
+   {:key :edge     :label "Edge"   :tooltip "Worth − Market — what the model will pay above (green) or below (red) what the room is likely to charge. Blank at the $1 minimum, or where no vendor lists a price" :default? true}
    {:key :vorp     :label "VORP"   :tooltip "Value over replacement"    :default? true}
    {:key :risk     :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile); a serious designation forces 5. Blank where there is no history to judge" :default? true}
    {:key :inj      :label "Inj"    :tooltip "Current injury status"     :default? false}
-   {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
    {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
    {:key :tier     :label "Tier"   :tooltip "Tier — within the position while filtered to one, across the whole board otherwise" :default? false}
    {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros' expert tier at the same scale as Tier — within the position while filtered, overall otherwise; blank where FantasyPros has no match" :default? false}
@@ -334,7 +337,6 @@
    :fp-aav   :fantasypros/aav
    :market   :market
    :edge     :edge
-   :bargain  :bargain
    :adp      :sleeper/adp
    :proj     :points
    :ceiling  :ceiling
@@ -378,18 +380,50 @@
 (defn default-columns []
   (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) column-catalog))
 
+(def renamed-columns
+  "Persisted column keys that were *replaced* rather than removed.
+
+  Dropping a key and defaulting its replacement on does not reach anyone who has
+  used the app: `reconcile-columns` keeps stored visibility for every key that
+  still exists, so a layout carrying Barg visible and Edge hidden would come back
+  having lost the first and not gained the second. A rename hands the manager the
+  column that says something, in the slot he had already put the other one in.
+
+  Barg was Value − Worth. Both come out of one chain, so it only ever restated
+  inflation — zero for the whole board until a pick moved the market. Edge is
+  Worth − Market: the same shape of number, measured against an opinion from
+  outside the model."
+  {:bargain :edge})
+
+(defn merge-column
+  "Add `c` to `cols`, or fold it into the entry already holding its key.
+
+  A rename can land a key that is already stored, and two entries for one column
+  is a state nothing downstream survives: the picker lists it twice and
+  `move-column-onto` moves whichever it finds first. The earlier slot wins the
+  position, since that is where the manager put the column he was actually
+  looking at, and the entry is visible if either half was."
+  [cols c]
+  (if-let [i (first (keep-indexed #(when (= (:key %2) (:key c)) %1) cols))]
+    (update-in cols [i :visible?] #(boolean (or % (:visible? c))))
+    (conj cols c)))
+
 (defn reconcile-columns
-  "Reconcile a persisted column config with the current catalog: keep the stored
-  order for keys that still exist, drop unknown keys (e.g. a removed :tier), and
-  append any new catalog columns at their default visibility."
+  "Reconcile a persisted column config with the current catalog: carry renamed
+  keys over to their replacement (`renamed-columns`), keep the stored order for
+  keys that still exist, drop unknown keys (e.g. a removed :tier), and append any
+  new catalog columns at their default visibility."
   [stored]
   (let [valid   (set (map :key column-catalog))
-        kept    (filterv #(valid (:key %)) (or stored []))
+        kept    (->> (or stored [])
+                     (map #(update % :key (fn [k] (get renamed-columns k k))))
+                     (filter #(valid (:key %)))
+                     (reduce merge-column []))
         present (set (map :key kept))
         added   (->> column-catalog
                      (remove #(present (:key %)))
-                     (map (fn [c] 
-                            {:key (:key c) 
+                     (map (fn [c]
+                            {:key (:key c)
                              :visible? (boolean (:default? c))})))]
     (vec (concat kept added))))
 

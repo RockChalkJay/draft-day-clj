@@ -188,6 +188,30 @@
 
   (testing "reconciling is idempotent"
     (let [once (db/reconcile-columns [{:key :vorp :visible? false}])]
+      (is (= once (db/reconcile-columns once)))))
+
+  (testing "a replaced key is carried over to its replacement, in its own slot"
+    ;; Barg -> Edge. Dropping it would have cost the manager the column he was
+    ;; looking at and handed him nothing back: Edge is already in his stored
+    ;; list, hidden, so defaulting it on in the catalog reaches nobody who has
+    ;; used the app before.
+    (let [out (db/reconcile-columns [{:key :name :visible? true}
+                                     {:key :bargain :visible? true}
+                                     {:key :edge :visible? false}])
+          ks  (mapv :key out)]
+      (is (not-any? #{:bargain} ks) "the old key is gone")
+      (is (= 1 (count (filter #{:edge} ks))) "and did not leave a second Edge")
+      (is (= [:name :edge] (subvec ks 0 2)) "Edge takes Barg's slot, not its own")
+      (is (:visible? (first (filter #(= :edge (:key %)) out)))
+          "and is visible, because the column it replaces was")))
+
+  (testing "the surviving entry is visible if either half was"
+    (let [out (db/reconcile-columns [{:key :edge :visible? true}
+                                     {:key :bargain :visible? false}])]
+      (is (:visible? (first (filter #(= :edge (:key %)) out))))))
+
+  (testing "a migrated layout is still idempotent"
+    (let [once (db/reconcile-columns [{:key :bargain :visible? true}])]
       (is (= once (db/reconcile-columns once))))))
 
 (deftest move-column-onto-reorders-by-key
@@ -304,13 +328,13 @@
               so the hand-built order survives untouched"
       (is (= ids (db/sort-watchlist ids {} :rank))))
 
-    (is (= ids (db/sort-watchlist ids by-id :bargain))
+    (is (= ids (db/sort-watchlist ids by-id :edge))
         "an unknown key is a no-op: a reordered list is not a safe guess")
     (is (= [] (db/sort-watchlist [] by-id :rank)))
 
     (testing "it returns a vector — the order is stored, and conj/drag depend on it"
       (is (vector? (db/sort-watchlist ids by-id :rank)))
-      (is (vector? (db/sort-watchlist ids by-id :bargain))))))
+      (is (vector? (db/sort-watchlist ids by-id :edge))))))
 
 (deftest reconcile-watchlist-repairs-every-shape-ever-persisted
   (testing "the old unordered set becomes a vector, so conj and drags work"

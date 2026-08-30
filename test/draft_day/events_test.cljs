@@ -164,7 +164,7 @@
   (doseq [k [:name :team :position :rank :adp :ecr :fp-tier]]
     (rf/dispatch-sync [:set-sort k])
     (is (= {:key k :dir 1} (:sort @rdb/app-db)) (str k " opens ascending")))
-  (doseq [k [:worth :value :vorp :bargain]]
+  (doseq [k [:worth :value :vorp :edge]]
     (rf/dispatch-sync [:set-sort k])
     (is (= {:key k :dir -1} (:sort @rdb/app-db)) (str k " opens descending")))
   (testing "and clicking the same header again flips it"

@@ -30,9 +30,9 @@
   `:pts`   — an already-formatted points string, plain text. Green means dollars
              in every other cell of this strip, so rendering VORP in it would
              read as a price.
-  `:signed` — the *raw* number, formatted and coloured here. Barg and Edge are
-             the two cells that are a verdict rather than an amount, and green-up
-             / red-down is the same rule the board's own Barg and Edge use.
+  `:signed` — the *raw* number, formatted and coloured here. Edge is the one
+             cell that is a verdict rather than an amount, and green-up /
+             red-down is the same rule the board's own Edge column uses.
 
   `:signed` takes the number rather than a string on purpose: the colour and the
   digits have to come from the same value, and a cell handed both separately can
@@ -137,18 +137,21 @@
            [:div.nt-name (:player-name p)]
            [:div.nt-meta (util/pos-label p) " · " (:team p) [bye-tag p] [risk-tag p]]]
           [tier-chip p]]
-         ;; What he costs. Two the model says, two the market says, and the two
-         ;; differences between them — which are the numbers a manager is
-         ;; actually reading when they decide whether to raise.
+         ;; What he costs. Two the model says, one the market says, and the
+         ;; difference between them — which is the number a manager is actually
+         ;; reading when they decide whether to raise.
          ;;
          ;; ESPN and FP$ used to have cells of their own here. They are what Mkt
          ;; is the consensus *of* (see `rankings/market.clj`), so three of six
-         ;; cells were spent on one idea while Barg and Edge, which the board has
-         ;; had all along, were absent. They keep their numbers on Mkt's tooltip.
+         ;; cells were spent on one idea while Edge, which the board has had all
+         ;; along, was absent. They keep their numbers on Mkt's tooltip.
+         ;;
+         ;; Barg sat between Value and Mkt until it was dropped. Value − Worth is
+         ;; two readings of one model, so it only restated inflation; Edge is the
+         ;; comparison against the room.
          [:div.nt-vals
           [val-cell "Worth" (util/money (:worth p)) :money]
           [val-cell "Value" (util/money (:value p)) :money]
-          [val-cell "Barg" (:bargain p) :signed]
           [val-cell "Mkt" (util/money-rnd (:market p)) :money {:title (market-title p)}]
           [val-cell "Edge" (:edge p) :signed]
           [val-cell "VORP" (util/points (:vorp p)) :pts]]

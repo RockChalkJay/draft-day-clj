@@ -31,13 +31,13 @@
     "–"))
 
 ;; ---- signed differences ----
-;; Barg and Edge are differences, not prices: the sign is the whole message, and
-;; `money` is the wrong formatter for them because it dashes out anything not
-;; positive — here a negative is the most interesting value there is.
+;; Edge is a difference, not a price: the sign is the whole message, and `money`
+;; is the wrong formatter for it because it dashes out anything not positive —
+;; here a negative is the most interesting value there is.
 ;;
 ;; The board and the tile differ only in whether the unit is printed. The board's
-;; are narrow numeric columns under their own headers, where a repeated "$" down
-;; two hundred rows is noise; the tile shows them once, in a strip where every
+;; is a narrow numeric column under its own header, where a repeated "$" down two
+;; hundred rows is noise; the tile shows it once, in a strip where every
 ;; neighbour carries a unit. So both go through `difference`, and both take their
 ;; colour from `sign-class`. Nothing here is stated twice.
 
@@ -70,8 +70,8 @@
 (defn sign-class
   "\"good\" above zero, \"warn\" below, nil at zero or for a non-number.
 
-  The board colours Edge and Barg by sign and so does the tile; this is that one
-  rule, rather than a third and fourth copy of the same `cond`."
+  The board colours Edge by sign and so does the tile; this is that one rule,
+  rather than a second and third copy of the same `cond`."
   [n]
   (cond
     (not (number? n)) nil

@@ -170,19 +170,18 @@
           players (:players live)
           priced  (filter #(pos? (:value %)) players)]
       (is (every? #(and (contains? % :value) (contains? % :worth)
-                        (contains? % :bargain) (contains? % :tcm)) players))
+                        (contains? % :tcm)) players))
       (is (some? (:inflation live)))
-      (testing "at draft start inflation ~1.0, so Price == Value and Bargain == 0"
+      (testing "at draft start inflation ~1.0, so Price == Value"
         (is (< (Math/abs (double (- (:inflation live) 1.0))) 0.05))
-        (is (every? #(= (:worth %) (:value %)) priced))
-        (is (every? #(zero? (:bargain %)) priced)))
+        (is (every? #(= (:worth %) (:value %)) priced)))
       (testing "Value is budget-conserving (never exceeds cash in room)"
         (is (<= (reduce + (map :value players)) (ls/total-remaining-cash state))))
       (testing "the top-VORP RB is the priciest RB"
         (let [rbs (sort-by :vorp > (filter #(= "RB" (:position %)) players))]
           (is (>= (:worth (first rbs)) (:worth (last rbs)))))))))
 
-(deftest overpay-deflates-and-opens-bargains
+(deftest overpay-deflates-prices
   (let [static  (engine/static-rankings (synthetic-board) (:ppr scoring/presets) 12)
         live-fn (fn [t0-cash drafted]
                   (let [teams (into [(team "t0" t0-cash std-roster)]
@@ -194,9 +193,13 @@
         top     (first (sort-by :value > (:players start)))
         after   (live-fn (- 200.0 (+ (:value top) 60)) [(:player-id top)])]
     (is (< (:inflation after) (:inflation start)))
+    ;; Money left the room, so every priced player is now worth no more than his
+    ;; stable Value and at least one is worth strictly less. That relation is
+    ;; what the dropped :bargain column was reading off; the relation is the
+    ;; claim, and it survives the column.
     (let [ap (filter #(pos? (:worth %)) (:players after))]
-      (is (every? #(>= (:bargain %) 0) ap))
-      (is (some #(pos? (:bargain %)) ap)))))
+      (is (every? #(<= (:worth %) (:value %)) ap))
+      (is (some #(< (:worth %) (:value %)) ap)))))
 
 (deftest the-expert-tier-does-not-override-the-computed-one
   ;; It used to. :fantasypros/ecr-tier covers most of the board but not all of
