@@ -75,6 +75,20 @@
 (deftest parse-aav-returns-nil-on-garbage
   (is (nil? (fp/parse-aav "<html>no table here</html>"))))
 
+(deftest parse-aav-keeps-a-player-carrying-an-injury-badge
+  ;; FantasyPros puts the injury tag inside the name cell itself, after the
+  ;; position. Read the cell whole against an end-anchored pattern and the row
+  ;; does not parse at all -- which quietly cost the board the 33 priciest
+  ;; players on it, every one of them badged.
+  (let [html (str "<html><body><table class='ValueTable' id='OverallTable'><tbody>"
+                  (aav-row "23180" "61"
+                           (str "Puka Nacua (LAR - WR)"
+                                "<span class='injury-tag' title='Groin'>DTD</span>")
+                           " class=' PlayerWR''")
+                  "</tbody></table></body></html>")
+        idx  (match/by-key (fp/parse-aav html))]
+    (is (= 61.0 (:fantasypros/aav (get idx (match/key-for "Puka Nacua" "WR")))))))
+
 ;; --- Sleepers ---
 
 (defn- sleeper-row [pid name]

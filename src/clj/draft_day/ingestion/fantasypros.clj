@@ -196,20 +196,36 @@
          param "&teams=12&tb=200")))
 
 ;; "Josh Allen (BUF - QB)" / "Houston Texans (HOU - DST)" -> name + position.
-(def ^:private aav-name-re #"^(.*?)\s*\([A-Z]{2,3}\s*-\s*([A-Z]{1,3})\)\s*$")
+;; Unanchored at the tail on purpose; `parse-aav` says what follows the position.
+(def ^:private aav-name-re #"^(.*?)\s*\([A-Z]{2,3}\s*-\s*([A-Z]{1,3})\)")
 
 (defn parse-aav
   "Pure: auction-calculator HTML -> seq of {:key :fantasypros/aav}. Each
   #OverallTable row carries the dollar value in its `v` attribute and the name in
   its lone class-less <td>; rows without a positive value or a parseable name are
-  dropped."
+  dropped.
+
+  That cell holds a name *and*, for anyone carrying a knock, an injury badge:
+  `<td>Puka Nacua (LAR - WR)<span class='injury-tag'>DTD</span></td>`. Two
+  guards keep the badge out, and they are both here because they fail in
+  opposite directions: the cell is read by its *own* text, so a child element
+  contributes nothing wherever it sits, and the name is matched rather than
+  fully matched, so a trailing badge is ignored even if it arrives as bare text
+  in the cell rather than as an element.
+
+  Reading the whole cell text against an end-anchored pattern is what this
+  replaces, and it failed in the worst available way: 33 of the 179 priced rows
+  simply never parsed — $532 of a $2400 pool, the most expensive names on the
+  board first, since those are the players who carry knocks — while the
+  `:sources` report went on calling the join 99% healthy. It counts the rows
+  that reach it, and a row dropped here never does."
   [html]
   (try
     (seq (->> (.select (Jsoup/parse html) "table#OverallTable tr[pid]")
               (keep (fn [row]
                       (let [v    (->double (.attr row "v"))
-                            cell (some-> (.select row "td:not([class])") .first .text)
-                            [_ name pos] (some->> cell (re-matches aav-name-re))]
+                            cell (some-> (.select row "td:not([class])") .first .ownText)
+                            [_ name pos] (some->> cell (re-find aav-name-re))]
                         (when (and v (pos? v) name pos)
                           {:key (match/key-for name pos) :fantasypros/aav v}))))))
     (catch Exception _ nil)))
