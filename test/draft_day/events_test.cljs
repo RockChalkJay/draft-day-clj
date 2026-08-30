@@ -296,3 +296,44 @@
     (is (= "t3" (:my-team-id @rdb/app-db)))
     (is (= ["gibbs"] (:watchlist @rdb/app-db)))
     (is (= (db/default-columns) (:columns @rdb/app-db)) "and the rest is default")))
+
+;; ---- the shape the version stands for ----
+
+(deftest the-persisted-shape-is-pinned-to-the-version-that-reads-it
+  ;; Nothing repairs a stored blob any more, so `fx/storage-version` is the only
+  ;; thing standing between a changed shape and a manager reading it under the
+  ;; old one. Remembering to bump it is exactly the kind of discipline that gets
+  ;; forgotten, and both failure modes are silent for existing users only: a new
+  ;; column never appears on their board, a removed one renders as a column of
+  ;; dashes under a blank header. So the shapes are written down here — change
+  ;; any of them and this test fails until the version moves with them.
+  ;;
+  ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
+  ;; persisted the same way, and a Waivers column is exactly the kind of change
+  ;; that would otherwise slip past.
+  (is (= 1 fx/storage-version)
+      "the shapes below changed: bump fx/storage-version and update this test")
+
+  (is (= [:rank :ecr :name :team :bye :position :worth :value :market :espn-value
+          :fp-aav :bargain :vorp :risk :inj :edge :adp :tier :fp-tier :proj
+          :ceiling :floor :prior-tgt :prior-rec :prior-tgt-pct :proj-tgt :proj-rec]
+         (mapv :key db/column-catalog))
+      "a stored :columns vector is keyed off this list")
+
+  (is (= [:rank :name :team :position :bye :ros :upgrade :bid :trend :gp :risk
+          :inj :ros-vorp :tgt :car :preseason :ecr]
+         (mapv :key db/waiver-column-catalog))
+      "and a stored :waiver-columns vector off this one")
+
+  (is (= [:budget-plan :num-teams :roster :scoring :starting-bankroll]
+         (vec (sort (keys db/default-config))))
+      "a stored :config is this map")
+
+  (is (= [:bench :dst :flex :k :qb :rb :te :wr]
+         (vec (sort (keys db/default-roster))))
+      "including its nested roster, which a new bench slot would change")
+
+  (is (= [:config :teams :drafted :picks :columns :my-team-id :watchlist
+          :league-sync :my-roster-id :waiver-columns]
+         db/persist-keys)
+      "and this is everything that gets stored at all"))
