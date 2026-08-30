@@ -277,10 +277,10 @@ response. Every mutating event re-dispatches `:recompute`. Two details carry
 weight: each `:recompute` stamps a monotonic `:recompute-seq` that
 `:ranked-loaded` checks before writing, because a full re-rank takes long
 enough that overlapping requests answer out of order and a reply computed under
-the *previous* scoring config could otherwise win; and `db/reconcile-config` /
-`reconcile-columns` repair a persisted blob at boot, since localStorage carries
-no schema stamp and every shape the app has ever written has to be repairable
-in place.
+the *previous* scoring config could otherwise win; and the persisted slice is
+stamped with `fx/storage-version`, so a blob written under any other shape is
+dropped at boot rather than migrated — there is no in-place repair, and
+changing a persisted shape means bumping that number.
 
 ### Ingestion
 
