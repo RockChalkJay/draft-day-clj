@@ -214,10 +214,12 @@
   in the cell rather than as an element.
 
   Reading the whole cell text against an end-anchored pattern is what this
-  replaces, and it failed in the worst available way: 33 of the 179 priced rows
-  simply never parsed — $532 of a $2400 pool, the most expensive names on the
-  board first, since those are the players who carry knocks — while the
-  `:sources` report went on calling the join 99% healthy. It counts the rows
+  replaces, and it failed in the worst available way. On the PPR page of
+  2026-08-29, 33 of 179 priced rows simply never parsed — roughly a fifth of
+  the board and $532 of a $2400 pool, weighted to the expensive end, since a
+  $60 receiver's knock is the one that gets reported. The badge set turns over
+  weekly, so read that as a magnitude and not a constant. Meanwhile the
+  `:sources` report went on calling the join 99% healthy: it counts the rows
   that reach it, and a row dropped here never does."
   [html]
   (try
