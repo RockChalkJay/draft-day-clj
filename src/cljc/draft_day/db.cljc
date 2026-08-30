@@ -400,9 +400,13 @@
 
   A rename can land a key that is already stored, and two entries for one column
   is a state nothing downstream survives: the picker lists it twice and
-  `move-column-onto` moves whichever it finds first. The earlier slot wins the
-  position, since that is where the manager put the column he was actually
-  looking at, and the entry is visible if either half was."
+  `move-column-onto` moves whichever it finds first. The survivor keeps the
+  earlier of the two stored positions and is visible if either half was.
+
+  Earlier rather than later because both orderings then land somewhere the
+  manager chose. Every catalog written before the Barg -> Edge rename lists
+  :bargain first, so ordinarily the survivor lands in Barg's slot; a manager who
+  had dragged Edge ahead of it instead keeps it where he dragged it."
   [cols c]
   (if-let [i (first (keep-indexed #(when (= (:key %2) (:key c)) %1) cols))]
     (update-in cols [i :visible?] #(boolean (or % (:visible? c))))

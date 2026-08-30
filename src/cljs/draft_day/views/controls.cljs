@@ -142,9 +142,10 @@
          ;; reading when they decide whether to raise.
          ;;
          ;; ESPN and FP$ used to have cells of their own here. They are what Mkt
-         ;; is the consensus *of* (see `rankings/market.clj`), so three of six
-         ;; cells were spent on one idea while Edge, which the board has had all
-         ;; along, was absent. They keep their numbers on Mkt's tooltip.
+         ;; is the consensus *of* (see `rankings/market.clj`), so three of the six
+         ;; cells the strip had then were spent on one idea while Edge, which the
+         ;; board has had all along, was absent. They keep their numbers on Mkt's
+         ;; tooltip.
          ;;
          ;; Barg sat between Value and Mkt until it was dropped. Value − Worth is
          ;; two readings of one model, so it only restated inflation; Edge is the
