@@ -1,5 +1,5 @@
 (ns draft-day.ingestion.fantasypros-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [draft-day.ingestion.fantasypros :as fp]
             [draft-day.ingestion.match :as match]
             [draft-day.scoring :as scoring]))
@@ -74,6 +74,37 @@
 
 (deftest parse-aav-returns-nil-on-garbage
   (is (nil? (fp/parse-aav "<html>no table here</html>"))))
+
+(defn- aav-for
+  "The parsed value for `key` from a one-row #OverallTable built around
+  `name-cell`, so a name-parsing case is one line of markup."
+  [name-cell key]
+  (let [html (str "<html><body><table class='ValueTable' id='OverallTable'><tbody>"
+                  (aav-row "23180" "61" name-cell " class=' PlayerWR''")
+                  "</tbody></table></body></html>")]
+    (:fantasypros/aav (get (match/by-key (fp/parse-aav html)) key))))
+
+(deftest parse-aav-reads-the-name-past-the-markup-around-it
+  ;; FantasyPros puts the injury tag inside the name cell itself, after the
+  ;; position. Read the cell whole against an end-anchored pattern and the row
+  ;; does not parse at all -- which quietly cost the board 33 priced players,
+  ;; the expensive end of it worst, since those are the knocks that get reported.
+  ;;
+  ;; Three cases and not one, because `parse-aav` carries two guards that fail in
+  ;; opposite directions and the shape FantasyPros actually serves exercises
+  ;; neither of them alone -- either guard could be deleted with the live case
+  ;; still passing.
+  (let [nacua (match/key-for "Puka Nacua" "WR")]
+    (testing "the served shape: a trailing badge, as an element"
+      (is (= 61.0 (aav-for (str "Puka Nacua (LAR - WR)"
+                                "<span class='injury-tag' title='Groin'>DTD</span>")
+                           nacua))))
+    (testing "a trailing badge as bare text: only the unanchored match saves this"
+      (is (= 61.0 (aav-for "Puka Nacua (LAR - WR) DTD" nacua))))
+    (testing "a leading element: only the cell's own text saves this, since the
+              whole text would key him as \"12Puka Nacua\""
+      (is (= 61.0 (aav-for "<span class='rank'>12</span>Puka Nacua (LAR - WR)"
+                           nacua))))))
 
 ;; --- Sleepers ---
 
