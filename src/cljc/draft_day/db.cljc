@@ -1,8 +1,7 @@
 (ns draft-day.db
   "app-db shape, the column catalog, and roster/league helpers. No reagent here —
   pure data + functions so it can be required from events and views alike."
-  (:require [clojure.string :as str]
-            [draft-day.scoring :as scoring]))
+  (:require [clojure.string :as str]))
 
 ;; ---- roster / teams ----
 
@@ -18,7 +17,15 @@
 
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
-(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist])
+(def persist-keys
+  "The slice of db that survives a reload, written to localStorage under
+  `fx/storage-version`.
+
+  Changing the shape of anything in here — a config key, a column in
+  `column-catalog`, the type of a stored value — means bumping that version, so
+  a blob written by the old shape is dropped rather than merged into the new
+  one. There is no in-place repair; see `fx/storage-version`."
+  [:config :teams :drafted :picks :columns :my-team-id :watchlist])
 
 (defn make-teams-named
   "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
@@ -353,45 +360,8 @@
    :proj-tgt      :espn/proj-targets
    :proj-rec      :espn/proj-receptions})
 
-(defn reconcile-config
-  "Reconcile a persisted config with the current shape: drop keys the app no
-  longer has, fill in ones added since the blob was written, and when :scoring is
-  a custom map, give it a 0 for any stat key it predates.
-
-  localStorage carries no schema stamp, so — exactly like `reconcile-columns` —
-  every shape the app has ever persisted has to be repairable in place. A blob
-  written before :scoring existed (or one poisoned by the old
-  `:enable-custom-scoring` race, which could store nil) otherwise reaches the
-  Settings page as a nil scoring config and throws."
-  [stored]
-  (let [cfg (merge default-config stored)
-        s   (:scoring cfg)]
-    (-> cfg
-        (select-keys (keys default-config))
-        (assoc :roster      (merge default-roster (:roster cfg))
-               :budget-plan (merge default-budget-plan (:budget-plan cfg))
-               :scoring     (cond
-                              (map? s) (merge (zipmap scoring/stat-keys (repeat 0)) s)
-                              (contains? scoring/presets s) s
-                              :else (:scoring default-config))))))
-
 (defn default-columns []
   (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) column-catalog))
-
-(defn reconcile-columns
-  "Reconcile a persisted column config with the current catalog: keep the stored
-  order for keys that still exist, drop unknown keys (e.g. a removed :tier), and
-  append any new catalog columns at their default visibility."
-  [stored]
-  (let [valid   (set (map :key column-catalog))
-        kept    (filterv #(valid (:key %)) (or stored []))
-        present (set (map :key kept))
-        added   (->> column-catalog
-                     (remove #(present (:key %)))
-                     (map (fn [c] 
-                            {:key (:key c) 
-                             :visible? (boolean (:default? c))})))]
-    (vec (concat kept added))))
 
 (defn move-onto
   "Drop the element `key-fn` identifies as `from-k` onto the one it identifies as
@@ -482,56 +452,6 @@
     (let [{known true unknown false} (group-by #(contains? by-id %) (vec ids))]
       (into (vec (sort-by (comp keyfn by-id) known)) unknown))
     (vec ids)))
-
-(defn reconcile-watchlist
-  "Reconcile a persisted watch list with the current shape: an ordered vector of
-  distinct player-ids.
-
-  The list was a set until it became orderable, and localStorage carries no
-  schema stamp — so, exactly like `reconcile-columns` and `reconcile-config`,
-  every shape the app has ever written has to be repairable in place. A set
-  reaching the ordered code unrepaired is the worst kind of wrong: `conj` puts a
-  new id wherever the hash says, and a drag would silently do nothing."
-  [stored]
-  (into [] (distinct) (or stored [])))
-
-;; ---- player-id migration ----
-;; :player-id used to be Sleeper's id verbatim; it is now the GSIS id wherever
-;; one resolves. Draft state saved before that change is keyed by the old value,
-;; so it is remapped once the universe arrives — the crosswalk needed to do it
-;; rides on each player as :ids, which is the whole reason that envelope exists.
-
-(defn sleeper->player-id
-  "{sleeper-id canonical-player-id} from a loaded universe.
-
-  Ids that were never remapped (team defenses, players absent from the pinned
-  crosswalk) map to themselves, so applying this to already-migrated state is a
-  no-op. That is what makes it safe to run on every load rather than gating it
-  behind a version stamp."
-  [players]
-  (into {}
-        (keep (fn [p] (when-let [s (get-in p [:ids :sleeper])]
-                        [s (:player-id p)])))
-        players))
-
-(defn remap-draft-ids
-  "Rewrite every player-id held in draft state through `xwalk`.
-
-  An id with no entry is left exactly as it was. An unknown id is not evidence
-  that it is wrong — the universe may simply be a stale cache or the offline
-  sample — and dropping a pick would destroy a real record of what a manager
-  paid."
-  [db xwalk]
-  (let [->id  #(get xwalk % %)
-        slot  (fn [s] (cond-> s (:player-id s) (update :player-id ->id)))]
-    (-> db
-        (update :drafted #(into {} (map (fn [[k v]] [(->id k) v])) %))
-        (update :picks #(mapv (fn [p] (update p :player-id ->id)) %))
-        (update :watchlist #(into [] (comp (map ->id) (distinct)) %))
-        (update :nominated-id #(some-> % ->id))
-        (update :teams
-                (fn [teams]
-                  (mapv (fn [t] (update t :roster #(mapv slot %))) teams))))))
 
 ;; ---- initial db ----
 

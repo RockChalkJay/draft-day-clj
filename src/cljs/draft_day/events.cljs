@@ -17,10 +17,9 @@
 (rf/reg-event-fx
  :boot
  (fn [_ _]
-   {:db (-> (merge (db/default-db) (fx/load-persisted))
-            (update :columns db/reconcile-columns)    ; drop removed cols, add new ones
-            (update :config db/reconcile-config)      ; repair a config from an older shape
-            (update :watchlist db/reconcile-watchlist)) ; a set, back when it had no order
+   ;; Saved state either matches the current `fx/storage-version` or it is not
+   ;; loaded at all, so there is nothing here to repair.
+   {:db (merge (db/default-db) (fx/load-persisted))
     :fx [[:dispatch [:fetch-players]]]}))
 
 (rf/reg-event-fx
@@ -35,22 +34,13 @@
 (rf/reg-event-fx
  :players-loaded
  (fn [{:keys [db]} [_ resp]]
-   ;; Draft state is migrated here rather than in :boot because the crosswalk
-   ;; it needs travels on the players, which have not arrived at boot time.
-   ;; Remapping is idempotent, so it runs on every load; the persist only fires
-   ;; when something actually moved.
-   (let [players  (:players resp)
-         migrated (db/remap-draft-ids db (db/sleeper->player-id players))
-         slice    (select-keys migrated db/persist-keys)
-         changed? (not= (select-keys db db/persist-keys) slice)
-         status   (str (:count resp) " players · " (:source resp))]
-     (cond-> {:db (assoc migrated
-                         :players players
-                         :universe (:universe resp)
-                         :status status
-                         :universe-status status)
-              :fx [[:dispatch [:recompute]]]}
-       changed? (assoc :persist! slice)))))
+   (let [status (str (:count resp) " players · " (:source resp))]
+     {:db (assoc db
+                 :players (:players resp)
+                 :universe (:universe resp)
+                 :status status
+                 :universe-status status)
+      :fx [[:dispatch [:recompute]]]})))
 
 (rf/reg-event-db :load-failed (fn [db [_ err]] (assoc db :status (str "Load failed: " err))))
 

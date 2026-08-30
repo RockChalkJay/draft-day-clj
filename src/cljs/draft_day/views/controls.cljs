@@ -148,7 +148,6 @@
          [:div.nt-vals
           [val-cell "Worth" (util/money (:worth p)) :money]
           [val-cell "Value" (util/money (:value p)) :money]
-          [val-cell "Barg" (:bargain p) :signed]
           [val-cell "Mkt" (util/money-rnd (:market p)) :money {:title (market-title p)}]
           [val-cell "Edge" (:edge p) :signed]
           [val-cell "VORP" (util/points (:vorp p)) :pts]]

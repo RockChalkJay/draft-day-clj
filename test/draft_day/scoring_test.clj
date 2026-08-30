@@ -62,6 +62,20 @@
   (is (= :standard (scoring/format-of (assoc (:ppr scoring/presets) :rec nil)))
       "an unusable weight is 0, not a crash"))
 
+(deftest a-partial-scoring-map-scores-like-its-zero-filled-twin
+  ;; League import writes only the stat keys the league actually defines
+  ;; (`league_import.sleeper/normalize-league` is a select-keys), so a config
+  ;; holding a hole rather than a zero is the normal shape of an imported
+  ;; league — nothing fills it in at boot any more.
+  (let [partial-cfg {:rec 1.0 :rec_yd 0.1}
+        filled      (merge (zipmap scoring/stat-keys (repeat 0.0)) partial-cfg)
+        player      {:stats {:rec 80.0 :rec_yd 1200.0 :rush_yd 100.0 :pass_td 3.0}}]
+    (is (= (scoring/player-points player filled)
+           (scoring/player-points player partial-cfg))
+        "a missing weight and a zero weight both contribute nothing")
+    (is (= (scoring/format-of filled) (scoring/format-of partial-cfg)))
+    (is (= (scoring/scores-anything? filled) (scoring/scores-anything? partial-cfg)))))
+
 ;; ---- malformed weights ----
 
 (deftest an-unusable-weight-costs-one-stat-not-the-whole-board

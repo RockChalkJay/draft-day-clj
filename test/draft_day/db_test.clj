@@ -165,31 +165,6 @@
 
 ;; ---- columns ----
 
-(deftest reconcile-columns-migrates-a-persisted-layout
-  (testing "nil or empty stored config yields the full catalog at defaults"
-    (is (= (db/default-columns) (db/reconcile-columns nil)))
-    (is (= (db/default-columns) (db/reconcile-columns []))))
-
-  (testing "a key no longer in the catalog is dropped"
-    (is (not-any? #(= :num-tiers (:key %))
-                  (db/reconcile-columns [{:key :num-tiers :visible? true}
-                                         {:key :name :visible? true}]))))
-
-  (testing "stored order and visibility survive; new catalog keys append"
-    (let [out (db/reconcile-columns [{:key :vorp :visible? false}
-                                     {:key :name :visible? true}])]
-      (is (= [:vorp :name] (mapv :key (take 2 out)))
-          "stored keys keep their stored order, ahead of the appended ones")
-      (is (= [false true] (mapv :visible? (take 2 out)))
-          "stored visibility is preserved, not reset to the catalog default")
-      (is (= (set (map :key db/column-catalog)) (set (map :key out)))
-          "every catalog key is present exactly once")
-      (is (= (count db/column-catalog) (count out)))))
-
-  (testing "reconciling is idempotent"
-    (let [once (db/reconcile-columns [{:key :vorp :visible? false}])]
-      (is (= once (db/reconcile-columns once))))))
-
 (deftest move-column-onto-reorders-by-key
   ;; :a and :c are hidden, so a reorder that only ever reasoned about the visible
   ;; columns would still have to leave these two in the right slots
@@ -312,19 +287,6 @@
       (is (vector? (db/sort-watchlist ids by-id :rank)))
       (is (vector? (db/sort-watchlist ids by-id :bargain))))))
 
-(deftest reconcile-watchlist-repairs-every-shape-ever-persisted
-  (testing "the old unordered set becomes a vector, so conj and drags work"
-    (let [out (db/reconcile-watchlist #{"a" "b" "c"})]
-      (is (vector? out))
-      (is (= #{"a" "b" "c"} (set out)) "and nobody is dropped on the way")))
-  (testing "a blob written before the watch list existed"
-    (is (= [] (db/reconcile-watchlist nil))))
-  (testing "an order already stored is kept exactly"
-    (is (= ["c" "a" "b"] (db/reconcile-watchlist ["c" "a" "b"]))))
-  (testing "duplicates cannot survive — a doubled id would make one of the two
-            rows undraggable, since a drop is keyed by id"
-    (is (= ["a" "b"] (db/reconcile-watchlist ["a" "b" "a"])))))
-
 (deftest column-catalog-is-internally-consistent
   (testing "keys are unique"
     (is (= (count db/column-catalog) (count db/columns-by-key))))
@@ -349,71 +311,6 @@
     (testing "every persisted key is present in the initial db"
       (is (every? #(contains? d %) db/persist-keys)))))
 
-;; ---- player-id migration ----
-
-(def ^:private universe
-  [{:player-id "00-0034857" :ids {:sleeper "4984" :gsis "00-0034857"}}
-   {:player-id "ARI"        :ids {:sleeper "ARI" :team "ARI"}}
-   {:player-id "99999"      :ids {:sleeper "99999"}}])
-
-(deftest sleeper-to-player-id-maps-unresolved-ids-to-themselves
-  (is (= {"4984" "00-0034857" "ARI" "ARI" "99999" "99999"}
-         (db/sleeper->player-id universe)))
-
-  (testing "a player with no :ids envelope contributes nothing"
-    (is (= {} (db/sleeper->player-id [{:player-id "x"}])))))
-
-(deftest remap-draft-ids-rewrites-every-place-an-id-is-held
-  (let [before {:drafted   {"4984" {:price 42 :team-id "t0"}
-                            "ARI"  {:price 1 :team-id "t0"}}
-                :picks     [{:player-id "4984" :price 42}
-                            {:player-id "ARI" :price 1}]
-                :watchlist ["4984"]
-                :nominated-id "4984"
-                :teams     [{:team-id "t0"
-                             :roster [{:pos "QB" :player-id "4984"}
-                                      {:pos "RB" :player-id nil}]}]}
-        after  (db/remap-draft-ids before (db/sleeper->player-id universe))]
-    (is (= {"00-0034857" {:price 42 :team-id "t0"}
-            "ARI"        {:price 1 :team-id "t0"}}
-           (:drafted after)))
-    (is (= ["00-0034857" "ARI"] (mapv :player-id (:picks after))))
-    (is (= ["00-0034857"] (:watchlist after)))
-    (is (= "00-0034857" (:nominated-id after)))
-    (is (= [{:pos "QB" :player-id "00-0034857"} {:pos "RB" :player-id nil}]
-           (get-in after [:teams 0 :roster]))
-        "an empty slot stays empty rather than becoming a remapped nil")
-    (is (= 42 (get-in after [:drafted "00-0034857" :price]))
-        "what a manager paid survives the remap")))
-
-(deftest remap-draft-ids-keeps-the-watch-order
-  (let [after (db/remap-draft-ids {:drafted {} :picks [] :teams [] :nominated-id nil
-                                   :watchlist ["ARI" "4984" "unknown"]}
-                                  (db/sleeper->player-id universe))]
-    (is (= ["ARI" "00-0034857" "unknown"] (:watchlist after))
-        "ids are rewritten in place; the manager's order is not a thing to migrate")))
-
-(deftest remap-draft-ids-is-idempotent
-  (let [xwalk (db/sleeper->player-id universe)
-        once  (db/remap-draft-ids {:drafted {"4984" {:price 42}}
-                                   :picks [{:player-id "4984"}]
-                                   :watchlist ["4984"] :nominated-id nil
-                                   :teams []}
-                                  xwalk)]
-    (is (= once (db/remap-draft-ids once xwalk))
-        "running on already-migrated state must change nothing")))
-
-(deftest remap-draft-ids-never-drops-an-unknown-id
-  ;; A stale cache or the offline sample may not contain a drafted player. That
-  ;; is not evidence the pick is wrong, and losing it would destroy a record of
-  ;; what was actually paid.
-  (let [after (db/remap-draft-ids {:drafted {"unknown" {:price 7}}
-                                   :picks [{:player-id "unknown"}]
-                                   :watchlist [] :nominated-id nil :teams []}
-                                  (db/sleeper->player-id universe))]
-    (is (= {"unknown" {:price 7}} (:drafted after)))
-    (is (= ["unknown"] (mapv :player-id (:picks after))))))
-
 ;; ---- scoring config ----
 
 (deftest the-custom-editor-can-reach-every-stat-key
@@ -430,32 +327,6 @@
     (doseq [[k label] stats]
       (is (keyword? k))
       (is (and (string? label) (seq label)) (str k " has no label")))))
-
-(deftest reconcile-config-repairs-what-localstorage-may-hold
-  (testing "a blob written before a key existed gets the current default"
-    (is (= (:starting-bankroll db/default-config)
-           (:starting-bankroll (db/reconcile-config {:num-teams 10})))))
-
-  (testing "a key the app has since dropped does not survive"
-    (is (not (contains? (db/reconcile-config {:num-tiers 5}) :num-tiers))))
-
-  (testing "nil scoring — which the old enable-custom-scoring race could store —
-            becomes the default rather than reaching Settings and throwing"
-    (is (= (:scoring db/default-config) (:scoring (db/reconcile-config {:scoring nil})))))
-
-  (testing "a custom map predating a stat key gains it at zero, not as a hole"
-    (let [s (:scoring (db/reconcile-config {:scoring {:rec 1.0}}))]
-      (is (= 1.0 (:rec s)))
-      (is (= (set scoring/stat-keys) (set (keys s))))
-      (is (zero? (:pass_td s)))))
-
-  (testing "a preset keyword is left alone, and junk falls back"
-    (is (= :half-ppr (:scoring (db/reconcile-config {:scoring :half-ppr}))))
-    (is (= (:scoring db/default-config) (:scoring (db/reconcile-config {:scoring :bogus})))))
-
-  (testing "partial nested maps are filled rather than replaced"
-    (is (= (:bench db/default-roster) (:bench (:roster (db/reconcile-config {:roster {:qb 2}})))))
-    (is (= 2 (:qb (:roster (db/reconcile-config {:roster {:qb 2}})))))))
 
 ;; ---- tier scale ----
 
@@ -483,11 +354,6 @@
     (testing "they are opt-in — the board is already wide"
       (is (every? #(false? (:visible? %))
                   (filter (comp (set usage) :key) (db/default-columns)))))
-    (testing "a layout persisted before they existed gains them, still hidden"
-      (let [out (db/reconcile-columns [{:key :name :visible? true}])]
-        (is (= [{:key :name :visible? true}]
-               (filterv #(= :name (:key %)) out)) "the stored entry is untouched")
-        (is (every? (set (map :key out)) usage) "and the new ones are appended")))
     (testing "the accessors point at the keys ingestion actually ships"
       (is (= :nflverse/prior-targets (db/sort-accessors :prior-tgt)))
       (is (= :nflverse/prior-target-share (db/sort-accessors :prior-tgt-pct)))
