@@ -157,16 +157,15 @@
     :espn-value [:td.num.muted (util/money-rnd (:espn/auction-value p))]
     :fp-aav   [:td.num.muted (util/money (:fantasypros/aav p))]
     :market   [:td.num.muted (util/money (:market p))]
-    ;; Shared with the on-the-block tile, which renders the same two differences
-    ;; with a "$" — a unit that would be noise repeated down two hundred rows,
-    ;; and the only thing that differs between the two.
+    ;; Shared with the on-the-block tile, which renders the same difference with
+    ;; a "$" — a unit that would be noise repeated down two hundred rows, and the
+    ;; only thing that differs between the two.
     :edge     [:td.num {:class (util/sign-class (:edge p))} (util/signed (:edge p))]
-    :bargain  [:td.num {:class (util/sign-class (:bargain p))} (util/signed (:bargain p))]
-      :adp      [:td.num (if-let [a (:sleeper/adp p)] (format-one-decimal a) "–")]
-      :proj     [:td.num (format-whole (:points p))]
-      :ceiling  [:td.num.good (format-whole (:ceiling p))]
-      :floor    [:td.num.muted (format-whole (:floor p))]
-      :vorp     [:td.num (format-whole (:vorp p))]
+    :adp      [:td.num (if-let [a (:sleeper/adp p)] (format-one-decimal a) "–")]
+    :proj     [:td.num (format-whole (:points p))]
+    :ceiling  [:td.num.good (format-whole (:ceiling p))]
+    :floor    [:td.num.muted (format-whole (:floor p))]
+    :vorp     [:td.num (format-whole (:vorp p))]
     :ecr      [:td.num (or (:fantasypros/ecr p) "–")]
     ;; already resolved to the active scale by :board-players
     :tier     [:td.num (or (:tier p) "–")]
@@ -176,9 +175,9 @@
     ;; nil these formatters already render as a dash.
     :prior-tgt     [:td.num.muted {:title (prior-season-title p)} (format-whole (:nflverse/prior-targets p))]
     :prior-rec     [:td.num.muted {:title (prior-season-title p)} (format-whole (:nflverse/prior-receptions p))]
-      :prior-tgt-pct [:td.num.muted {:title (prior-season-title p)} (pct (:nflverse/prior-target-share p))]
-      :proj-tgt      [:td.num.muted (format-whole (:espn/proj-targets p))]
-      :proj-rec      [:td.num.muted (format-whole (:espn/proj-receptions p))]
+    :prior-tgt-pct [:td.num.muted {:title (prior-season-title p)} (pct (:nflverse/prior-target-share p))]
+    :proj-tgt      [:td.num.muted (format-whole (:espn/proj-targets p))]
+    :proj-rec      [:td.num.muted (format-whole (:espn/proj-receptions p))]
     ;; A glyph with no number in it, so the title is the whole of its text.
     ;; A player the scale has no opinion about (a rookie) gets the board's dash,
     ;; never an empty five-segment track — an unfilled bar reads as "level 0,

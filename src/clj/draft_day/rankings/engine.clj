@@ -1,8 +1,8 @@
 (ns draft-day.rankings.engine
   "Static/live orchestration — the core answer to 'some of this is live state,
   some isn't'. `static-rankings` (points -> tiers -> vorp) computes once per
-  scoring/roster-size config; `live-valuation` (value -> inflation -> worth ->
-  bargain, + the tcm display signal) recomputes after every pick."
+  scoring/roster-size config; `live-valuation` (value -> inflation -> worth, +
+  the tcm display signal) recomputes after every pick."
   (:require [draft-day.rankings.model :as model]
             [draft-day.rankings.projections :as projections]
             [draft-day.rankings.tiers :as tiers]
@@ -71,9 +71,17 @@
 
 (defn live-valuation
   "Live layer: Value (VBD->$), Price (:worth, Value scaled by inflation*phase),
-  Bargain (value - worth), plus the per-player :tcm cliff display signal. Call
-  after each pick. Returns {:players ... :replacement-levels ... :inflation ...
-  :inflation-index ... :market-heat ...}."
+  plus the per-player :tcm cliff display signal. Call after each pick. Returns
+  {:players ... :replacement-levels ... :inflation ... :inflation-index ...
+  :market-heat ...}.
+
+  There is deliberately no Value-minus-Worth figure here. Both come from this
+  same chain, so their difference is (value - 1) * (1 - inflation) and says
+  nothing the shipped :inflation does not already say -- rounded to whole
+  dollars it is zero for the entire board until a pick moves the market, and a
+  dollar or two afterwards. The board carries `rankings.market`'s :edge instead,
+  which is the only difference here measured against an opinion from outside
+  the model."
   [static-result league-state]
   (let [base        (:players static-result)
          board       (tcm/with-tcm base league-state)
@@ -96,12 +104,8 @@
          ;; where the board was pricing at 0.50.
          mult        (inflation/clamp-to-band (* infl heat))
          priced      (value/calculate-price valued infl-fn
-                                            (:drafted-player-ids league-state))
-         with-barg   (mapv (fn [p]
-                             (assoc p :bargain
-                                    (if (> (:worth p) 0) (- (:value p) (:worth p)) 0)))
-                           priced)]
-     {:players             with-barg
+                                            (:drafted-player-ids league-state))]
+     {:players             priced
       :replacement-levels  (:replacement-levels static-result)
       :inflation           infl
       :market-multiplier   mult

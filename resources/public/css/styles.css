@@ -158,11 +158,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .nt-meta { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
 
 /* ---- value strip ----
-   Six cells across the full tile, evenly divided, so they line up with the
+   Five cells across the full tile, evenly divided, so they line up with the
    season table's columns beneath them rather than bunching at the left. The
    grid carries the band's own rule and spacing — it is the band, and a wrapper
    around one element would only be a place for them to live. */
-.nt-vals { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px 12px;
+.nt-vals { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px 12px;
   margin-top: 14px; padding-top: 14px; margin-bottom: 14px;
   border-top: 1px solid var(--border); }
 .nt-val { display: flex; flex-direction: column; }
@@ -172,10 +172,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 /* VORP is points, not dollars, and green means money in every other cell of
    this strip. */
 .nt-val .amt.pts { color: var(--text); }
-/* Barg and Edge are differences, so they are a verdict rather than an amount and
-   take their colour from their sign — the same rule the board's own Barg and
-   Edge columns use, shared through `util/sign-class`. A difference of zero has
-   no verdict in it and reads as the dash it renders. */
+/* Edge is a difference, so it is a verdict rather than an amount and takes its
+   colour from its sign — the same rule the board's own Edge column uses, shared
+   through `util/sign-class`. A difference of zero has no verdict in it and reads
+   as the dash it renders. */
 .nt-val .amt.signed.good { color: var(--good); }
 .nt-val .amt.signed.warn { color: var(--warn); }
 .nt-val .amt.signed.zero { color: var(--muted); }

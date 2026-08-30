@@ -6,7 +6,7 @@
   (let [board [{:player-id "a" :position "RB" :value 40}]]
     (is (= 15.0 (idx/inflation-index board [{:player-id "a" :position "RB" :price 55}])))))
 
-(deftest index-negative-on-bargain
+(deftest index-negative-on-underpay
   (let [board [{:player-id "a" :position "RB" :value 40}]]
     (is (= -10.0 (idx/inflation-index board [{:player-id "a" :position "RB" :price 30}])))))
 
