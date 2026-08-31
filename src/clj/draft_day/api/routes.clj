@@ -9,6 +9,8 @@
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.sleeper]
+            [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.league-sync.sleeper]
             [draft-day.rankings.engine :as engine]
             [draft-day.scoring :as scoring]
             [draft-day.rankings.market :as market]
@@ -59,21 +61,41 @@
   (reset-universe!)
   (json-response 200 {:status "ok"}))
 
+(defn league-id-error
+  "The 400 body for an unusable league id, or nil when it is fine.
+
+  Shared by import and sync because they take the same identifier from the same
+  field, and a second copy of the rule is how one endpoint ends up accepting
+  what the other rejects."
+  [league-id]
+  (cond
+    (str/blank? league-id)          {:error "league-id is required"}
+    (not (re-matches #"\d+" league-id)) {:error "league-id must be numeric"}))
+
 (defn league-import-handler [req]
   (let [{:keys [provider league-id]} (read-json-body req)
         league-id (str league-id)]
-    (cond
-      (str/blank? league-id)
-      (json-response 400 {:error "league-id is required"})
-
-      (not (re-matches #"\d+" league-id))
-      (json-response 400 {:error "league-id must be numeric"})
-
-      :else
+    (if-let [bad (league-id-error league-id)]
+      (json-response 400 bad)
       (let [{:keys [ok config status error]}
             (league-import/import-league {:provider provider :league-id league-id})]
         (if ok
           (json-response 200 config)
+          (json-response status {:error error}))))))
+
+(defn league-sync-handler
+  "Who is rostered right now. Separate from the import for the same reason the
+  namespaces are: an import is the league's rules and a sync is its state, and
+  the state changes every time anyone in the league makes a claim."
+  [req]
+  (let [{:keys [provider league-id]} (read-json-body req)
+        league-id (str league-id)]
+    (if-let [bad (league-id-error league-id)]
+      (json-response 400 bad)
+      (let [{:keys [ok league status error]}
+            (league-sync/sync-league {:provider provider :league-id league-id})]
+        (if ok
+          (json-response 200 league)
           (json-response status {:error error}))))))
 
 (defn resolve-scoring
@@ -150,7 +172,8 @@
      ["/api/players"  {:get  players-handler}]
      ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
-     ["/api/league/import"   {:post league-import-handler}]]
+     ["/api/league/import"   {:post league-import-handler}]
+     ["/api/league/sync"     {:post league-sync-handler}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})

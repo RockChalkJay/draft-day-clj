@@ -50,6 +50,31 @@
        sort
        vec))
 
+(def waiver-types
+  "Sleeper's `settings.waiver_type` -> what the waiver run actually is.
+
+  The mapping is small and the *unknown* case is the one that matters. Anything
+  not listed reads as `:rolling`, i.e. not FAAB — and that direction is chosen,
+  not incidental. Suppressing a bid in a league that turns out to use FAAB costs
+  the manager a column; inventing a dollar figure for a league that bids nothing
+  puts a confident number on a transaction that does not exist. The board says
+  when there is no market rather than guessing at one, exactly as it does for a
+  player neither vendor prices."
+  {0 :rolling 1 :reverse-standings 2 :faab})
+
+(defn waiver-settings
+  "Pure: a raw Sleeper league -> `{:type :faab :budget 100}`.
+
+  The budget is only meaningful under `:faab`, but it is carried either way so a
+  consumer never has to ask two questions to find out it should not be asking.
+  Sleeper omits `waiver_budget` on leagues that never enabled FAAB; 0 is the
+  honest reading of an absent budget and keeps every downstream share rule from
+  dividing by a number nobody set."
+  [raw]
+  (let [s (:settings raw)]
+    {:type   (get waiver-types (:waiver_type s) :rolling)
+     :budget (or (:waiver_budget s) 0)}))
+
 (defmethod league-import/normalize-league :sleeper
   [_ raw]
   {:scoring             (select-keys (:scoring_settings raw) scoring/stat-keys)
@@ -57,4 +82,8 @@
    :roster              (roster-config (:roster_positions raw))
    :num-teams           (:total_rosters raw)
    :name                (:name raw)
-   :season              (:season raw)})
+   :season              (:season raw)
+   ;; In-season settings. They ride on the import rather than on the sync
+   ;; because they are league *rules* — they change once a year, while the
+   ;; rosters a sync reads change every time anyone makes a claim.
+   :waiver              (waiver-settings raw)})
