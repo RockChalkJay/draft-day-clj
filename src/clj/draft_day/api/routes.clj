@@ -76,6 +76,23 @@
           (json-response 200 config)
           (json-response status {:error error}))))))
 
+(defn league-sync-handler [req]
+  (let [{:keys [provider league-id]} (read-json-body req)
+        league-id (str league-id)]
+    (cond
+      (str/blank? league-id)
+      (json-response 400 {:error "league-id is required"})
+
+      (not (re-matches #"\d+" league-id))
+      (json-response 400 {:error "league-id must be numeric"})
+
+      :else
+      (let [{:keys [ok league status error]}
+            (league-import/sync-league {:provider provider :league-id league-id})]
+        (if ok
+          (json-response 200 league)
+          (json-response status {:error error}))))))
+
 (defn resolve-scoring
   "Coerce the request's scoring field into a scoring config, bounded to known
   stat keys so an oversized client map can't amplify per-player scoring.
@@ -150,7 +167,8 @@
      ["/api/players"  {:get  players-handler}]
      ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
-     ["/api/league/import"   {:post league-import-handler}]]
+     ["/api/league/import"   {:post league-import-handler}]
+     ["/api/league/sync"     {:post league-sync-handler}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})

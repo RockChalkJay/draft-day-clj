@@ -288,11 +288,12 @@
 
 (rf/reg-event-fx :import-league
   (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
-    {:db   (assoc db :status "Importing league…")
-     :http {:method :post :url "/api/league/import"
-            :body {:provider provider :league-id league-id}
-            :on-success [:league-import-loaded]
-            :on-failure [:league-import-failed]}}))
+    (let [league-id (or league-id (get-in db [:config :league-id]))]
+      {:db   (assoc db :status "Importing league…")
+       :http {:method :post :url "/api/league/import"
+              :body {:provider provider :league-id league-id}
+              :on-success [:league-import-loaded]
+              :on-failure [:league-import-failed]}})))
 
 ;; A failed import now arrives at :league-import-failed, because the :http effect
 ;; routes any non-2xx there; this handler only ever sees a real config.
@@ -306,6 +307,25 @@
 
 (rf/reg-event-db :league-import-failed
   (fn [db [_ err]] (assoc db :status (str "League import failed: " err))))
+
+(rf/reg-event-fx :sync-league
+  (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
+    (let [league-id (or league-id (get-in db [:config :league-id]))]
+      {:db   (assoc db :status "Syncing league…")
+       :http {:method :post :url "/api/league/sync"
+              :body {:provider provider :league-id league-id}
+              :on-success [:league-sync-loaded]
+              :on-failure [:league-sync-failed]}})))
+
+(rf/reg-event-db :league-sync-loaded
+  (fn [db [_ resp]]
+    (assoc db :league-sync resp :status (str "✓ Synced " (get-in resp [:league :name]) " (" (get-in resp [:league :season]) ")"))))
+
+(rf/reg-event-db :league-sync-failed
+  (fn [db [_ err]] (assoc db :status (str "League sync failed: " err))))
+
+(rf/reg-event-db :clear-league-sync
+  (fn [db _] (assoc db :league-sync nil :status "League sync cleared")))
 
 ;; ---- cache reset ----
 

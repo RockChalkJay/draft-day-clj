@@ -17,6 +17,18 @@
   "Pure: a provider's raw league payload -> {:scoring :roster :num-teams :name :season}."
   (fn [provider _raw] provider))
 
+(defmulti fetch-sync
+  "Network: raw provider sync payload for read-only league data (users, roster, matchups, waivers)."
+  (fn [provider _league-id] provider))
+
+(defmethod fetch-sync :default
+  [provider _league-id]
+  (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
+
+(defmulti normalize-sync
+  "Pure: a provider's raw sync payload -> {:provider :league :users :teams :matchups :waiver-wire}."
+  (fn [provider _raw] provider))
+
 (defn import-league
   "{:provider :league-id} -> {:ok true :config {...}} or {:ok false :status :error}."
   [{:keys [provider league-id]}]
@@ -25,6 +37,19 @@
       (let [raw (fetch-raw-league provider league-id)
             cfg (normalize-league provider raw)]
         {:ok true :config cfg})
+      (catch clojure.lang.ExceptionInfo e
+        {:ok false :status (or (:status (ex-data e)) 502) :error (ex-message e)})
+      (catch Exception e
+        {:ok false :status 502 :error (ex-message e)}))))
+
+(defn sync-league
+  "{:provider :league-id} -> {:ok true :league {...}} or {:ok false :status :error}."
+  [{:keys [provider league-id]}]
+  (let [provider (keyword provider)]
+    (try
+      (let [raw (fetch-sync provider league-id)
+            sync (normalize-sync provider raw)]
+        {:ok true :league sync})
       (catch clojure.lang.ExceptionInfo e
         {:ok false :status (or (:status (ex-data e)) 502) :error (ex-message e)})
       (catch Exception e

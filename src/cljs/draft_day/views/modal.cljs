@@ -31,14 +31,18 @@
           [:input {:type "number" :min 1 :value @budget
                    :on-change #(reset! budget (js/parseInt (.. % -target -value) 10))}]]]
         [:h4 "Team names " [:span.muted "(first is you)"]]
-        [:div.team-names
-         (map (fn [i]
-                ^{:key i}
-                [:input {:type "text"
-                         :placeholder (if (zero? i) "You" (str "Team " (inc i)))
-                         :value (get @names i "")
-                         :on-change #(swap! names assoc i (.. % -target -value))}])
-              (range @n))]
+        ;; `into` (not a bare lazy `map`): a lazy seq's body is realized outside
+        ;; the component's reactive context, so a deref of `names` in there never
+        ;; registers and typing a name re-renders nothing -- the controlled input
+        ;; sits frozen at its seeded value. Deref once, up here, and realize eagerly.
+        (let [nms @names]
+          (into [:div.team-names]
+                (for [i (range @n)]
+                  ^{:key i}
+                  [:input {:type "text"
+                           :placeholder (if (zero? i) "You" (str "Team " (inc i)))
+                           :value (get nms i "")
+                           :on-change #(swap! names assoc i (.. % -target -value))}])))
         [:div.modal-actions
          [:button {:on-click #(rf/dispatch [:close-modal])} "Cancel"]
          [:button.primary

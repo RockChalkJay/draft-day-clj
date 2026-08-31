@@ -18,7 +18,7 @@
 
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
-(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist])
+(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist :league-sync])
 
 (defn make-teams-named
   "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
@@ -202,7 +202,7 @@
 (def default-budget-plan (into {} (map (fn [[_ k]] [k 0])) budget-order))
 
 (def default-config
-  {:num-teams 12 :starting-bankroll 200 :scoring :ppr :roster default-roster
+  {:num-teams 12 :starting-bankroll 200 :scoring :ppr :league-id "" :roster default-roster
    :budget-plan default-budget-plan})
 
 ;; ---- tiers ----
@@ -368,12 +368,13 @@
         s   (:scoring cfg)]
     (-> cfg
         (select-keys (keys default-config))
-        (assoc :roster      (merge default-roster (:roster cfg))
+        (assoc :league-id (str (or (:league-id cfg) ""))
+               :roster    (merge default-roster (:roster cfg))
                :budget-plan (merge default-budget-plan (:budget-plan cfg))
-               :scoring     (cond
-                              (map? s) (merge (zipmap scoring/stat-keys (repeat 0)) s)
-                              (contains? scoring/presets s) s
-                              :else (:scoring default-config))))))
+               :scoring   (cond
+                            (map? s) (merge (zipmap scoring/stat-keys (repeat 0)) s)
+                            (contains? scoring/presets s) s
+                            :else (:scoring default-config))))))
 
 (defn default-columns []
   (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) column-catalog))
@@ -545,6 +546,7 @@
      :universe    nil           ; /api/players provenance: season, fetched-at, per-source :ok?
      :recompute-error nil       ; the failure message, while it is still on :status
      :import-report nil         ; {:name :season :unsupported-scoring [...]}
+     :league-sync nil           ; read-only league sync from a provider (manager, team, matchup, waiver data)
      :config      cfg
      :teams       (make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
      :my-team-id  "t0"

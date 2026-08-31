@@ -443,6 +443,10 @@
             becomes the default rather than reaching Settings and throwing"
     (is (= (:scoring db/default-config) (:scoring (db/reconcile-config {:scoring nil})))))
 
+  (testing "the shared league id is kept in config rather than duplicated in view state"
+    (is (= "" (:league-id (db/reconcile-config {}))))
+    (is (= "1380540443179118592" (:league-id (db/reconcile-config {:league-id "1380540443179118592"})))))
+
   (testing "a custom map predating a stat key gains it at zero, not as a hole"
     (let [s (:scoring (db/reconcile-config {:scoring {:rec 1.0}}))]
       (is (= 1.0 (:rec s)))
