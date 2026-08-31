@@ -106,28 +106,37 @@
 
 (defn league-view []
   (let [teams   @(rf/subscribe [:teams])
+        sync    @(rf/subscribe [:league-sync])
         by-id   @(rf/subscribe [:players-by-id])
         drafted @(rf/subscribe [:drafted])
-        my-id   @(rf/subscribe [:my-team-id])]
+        my-id   @(rf/subscribe [:my-team-id])
+        sync-managers (into {}
+                            (map (fn [{:keys [team-id manager]}]
+                                   [(str team-id) manager]))
+                            (or (:teams sync) []))]
     [:div.league-panel
      [league-sync-panel]
      [:div.league-grid
       (map (fn [t]
-             ^{:key (:team-id t)}
-             [:div.team-card
-              [:div.team-head
-               (:name t)
-               (when (= (:team-id t) my-id) [:span.you " (You)"])
-               [:span.muted (str " · $" (:bankroll t))]]
-              [:table.roster
-               [:tbody
-                (map-indexed
-                 (fn [i slot]
-                   (let [p (get by-id (:player-id slot))]
-                     ^{:key i}
-                     [:tr
-                      [:td.slot (:pos slot)]
-                      [:td (if p (:player-name p) [:span.muted "—"])]
-                      [:td.num.muted (when p (str "$" (get-in drafted [(:player-id slot) :price])))]]))
-                 (:roster t))]]])
+             (let [team-id (str (:team-id t))
+                   manager (get sync-managers team-id)]
+               ^{:key (:team-id t)}
+               [:div.team-card
+                [:div.team-head
+                 (:name t)
+                 (when (= (:team-id t) my-id) [:span.you " (You)"])
+                 [:span.muted (str " · $" (:bankroll t))]]
+                (when (seq manager)
+                  [:div.team-meta [:span.muted "Manager: "] manager])
+                [:table.roster
+                 [:tbody
+                  (map-indexed
+                   (fn [i slot]
+                     (let [p (get by-id (:player-id slot))]
+                       ^{:key i}
+                       [:tr
+                        [:td.slot (:pos slot)]
+                        [:td (if p (:player-name p) [:span.muted "—"])]
+                        [:td.num.muted (when p (str "$" (get-in drafted [(:player-id slot) :price])))]]))
+                   (:roster t))]]]))
            teams)]]))
