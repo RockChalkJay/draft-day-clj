@@ -400,3 +400,50 @@ button.undo:hover { color: var(--warn); }
 .field.unprojected input { cursor: not-allowed; }
 .not-projected { margin-left: 6px; font-size: 9px; font-style: normal;
                  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+
+/* ---- waiver board ---- */
+/* The in-season view. It reuses .board wholesale — same table, same tier-free
+   rows — and adds only the chrome that answers questions the draft board never
+   asks: which week this is, what is left to bid, and who a claim would cost. */
+
+.waivers-view { display: flex; flex-direction: column; gap: 10px; }
+
+/* Stated, not implied. In preseason this board *is* the draft board, and the
+   banner is the only thing standing between that and a manager reading a
+   projection as a result. */
+.week-banner { padding: 6px 10px; border-radius: 8px; background: var(--panel2);
+  border: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.week-banner.preseason { border-color: var(--accent); color: var(--text); }
+
+.waiver-panels { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+
+.sync-panel { flex: 1 1 380px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.sync-row { display: flex; gap: 8px; align-items: center; }
+.sync-row input { flex: 1; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
+.sync-row button { background: var(--accent); color: #fff; border: 0;
+  border-radius: 8px; padding: 6px 12px; }
+.sync-row button:disabled { background: var(--panel2); color: var(--muted); cursor: not-allowed; }
+.sync-row button.secondary { background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); }
+.sync-status { font-size: 12px; color: var(--muted); }
+.sync-empty { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.sync-team select { background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font: inherit; }
+
+.faab-panel { display: flex; gap: 18px; align-items: flex-start; padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.faab-panel .stat { align-items: flex-start; }
+
+/* Volume moving, not points scored — hence its own pair rather than the
+   red/green .signed uses for money. The neutral band is wide on purpose: a
+   column that colours noise stops being read. */
+.trend-up { color: var(--good); }
+.trend-down { color: var(--warn); }
+
+/* A row worth acting on: a real gain over a real drop. */
+tr.upgrade .p-name { font-weight: 600; }
+.inj-flag { color: var(--warn); cursor: help; }
+
+.drop-note { font-size: 12px; color: var(--muted); padding: 4px 2px; }
