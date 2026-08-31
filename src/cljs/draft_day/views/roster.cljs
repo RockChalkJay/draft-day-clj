@@ -51,10 +51,15 @@
 (defn- league-sync-panel []
   (let [cfg      @(rf/subscribe [:config])
         sync     @(rf/subscribe [:league-sync])
-        users    (when sync (:users sync))
-        teams    (when sync (:teams sync))
+        users    (sort-by (fn [{:keys [display-name username user-id]}]
+                            (or display-name username user-id))
+                          (when sync (:users sync)))
+        teams    (sort-by (fn [{:keys [team-id]}] (js/parseInt team-id 10))
+                          (when sync (:teams sync)))
         by-id    @(rf/subscribe [:players-by-id])
-        league-id (:league-id cfg)]
+        league-id (:league-id cfg)
+        roster-label (fn [player-id]
+                      (or (get-in by-id [player-id :player-name]) player-id))]
     [:section.league-sync
      [:h3 "League sync"]
      [:p.muted "Read-only current roster data from Sleeper. This stays separate from the draft board state."]
@@ -94,9 +99,8 @@
                   (when (seq roster)
                     [:div.sync-roster
                      (for [player-id roster]
-                       (let [p (get by-id player-id)]
-                         ^{:key (str team-id "-" player-id)}
-                         [:span.sync-player (or (:player-name p) player-id)]))])])]
+                       ^{:key (str team-id "-" player-id)}
+                       [:span.sync-player (roster-label player-id)])])])]
               [:p.muted "No team data returned."])]]])
        [:p.muted "No league sync data loaded yet."])]))
 
