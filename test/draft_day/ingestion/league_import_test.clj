@@ -25,6 +25,33 @@
       (is ok)
       (is (= 10 (:num-teams config))))))
 
+(deftest sync-league-normalizes-sleeper-view-data
+  (let [raw {:league {:league_id "123" :name "Dynasty Dynasts" :season "2026" :total_rosters 10}
+             :users [{:user_id "u1" :username "alice" :display_name "Alice" :avatar "a.png"}
+                     {:user_id "u2" :username "bob" :display_name "Bob"}]
+             :rosters [{:roster_id 1 :owner_id "u1" :players ["QB:1" "RB:2"]}
+                       {:roster_id 2 :owner_id "u2" :players ["WR:3"]}]}
+        sync (league-import/normalize-sync :sleeper raw)]
+    (is (= :sleeper (:provider sync)))
+    (is (= "Dynasty Dynasts" (get-in sync [:league :name])))
+    (is (= 10 (get-in sync [:league :num-teams])))
+    (is (= [{:user-id "u1" :username "alice" :display-name "Alice" :avatar "a.png"}
+            {:user-id "u2" :username "bob" :display-name "Bob" :avatar nil}]
+           (:users sync)))
+    (is (= [{:team-id 1 :owner-id "u1" :manager "Alice" :roster ["QB:1" "RB:2"]}
+            {:team-id 2 :owner-id "u2" :manager "Bob" :roster ["WR:3"]}]
+           (:teams sync)))
+    (is (= [] (:matchups sync)))
+    (is (= [] (:waiver-wire sync)))))
+
+(deftest sync-league-success
+  (with-redefs [league-import/fetch-sync (fn [_ _] {:league {:league_id "123" :name "Dynasty Dynasts" :season "2026" :total_rosters 10}
+                                                   :users []
+                                                   :rosters []})]
+    (let [{:keys [ok league]} (league-import/sync-league {:provider "sleeper" :league-id "123"})]
+      (is ok)
+      (is (= "Dynasty Dynasts" (get-in league [:league :name]))))))
+
 (deftest import-league-not-found
   (with-redefs [league-import/fetch-raw-league
                 (fn [_ _] (throw (ex-info "not found" {:status 404})))]

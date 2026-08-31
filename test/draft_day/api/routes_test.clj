@@ -114,6 +114,15 @@
       (is (= 200 (:status resp)))
       (is (= 10 (:num-teams b))))))
 
+(deftest league-sync-endpoint-success
+  (with-redefs [league-import/sync-league
+                (fn [_] {:ok true :league {:provider :sleeper :league {:name "Dynasty Dynasts"} :teams []}})]
+    (let [req  {:body (input-stream (json/write-value-as-string {:provider "sleeper" :league-id "123"}))}
+          resp (routes/league-sync-handler req)
+          b    (parse resp)]
+      (is (= 200 (:status resp)))
+      (is (= "Dynasty Dynasts" (get-in b [:league :name]))))))
+
 (deftest league-import-endpoint-failure
   (with-redefs [league-import/import-league
                 (fn [_] {:ok false :status 404 :error "Sleeper league not found"})]

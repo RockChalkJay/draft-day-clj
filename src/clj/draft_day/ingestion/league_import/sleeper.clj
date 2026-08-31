@@ -58,3 +58,53 @@
    :num-teams           (:total_rosters raw)
    :name                (:name raw)
    :season              (:season raw)})
+
+(defn- normalize-user
+  [{:keys [user_id username display_name avatar]}]
+  {:user-id      (str user_id)
+   :username     (or username (or display_name ""))
+   :display-name (or display_name username)
+   :avatar       avatar})
+
+(defmethod league-import/fetch-sync :sleeper
+  [_ league-id]
+  (let [base (str "https://api.sleeper.app/v1/league/" league-id)
+        fetch-json (fn [url]
+                     (let [{:keys [status body error]} @(http/get url {:timeout 30000})]
+                       (cond
+                         error (throw (ex-info "Sleeper league sync fetch failed" {:status 502 :error error}))
+                         (not= 200 status) (throw (ex-info "Sleeper league sync non-200" {:status 502 :sleeper-status status}))
+                         :else (let [parsed (json/read-value body mapper)]
+                                 (if (nil? parsed)
+                                   (throw (ex-info "Sleeper league sync not found" {:status 404}))
+                                   parsed)))))
+        league (fetch-json base)
+        users  (fetch-json (str base "/users"))
+        rosters (fetch-json (str base "/rosters"))]
+    {:league league
+     :users users
+     :rosters rosters
+     :matchups []
+     :waiver-wire []}))
+
+(defmethod league-import/normalize-sync :sleeper
+  [_ raw]
+  (let [league     (:league raw)
+        users      (:users raw)
+        user-names (into {} (map (juxt :user_id (fn [u] (or (:display_name u) (:username u)))) users))
+        teams      (mapv (fn [roster]
+                          (let [owner-id (or (:owner_id roster) (:ownerId roster))]
+                            {:team-id   (or (:roster_id roster) (:rosterId roster))
+                             :owner-id  (str owner-id)
+                             :manager   (or (get user-names (str owner-id)) "Unknown")
+                             :roster    (mapv str (or (:players roster) []))}))
+                        (:rosters raw))]
+    {:provider     :sleeper
+     :league       {:id (str (:league_id league))
+                    :name (:name league)
+                    :season (:season league)
+                    :num-teams (or (:total_rosters league) (count teams))}
+     :users        (mapv normalize-user users)
+     :teams        teams
+     :matchups     (or (:matchups raw) [])
+     :waiver-wire  (or (:waiver-wire raw) [])}))
