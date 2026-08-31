@@ -53,6 +53,7 @@
         sync     @(rf/subscribe [:league-sync])
         users    (when sync (:users sync))
         teams    (when sync (:teams sync))
+        by-id    @(rf/subscribe [:players-by-id])
         league-id (:league-id cfg)]
     [:section.league-sync
      [:h3 "League sync"]
@@ -89,7 +90,13 @@
                  [:li
                   [:b (str "Team " team-id)]
                   [:div (str manager)]
-                  [:small (str (count roster) " current roster slots")]])]
+                  [:small (str (count roster) " current roster slots")]
+                  (when (seq roster)
+                    [:div.sync-roster
+                     (for [player-id roster]
+                       (let [p (get by-id player-id)]
+                         ^{:key (str team-id "-" player-id)}
+                         [:span.sync-player (or (:player-name p) player-id)]))])])]
               [:p.muted "No team data returned."])]]])
        [:p.muted "No league sync data loaded yet."])]))
 
