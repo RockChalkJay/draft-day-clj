@@ -27,6 +27,21 @@ between a league's real rules and what the board can score.
 - ~~Drag-and-drop column bugs found reviewing #12: droppable `text/plain` payload,
   picker drag dead in Firefox, missing `preventDefault`, insertion line flicker~~
 
+- ~~In-season waiver wire: sync real rosters, project rest-of-season, price a
+  claim against FAAB~~ Shipped. See [The waiver wire](../README.md#the-waiver-wire).
+  Open follow-ups it deliberately left:
+  - `ros/PRIOR-GAMES` and `nflverse-weekly/recent-window` are **chosen, not
+    measured**. `dev/draft_day/benchmark/` is where they would earn numbers —
+    the harness already replays historical seasons, which is exactly the shape
+    of evidence the blend needs.
+  - The rest-of-season projection reads no injury designation, so a player who
+    has been out since week 2 still carries a full share of the games remaining.
+    `:injury-risk` and the Inj column cover it on the board; folding it into the
+    projection would be the double-charging `rankings.injury` argues against, so
+    it needs a real argument before it happens.
+  - Only Sleeper syncs. ESPN and Yahoo need server-side auth, which is why the
+    sync is backend-proxied — adding one is two `defmethod`s and a `:require`.
+
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
   computes and returns it (`src/clj/draft_day/rankings/engine.clj:87`)
   precisely so the client does not recompose `inflation × market-heat` itself

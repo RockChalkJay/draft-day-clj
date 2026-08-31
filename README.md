@@ -4,6 +4,11 @@ A fantasy football draft assistant for **auction** drafts. It turns your
 league's own scoring rules and roster slots into a live dollar value for every
 player on the board, and re-prices the whole board after every pick.
 
+Once the draft is over it keeps going. The **Waivers** tab syncs your real
+league's rosters, re-projects every player over the games that are actually
+left, and tells you who is free, how much better he is than the man you would
+drop, and what share of your FAAB he is worth.
+
 Clojure backend serving a stateless JSON API; a ClojureScript/re-frame SPA
 renders the board and owns all draft state in the browser.
 
@@ -25,10 +30,12 @@ which is why the status line reads `sample` — that is real data from
   - [Ingestion](#ingestion) · [Rankings engine](#rankings-engine)
 - [The data](#the-data)
   - [Sources](#sources) · [Shape of a player](#shape-of-a-player) · [Cache and provenance](#cache-and-provenance)
+- [The waiver wire](#the-waiver-wire)
+  - [Rest-of-season projection](#rest-of-season-projection--rosclj--ros-points) · [Upgrade, bid and rival max](#upgrade-bid-and-rival-max--waiverclj)
 - [The math](#the-math)
   - [Points](#points--scoringcljc--points) · [Floor / ceiling](#floor--ceiling--projectionsclj--floor-ceiling) · [Replacement level and VORP](#replacement-level-and-vorp--replacementclj--vorp) · [Tiers](#tiers--tiersclj--tiers-tier) · [Value](#value--valueclj--value) · [Inflation](#inflation--inflationclj-inflation_indexclj) · [Worth and Bargain](#worth-and-bargain--valueclj-engineclj--worth-bargain) · [Injury risk](#injury-risk--injuryclj--injury-risk) · [Signals that feed nothing](#signals-that-feed-nothing)
 - [API](#api)
-  - [`POST /api/rankings`](#post-apirankings) · [`POST /api/league/import`](#post-apileagueimport)
+  - [`POST /api/rankings`](#post-apirankings) · [`POST /api/league/import`](#post-apileagueimport) · [`POST /api/waivers`](#post-apiwaivers) · [`POST /api/league/sync`](#post-apileaguesync)
 - [Development](#development)
 - [Research harnesses](#research-harnesses)
   - [Benchmark](#benchmark) · [Replay](#replay)
@@ -186,6 +193,7 @@ shadow-cljs also serves `resources/public` on :8280, but nothing answers
 | `PORT` | `8080` | server port |
 | `DRAFTDAY_OFFLINE` | unset | `1` forces the bundled sample universe — no network calls |
 | `DRAFTDAY_CACHE_TTL_HOURS` | `24` | how long the on-disk player cache stays fresh |
+| `DRAFTDAY_AS_OF_WEEK` | unset | dev only: truncate the in-season data at a week, so a finished season replays as one in progress |
 
 ## Using it
 
@@ -225,6 +233,21 @@ switches with no round trip, since the server ships both scales on every player.
 
 ![The board filtered to running backs, with tier striping on the positional
 scale and the RB filter button active.](docs/img/board-rb.png)
+
+**Work the waiver wire.** Once the season starts, the **Waivers** tab syncs your
+league's real rosters and ranks what is left. Its columns answer a different
+question from the draft board's, so it shares none of them:
+
+| Column | Means |
+| --- | --- |
+| `ROS` | rest-of-season projected points — the preseason projection, corrected by what he has actually done |
+| `Upg` | **the number that matters** — points this claim gains you, over the player you would have to drop |
+| `Bid` | your share of the remaining FAAB, across the waiver runs the season still allows. `$0` is a real bid; blank means this league does not bid |
+| `Trend` | recent opportunity per game against his season rate — above `1.00×` the role is growing |
+| `GP` | games he has played this season |
+
+See [The waiver wire](#the-waiver-wire) for how each of those is computed and
+why none of them is a dollar the auction invented.
 
 ## Architecture
 
@@ -364,6 +387,8 @@ inflation band is applied exactly once, at the very end, to the finished
 | **FantasyPros** | `draftwizard.fantasypros.com/auction/…` | AAV — consensus auction value | name + position |
 | **ESPN** | `lm-api-reads.fantasy.espn.com/…/players` | live auction value, ADP, projected targets and receptions | name + position |
 | **nflverse** | `nflverse-data` release CSVs | last season's realized usage, and games played over three seasons for the durability scale | **GSIS id — exact** |
+| **nflverse** | `stats_player_week_{season}.csv` | this season week by week: what each player has produced, his recent opportunity, and how far the season has got | **GSIS id — exact** |
+| **Sleeper** | `api.sleeper.app/v1/league/{id}/rosters`, `/users` | who is rostered right now, FAAB spent and remaining, waiver position | fetched per league, not per universe |
 | **DynastyProcess** | `db_playerids.csv` | the id crosswalk tying those together. Pinned as a snapshot at `resources/player_ids.edn`, not fetched at runtime | — |
 
 Sleeper defines the rows; everything else is a **best-effort left join**. A
@@ -375,6 +400,12 @@ Name matching (`match.clj`) lowercases, strips generational suffixes
 (`jr`/`sr`/`ii`/`iii`/`iv`/`v`) and all non-alphanumerics, then concatenates
 with position: `"T.J. Hockenson", "TE"` → `tjhockenson_te`. nflverse is the one
 source that joins exactly, on the GSIS id every universe player already carries.
+
+The two league endpoints are the exception to all of this: they describe *your*
+league rather than the shared universe, so they are fetched per request and
+never cached alongside it. The weekly file is genuinely absent before week 1 —
+it 404s until the season opens — which the pipeline reports as an unavailable
+source, and which the rest-of-season projection reads as week 0.
 
 ### Shape of a player
 
@@ -446,6 +477,97 @@ A hit rate under 0.80 raises a per-position warning unless the source is
 declared partial. This is the difference between "ESPN prices are missing" and
 "ESPN prices are missing *for tight ends*", which is the one you need during a
 draft.
+
+## The waiver wire
+
+The draft board and the waiver board read the same universe and share almost no
+numbers, because they answer different questions. On draft night you divide one
+bankroll among a whole roster at once. In November you are buying a single
+roster seat with a budget you spend down over months — so Worth, Value, Market
+and Bargain are all absent from the Waivers tab, and nothing there is priced in
+dollars the auction invented.
+
+Connect a league with its Sleeper ID and the board becomes a *waiver wire*
+rather than a ranking: everyone on somebody's roster drops out, and what is left
+is what you can actually claim. Without a league it still ranks every player by
+rest-of-season value, and says out loud that it is doing so.
+
+### Rest-of-season projection — `ros.clj` → `:ros-points`
+
+The universe carries **preseason, full-season** projections. In September that
+is the best evidence there is; in November it is a claim about a season that has
+half happened, made by someone who has not looked. So each stat is blended, per
+game, with what the player has actually done:
+
+```
+pre-pg = preseason-season-total / season-games
+ros-pg = (PRIOR-GAMES · pre-pg + realized-total) / (PRIOR-GAMES + played)
+ros    = ros-pg · games-remaining
+```
+
+Writing the realized side as a total rather than as (games × per-game) cancels
+the division, and that is what makes the expression total: **at zero games
+played it collapses to the prorated preseason line**, with no special case. That
+is the right answer for a rookie who has not debuted, for every team defense
+(nflverse publishes no DST row at all), and for the whole board in August.
+
+`PRIOR-GAMES` is how many games of evidence the projection is worth — six, which
+keeps one loud week from reordering the board while still letting a September
+role change win by December. It is *chosen, not measured*; `dev/` is where it
+would earn a number.
+
+A player with **no preseason line at all** — the undrafted rookie who is now the
+lead back, the player this whole tab exists for — falls out of the same
+expression with a prior of zero: his production is spread over `PRIOR-GAMES +
+played` rather than over `played`, so he is deliberately discounted early and
+climbs as the games accumulate. One 140-yard game does not make him a starter;
+five of them do.
+
+Two things are easy to get wrong and are not. `:games` counts the player's own
+weekly rows, never weeks elapsed — dividing by weeks charges an injured player
+for the absence twice, once in the total and again in a depressed rate. And
+weeks left are not games left: a team plays 17 games across 18 weeks, so the bye
+comes out of the count while it is still ahead.
+
+`:through-week` is read off the newest week nflverse has published, not off the
+calendar. It travels with the in-season columns from the same fetch, so they
+cannot disagree: a missing weekly file reads as week 0 *and* as no realized
+production anywhere, and the board degrades to the preseason board rather than
+to a November league priced on an August projection.
+
+### Upgrade, bid and rival max — `waiver.clj`
+
+**`:upgrade`** is the real question. A claim costs a *roster spot*, not a
+positional slot, so the comparison is against your worst player — not your worst
+player at his position. With a spot already open you give up nothing and the
+upgrade is his whole rest-of-season line. It stays signed: most of a free-agent
+pool is worse than the man you would drop, and flattening that to zero would
+make the entire tail look equally plausible.
+
+**`:bid`** is a conserving share of your remaining FAAB, and what it conserves
+against is the point. Not every free agent — that divides a budget among
+hundreds of players you will never claim and rounds every real target to nothing
+— but the best `claims-left` of them, where `claims-left` is how many waiver
+runs the season has left. That bound is read off the calendar rather than
+chosen, and it makes the number behave the way FAAB behaves: many runs left
+means small bids, one run left means spend it.
+
+A `$0` bid is a **real bid**, not a refusal — FAAB accepts one, and a player
+whose upgrade rounds to nothing is honestly worth the minimum. That is the
+opposite of the auction board, where `$0` meant undraftable and the `$1` floor
+existed to say so. A *blank* bid is the third answer: this league does not run
+FAAB, or you have nothing left to spend, and inventing a dollar figure for a
+transaction that does not exist would be worse than saying nothing.
+
+**`:rival-max`** is not a formula at all. It is the largest budget anyone else
+still holds — the most useful number on the screen precisely because it is a
+fact rather than an opinion.
+
+Replacement level is computed over the **whole league**, never over the free
+agents: scoped to whoever happens to be unclaimed it would drift down every time
+a good player was added, and the remaining scraps would start reading as
+starters. `:trend` (recent opportunity per game against the season rate) is a
+display column on the same shelf as `:injury-risk` — it feeds nothing.
 
 ## The math
 
@@ -621,6 +743,8 @@ camelCase conversion.
 | `GET` | `/api/players` | the cached universe + its provenance. `?refresh=true` forces a reload |
 | `POST` | `/api/rankings` | the fully valued board |
 | `POST` | `/api/league/import` | proxy a league's real settings from its host |
+| `POST` | `/api/waivers` | the in-season board: free agents, upgrades and bids |
+| `POST` | `/api/league/sync` | who is rostered right now, and what is left to bid |
 | `POST` | `/api/cache/reset` | drop the on-disk universe cache |
 
 ### `POST /api/rankings`
@@ -656,6 +780,41 @@ model cannot score. Providers are a multimethod pair (`fetch-raw-league`,
 `:require` for its registration. It is backend-proxied rather than called from
 the browser so that a provider needing server-side auth is a drop-in.
 
+### `POST /api/waivers`
+
+```clojure
+;; request
+{:num-teams          12
+ :scoring            :ppr
+ :replacement-config {:qb 1 :rb 2 :wr 2 :te 1 :flex 1}
+ :roster-size        15               ; seats per team, so a claim knows its cost
+ :my-roster-id       1
+ :league             { … }}           ; the reply from /api/league/sync, verbatim
+
+;; response
+{:through-week 8       ; read off the data, not the calendar; 0 all preseason
+ :season-games 17
+ :claims-left  6       ; waiver runs left — what the bids are a share of
+ :faab     {:type "faab" :budget 100 :left 60 :rival-max 95}
+ :rostered {"00-0038563" "Kansas Screamers" …}   ; who has him
+ :players  [ … ]}      ; free agents only, with :ros-points :upgrade :bid :trend
+```
+
+Stateless on the same terms as `/api/rankings`: the browser owns the synced
+league and re-POSTs it. `:through-week` comes from the universe rather than
+from the request, so the board cannot be asked to price a week the data has not
+reached. Only the free agents come back — `:rostered` is the compact index that
+answers "who has him" without re-sending most of the universe on every refresh.
+
+### `POST /api/league/sync`
+
+Takes `{:provider :sleeper :league-id "…"}` and returns each team's roster,
+FAAB spent and remaining, waiver position and record, plus the league's waiver
+rules. Same multimethod pair convention as the import (`fetch-raw-rosters`,
+`normalize-rosters`), and deliberately a *separate* pair: an import is a
+league's rules, which change once a year, while a sync is its state, which
+changes every time anyone makes a claim.
+
 ## Development
 
 ```bash
@@ -667,8 +826,23 @@ npm test                                         # the ClojureScript node-test b
 
 `src/cljc` is on the JVM classpath, so `lein test` already covers the shared
 db/scoring code. `npm test` exists for the cljs-only namespaces — `events`,
-`fx`, `subs` — that `lein test` cannot reach, so a ClojureScript test is only
-worth writing for genuinely browser-side behaviour.
+`fx`, `subs`, `waivers` — that `lein test` cannot reach, so a ClojureScript test
+is only worth writing for genuinely browser-side behaviour.
+
+### Seeing the in-season half work
+
+The current season's weekly file does not exist until week 1 is played, and last
+season's is a season with nothing left to project. `DRAFTDAY_AS_OF_WEEK`
+truncates the weekly rows at a week, so a finished season replays as one in
+progress:
+
+```bash
+DRAFTDAY_AS_OF_WEEK=8 lein run     # a real week-8 board, against real data
+```
+
+Without it, the Waivers tab in preseason is the preseason board — correctly, and
+it says so — but nothing about the blend, the bids or the trend column can be
+seen doing anything.
 
 ## Research harnesses
 
