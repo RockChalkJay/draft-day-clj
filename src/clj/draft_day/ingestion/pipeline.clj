@@ -22,6 +22,7 @@
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.merge :as merge]
             [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.match :as match]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.player-ids :as player-ids]
@@ -51,8 +52,14 @@
   fetch answers two questions.
 
   5: per-season realized stat lines (:nflverse/history) were added, from the same
-  window that fetch already had in hand."
-  5)
+  window that fetch already had in hand.
+
+  6: in-season production (:nflverse/season-to-date, :nflverse/recent) was added,
+  and the envelope grew :through-week. The bump matters more than most: a cache
+  written at schema 5 carries no in-season columns at all, which is
+  indistinguishable from a preseason board — so a stale file deserializing
+  cleanly would put a November league on an August projection and say nothing."
+  6)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -204,7 +211,8 @@
   recaptured, its column renders blank offline with nothing to say the column
   is structurally absent rather than merely unmatched. That is exactly what
   happened when the FantasyPros AAV and sleepers joins were introduced."
-  (into (into [:sleeper/byes :fantasypros/sleepers :espn :nflverse/player-stats]
+  (into (into [:sleeper/byes :fantasypros/sleepers :espn
+               :nflverse/player-stats :nflverse/weekly]
               (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
                                  (format-label :fantasypros/aav fmt)]))
               scoring/formats)
@@ -235,7 +243,11 @@
                ;; Last season, not this one: these are realized outcomes. One
                ;; fetch, two questions — last season's usage and the availability
                ;; window ending there. See `nflverse/fetch`.
-               :nflverse/player-stats #(best-effort (nflverse/fetch (dec season)))}
+               :nflverse/player-stats #(best-effort (nflverse/fetch (dec season)))
+               ;; This season, not last: how far it has got and what each player
+               ;; has produced inside it. Absent by design until week 1 is
+               ;; played — see `nflverse-weekly`'s ns docstring.
+               :nflverse/weekly       #(best-effort (nflverse-weekly/fetch season))}
               (mapcat (fn [fmt]
                         [[(format-label :fantasypros/ecr fmt)
                           #(best-effort (fantasypros/fetch-ecr fmt))]
@@ -275,7 +287,8 @@
         byes     (:sleeper/byes fetched)
         sleepers (:fantasypros/sleepers fetched)
         espn     (:espn fetched)
-        prior    (:nflverse/player-stats fetched)]
+        prior    (:nflverse/player-stats fetched)
+        weekly   (:nflverse/weekly fetched)]
     ;; Byes join on :team rather than a name key, so they get a row count but
     ;; none of the match-rate machinery — reporting them as a 0% join would be
     ;; a lie, not a diagnostic.
@@ -313,7 +326,19 @@
       (apply-enrichment acc :nflverse/player-stats (:by-key prior)
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions prior)
-                         :expected-partial? true}))))
+                         :expected-partial? true})
+      ;; Same exact GSIS join as the season file above. Expected partial for a
+      ;; second reason as well as the first: before week 1 nobody has a row, and
+      ;; even in December the board carries players who have not played a snap.
+      (apply-enrichment acc :nflverse/weekly (:by-key weekly)
+                        {:key-fn            #(get-in % [:ids :gsis])
+                         :key-position      (:positions weekly)
+                         :expected-partial? true})
+      ;; How far the season has got, read off the weekly file rather than the
+      ;; calendar. It rides on the envelope and not on the players: it is one
+      ;; fact about the league year, and `rankings.ros` needs it exactly once
+      ;; per request. 0 when the source is absent, which is preseason.
+      (assoc acc :through-week (or (:through-week weekly) 0)))))
 
 (defn fetch-enriched-universe
   "The live universe: Sleeper rows, id-validated, then enriched.
@@ -348,6 +373,10 @@
     (merge {:schema-version (:schema-version env)
             :season         (:season env)
             :fetched-at     (:captured-at env)
+            ;; A captured sample carries whatever week it was taken in; the
+            ;; original hand-captured one has none and reads as preseason,
+            ;; which is what it is.
+            :through-week   (or (:through-week env) 0)
             :sources        (:sources env)
             :source         "sample"}
            ;; Anchored on read so offline dev and tests share the live id
@@ -373,10 +402,14 @@
   [season cache-path]
   (try
     (let [season' (or season (sleeper/current-season))
-          {:keys [players validation sources]} (fetch-enriched-universe season')
+          {:keys [players validation sources through-week]} (fetch-enriched-universe season')
           env {:schema-version schema-version
                :season         season'
                :fetched-at     (now-iso)
+               ;; 0 all preseason, then the last week nflverse has published.
+               ;; Cached with everything else, so a board served from disk knows
+               ;; which week it was computed for rather than assuming today's.
+               :through-week   (or through-week 0)
                :validation     validation
                :sources        sources
                :players        players}]

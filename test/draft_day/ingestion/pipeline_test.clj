@@ -4,6 +4,7 @@
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.pipeline :as pipeline :refer [apply-enrichment]]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.sleeper :as sleeper]
@@ -268,6 +269,12 @@
                   nflverse/fetch        (fn [_] (arrive! :nflverse)
                                           {:by-key    {"00-0000000" {:nflverse/prior-targets 1.0}}
                                            :positions {"00-0000000" "RB"}})
+                  nflverse-weekly/fetch (fn [_] (arrive! :nflverse-weekly)
+                                          {:by-key    {"00-0000000"
+                                                       {:nflverse/season-to-date
+                                                        {:games 4 :stats {:rec 20.0}}}}
+                                           :through-week 4
+                                           :positions {"00-0000000" "RB"}})
                   fantasypros/fetch-ecr (fn [fmt] (arrive! [:ecr fmt])
                                           (rows "player0_rb"))
                   fantasypros/fetch-aav (fn [fmt] (arrive! [:aav fmt])
@@ -287,6 +294,7 @@
   (with-redefs [sleeper/fetch-byes    (fn [_] {"ATL" 5})
                 fantasypros/fetch-sleepers (fn [] nil)
                 nflverse/fetch        (fn [_] {:by-key {} :positions {}})
+                nflverse-weekly/fetch (fn [_] {:by-key {} :through-week 0 :positions {}})
                 espn/fetch            (fn [_] (throw (ex-info "espn down" {})))
                 fantasypros/fetch-ecr (fn [fmt]
                                         (if (= :standard fmt)
