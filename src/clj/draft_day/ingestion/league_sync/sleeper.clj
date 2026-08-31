@@ -125,5 +125,10 @@
         names  (team-names users)]
     {:teams  (mapv #(normalize-roster names waiver %) rosters)
      :waiver waiver
+     ;; Carried on the sync as well as the import because the waiver board is
+     ;; driven by the sync alone — a manager who syncs rosters without
+     ;; re-importing the rules should still get bids bounded by the right
+     ;; number of runs.
+     :playoff-week-start (import-sleeper/playoff-week-start league)
      :name   (:name league)
      :season (:season league)}))

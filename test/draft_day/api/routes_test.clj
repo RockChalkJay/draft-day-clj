@@ -4,6 +4,7 @@
             [draft-day.api.routes :as routes]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.league-import :as league-import]
+            [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.scoring :as scoring]))
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
@@ -300,3 +301,123 @@
           [{:player-id "rb0" :worth 40
             :nflverse/history [{:season 2025 :stats {:rush_yd 1.0}}]}
            {:player-id "rb1" :worth 30}]))))
+
+;; ---- waivers ----
+
+(def ^:private in-season
+  "The same fixture, mid-season: week 8, with a realized line on the top two
+  backs and none on anybody else."
+  (-> fixture
+      (assoc :through-week 8)
+      (assoc-in [:players 0 :bye] 6)
+      (assoc-in [:players 0 :nflverse/season-to-date]
+                {:games 7 :stats {:rush_yd 900.0 :rush_td 8.0} :usage {:carries 150.0}})
+      (assoc-in [:players 1 :nflverse/season-to-date]
+                {:games 7 :stats {:rush_yd 200.0} :usage {:carries 60.0}})))
+
+(def ^:private synced
+  {:teams [{:roster-id 1 :name "Mine"   :player-ids ["rb2" "rb3"] :faab-left 60}
+           {:roster-id 2 :name "Rivals" :player-ids ["rb4"]       :faab-left 95}]
+   :waiver {:type "faab" :budget 100}
+   :playoff-week-start 15})
+
+(defn- waivers [body]
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] in-season)]
+    (routes/waivers-handler {:body (input-stream (json/write-value-as-string body))})))
+
+(deftest waivers-endpoint-ranks-only-the-free-agents
+  (let [b   (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
+                             :my-roster-id 1 :roster-size 2}))
+        ids (set (map :player-id (:players b)))]
+    (is (not-any? ids ["rb2" "rb3" "rb4"]) "rostered players are not offers")
+    (is (contains? ids "rb0"))
+    (is (= {:rb2 "Mine" :rb3 "Mine" :rb4 "Rivals"} (:rostered b))
+        "who holds whom, without re-sending their rows")))
+
+(deftest waivers-endpoint-prices-in-rest-of-season-points-not-auction-dollars
+  ;; The draft board's money prices a whole roster out of a bankroll on draft
+  ;; night; a claim is one seat against a budget spent over months.
+  (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
+                           :my-roster-id 1 :roster-size 2}))
+        p (first (:players b))]
+    (is (every? #(contains? p %) [:ros-points :ros-vorp :upgrade :bid]))
+    (is (not-any? #(contains? p %) [:worth :value :bargain :market :edge]))))
+
+(deftest waivers-endpoint-reports-the-week-it-priced-for
+  (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))]
+    (is (= 8 (:through-week b)))
+    (is (= 17 (:season-games b)))
+    (is (= 6 (:claims-left b)) "week 8 of a league whose playoffs start in 15")))
+
+(deftest waivers-endpoint-carries-the-budget-and-what-a-rival-could-outbid-with
+  (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
+                           :my-roster-id 1 :roster-size 2}))]
+    (is (= 60 (get-in b [:faab :left])))
+    (is (= 95 (get-in b [:faab :rival-max])))
+    (is (= "faab" (get-in b [:faab :type])))
+    ;; The type crosses the wire as a string, so this is the assertion that
+    ;; catches a bid rule which only ever matched the keyword.
+    (is (some #(pos? (:bid %)) (:players b)) "real money on real players")
+    (is (<= (reduce + 0 (map :bid (take (:claims-left b)
+                                        (sort-by #(- (:upgrade %)) (:players b)))))
+            (+ 60 (:claims-left b)))
+        "and the claims still available do not overspend the budget")))
+
+(deftest waivers-endpoint-works-before-a-league-is-synced
+  ;; Not an error — a manager who has not connected a league yet still gets a
+  ;; rest-of-season ranking.
+  (let [b (parse (waivers {:scoring "ppr" :num-teams 12}))]
+    (is (= 40 (count (:players b))))
+    (is (every? #(nil? (:bid %)) (:players b)))
+    (is (empty? (:rostered b)))))
+
+(deftest waivers-endpoint-refuses-a-board-that-scores-nothing
+  ;; Same guard and the same reason as the rankings board: a waiver board where
+  ;; nobody is an upgrade over anybody is a lie, not a board.
+  (let [resp (waivers {:scoring {:rec 0 :rush_yd 0} :num-teams 12})]
+    (is (= 400 (:status resp)))
+    (is (re-find #"non-zero weight" (:error (parse resp))))))
+
+(deftest waivers-endpoint-is-the-preseason-board-in-preseason
+  ;; through-week 0 and no realized line anywhere: rest-of-season is the whole
+  ;; season, so this is the draft board asked a different question.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :through-week 0))]
+    (let [b (parse (routes/waivers-handler
+                    {:body (input-stream (json/write-value-as-string
+                                          {:scoring "ppr" :num-teams 12}))}))]
+      (is (= 0 (:through-week b)))
+      (is (= 40 (count (:players b))))
+      (is (every? #(pos? (:ros-points %)) (:players b))
+          "a full season of projection is still ahead of everyone"))))
+
+(deftest waivers-endpoint-reports-a-bad-body-rather-than-throwing
+  (is (= 400 (:status (routes/waivers-handler {:body (input-stream "{not json")})))))
+
+;; ---- league sync endpoint ----
+
+(deftest league-sync-endpoint-validates-the-id-the-same-way-import-does
+  ;; One rule, shared: a second copy is how one endpoint ends up accepting what
+  ;; the other rejects.
+  (doseq [h [routes/league-sync-handler routes/league-import-handler]]
+    (is (= 400 (:status (h {:body (input-stream (json/write-value-as-string
+                                                 {:provider "sleeper" :league-id ""}))}))))
+    (is (= 400 (:status (h {:body (input-stream (json/write-value-as-string
+                                                 {:provider "sleeper" :league-id "abc"}))}))))))
+
+(deftest league-sync-endpoint-returns-the-normalized-league
+  (with-redefs [league-sync/sync-league (fn [_] {:ok true :league synced})]
+    (let [resp (routes/league-sync-handler
+                {:body (input-stream (json/write-value-as-string
+                                      {:provider "sleeper" :league-id "123"}))})]
+      (is (= 200 (:status resp)))
+      (is (= 2 (count (:teams (parse resp))))))))
+
+(deftest league-sync-endpoint-passes-a-failures-status-through
+  (with-redefs [league-sync/sync-league (fn [_] {:ok false :status 404 :error "not found"})]
+    (let [resp (routes/league-sync-handler
+                {:body (input-stream (json/write-value-as-string
+                                      {:provider "sleeper" :league-id "999"}))})]
+      (is (= 404 (:status resp)))
+      (is (= "not found" (:error (parse resp)))))))

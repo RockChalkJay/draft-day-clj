@@ -243,7 +243,7 @@
         "anchoring must not collide two players onto one id")))
 
 (deftest every-enrichment-fetch-goes-out-together
-  ;; Twenty-two independent fetches behind a 30-second timeout each, on the
+  ;; Twenty-three independent fetches behind a 30-second timeout each, on the
   ;; request thread that missed the cache. Awaited in turn they stack to ten
   ;; minutes, so what has to hold is that `enrich-universe` starts *all* of them
   ;; before it blocks on any — not merely that some helper can start six.
@@ -259,8 +259,8 @@
                    (when-not (.await latch 10 java.util.concurrent.TimeUnit/SECONDS)
                      (throw (ex-info "this fetch ran on its own" {:fetch what}))))
         rows     (fn [k] [{:key k :fantasypros/ecr 1}])]
-    (is (= 22 expected)
-        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers, ESPN and nflverse")
+    (is (= 23 expected)
+        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers, ESPN, and nflverse's prior-season and in-season files")
     (with-redefs [sleeper/fetch-byes    (fn [_] (arrive! :byes) {"ATL" 5})
                   fantasypros/fetch-sleepers (fn [] (arrive! :sleepers)
                                                (rows "player0_rb"))

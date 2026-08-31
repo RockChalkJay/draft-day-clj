@@ -7,11 +7,15 @@
             [reitit.ring.middleware.parameters :as parameters]
             [jsonista.core :as json]
             [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.sleeper]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-sync.sleeper]
             [draft-day.rankings.engine :as engine]
+            [draft-day.rankings.ros :as ros]
+            [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]
             [draft-day.rankings.market :as market]
             [draft-day.rankings.vendor :as vendor]
@@ -165,6 +169,50 @@
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
+(defn waivers-handler
+  "The in-season board: rest-of-season value over the free agents a synced
+  league actually leaves available, and what to bid for them.
+
+  Stateless on exactly the same terms as `rankings-handler` — the browser owns
+  the synced league and re-POSTs it — but it shares none of that handler's
+  money. Auction dollars price a whole roster out of a fixed bankroll on draft
+  night; a waiver claim is one seat against a budget spent down over months. See
+  `rankings.waiver`.
+
+  `:through-week` comes from the universe envelope rather than from the request,
+  so the board cannot be asked to price a week the data has not reached. In
+  preseason it is 0 and this is the preseason board, which is the honest answer
+  rather than an error."
+  [req]
+  (try
+    (let [{:keys [scoring num-teams replacement-config league my-roster-id roster-size]}
+          (read-json-body req)
+          scoring* (resolve-scoring scoring)]
+      (if-not (scoring/scores-anything? scoring*)
+        ;; Same guard and the same reason as the rankings board: an all-zero
+        ;; config scores every player 0.0, and a waiver board where nobody is an
+        ;; upgrade over anybody is a lie, not a board.
+        (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
+        (let [{:keys [players season through-week]} (universe false)
+              season-games (nflverse/games-in-season (or season (sleeper/current-season)))
+              ctx      {:league             league
+                        :my-roster-id       my-roster-id
+                        :roster-size        roster-size
+                        :num-teams          (or num-teams 12)
+                        :replacement-config replacement-config
+                        :through-week       (or through-week 0)
+                        :season-games       season-games
+                        :playoff-week-start (:playoff-week-start league)}
+              board    (-> players
+                           (vendor/for-scoring scoring*)
+                           without-history
+                           (ros/with-ros scoring* ctx))]
+          (json-response 200 (assoc (waiver/waiver-board board ctx)
+                                    :through-week (or through-week 0)
+                                    :season-games season-games)))))
+    (catch Exception e
+      (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
+
 (def app
   (ring/ring-handler
    (ring/router
@@ -172,6 +220,7 @@
      ["/api/players"  {:get  players-handler}]
      ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
+     ["/api/waivers"  {:post waivers-handler}]
      ["/api/league/import"   {:post league-import-handler}]
      ["/api/league/sync"     {:post league-sync-handler}]]
     {:data {:middleware [parameters/parameters-middleware]}})

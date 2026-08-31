@@ -75,6 +75,16 @@
     {:type   (get waiver-types (:waiver_type s) :rolling)
      :budget (or (:waiver_budget s) 0)}))
 
+(defn playoff-week-start
+  "The first week of the league's fantasy playoffs, or nil when it says nothing.
+
+  A waiver claim made once the playoffs are under way buys at most a game or
+  two, so this is what bounds how many runs a budget still has to cover — see
+  `rankings.waiver/claims-left`. Read through one function rather than twice
+  from two namespaces, because the sync fetches the same league document."
+  [raw]
+  (get-in raw [:settings :playoff_week_start]))
+
 (defmethod league-import/normalize-league :sleeper
   [_ raw]
   {:scoring             (select-keys (:scoring_settings raw) scoring/stat-keys)
@@ -86,4 +96,5 @@
    ;; In-season settings. They ride on the import rather than on the sync
    ;; because they are league *rules* — they change once a year, while the
    ;; rosters a sync reads change every time anyone makes a claim.
-   :waiver              (waiver-settings raw)})
+   :waiver              (waiver-settings raw)
+   :playoff-week-start  (playoff-week-start raw)})
