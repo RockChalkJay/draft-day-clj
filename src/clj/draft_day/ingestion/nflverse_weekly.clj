@@ -88,10 +88,15 @@
   "Opportunity columns carried alongside the scored line, for the trend signal.
 
   Volume, not production: a back who is suddenly getting the carries is a buy
-  before the touchdowns arrive, and points alone cannot see that."
-  {"targets"  :targets
-   "carries"  :carries
-   "receptions" :receptions})
+  before the touchdowns arrive, and points alone cannot see that.
+
+  Chances, not conversions — which is why `receptions` is *not* here even though
+  it reads like usage. It is already in `stat-columns` as `:rec`, so carrying it
+  again would put the same total on every player twice under two names; and a
+  catch is an outcome of a target, so the column that answers 'is he being used
+  more' is `targets`."
+  {"targets" :targets
+   "carries" :carries})
 
 (def required-columns
   "Columns a response has to carry before it counts as this file at all.

@@ -581,12 +581,28 @@
   ;; The shape that actually matters: it reaches `waiver/rostered-index` as a
   ;; team holding nobody, and every player on it silently becomes a free agent.
   (let [out (db/reconcile-league-sync {:teams [{:roster-id 1}
-                                               {:roster-id 2 :player-ids ["a" nil "b"]}
+                                               {:roster-id 2 :player-ids ["a" nil "b"]
+                                                :active-ids ["a" nil]}
                                                "not a team"]})]
     (is (= 2 (count (:teams out))) "a non-map team is dropped")
     (is (= [] (:player-ids (first (:teams out)))))
     (is (= ["a" "b"] (:player-ids (second (:teams out)))) "nils inside are dropped")
-    (is (every? vector? (map :starter-ids (:teams out))))))
+    (is (every? vector? (map :starter-ids (:teams out))))
+    (testing ":active-ids is repaired too — it decides whether a claim needs a drop"
+      (is (= [] (:active-ids (first (:teams out)))))
+      (is (= ["a"] (:active-ids (second (:teams out))))))))
+
+(deftest a-persisted-sync-keeps-the-facts-that-let-it-be-redone
+  ;; The league id makes a re-sync one click, and the seat count decides whether
+  ;; a claim costs a drop. Both ride inside :league-sync, which is persisted, so
+  ;; the reconciler must not drop keys it does not recognise.
+  (let [out (db/reconcile-league-sync
+             {:teams [{:roster-id 1 :player-ids ["a"] :active-ids ["a"]}]
+              :waiver {:type :faab :budget 100}
+              :roster-size 15 :league-id "987654" :playoff-week-start 15})]
+    (is (= "987654" (:league-id out)))
+    (is (= 15 (:roster-size out)))
+    (is (= 15 (:playoff-week-start out)))))
 
 (deftest the-persisted-slice-carries-the-in-season-state
   ;; A sync that had to be redone on every page load would be a sync nobody

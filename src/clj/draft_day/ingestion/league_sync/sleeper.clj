@@ -102,16 +102,24 @@
   An orphan roster (no owner) keeps its seat: it still holds players, and its
   budget can still outbid yours. It is named for its slot rather than dropped."
   [names {:keys [type budget]} roster]
-  (let [s     (:settings roster)
-        used  (or (:waiver_budget_used s) 0)
-        owner (:owner_id roster)]
+  (let [s       (:settings roster)
+        used    (or (:waiver_budget_used s) 0)
+        owner   (:owner_id roster)
+        ;; Sleeper sends null, not [], for a roster nobody has drafted to yet,
+        ;; and for `starters` in a league that has not set a lineup. Normalized
+        ;; once here so no consumer has to handle both spellings of empty.
+        players (vec (:players roster))
+        parked  (into #{} cat [(:reserve roster) (:taxi roster)])]
     {:roster-id       (:roster_id roster)
      :owner-id        owner
      :name            (or (get names owner) (str "Roster " (:roster_id roster)))
-     ;; Sleeper sends null, not [], for a roster nobody has drafted to yet, and
-     ;; for `starters` in a league that has not set a lineup. Normalized here so
-     ;; no consumer downstream has to handle both spellings of empty.
-     :player-ids      (vec (:players roster))
+     :player-ids      players
+     ;; Who occupies a seat a claim would need. `players` includes IR and taxi,
+     ;; and they matter in opposite directions: counted, they fill a roster that
+     ;; is not actually full; offered as a drop, they free no seat for the claim
+     ;; being priced. They stay in `:player-ids` regardless, because a player on
+     ;; IR is rostered — he is not a free agent.
+     :active-ids      (filterv (complement parked) players)
      :starter-ids     (vec (:starters roster))
      :faab-used       used
      :faab-left       (when (= :faab type) (max 0 (- (or budget 0) used)))
@@ -125,6 +133,15 @@
         names  (team-names users)]
     {:teams  (mapv #(normalize-roster names waiver %) rosters)
      :waiver waiver
+     ;; This league's seats, not the draft config's. Whether a claim costs a
+     ;; drop turns on this number, and a manager who syncs without importing
+     ;; has never told the app what his real league looks like.
+     :roster-size (count (:roster_positions league))
+     ;; Carried so a re-sync is one click. It is the only thing the sync needs
+     ;; and the only thing the reply did not have: without it the id lives in a
+     ;; component-local atom that empties on reload, and a manager comes back to
+     ;; month-old rosters with the re-sync button greyed out.
+     :league-id   (str (:league_id league))
      ;; Carried on the sync as well as the import because the waiver board is
      ;; driven by the sync alone — a manager who syncs rosters without
      ;; re-importing the rules should still get bids bounded by the right

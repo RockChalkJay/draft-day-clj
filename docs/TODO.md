@@ -41,6 +41,22 @@ between a league's real rules and what the board can score.
     it needs a real argument before it happens.
   - Only Sleeper syncs. ESPN and Yahoo need server-side auth, which is why the
     sync is backend-proxied — adding one is two `defmethod`s and a `:require`.
+  - **The bundled sample predates the in-season columns.** It stamps
+    `:schema-version 5`, carries no `:through-week` and no
+    `:nflverse/season-to-date`, so `DRAFTDAY_OFFLINE=1` can only ever show the
+    preseason board. That is honest rather than wrong — a preseason capture read
+    back as preseason — but it means the in-season half cannot be exercised
+    offline at all, and `snapshot/missing-sources` now flags `:nflverse/weekly`.
+    Fixed by re-running `draft-day.tools.snapshot` once a season is under way.
+
+- **The watch list comes back in hash order after the set-to-vector migration.**
+  `db/reconcile-watchlist` is `(into [] (distinct) stored)`, and over the `#{}`
+  the app used to persist that is hash-iteration order. `:watchlist-players`
+  used to end in a `sort-by rank-key` which hid it; that sort is gone now the
+  order is the manager's. An upgrading manager opens the app to a scrambled
+  list with nothing saying anything moved. `(set? stored)` is detectable at
+  exactly the point the repair happens, so `:boot` could re-sort once.
+  Predates the waiver work — noted here rather than fixed inside it.
 
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
   computes and returns it (`src/clj/draft_day/rankings/engine.clj:87`)

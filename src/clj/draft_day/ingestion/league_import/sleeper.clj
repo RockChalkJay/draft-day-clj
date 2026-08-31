@@ -53,6 +53,12 @@
 (def waiver-types
   "Sleeper's `settings.waiver_type` -> what the waiver run actually is.
 
+  Read by `league-sync`, not by this namespace's own `normalize-league`. The
+  waiver board is driven by the sync alone, and returning these on the import as
+  well only looked tidy: `events/:league-import-loaded` select-keys them away on
+  arrival and `db/reconcile-config` would strip them regardless, so the second
+  copy was two keys nobody read and one more place for the rule to drift.
+
   The mapping is small and the *unknown* case is the one that matters. Anything
   not listed reads as `:rolling`, i.e. not FAAB — and that direction is chosen,
   not incidental. Suppressing a bid in a league that turns out to use FAAB costs
@@ -92,9 +98,4 @@
    :roster              (roster-config (:roster_positions raw))
    :num-teams           (:total_rosters raw)
    :name                (:name raw)
-   :season              (:season raw)
-   ;; In-season settings. They ride on the import rather than on the sync
-   ;; because they are league *rules* — they change once a year, while the
-   ;; rosters a sync reads change every time anyone makes a claim.
-   :waiver              (waiver-settings raw)
-   :playoff-week-start  (playoff-week-start raw)})
+   :season              (:season raw)})

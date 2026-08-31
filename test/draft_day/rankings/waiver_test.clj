@@ -2,12 +2,24 @@
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.rankings.waiver :as waiver]))
 
+(defn sleeper-id
+  "The Sleeper spelling of a board id.
+
+  Deliberately *different* from `:player-id` for every player in this fixture,
+  because a fixture where the two are equal makes `db/sleeper->player-id` an
+  identity map — and an identity crosswalk hides every bug in which a caller
+  forgets to translate. One did: the availability filter translated its roster
+  ids and the drop candidate did not, so no real league resolved a single
+  droppable player and every upgrade on the board was measured against a floor
+  of zero. No real league has ids that match."
+  [id]
+  (str "s-" id))
+
 (defn- p
-  "A board player. `:ids` carries the Sleeper id so the crosswalk has something
-  to do, exactly as a real universe row does."
-  [id pos pts & {:keys [sleeper]}]
+  "A board player, carrying the `:ids` envelope a real universe row does."
+  [id pos pts]
   {:player-id id :player-name (str "P" id) :position pos :ros-points pts
-   :ids {:sleeper (or sleeper id)}})
+   :ids {:sleeper (sleeper-id id)}})
 
 (def ^:private board
   (into [(p "star" "RB" 180.0) (p "good" "WR" 140.0) (p "ok" "WR" 90.0)
@@ -16,9 +28,15 @@
         ;; most of a real free-agent pool is worse than the worst man rostered.
         (map #(p (str "filler" %) "WR" (- 80.0 (* 2.0 %))) (range 40))))
 
+(defn- held
+  "A team's roster, in the provider's id space — the only space a sync speaks."
+  [& ids] (mapv sleeper-id ids))
+
 (def ^:private league
-  {:teams [{:roster-id 1 :name "Mine"   :player-ids ["star" "meh"] :faab-left 60}
-           {:roster-id 2 :name "Rivals" :player-ids ["bad"]        :faab-left 95}]
+  {:teams [{:roster-id 1 :name "Mine"   :player-ids (held "star" "meh")
+            :active-ids (held "star" "meh") :faab-left 60}
+           {:roster-id 2 :name "Rivals" :player-ids (held "bad")
+            :active-ids (held "bad") :faab-left 95}]
    :waiver {:type :faab :budget 100}})
 
 (defn- run [& {:as over}]
@@ -40,13 +58,27 @@
   ;; Sleeper hands back its own ids; the board is keyed by GSIS wherever one
   ;; resolved. An id with no entry maps to itself, which is how team defenses
   ;; and unmapped players survive.
-  (let [b   [(p "00-gsis" "RB" 100.0 :sleeper "4034") (p "SF" "DST" 50.0)]
+  (let [b   [{:player-id "00-gsis" :position "RB" :ros-points 100.0
+              :ids {:sleeper "4034"}}
+             {:player-id "SF" :position "DST" :ros-points 50.0}]
         out (waiver/waiver-board
              b {:league {:teams [{:roster-id 1 :name "Mine" :player-ids ["4034" "SF"]}]
                          :waiver {:type :rolling}}
                 :my-roster-id 1 :num-teams 12 :through-week 4 :season-games 17})]
     (is (empty? (:players out)) "both are rostered, under either id spelling")
     (is (= {"00-gsis" "Mine" "SF" "Mine"} (:rostered out)))))
+
+(deftest the-drop-candidate-is-translated-too-not-just-the-availability-filter
+  ;; The bug this fixture now exists to catch. `by-id` is keyed by :player-id;
+  ;; a roster read without the crosswalk resolves nothing, so no drop is ever
+  ;; named, the floor falls to 0 and every upgrade on the board is overstated by
+  ;; the dropped player's whole rest-of-season line.
+  (let [{:keys [players]} (run)
+        good (first (filter #(= "good" (:player-id %)) players))]
+    (is (some? (:drop-candidate good))
+        "a roster in the provider's id space still resolves a droppable player")
+    (is (= "meh" (get-in good [:drop-candidate :player-id])))
+    (is (= 100.0 (:upgrade good)) "140 minus the 40 dropped, not the full 140")))
 
 (deftest with-no-league-synced-everyone-is-free
   ;; Not an error — a manager who has not connected a league yet still gets a
@@ -57,6 +89,32 @@
     (is (every? #(nil? (:bid %)) (:players out)))))
 
 ;; ---- what a claim costs ----
+
+(deftest players-parked-on-ir-hold-no-seat-and-free-none
+  ;; Both directions bite. Counted toward the roster they fill a team that is
+  ;; not actually full; offered as a drop they free no seat for the claim being
+  ;; priced — so a claim would be recommended against dropping a man whose
+  ;; removal changes nothing.
+  (let [lg (-> league
+               (assoc-in [:teams 0 :player-ids] (held "star" "meh" "bad"))
+               (assoc-in [:teams 0 :active-ids] (held "star" "meh")))
+        {:keys [players]} (run :league lg :roster-size 3)
+        good (first (filter #(= "good" (:player-id %)) players))]
+    (is (nil? (:drop-candidate good))
+        "two active men against three seats: a seat is open, IR notwithstanding")
+    (is (= 140.0 (:upgrade good)))
+    (is (not-any? #(= "bad" (:player-id %)) players)
+        "but he is still rostered, not a free agent")))
+
+(deftest the-leagues-own-seat-count-beats-the-requests
+  ;; The browser derives its fallback from the *draft* config, which a manager
+  ;; who synced without importing has never set to match this league.
+  (let [lg (assoc league :roster-size 6)
+        good (fn [out] (first (filter #(= "good" (:player-id %)) (:players out))))]
+    (is (nil? (:drop-candidate (good (run :league lg :roster-size 2))))
+        "six seats and two men held: the league says a seat is open")
+    (is (some? (:drop-candidate (good (run :roster-size 2))))
+        "with no league-side count the request's is still honoured")))
 
 (deftest the-claim-costs-a-roster-spot-not-a-positional-slot
   ;; My worst player is an RB; the upgrade for a WR is still measured against
@@ -81,7 +139,9 @@
 (deftest a-rostered-player-the-board-cannot-value-is-not-assumed-worthless
   ;; "We have no projection for him" and "he is projected to score nothing" are
   ;; different claims, and only one of them is evidence.
-  (let [lg  (assoc-in league [:teams 0 :player-ids] ["star" "meh" "ghost"])
+  (let [lg  (-> league
+                (assoc-in [:teams 0 :player-ids] (held "star" "meh" "ghost"))
+                (assoc-in [:teams 0 :active-ids] (held "star" "meh" "ghost")))
         {:keys [players]} (run :league lg :roster-size 3)
         good (first (filter #(= "good" (:player-id %)) players))]
     (is (= "meh" (get-in good [:drop-candidate :player-id]))
@@ -182,7 +242,8 @@
   (let [full   (:replacement-levels (run))
         thin   (:replacement-levels
                 (run :league (assoc-in league [:teams 1 :player-ids]
-                                       (mapv :player-id (take 30 board)))))]
+                                       (mapv (comp sleeper-id :player-id)
+                                             (take 30 board)))))]
     (is (= full thin))))
 
 (deftest the-draft-boards-vorp-does-not-travel-under-the-same-name

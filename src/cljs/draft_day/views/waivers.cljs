@@ -48,8 +48,14 @@
     ;; The headline. Signed, because a free agent worse than the man you would
     ;; drop is not an add — and flattening that to zero would make the whole
     ;; tail of the pool look equally plausible.
-    :upgrade   [:td.num {:class (util/sign-class (:upgrade p))}
-                (util/signed (js/Math.round (or (:upgrade p) 0)))]
+    ;;
+    ;; Rounded ONCE, and both the colour and the digits read from that. Colouring
+    ;; the raw value and printing the rounded one put a green dash on the board
+    ;; for an upgrade of 0.4 — `sign-class` saw a positive number while `signed`
+    ;; dashed out the zero. Same rule `controls/val-cell` states: the colour and
+    ;; the digits have to come from the same value.
+    :upgrade   (let [n (js/Math.round (or (:upgrade p) 0))]
+                 [:td.num {:class (util/sign-class n)} (util/signed n)])
     ;; A nil bid and a $0 bid are different answers and must not render the
     ;; same. nil is "this league does not bid"; $0 is a legal FAAB bid that says
     ;; he is worth the minimum.
@@ -97,20 +103,28 @@
   who is already taken. That distinction is the whole reason this panel is loud
   rather than a settings field."
   []
-  (let [league-id (r/atom "")]
+  ;; `nil` rather than "" so the field can tell 'never typed in' from 'cleared',
+  ;; and fall back to the id the last sync came back with. It lives in a
+  ;; component-local atom, which empties on every mount — so without that
+  ;; fallback a manager returning next session reads persisted, month-old
+  ;; rosters with the re-sync button greyed out and no record of which league
+  ;; they came from.
+  (let [typed (r/atom nil)]
     (fn []
       (let [synced? @(rf/subscribe [:league-synced?])
             teams   @(rf/subscribe [:sync-teams])
             mine    @(rf/subscribe [:my-roster-id])
-            status  @(rf/subscribe [:waiver-status])]
+            status  @(rf/subscribe [:waiver-status])
+            known   @(rf/subscribe [:synced-league-id])
+            league-id (or @typed known "")]
         [:div.sync-panel
          [:div.sync-row
           [:input {:type "text" :placeholder "Sleeper league ID"
-                   :value @league-id
-                   :on-change #(reset! league-id (.. % -target -value))}]
-          [:button {:disabled (str/blank? @league-id)
+                   :value league-id
+                   :on-change #(reset! typed (.. % -target -value))}]
+          [:button {:disabled (str/blank? league-id)
                     :on-click #(rf/dispatch [:sync-league {:provider "sleeper"
-                                                           :league-id @league-id}])}
+                                                           :league-id league-id}])}
            (if synced? "Re-sync rosters" "Sync rosters")]
           (when synced?
             [:button.secondary {:on-click #(rf/dispatch [:fetch-waivers])} "Refresh board"])]
@@ -156,16 +170,22 @@
          [:div.stat.muted
           "This league runs waiver priority, not FAAB — there is no bid to make."])])))
 
-(defn week-banner []
-  (let [{:keys [through-week]} @(rf/subscribe [:waiver-meta])
-        in-season? @(rf/subscribe [:in-season?])]
-    (if in-season?
-      [:div.week-banner (str "Rest-of-season, through week " through-week)]
-      ;; Said out loud rather than left to be inferred from an empty GP column:
-      ;; in preseason this board is the draft board, and a manager who reads it
-      ;; as live is reading a projection as a result.
-      [:div.week-banner.preseason
-       "Preseason — no games played yet, so this is the full-season projection."])))
+(defn week-banner
+  "Which season this board is for — in three states, not two.
+
+  Preseason is said out loud rather than left to be inferred from an empty GP
+  column: in August this board is the draft board, and a manager who reads it as
+  live is reading a projection as a result. But that claim is only worth making
+  when it is *known* — asserting it while the board is still loading, or after a
+  failed refresh, states a fact about the season on no evidence at all, in week
+  10 as readily as in August."
+  []
+  (let [{:keys [through-week]} @(rf/subscribe [:waiver-meta])]
+    (case @(rf/subscribe [:season-phase])
+      :in-season [:div.week-banner (str "Rest-of-season, through week " through-week)]
+      :preseason [:div.week-banner.preseason
+                  "Preseason — no games played yet, so this is the full-season projection."]
+      [:div.week-banner "Loading the rest-of-season board…"])))
 
 ;; ---- the view ----
 
@@ -191,6 +211,15 @@
                               "upgrade")}
                 (map (fn [{k :key}] ^{:key k} [cell k p]) cols)])
              players)]]]
+     (when-let [rostered @(rf/subscribe [:rostered-matches])]
+       (when (seq rostered)
+         [:div.rostered-note
+          "Not free: "
+          (->> rostered
+               (map (fn [{:keys [player-name position team]}]
+                      (str player-name " (" position ") — " team)))
+               (interpose ", ")
+               (into [:span]))]))
      (when-let [drop (:drop-candidate (first players))]
        [:div.drop-note
         "A claim costs a roster spot. Yours would come from "

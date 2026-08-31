@@ -590,16 +590,23 @@
 
   A team with no `:player-ids` vector is the shape that actually matters: it
   reaches `waiver/rostered-index` as a team holding nobody, and every player on
-  it silently becomes a free agent."
+  it silently becomes a free agent. `:active-ids` is repaired alongside it
+  because it decides the *other* question — whether a claim needs a drop at
+  all."
   [stored]
   (when (and (map? stored) (sequential? (:teams stored)))
     (-> stored
         (update :teams (fn [ts]
                          (into [] (comp (filter map?)
                                         (map (fn [t]
-                                               (-> t
-                                                   (update :player-ids #(vec (filter some? %)))
-                                                   (update :starter-ids #(vec (filter some? %)))))))
+                                               (reduce (fn [t k]
+                                                         (update t k #(vec (filter some? %))))
+                                                       t
+                                                       ;; :active-ids is the one a
+                                                       ;; claim is actually priced
+                                                       ;; against — see
+                                                       ;; `waiver/drop-candidate`.
+                                                       [:player-ids :active-ids :starter-ids]))))
                                ts)))
         (update :waiver #(when (map? %) %)))))
 

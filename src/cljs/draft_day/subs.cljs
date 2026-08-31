@@ -253,6 +253,12 @@
 (rf/reg-sub :sync-teams :<- [:league-sync]
   (fn [ls _] (vec (:teams ls))))
 
+;; Which league the persisted rosters came from, so a re-sync is one click. It
+;; rides on the sync reply rather than being stored separately, because the two
+;; must not be able to disagree about which league is on screen.
+(rf/reg-sub :synced-league-id :<- [:league-sync]
+  (fn [ls _] (:league-id ls)))
+
 (rf/reg-sub :visible-waiver-columns :<- [:waiver-columns]
   (fn [cols _] (filterv :visible? cols)))
 
@@ -266,12 +272,21 @@
 (rf/reg-sub :waiver-meta :<- [:waivers]
   (fn [w _] (select-keys w [:through-week :season-games :claims-left])))
 
-;; Whether the board is showing a season in progress at all. Week 0 is not a
-;; failure — it is August, and the rest-of-season board is the draft board — but
-;; it is the one thing the view has to say out loud, or a manager reads a
-;; preseason ranking as a live one.
-(rf/reg-sub :in-season? :<- [:waiver-meta]
-  (fn [{:keys [through-week]} _] (pos? (or through-week 0))))
+;; Which week the board is showing, as one of three answers — and three, not
+;; two, is the point. `:waivers` is nil before the first reply and stays nil
+;; after a failed one, so a boolean `(pos? (or through-week 0))` reports
+;; *preseason* whenever the board simply has not loaded. In week 10 that put an
+;; accented banner reading "no games played yet" over a loading screen, and left
+;; it there permanently if the request errored — which is the exact misreading
+;; the banner exists to prevent.
+;;
+;; :unknown = no board yet; 0 = genuinely preseason; a week = in season.
+(rf/reg-sub :season-phase :<- [:waivers]
+  (fn [w _]
+    (let [wk (:through-week w)]
+      (cond (nil? wk)  :unknown
+            (pos? wk)  :in-season
+            :else      :preseason))))
 
 (rf/reg-sub :waiver-players
   :<- [:waivers]
@@ -290,3 +305,26 @@
                                          (sort-by db/waiver-rank-key filtered)))
           ranked   (map #(assoc % :rank (rank-map (:player-id %))) filtered)]
       (vec (sort-waiver-players ranked (:key sort) (:dir sort))))))
+
+;; Rostered players matching the current search, with who holds them.
+;;
+;; This is what `:rostered` is *for*: search "Chase" while he is on somebody's
+;; roster and the free-agent table is simply empty, which teaches the manager
+;; nothing. Names come from the universe the browser already has rather than
+;; from the wire, so answering "who has him" costs no payload at all.
+(rf/reg-sub :rostered-matches
+  :<- [:waivers]
+  :<- [:universe-by-id]
+  :<- [:search]
+  (fn [[w by-id search] _]
+    (let [q (str/lower-case (or search ""))]
+      (when-not (str/blank? q)
+        (->> (:rostered w)
+             (keep (fn [[id team]]
+                     (when-let [p (get by-id id)]
+                       (when (matches-search? p q)
+                         {:player-name (:player-name p)
+                          :position    (:position p)
+                          :team        team}))))
+             (sort-by :player-name)
+             vec)))))

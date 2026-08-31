@@ -313,12 +313,21 @@
       (assoc-in [:players 0 :nflverse/season-to-date]
                 {:games 7 :stats {:rush_yd 900.0 :rush_td 8.0} :usage {:carries 150.0}})
       (assoc-in [:players 1 :nflverse/season-to-date]
-                {:games 7 :stats {:rush_yd 200.0} :usage {:carries 60.0}})))
+                {:games 7 :stats {:rush_yd 200.0} :usage {:carries 60.0}})
+      ;; One player with a durability history, so the Risk assertion tests that
+      ;; the stage ran rather than that the fixture is empty — `risk-for`
+      ;; correctly returns nil for a player it has no evidence about.
+      (assoc-in [:players 0 :sleeper/years-exp] 3)
+      (assoc-in [:players 0 :nflverse/games-seasons] {2023 17 2024 17 2025 17})
+      (assoc-in [:players 0 :nflverse/games-by-season] {2023 17 2024 10 2025 17})))
 
 (def ^:private synced
-  {:teams [{:roster-id 1 :name "Mine"   :player-ids ["rb2" "rb3"] :faab-left 60}
-           {:roster-id 2 :name "Rivals" :player-ids ["rb4"]       :faab-left 95}]
+  {:teams [{:roster-id 1 :name "Mine"   :player-ids ["rb2" "rb3"]
+            :active-ids ["rb2" "rb3"] :faab-left 60}
+           {:roster-id 2 :name "Rivals" :player-ids ["rb4"]
+            :active-ids ["rb4"] :faab-left 95}]
    :waiver {:type "faab" :budget 100}
+   :roster-size 2
    :playoff-week-start 15})
 
 (defn- waivers [body]
@@ -334,6 +343,33 @@
     (is (contains? ids "rb0"))
     (is (= {:rb2 "Mine" :rb3 "Mine" :rb4 "Rivals"} (:rostered b))
         "who holds whom, without re-sending their rows")))
+
+(deftest waivers-endpoint-runs-the-columns-it-ships
+  ;; Three columns come from `static-rankings`, not from `rankings.ros`, and the
+  ;; handler does not call it: without them Risk renders a dash for every row
+  ;; with the tooltip "No injury history to judge", Pre is blank, and
+  ;; `util/pos-label` shows "RB" where the header promises "RB7" — three shipped
+  ;; columns permanently dead with nothing failing to say so.
+  (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
+                           :my-roster-id 1}))
+        p (first (:players b))]
+    (is (number? (:points p)) "the Pre column, and the line ROS is correcting")
+    (is (number? (:pos-rank p)) "the ordinal in the Pos cell")
+    (is (every? #(number? (:pos-rank %)) (:players b))
+        "and every row, or sorting by Pos falls back to arbitrary order")
+    (is (number? (:injury-risk p)) "the Risk column, for a player with a history")
+    (is (seq (:injury/reason p)) "and the text that is the whole of that cell")
+    (is (not-any? #(contains? % :injury-risk) (rest (:players b)))
+        "still nothing invented for the players it has no evidence about")))
+
+(deftest waivers-endpoint-does-not-ship-the-projections-working-state
+  ;; Same argument as `without-history`, on the same re-POSTed-every-refresh
+  ;; path: `:ros/stats` is a whole stat map per player and no client reads it.
+  (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))]
+    (is (every? #(number? (:ros-points %)) (:players b)) "the score survives")
+    (is (not-any? #(contains? % :ros/stats) (:players b)))
+    (is (not-any? #(contains? % :ros/games-remaining) (:players b)))
+    (is (not-any? #(contains? % :ros/games-played) (:players b)))))
 
 (deftest waivers-endpoint-prices-in-rest-of-season-points-not-auction-dollars
   ;; The draft board's money prices a whole roster out of a bankroll on draft

@@ -14,6 +14,9 @@
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-sync.sleeper]
             [draft-day.rankings.engine :as engine]
+            [draft-day.rankings.model :as model]
+            [draft-day.rankings.injury :as injury]
+            [draft-day.rankings.pos-rank :as pos-rank]
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]
@@ -169,6 +172,39 @@
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
+(defn waiver-board-inputs
+  "The three static columns the waiver board renders but does not derive.
+
+  `:points` (the preseason projection the Pre column shows and the rest-of-season
+  line is correcting), `:injury-risk` (the Risk column), and `:pos-rank` (the
+  ordinal in `util/pos-label`, and the ordering behind `db/pos-sort-key`). All
+  three are produced inside `engine/static-rankings` and none of them by
+  `rankings.ros`, so a board assembled without them renders a dash in Risk for
+  every row, a blank Pre, and \"RB\" where the tooltip promises \"RB7\" — three
+  shipped columns permanently dead, with nothing failing to say so.
+
+  Only these three, rather than `static-rankings` whole: the waiver board
+  computes its own replacement and VORP on `:ros-points` (see
+  `waiver/with-ros-vorp`), so the preseason tiers, floor and ceiling that come
+  with it would be payload nobody reads. Order matters — `pos-rank` ranks on
+  `:points`, so it has to follow the scoring."
+  [board scoring]
+  (-> (model/score-board :points {:scoring scoring} board)
+      injury/with-injury-risk
+      pos-rank/with-pos-rank))
+
+(defn without-ros-internals
+  "Drop the working state `rankings.ros` leaves behind, keeping `:ros-points`.
+
+  Same argument as `without-history`, on the same hot path: `:ros/stats` is a
+  full stat map per player, on a response re-POSTed on every refresh, and no
+  client reads it — the board renders `:ros-points`, and the GP column reads
+  `:nflverse/season-to-date`. The two game counts go with it rather than being
+  kept for a column that might want them one day; that is the reasoning the
+  removed PDM is the cautionary tale for."
+  [players]
+  (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played) players))
+
 (defn waivers-handler
   "The in-season board: rest-of-season value over the free agents a synced
   league actually leaves available, and what to bid for them.
@@ -206,8 +242,11 @@
               board    (-> players
                            (vendor/for-scoring scoring*)
                            without-history
-                           (ros/with-ros scoring* ctx))]
-          (json-response 200 (assoc (waiver/waiver-board board ctx)
+                           (waiver-board-inputs scoring*)
+                           (ros/with-ros scoring* ctx))
+              out      (waiver/waiver-board board ctx)]
+          (json-response 200 (assoc out
+                                    :players      (without-ros-internals (:players out))
                                     :through-week (or through-week 0)
                                     :season-games season-games)))))
     (catch Exception e

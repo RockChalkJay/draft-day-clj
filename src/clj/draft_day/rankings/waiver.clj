@@ -48,18 +48,34 @@
 
 ;; ---- who is available ----
 
-(defn rostered-index
-  "`{canonical-player-id team-name}` over every team in the synced league.
+(defn held-ids
+  "One team's roster ids in the *board's* id space.
 
-  Roster ids arrive as Sleeper's (see `league-sync.sleeper`); the board is keyed
-  by GSIS wherever one resolved. `xwalk` is `db/sleeper->player-id`, and an id it
-  has no entry for maps to itself — team defenses carry their abbreviation in
-  both id spaces, and an unmapped id is not evidence that it is wrong, exactly as
-  `db/remap-draft-ids` argues."
+  Roster ids arrive as the provider's (see `league-sync.sleeper`); the board is
+  keyed by GSIS wherever one resolved. `xwalk` is `db/sleeper->player-id`, and an
+  id it has no entry for maps to itself — team defenses carry their abbreviation
+  in both id spaces, and an unmapped id is not evidence that it is wrong, exactly
+  as `db/remap-draft-ids` argues.
+
+  Every reader of a roster goes through this. It exists as a named function
+  rather than inline in `rostered-index` because the *second* reader is what
+  went wrong: the availability filter translated its ids and the drop candidate
+  did not, so `by-id` resolved almost nothing, every roster looked empty of
+  droppable players, and every upgrade on the board was measured against a floor
+  of zero. The tests missed it because a fixture where player-id equals the
+  Sleeper id makes the crosswalk a no-op — which no real league is.
+
+  `k` selects which of the team's id lists to read: `:player-ids` for who is
+  unavailable, `:active-ids` for who occupies a seat a claim would need."
+  ([team xwalk] (held-ids team xwalk :player-ids))
+  ([team xwalk k] (mapv (fn [id] (get xwalk id id)) (get team k))))
+
+(defn rostered-index
+  "`{canonical-player-id team-name}` over every team in the synced league."
   [teams xwalk]
   (into {}
-        (mapcat (fn [{:keys [name player-ids]}]
-                  (map (fn [id] [(get xwalk id id) name]) player-ids)))
+        (mapcat (fn [{:keys [name] :as team}]
+                  (map (fn [id] [id name]) (held-ids team xwalk))))
         teams))
 
 (defn free-agents
@@ -70,8 +86,14 @@
 ;; ---- what a claim actually costs ----
 
 (defn drop-candidate
-  "The player a claim would cost me: the lowest `:ros-points` player on my
-  roster, or nil when a spot is already open.
+  "The player a claim would cost me: the lowest `:ros-points` player holding one
+  of my active seats, or nil when a seat is already open.
+
+  `held` is already in the board's id space and already excludes IR and taxi —
+  see `held-ids` and `league-sync.sleeper/normalize-roster`. Both exclusions
+  matter and in opposite directions: a player parked on IR occupies no active
+  seat, so counting him fills a roster that is not full, while dropping him
+  frees no seat for the claim being priced.
 
   Rostered ids the board cannot value are skipped rather than treated as
   worthless. A missing row usually *does* mean a player who has fallen off the
@@ -83,13 +105,12 @@
   is treated as full: naming a drop that was not needed costs a suggestion,
   while missing one that was needed costs a roster spot the manager did not
   know he was spending."
-  [my-team by-id roster-size]
-  (let [held (:player-ids my-team)]
-    (when-not (and roster-size (< (count held) roster-size))
-      (->> held
-           (keep #(get by-id %))
-           (sort-by #(double (or (:ros-points %) 0.0)))
-           first))))
+  [held by-id roster-size]
+  (when-not (and roster-size (< (count held) roster-size))
+    (->> held
+         (keep #(get by-id %))
+         (sort-by #(double (or (:ros-points %) 0.0)))
+         first)))
 
 (defn with-upgrade
   "Assoc `:upgrade` — rest-of-season points gained by making the claim — on every
@@ -248,7 +269,13 @@
         {:keys [levels players]} (with-ros-vorp board num-teams replacement-config)
         by-id    (db/index-by-id players)
         my-team  (first (filter #(= (:roster-id %) my-roster-id) teams))
-        drop     (when my-team (drop-candidate my-team by-id roster-size))
+        ;; The synced league's own seat count wins over the request's. The
+        ;; browser derives its fallback from the *draft* config, which a manager
+        ;; who synced without importing has never set to match this league — and
+        ;; a wrong seat count decides the one question `drop-candidate` asks.
+        seats    (or (:roster-size league) roster-size)
+        drop     (when my-team
+                   (drop-candidate (held-ids my-team xwalk :active-ids) by-id seats))
         n        (claims-left ctx)]
     {:players            (-> (free-agents players rostered)
                              (with-upgrade drop)

@@ -539,7 +539,9 @@ to a November league priced on an August projection.
 
 **`:upgrade`** is the real question. A claim costs a *roster spot*, not a
 positional slot, so the comparison is against your worst player — not your worst
-player at his position. With a spot already open you give up nothing and the
+player at his position. Players parked on IR or taxi are excluded from that
+count in both directions: they fill no active seat, so they must not make a
+roster look full, and dropping one frees no seat for the claim being priced. With a spot already open you give up nothing and the
 upgrade is his whole rest-of-season line. It stays signed: most of a free-agent
 pool is worse than the man you would drop, and flattening that to zero would
 make the entire tail look equally plausible.
@@ -799,6 +801,10 @@ the browser so that a provider needing server-side auth is a drop-in.
  :rostered {"00-0038563" "Kansas Screamers" …}   ; who has him
  :players  [ … ]}      ; free agents only, with :ros-points :upgrade :bid :trend
 ```
+
+The request's `:roster-size` is a fallback; the synced league's own seat count
+wins where it has one, since the browser derives its copy from the *draft*
+config and a manager can sync a league he never imported.
 
 Stateless on the same terms as `/api/rankings`: the browser owns the synced
 league and re-POSTs it. `:through-week` comes from the universe rather than

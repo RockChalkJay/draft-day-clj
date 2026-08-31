@@ -55,9 +55,10 @@
 (defn- sub [q] (binding [reagent.ratom/*ratom-context* #js {}] @(rf/subscribe q)))
 
 (def ^:private synced
-  {:teams [{:roster-id 1 :name "Mine" :player-ids ["a"] :faab-left 60}
-           {:roster-id 2 :name "Them" :player-ids ["b"] :faab-left 95}]
-   :waiver {:type "faab" :budget 100}})
+  {:teams [{:roster-id 1 :name "Mine" :player-ids ["a"] :active-ids ["a"] :faab-left 60}
+           {:roster-id 2 :name "Them" :player-ids ["b"] :active-ids ["b"] :faab-left 95}]
+   :waiver {:type "faab" :budget 100}
+   :roster-size 15 :league-id "987654"})
 
 ;; ---- the stale-reply guard ----
 
@@ -94,6 +95,9 @@
     (is (= "/api/waivers" (:url (last-http))))
     (is (= synced (:league b)))
     (is (= 1 (:my-roster-id b)))
+    ;; A *fallback* only: the server prefers the synced league's own seat count,
+    ;; because this one is derived from the draft config, which a manager who
+    ;; synced without importing has never set to match his real league.
     (is (pos? (:roster-size b)) "so the board knows whether a claim costs a drop")
     (is (= (count (db/roster-template (get-in @rdb/app-db [:config :roster])))
            (:roster-size b)))))
@@ -113,6 +117,25 @@
     (rf/dispatch-sync [:league-synced {:not "a league"}])
     (is (nil? (:league-sync @rdb/app-db)))
     (is (re-find #"nothing usable" (:waiver-status @rdb/app-db)))))
+
+(deftest picking-my-team-re-prices-the-board
+  ;; Almost everything on the board is measured *from* this: the sync fires
+  ;; :fetch-waivers while it is still nil, so the first board comes back with no
+  ;; drop, no budget and every bid blank. Without a refetch, picking your team
+  ;; changed a dropdown and nothing else until you happened to press Refresh.
+  (rf/dispatch-sync [:set-my-roster-id 1])
+  (is (= 1 (:my-roster-id @rdb/app-db)))
+  (is (some #{:fetch-waivers} (dispatched))))
+
+(deftest the-league-id-comes-back-with-the-rosters
+  ;; So a re-sync is one click. The input lives in a component-local atom that
+  ;; empties on reload; without this the manager returns to persisted, month-old
+  ;; rosters with no record of which league they came from.
+  (rf/dispatch-sync [:league-synced synced])
+  (rf/clear-subscription-cache!)
+  (is (= "987654" (sub [:synced-league-id])))
+  (is (contains? (last (:persist @captured)) :league-sync)
+      "and it is persisted along with them"))
 
 (deftest a-sync-survives-a-reload
   (rf/dispatch-sync [:league-synced synced])
@@ -166,13 +189,41 @@
             {:player-id "b" :player-name "B" :position "RB" :upgrade 50.0}]]
     (is (= ["b"] (mapv :player-id (board-of ps {:pos-filter "RB"}))))))
 
-(deftest week-zero-is-reported-as-preseason-rather-than-as-a-board
+(deftest the-season-phase-has-three-answers-not-two
+  ;; A boolean reported *preseason* whenever the board had simply not loaded —
+  ;; so in week 10 an accented banner reading "no games played yet" sat over a
+  ;; loading screen, and stayed there permanently if the request failed. That is
+  ;; the exact misreading the banner exists to prevent.
+  (swap! rdb/app-db assoc :waivers nil)
+  (rf/clear-subscription-cache!)
+  (is (= :unknown (sub [:season-phase])) "no board yet is not a claim about August")
   (swap! rdb/app-db assoc :waivers {:players [] :through-week 0})
   (rf/clear-subscription-cache!)
-  (is (false? (sub [:in-season?])))
+  (is (= :preseason (sub [:season-phase])))
   (swap! rdb/app-db assoc :waivers {:players [] :through-week 6})
   (rf/clear-subscription-cache!)
-  (is (true? (sub [:in-season?]))))
+  (is (= :in-season (sub [:season-phase])))
+  (testing "a failed refresh leaves it unknown rather than asserting preseason"
+    (swap! rdb/app-db assoc :waivers nil)
+    (rf/dispatch-sync [:waivers-failed "boom"])
+    (rf/clear-subscription-cache!)
+    (is (= :unknown (sub [:season-phase])))))
+
+(deftest a-rostered-player-matching-the-search-says-who-has-him
+  ;; Search for a rostered player and the free-agent table is simply empty,
+  ;; which teaches the manager nothing. Names come from the universe the browser
+  ;; already has, so answering costs no payload.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "a" :player-name "Ja'Marr Chase" :position "WR"}]
+         :search "chase"
+         :waivers {:players [] :rostered {"a" "Mine"}})
+  (rf/clear-subscription-cache!)
+  (is (= [{:player-name "Ja'Marr Chase" :position "WR" :team "Mine"}]
+         (sub [:rostered-matches])))
+  (testing "and says nothing at all with no search"
+    (swap! rdb/app-db assoc :search "")
+    (rf/clear-subscription-cache!)
+    (is (nil? (sub [:rostered-matches])))))
 
 ;; ---- cells ----
 
@@ -184,6 +235,21 @@
   (is (= "trend-up" (waivers/trend-class 1.6)))
   (is (= "trend-down" (waivers/trend-class 0.4)))
   (is (nil? (waivers/trend-class nil))))
+
+(deftest the-upgrade-cell-colours-and-prints-the-same-number
+  ;; Colouring the raw value and printing the rounded one put a green dash on
+  ;; the board for an upgrade of 0.4: `sign-class` saw a positive number while
+  ;; `signed` dashed out the zero.
+  (let [cell (fn [up] (waivers/cell :upgrade {:upgrade up}))
+        cls  (fn [up] (:class (second (cell up))))
+        txt  (fn [up] (last (cell up)))]
+    (is (= "good" (cls 12.0)))
+    (is (= "+12" (txt 12.0)))
+    (is (= "warn" (cls -12.0)))
+    (is (nil? (cls 0.4)) "rounds to zero, so it is not coloured either")
+    (is (= "–" (txt 0.4)))
+    (is (nil? (cls -0.4)))
+    (is (= "–" (txt -0.4)))))
 
 (deftest sorting-puts-players-with-nothing-to-say-last-in-both-directions
   ;; Same rule `sort-players` keeps: a nil is not a low value, it is an absent

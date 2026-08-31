@@ -447,3 +447,8 @@ tr.upgrade .p-name { font-weight: 600; }
 .inj-flag { color: var(--warn); cursor: help; }
 
 .drop-note { font-size: 12px; color: var(--muted); padding: 4px 2px; }
+
+/* Search found him, but he is not on the wire. Without this the free-agent
+   table just comes back empty and the manager learns nothing. */
+.rostered-note { font-size: 12px; color: var(--muted); padding: 4px 2px; }
+.rostered-note span { color: var(--text); }

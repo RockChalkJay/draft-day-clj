@@ -1,12 +1,14 @@
 (ns draft-day.ingestion.league-sync-test
   (:require [clojure.test :refer [deftest is testing]]
+            [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-sync.sleeper :as sync-sleeper]
             [draft-day.ingestion.league-import.sleeper :as import-sleeper]))
 
 (def ^:private raw
   {:rosters [{:roster_id 1 :owner_id "u1"
-              :players ["4034" "6794" "SF"] :starters ["4034" "6794"]
+              :players ["4034" "6794" "SF" "9001" "9002"] :starters ["4034" "6794"]
+              :reserve ["9001"] :taxi ["9002"]
               :settings {:waiver_budget_used 30 :waiver_position 4 :wins 5 :losses 3}}
              {:roster_id 2 :owner_id "u2"
               :players ["1234"] :starters nil
@@ -16,8 +18,10 @@
               :settings {:waiver_budget_used 12}}]
    :users   [{:user_id "u1" :display_name "jay" :metadata {:team_name "Kansas Screamers"}}
              {:user_id "u2" :display_name "dana" :metadata {}}]
-   :league  {:name "The League" :season "2026"
-             :settings {:waiver_type 2 :waiver_budget 100}}})
+   :league  {:name "The League" :season "2026" :league_id 987654
+             :roster_positions ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "K" "DEF"
+                                "BN" "BN" "BN" "BN" "BN" "BN"]
+             :settings {:waiver_type 2 :waiver_budget 100 :playoff_week_start 15}}})
 
 (defn- sync-of [r] (league-sync/normalize-rosters :sleeper r))
 
@@ -40,9 +44,15 @@
   (testing "an absent budget is 0, not nil — no share rule divides by nobody's number"
     (is (= 0 (:budget (import-sleeper/waiver-settings {:settings {:waiver_type 0}}))))))
 
-(deftest the-import-carries-the-in-season-rules-too
-  (let [cfg (import-sleeper/waiver-settings (:league raw))]
-    (is (= {:type :faab :budget 100} cfg))))
+(deftest the-waiver-rules-are-read-by-the-sync-not-returned-by-the-import
+  ;; They were on `normalize-league` too, which only looked tidy: the client
+  ;; select-keys them away on arrival and `reconcile-config` would strip them
+  ;; regardless, so it was two keys nobody read and a second place to drift.
+  (is (= {:type :faab :budget 100} (import-sleeper/waiver-settings (:league raw))))
+  (is (= 15 (import-sleeper/playoff-week-start (:league raw))))
+  (let [cfg (league-import/normalize-league :sleeper (:league raw))]
+    (is (not (contains? cfg :waiver)))
+    (is (not (contains? cfg :playoff-week-start)))))
 
 ;; ---- roster normalization ----
 
@@ -51,7 +61,8 @@
         [t1 t2 t3] teams]
     (is (= {:type :faab :budget 100} waiver))
     (is (= 3 (count teams)))
-    (is (= ["4034" "6794" "SF"] (:player-ids t1)))
+    (is (= ["4034" "6794" "SF" "9001" "9002"] (:player-ids t1))
+        "everyone rostered, IR and taxi included — none of them is a free agent")
     (is (= ["4034" "6794"] (:starter-ids t1)))
     (is (= 30 (:faab-used t1)))
     (is (= 70 (:faab-left t1)) "budget minus spend, derived once")
@@ -86,10 +97,33 @@
   (let [over (assoc-in raw [:rosters 0 :settings :waiver_budget_used] 140)]
     (is (= 0 (:faab-left (first (:teams (sync-of over))))))))
 
+(deftest ir-and-taxi-hold-no-active-seat
+  ;; They matter in opposite directions, which is why they are split out rather
+  ;; than filtered at the point of use: counted toward the roster they fill a
+  ;; team that is not actually full, and offered as a drop they free no seat for
+  ;; the claim being priced.
+  (let [[t1 t2] (:teams (sync-of raw))]
+    (is (= ["4034" "6794" "SF"] (:active-ids t1)))
+    (is (= 5 (count (:player-ids t1))) "still rostered, still unavailable")
+    (is (= ["1234"] (:active-ids t2)) "a roster with neither list is all active")))
+
+(deftest the-leagues-own-seat-count-comes-back-with-it
+  ;; Whether a claim costs a drop turns on this number, and the browser's
+  ;; fallback is the draft config — which a manager who synced without importing
+  ;; has never set to match this league.
+  (is (= 15 (:roster-size (sync-of raw)))))
+
+(deftest the-league-id-rides-back-so-a-re-sync-is-one-click
+  ;; Without it the id lives only in a component-local atom that empties on
+  ;; reload, and a manager returns to persisted, month-old rosters with the
+  ;; re-sync button greyed out.
+  (is (= "987654" (:league-id (sync-of raw)))))
+
 (deftest the-league-name-and-season-ride-along
   (let [s (sync-of raw)]
     (is (= "The League" (:name s)))
-    (is (= "2026" (:season s)))))
+    (is (= "2026" (:season s)))
+    (is (= 15 (:playoff-week-start s)) "what bounds how many waiver runs are left")))
 
 ;; ---- the envelope and its failure paths ----
 

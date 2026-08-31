@@ -322,8 +322,15 @@
 ;; The same statelessness the draft board runs on: the browser owns the synced
 ;; league and re-POSTs it, and the server holds nothing between requests.
 
-(rf/reg-event-db :set-my-roster-id [persist]
-  (fn [db [_ id]] (assoc db :my-roster-id id)))
+(rf/reg-event-fx :set-my-roster-id [persist]
+  (fn [{:keys [db]} [_ id]]
+    ;; Re-fetches, because almost everything on the board is measured *from*
+    ;; this. The sync fires :fetch-waivers while it is still nil, so the first
+    ;; board comes back with no drop, no budget and every bid blank; without a
+    ;; refetch here, picking your team changed a dropdown and nothing else until
+    ;; you happened to press Refresh.
+    {:db  (assoc db :my-roster-id id)
+     :fx  [[:dispatch [:fetch-waivers]]]}))
 
 (rf/reg-event-fx :sync-league
   (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
