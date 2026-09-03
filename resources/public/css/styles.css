@@ -417,6 +417,34 @@ button.undo:hover { color: var(--warn); }
 
 .waiver-panels { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
 
+/* Board left, my roster right. The claim and what it would cost are one
+   decision, so they belong on one screen — wrapping below the board on a narrow
+   viewport rather than squeezing the table. */
+.waiver-body { display: flex; gap: 12px; align-items: flex-start; }
+.waiver-body .table-scroll { flex: 1 1 auto; min-width: 0; }
+.waiver-roster-col { flex: 0 0 280px; }
+@media (max-width: 1100px) {
+  .waiver-body { flex-wrap: wrap; }
+  .waiver-roster-col { flex: 1 1 100%; }
+}
+
+/* Reuses .roster-panel / table.roster wholesale — the draft board's My Roster
+   box is the same object answering the same question, and a second roster style
+   would only drift from it. */
+.waiver-roster .roster-head h3 { margin: 0 0 8px; }
+.waiver-roster td.slot-player { font-size: 12px; }
+.waiver-roster tr.roster-group td { color: var(--muted); font-size: 10px;
+  text-transform: uppercase; letter-spacing: .04em; padding-top: 8px;
+  border-bottom: 1px solid var(--border); }
+/* The seat a claim would take. Marked, not hidden — it is the same player the
+   drop note below the board names, and seeing them agree is the point. */
+.waiver-roster tr.drop-seat td { background: color-mix(in oklab, var(--warn) 12%, transparent); }
+.waiver-roster .drop-tag { color: var(--warn); font-weight: 600; }
+/* IR and taxi hold no seat a claim could take, so they read as present but
+   inactive rather than as roster depth. */
+.waiver-roster tr.parked td.slot-player { color: var(--muted); }
+.waiver-roster .parked-tag { color: var(--muted); font-size: 10px; }
+
 .sync-panel { flex: 1 1 380px; background: var(--panel); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .sync-row { display: flex; gap: 8px; align-items: center; }

@@ -250,13 +250,53 @@
      :players (mapv (fn [p] (-> p (assoc :ros-vorp (:vorp p)) (dissoc :vorp)))
                     (replacement/with-vorp board levels :ros-points))}))
 
-(defn waiver-board
-  "The whole answer: `{:players :rostered :faab :claims-left :replacement-levels}`.
+(defn my-roster
+  "The manager's own roster, for the panel beside the board — or nil.
 
-  `:players` is the free agents only. Shipping the rostered ones too would be
+  `:players` is free agents only and `:rostered` carries names, not numbers, so
+  without this nothing in the reply can answer 'what do I already have'. The
+  browser cannot work it out either: it holds the universe, but `:ros-points` is
+  computed here.
+
+  Rows the board cannot value are kept as **placeholders**, not dropped.
+  `drop-candidate` skips them deliberately — 'we have no projection for him' and
+  'he is projected to score nothing' are different claims, and only one is
+  evidence for naming a drop — but a *roster* that quietly omits them shows 13 of
+  15 seats with nothing saying why, which is how a missing crosswalk hides.
+
+  nil rather than `[]` when no team is picked, because the panel says something
+  different for 'pick your team' than for 'this roster is empty'.
+
+  Ids go through `held-ids` like every other roster reader; see its docstring for
+  what happened the one time they did not."
+  [my-team xwalk by-id drop]
+  (when my-team
+    (let [starters (set (held-ids my-team xwalk :starter-ids))
+          active   (set (held-ids my-team xwalk :active-ids))
+          drop-id  (:player-id drop)]
+      (mapv (fn [id]
+              (let [flags {:starter? (contains? starters id)
+                           ;; IR and taxi: rostered, but holding no seat a claim
+                           ;; could take. Same distinction `held-ids` draws.
+                           :parked?  (not (contains? active id))
+                           :drop?    (= id drop-id)}]
+                (if-let [p (get by-id id)]
+                  ;; Exactly what the panel draws. A key nobody reads is a claim
+                  ;; that something uses it — the PDM is the standing example.
+                  (merge (select-keys p [:player-id :player-name :position :ros-points])
+                         flags)
+                  (merge {:player-id id :unvalued? true} flags))))
+            (held-ids my-team xwalk :player-ids)))))
+
+(defn waiver-board
+  "The whole answer:
+  `{:players :my-roster :rostered :faab :claims-left :replacement-levels}`.
+
+  `:players` is the free agents only. Shipping every rostered player too would be
   most of the universe re-sent on every refresh for rows the board does not
   render; `:rostered` is the compact `{player-id team-name}` index that answers
-  'who has him' instead.
+  'who has him' instead. `:my-roster` is the bounded exception — one team's
+  seats, trimmed to what the panel draws.
 
   A league with no synced rosters is not an error — it is a manager who has not
   connected one yet. Everyone is free, there is nothing to drop and no budget to
@@ -281,6 +321,7 @@
                              (with-upgrade drop)
                              (with-bids waiver (:faab-left my-team) n)
                              with-trend)
+     :my-roster          (my-roster my-team xwalk by-id drop)
      :rostered           rostered
      :replacement-levels levels
      :claims-left        n
