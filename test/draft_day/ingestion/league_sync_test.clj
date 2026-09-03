@@ -148,16 +148,31 @@
     (is (= 502 (:status (league-sync/sync-league {:provider :sleeper :league-id "1"}))))))
 
 (deftest a-concurrent-fetch-does-not-cost-an-error-its-status
-  ;; The three documents are fetched together, and a future's deref wraps
-  ;; whatever the thunk threw in an ExecutionException — so without unwrapping,
-  ;; every unknown league id reports as a 502 upstream failure instead of a 404.
-  (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo #"not found"
-       (sync-sleeper/unwrapped
-        #(throw (java.util.concurrent.ExecutionException.
-                 (ex-info "not found" {:status 404}))))))
-  (is (= 404 (-> (try (sync-sleeper/unwrapped
-                       #(throw (java.util.concurrent.ExecutionException.
-                                (ex-info "not found" {:status 404}))))
-                      (catch clojure.lang.ExceptionInfo e e))
-                 ex-data :status))))
+  ;; A provider fetches its documents together, and a future's deref wraps
+  ;; whatever the thunk threw in an ExecutionException carrying no ex-data of
+  ;; its own — so without unwrapping, every unknown league id reports as a 502
+  ;; upstream failure instead of a 404.
+  ;;
+  ;; Exercised through `sync-league` rather than against the helper directly,
+  ;; because the contract at stake is the envelope's status: a provider that
+  ;; fetches concurrently must not have to remember to rescue its own 404.
+  (with-redefs [league-sync/fetch-raw-rosters
+                (fn [_ _] (throw (java.util.concurrent.ExecutionException.
+                                  (ex-info "not found" {:status 404}))))]
+    (let [{:keys [ok status error]} (league-sync/sync-league {:provider :sleeper :league-id "9"})]
+      (is (not ok))
+      (is (= 404 status))
+      (is (= "not found" error) "the cause's message, not the wrapper's")))
+  ;; A wrapper with no cause has nothing to peel, and must degrade to a 502
+  ;; rather than dereferencing nil.
+  (with-redefs [league-sync/fetch-raw-rosters
+                (fn [_ _] (throw (java.util.concurrent.ExecutionException. "boom" nil)))]
+    (is (= 502 (:status (league-sync/sync-league {:provider :sleeper :league-id "1"}))))))
+
+(deftest unwrap-execution-peels-only-the-wrapper
+  (let [inner (ex-info "not found" {:status 404})]
+    (is (identical? inner (league-sync/unwrap-execution
+                           (java.util.concurrent.ExecutionException. inner)))
+        "an ExecutionException gives up its cause")
+    (is (identical? inner (league-sync/unwrap-execution inner))
+        "anything else passes through untouched")))

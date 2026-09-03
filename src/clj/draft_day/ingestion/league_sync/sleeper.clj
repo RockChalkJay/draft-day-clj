@@ -50,33 +50,16 @@
           (throw (ex-info "Sleeper league not found" {:status 404}))
           parsed)))))
 
-(defn unwrapped
-  "Run `f`, re-throwing an `ExecutionException`'s cause in its place.
-
-  `parallel/all` derefs futures, and a future's deref wraps whatever the thunk
-  threw in a `java.util.concurrent.ExecutionException` — so an `ex-info` carrying
-  `{:status 404}` arrives as a plain Exception with no ex-data at all, and
-  `league-sync/sync-league` reports every unknown league id as a 502 upstream
-  failure. Nothing in `pipeline` ever hit this because every task there is
-  wrapped in `best-effort`, which catches *inside* the thunk; this is the first
-  caller that wants the exception back.
-
-  Unwrapped here rather than in `parallel/all` because that function is on the
-  cold-load path where the escape behaviour is deliberately blunt, and because
-  the contract this restores is `fetch-raw-rosters`': it promises an ex-info
-  with a :status, and it should keep that promise itself."
-  [f]
-  (try (f)
-       (catch java.util.concurrent.ExecutionException e
-         (throw (or (.getCause e) e)))))
-
+;; The thunks here throw rather than being best-effort — a 404 from Sleeper is
+;; the answer, not a missing column — so the ex-info comes back out of
+;; `parallel/all` wrapped in an ExecutionException. `league-sync/unwrap-execution`
+;; peels it where the status is read, so no provider has to remember to.
 (defmethod league-sync/fetch-raw-rosters :sleeper
   [_ league-id]
-  (unwrapped
-   #(parallel/all
-     {:rosters (fn [] (fetch-json league-id "rosters"))
-      :users   (fn [] (fetch-json league-id "users"))
-      :league  (fn [] (league-import/fetch-raw-league :sleeper league-id))})))
+  (parallel/all
+   {:rosters (fn [] (fetch-json league-id "rosters"))
+    :users   (fn [] (fetch-json league-id "users"))
+    :league  (fn [] (league-import/fetch-raw-league :sleeper league-id))}))
 
 (defn team-names
   "Pure: raw users -> `{user-id display-name}`.

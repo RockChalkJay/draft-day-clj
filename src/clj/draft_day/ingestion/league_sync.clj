@@ -31,6 +31,29 @@
      :waiver {:type :faab|:rolling|:reverse-standings :budget n}}"
   (fn [provider _raw] provider))
 
+(defn unwrap-execution
+  "An `ExecutionException`'s cause in its place; anything else unchanged.
+
+  A provider is free to fetch its documents concurrently, and a future's deref
+  wraps whatever the thunk threw in a `java.util.concurrent.ExecutionException`,
+  which carries no ex-data of its own. So an `ex-info` saying `{:status 404}`
+  arrives looking like a generic failure, and an unknown league id reports as a
+  502 upstream error.
+
+  It lives here rather than in a provider because the contract it protects is
+  `fetch-raw-rosters`' — the multimethod's, shared by every provider — and
+  because `sync-league` is what reads the status back out. A provider that
+  fetches concurrently should not have to know its own 404 needs rescuing; the
+  first one that forgets would regress this silently.
+
+  Not in `parallel/all` either: that namespace declares its thunks best-effort,
+  so a throwing thunk is already outside its contract, and every other caller
+  wraps in `pipeline/best-effort` and never throws at all."
+  [e]
+  (if (instance? java.util.concurrent.ExecutionException e)
+    (or (.getCause e) e)
+    e))
+
 (defn sync-league
   "{:provider :league-id} -> {:ok true :league {...}} or {:ok false :status :error}.
 
@@ -41,7 +64,11 @@
     (try
       (let [raw (fetch-raw-rosters provider league-id)]
         {:ok true :league (normalize-rosters provider raw)})
-      (catch clojure.lang.ExceptionInfo e
-        {:ok false :status (or (:status (ex-data e)) 502) :error (ex-message e)})
+      ;; One catch rather than two: the unwrap has to happen before the status is
+      ;; read, and `ex-data` is nil for anything that is not an ex-info, so the
+      ;; 502 default already covers what the second clause used to.
       (catch Exception e
-        {:ok false :status 502 :error (ex-message e)}))))
+        (let [cause (unwrap-execution e)]
+          {:ok false
+           :status (or (:status (ex-data cause)) 502)
+           :error  (ex-message cause)})))))

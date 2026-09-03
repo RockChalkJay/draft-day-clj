@@ -68,3 +68,38 @@ between a league's real rules and what the board can score.
   displaying the un-banded product, which is the exact defect the comment above
   it says was fixed. `subs.cljs:66` also selects a key that never arrives. One
   line to fix: add `:market-multiplier` to the `select-keys` vector.
+
+- **Audit error handling across the application.** The app runs three error
+  protocols at once and converts between them ad hoc:
+
+  - **throw `ex-info` with `:status`** — `league-sync.sleeper/fetch-json`,
+    `league-import/fetch-raw-league`, `fetch-raw-rosters`
+  - **result maps** `{:ok true …}` / `{:ok false :status :error}` —
+    `import-league`, `sync-league`, which exist to convert from the first
+  - **nil on failure** — `pipeline/best-effort` (logs, returns nil),
+    `espn/http-get-string` (nil on any non-200)
+
+  `league-sync/unwrap-execution` is what made this visible. It is not fixing a
+  bug so much as undoing damage the design does to itself: the status travels in
+  the *exception* channel, a future's deref wraps the throw and destroys the
+  ex-data, so a function has to exist to put it back. Carried as a value,
+  `{:ok false :status 404}` would cross a future boundary untouched and there
+  would be nothing to unwrap. The audit should decide where the throw→value
+  boundary belongs and make it consistent rather than adding another adapter.
+
+  Specific things already spotted:
+
+  - `league-import-handler` has no outer `try/catch`, so a malformed JSON body
+    500s where `rankings-handler` would have answered cleanly. The two should
+    agree.
+  - `espn/http-get-string` returns nil on any non-200, producing exactly the
+    silently empty column CLAUDE.md names as the worst ingestion failure — the
+    same shape as the FantasyPros 429 it warns about.
+  - `parallel/all`'s docstring notes `best-effort` does not catch `Error`, so
+    the escape path and the swallow path disagree about what a failure is.
+  - The frontend `:http` effect routes every non-2xx to `on-failure` with
+    `(:error body)`, which assumes every handler returns `{:error msg}`. Worth
+    confirming that holds everywhere.
+  - `:waivers-failed` and `:recompute-failed` deliberately keep stale data
+    readable rather than blanking it. That is the good pattern; it should be
+    stated as the convention rather than left as two coincidences.
