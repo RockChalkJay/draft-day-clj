@@ -393,3 +393,13 @@
     (is (contains? slice :sleeper-user-id))
     (is (not (contains? slice :league-choices))
         "a listing of somebody else's state, refetched in one call")))
+
+(deftest a-persisted-username-is-guarded-before-a-view-binds-it
+  ;; It comes back from localStorage and `sync-panel` binds it as an input's
+  ;; `:value`, so a non-string is a render error rather than a bad value.
+  (swap! rdb/app-db assoc :sleeper-username "jay")
+  (rf/clear-subscription-cache!)
+  (is (= "jay" (sub [:sleeper-username])))
+  (swap! rdb/app-db assoc :sleeper-username {:not "a name"})
+  (rf/clear-subscription-cache!)
+  (is (nil? (sub [:sleeper-username])) "a shape that is not a name reads as none"))

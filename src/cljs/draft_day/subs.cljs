@@ -259,8 +259,16 @@
 (rf/reg-sub :synced-league-id :<- [:league-sync]
   (fn [ls _] (:league-id ls)))
 
-(rf/reg-sub :sleeper-username (fn [db _] (:sleeper-username db)))
-(rf/reg-sub :sleeper-user-id (fn [db _] (:sleeper-user-id db)))
+;; Guarded because it is persisted and `sync-panel` binds it straight into an
+;; input's `:value`, where a non-string is a render error rather than a bad
+;; value. Every other persisted key with a shape gets a `db/reconcile-*` at
+;; boot; these two are scalars, and one line here is cheaper than a repair
+;; function that #42 would delete along with the rest of that approach.
+;;
+;; No `:sleeper-user-id` sub: its only reader is `:league-synced`, which takes it
+;; off the map directly because it is an event handler, not a view.
+(rf/reg-sub :sleeper-username
+  (fn [db _] (let [n (:sleeper-username db)] (when (string? n) n))))
 
 ;; nil means "never looked up"; [] means "looked up, plays in none this season".
 ;; The panel says different things for the two, so this does not normalize them.
