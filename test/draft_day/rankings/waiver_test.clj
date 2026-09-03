@@ -147,6 +147,68 @@
     (is (= "meh" (get-in good [:drop-candidate :player-id]))
         "the drop stays a player the manager can check")))
 
+;; ---- my own roster ----
+
+(deftest my-roster-is-my-own-seats-valued
+  ;; `:players` is free agents only and `:rostered` carries names, not numbers,
+  ;; so nothing else in the reply can answer "what do I already have".
+  (let [{:keys [my-roster]} (run)]
+    (is (= ["star" "meh"] (mapv :player-id my-roster))
+        "in the board's id space, not the provider's")
+    (is (= ["Pstar" "Pmeh"] (mapv :player-name my-roster)))
+    (is (= [180.0 40.0] (mapv :ros-points my-roster))
+        "the line the browser cannot compute for itself")))
+
+(deftest my-roster-marks-starters-and-parked-players
+  (let [lg (-> league
+               (assoc-in [:teams 0 :player-ids] (held "star" "meh" "bad"))
+               (assoc-in [:teams 0 :active-ids] (held "star" "meh"))
+               (assoc-in [:teams 0 :starter-ids] (held "star")))
+        {:keys [my-roster]} (run :league lg :roster-size 3)
+        by (into {} (map (juxt :player-id identity)) my-roster)]
+    (is (:starter? (by "star")))
+    (is (not (:starter? (by "meh"))) "held, but not in the lineup")
+    (is (:parked? (by "bad")) "on IR: rostered, holding no seat a claim could take")
+    (is (not (:parked? (by "star"))))))
+
+(deftest my-roster-marks-the-seat-a-claim-would-cost
+  (let [{:keys [my-roster players]} (run)
+        dropped (first (filter :drop? my-roster))
+        good    (first (filter #(= "good" (:player-id %)) players))]
+    (is (= "meh" (:player-id dropped)))
+    (is (= (get-in good [:drop-candidate :player-id]) (:player-id dropped))
+        "the panel marks the same man the drop note names")
+    (is (= 1 (count (filter :drop? my-roster))) "exactly one seat is at stake"))
+  (let [{:keys [my-roster]} (run :roster-size 6)]
+    (is (not-any? :drop? my-roster) "with a seat open, nothing is at stake")))
+
+(deftest a-roster-player-the-board-cannot-value-still-holds-a-seat
+  ;; `drop-candidate` skips him on purpose — "no projection" is not "projected to
+  ;; score nothing". But a *roster* that skips him shows fewer seats than the
+  ;; manager has, with nothing saying why, which is how a missing crosswalk hides.
+  (let [lg (-> league
+               (assoc-in [:teams 0 :player-ids] (held "star" "meh" "ghost"))
+               (assoc-in [:teams 0 :active-ids] (held "star" "meh" "ghost")))
+        {:keys [my-roster]} (run :league lg :roster-size 3)
+        ghost (first (filter :unvalued? my-roster))]
+    (is (= 3 (count my-roster)) "every seat is accounted for")
+    (is (= (sleeper-id "ghost") (:player-id ghost))
+        "carrying the id, so the row is at least checkable")
+    (is (nil? (:ros-points ghost)) "and not faked as zero")))
+
+(deftest no-team-picked-is-not-the-same-as-an-empty-roster
+  ;; The panel says "pick your team to see your roster" for one, and draws an
+  ;; empty table for the other.
+  (is (nil? (:my-roster (run :my-roster-id nil))))
+  (is (nil? (:my-roster (waiver/waiver-board board {:league nil :num-teams 12
+                                                    :through-week 8 :season-games 17})))
+      "no league synced at all")
+  (let [lg (-> league
+               (assoc-in [:teams 0 :player-ids] [])
+               (assoc-in [:teams 0 :active-ids] []))]
+    (is (= [] (:my-roster (run :league lg)))
+        "a picked team holding nobody is empty, not absent")))
+
 (deftest upgrade-can-be-negative-and-says-so
   ;; A free agent worse than my worst player is not an add. Clamping that to
   ;; zero would make the whole tail of the board look equally plausible.

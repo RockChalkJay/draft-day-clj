@@ -272,6 +272,12 @@
 (rf/reg-sub :waiver-meta :<- [:waivers]
   (fn [w _] (select-keys w [:through-week :season-games :claims-left])))
 
+;; The manager's own seats. nil and [] mean different things here and the panel
+;; draws them differently — nil is "no team picked yet", [] is "this team holds
+;; nobody" — so this deliberately does not normalize one into the other.
+(rf/reg-sub :my-waiver-roster :<- [:waivers]
+  (fn [w _] (:my-roster w)))
+
 ;; Which week the board is showing, as one of three answers — and three, not
 ;; two, is the point. `:waivers` is nil before the first reply and stays nil
 ;; after a failed one, so a boolean `(pos? (or through-week 0))` reports

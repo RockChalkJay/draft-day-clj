@@ -170,6 +170,58 @@
          [:div.stat.muted
           "This league runs waiver priority, not FAAB — there is no bid to make."])])))
 
+(defn my-roster-panel
+  "What the manager already has, beside what he could claim.
+
+  The board is free agents only, so without this the tab never shows the roster
+  a claim is measured against — and the `My team` dropdown, whose whole job is to
+  identify that roster, appears to do nothing when it changes. Picking a team
+  moves Upgrade, Bid and the budget, but all of those are numbers elsewhere on
+  the screen; this is the part that visibly answers 'which team am I'.
+
+  Starters above bench, because the synced league knows the real lineup and the
+  draft config's slot template does not. A row the board could not value keeps
+  its seat and says so rather than vanishing — see `waiver/my-roster`."
+  []
+  (let [roster  @(rf/subscribe [:my-waiver-roster])
+        synced? @(rf/subscribe [:league-synced?])]
+    [:div.roster-panel.waiver-roster
+     [:div.roster-head [:h3 "My Roster"]]
+     (cond
+       (not synced?)
+       [:p.muted "Sync a league to see your roster."]
+
+       ;; nil, not empty: no team is picked. This is the line that was missing —
+       ;; it says what the dropdown is for.
+       (nil? roster)
+       [:p.muted "Pick your team above to see your roster and what a claim would cost."]
+
+       (empty? roster)
+       [:p.muted "This team holds nobody yet."]
+
+       :else
+       (let [row (fn [p]
+                   ^{:key (:player-id p)}
+                   [:tr {:class (str (when (:drop? p) "drop-seat ")
+                                     (when (:parked? p) "parked"))}
+                    [:td.slot (or (:position p) "–")]
+                    [:td.slot-player
+                     (if (:unvalued? p)
+                       [:span.muted {:title (str "No projection for id " (:player-id p))}
+                        (:player-id p)]
+                       (:player-name p))
+                     (when (:parked? p) [:span.parked-tag {:title "IR or taxi"} " IR"])
+                     (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
+                    [:td.num (board/format-whole (:ros-points p))]])
+             {starters true bench false} (group-by (comp boolean :starter?) roster)]
+         [:table.roster
+          [:thead [:tr [:th.slot "Pos"] [:th "Player"] [:th.num "ROS"]]]
+          [:tbody
+           (when (seq starters)
+             [:<> [:tr.roster-group [:td {:col-span 3} "Starters"]] (map row starters)])
+           (when (seq bench)
+             [:<> [:tr.roster-group [:td {:col-span 3} "Bench"]] (map row bench)])]]))]))
+
 (defn week-banner
   "Which season this board is for — in three states, not two.
 
@@ -201,16 +253,18 @@
      [:details.col-details
       [:summary "⚙ Columns"]
       [columns/waiver-column-picker]]
-     [:div.table-scroll
-      [:table.board
-       [:thead [:tr (map (fn [c] ^{:key (:key c)} [header-cell c sort]) cols)]]
-       [:tbody
-        (map (fn [p]
-               ^{:key (:player-id p)}
-               [:tr {:class (when (and (:drop-candidate p) (pos? (or (:upgrade p) 0)))
-                              "upgrade")}
-                (map (fn [{k :key}] ^{:key k} [cell k p]) cols)])
-             players)]]]
+     [:div.waiver-body
+      [:div.table-scroll
+       [:table.board
+        [:thead [:tr (map (fn [c] ^{:key (:key c)} [header-cell c sort]) cols)]]
+        [:tbody
+         (map (fn [p]
+                ^{:key (:player-id p)}
+                [:tr {:class (when (and (:drop-candidate p) (pos? (or (:upgrade p) 0)))
+                               "upgrade")}
+                 (map (fn [{k :key}] ^{:key k} [cell k p]) cols)])
+              players)]]]
+      [:aside.waiver-roster-col [my-roster-panel]]]
      (when-let [rostered @(rf/subscribe [:rostered-matches])]
        (when (seq rostered)
          [:div.rostered-note
