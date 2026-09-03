@@ -27,6 +27,37 @@ between a league's real rules and what the board can score.
 - ~~Drag-and-drop column bugs found reviewing #12: droppable `text/plain` payload,
   picker drag dead in Firefox, missing `preventDefault`, insertion line flicker~~
 
+- ~~In-season waiver wire: sync real rosters, project rest-of-season, price a
+  claim against FAAB~~ Shipped. See [The waiver wire](../README.md#the-waiver-wire).
+  Open follow-ups it deliberately left:
+  - `ros/PRIOR-GAMES` and `nflverse-weekly/recent-window` are **chosen, not
+    measured**. `dev/draft_day/benchmark/` is where they would earn numbers —
+    the harness already replays historical seasons, which is exactly the shape
+    of evidence the blend needs.
+  - The rest-of-season projection reads no injury designation, so a player who
+    has been out since week 2 still carries a full share of the games remaining.
+    `:injury-risk` and the Inj column cover it on the board; folding it into the
+    projection would be the double-charging `rankings.injury` argues against, so
+    it needs a real argument before it happens.
+  - Only Sleeper syncs. ESPN and Yahoo need server-side auth, which is why the
+    sync is backend-proxied — adding one is two `defmethod`s and a `:require`.
+  - **The bundled sample predates the in-season columns.** It stamps
+    `:schema-version 5`, carries no `:through-week` and no
+    `:nflverse/season-to-date`, so `DRAFTDAY_OFFLINE=1` can only ever show the
+    preseason board. That is honest rather than wrong — a preseason capture read
+    back as preseason — but it means the in-season half cannot be exercised
+    offline at all, and `snapshot/missing-sources` now flags `:nflverse/weekly`.
+    Fixed by re-running `draft-day.tools.snapshot` once a season is under way.
+
+- **The watch list comes back in hash order after the set-to-vector migration.**
+  `db/reconcile-watchlist` is `(into [] (distinct) stored)`, and over the `#{}`
+  the app used to persist that is hash-iteration order. `:watchlist-players`
+  used to end in a `sort-by rank-key` which hid it; that sort is gone now the
+  order is the manager's. An upgrading manager opens the app to a scrambled
+  list with nothing saying anything moved. `(set? stored)` is detectable at
+  exactly the point the repair happens, so `:boot` could re-sort once.
+  Predates the waiver work — noted here rather than fixed inside it.
+
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
   computes and returns it (`src/clj/draft_day/rankings/engine.clj:87`)
   precisely so the client does not recompose `inflation × market-heat` itself
@@ -37,3 +68,38 @@ between a league's real rules and what the board can score.
   displaying the un-banded product, which is the exact defect the comment above
   it says was fixed. `subs.cljs:66` also selects a key that never arrives. One
   line to fix: add `:market-multiplier` to the `select-keys` vector.
+
+- **Audit error handling across the application.** The app runs three error
+  protocols at once and converts between them ad hoc:
+
+  - **throw `ex-info` with `:status`** — `league-sync.sleeper/fetch-json`,
+    `league-import/fetch-raw-league`, `fetch-raw-rosters`
+  - **result maps** `{:ok true …}` / `{:ok false :status :error}` —
+    `import-league`, `sync-league`, which exist to convert from the first
+  - **nil on failure** — `pipeline/best-effort` (logs, returns nil),
+    `espn/http-get-string` (nil on any non-200)
+
+  `league-sync/unwrap-execution` is what made this visible. It is not fixing a
+  bug so much as undoing damage the design does to itself: the status travels in
+  the *exception* channel, a future's deref wraps the throw and destroys the
+  ex-data, so a function has to exist to put it back. Carried as a value,
+  `{:ok false :status 404}` would cross a future boundary untouched and there
+  would be nothing to unwrap. The audit should decide where the throw→value
+  boundary belongs and make it consistent rather than adding another adapter.
+
+  Specific things already spotted:
+
+  - `league-import-handler` has no outer `try/catch`, so a malformed JSON body
+    500s where `rankings-handler` would have answered cleanly. The two should
+    agree.
+  - `espn/http-get-string` returns nil on any non-200, producing exactly the
+    silently empty column CLAUDE.md names as the worst ingestion failure — the
+    same shape as the FantasyPros 429 it warns about.
+  - `parallel/all`'s docstring notes `best-effort` does not catch `Error`, so
+    the escape path and the swallow path disagree about what a failure is.
+  - The frontend `:http` effect routes every non-2xx to `on-failure` with
+    `(:error body)`, which assumes every handler returns `{:error msg}`. Worth
+    confirming that holds everywhere.
+  - `:waivers-failed` and `:recompute-failed` deliberately keep stale data
+    readable rather than blanking it. That is the good pattern; it should be
+    stated as the convention rather than left as two coincidences.

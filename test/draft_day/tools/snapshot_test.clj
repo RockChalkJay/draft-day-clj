@@ -54,4 +54,15 @@
       (is (= 2026 (:season snap)))
       (is (= "2026-08-09T00:00:00Z" (:captured-at snap)))
       (is (= [{:player-id "1"}] (:players snap)))
-      (is (= {:espn {:ok? true :rows 1 :matched 1}} (:sources snap))))))
+      (is (= {:espn {:ok? true :rows 1 :matched 1}} (:sources snap)))
+      (is (= 0 (:through-week snap))
+          "a capture with no week is preseason, not an unstamped one")))
+
+  (testing "a capture taken mid-season says which week it is"
+    ;; Without the stamp `sample-universe` reads a week-9 fixture back as
+    ;; preseason, and every rest-of-season projection on an offline board
+    ;; silently prorates over a full year.
+    (with-redefs [pipeline/fetch-enriched-universe
+                  (fn [_] {:players [{:player-id "1"}] :sources {} :through-week 9})
+                  pipeline/now-iso (constantly "2026-11-04T00:00:00Z")]
+      (is (= 9 (:through-week (snapshot/capture 2026)))))))

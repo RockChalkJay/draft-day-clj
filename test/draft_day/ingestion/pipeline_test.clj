@@ -4,6 +4,7 @@
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.pipeline :as pipeline :refer [apply-enrichment]]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.sleeper :as sleeper]
@@ -242,7 +243,7 @@
         "anchoring must not collide two players onto one id")))
 
 (deftest every-enrichment-fetch-goes-out-together
-  ;; Twenty-two independent fetches behind a 30-second timeout each, on the
+  ;; Twenty-three independent fetches behind a 30-second timeout each, on the
   ;; request thread that missed the cache. Awaited in turn they stack to ten
   ;; minutes, so what has to hold is that `enrich-universe` starts *all* of them
   ;; before it blocks on any — not merely that some helper can start six.
@@ -258,8 +259,8 @@
                    (when-not (.await latch 10 java.util.concurrent.TimeUnit/SECONDS)
                      (throw (ex-info "this fetch ran on its own" {:fetch what}))))
         rows     (fn [k] [{:key k :fantasypros/ecr 1}])]
-    (is (= 22 expected)
-        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers, ESPN and nflverse")
+    (is (= 23 expected)
+        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers, ESPN, and nflverse's prior-season and in-season files")
     (with-redefs [sleeper/fetch-byes    (fn [_] (arrive! :byes) {"ATL" 5})
                   fantasypros/fetch-sleepers (fn [] (arrive! :sleepers)
                                                (rows "player0_rb"))
@@ -267,6 +268,12 @@
                                           {"player0_rb" {:espn/auction-value 1.0}})
                   nflverse/fetch        (fn [_] (arrive! :nflverse)
                                           {:by-key    {"00-0000000" {:nflverse/prior-targets 1.0}}
+                                           :positions {"00-0000000" "RB"}})
+                  nflverse-weekly/fetch (fn [_] (arrive! :nflverse-weekly)
+                                          {:by-key    {"00-0000000"
+                                                       {:nflverse/season-to-date
+                                                        {:games 4 :stats {:rec 20.0}}}}
+                                           :through-week 4
                                            :positions {"00-0000000" "RB"}})
                   fantasypros/fetch-ecr (fn [fmt] (arrive! [:ecr fmt])
                                           (rows "player0_rb"))
@@ -287,6 +294,7 @@
   (with-redefs [sleeper/fetch-byes    (fn [_] {"ATL" 5})
                 fantasypros/fetch-sleepers (fn [] nil)
                 nflverse/fetch        (fn [_] {:by-key {} :positions {}})
+                nflverse-weekly/fetch (fn [_] {:by-key {} :through-week 0 :positions {}})
                 espn/fetch            (fn [_] (throw (ex-info "espn down" {})))
                 fantasypros/fetch-ecr (fn [fmt]
                                         (if (= :standard fmt)

@@ -18,7 +18,8 @@
 
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
-(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist])
+(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist
+                   :league-sync :my-roster-id :waiver-columns])
 
 (defn make-teams-named
   "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
@@ -375,23 +376,32 @@
                               (contains? scoring/presets s) s
                               :else (:scoring default-config))))))
 
-(defn default-columns []
-  (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) column-catalog))
+(defn default-columns
+  "Initial visibility for a catalog, in its own order."
+  ([] (default-columns column-catalog))
+  ([catalog]
+   (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) catalog)))
 
 (defn reconcile-columns
-  "Reconcile a persisted column config with the current catalog: keep the stored
-  order for keys that still exist, drop unknown keys (e.g. a removed :tier), and
-  append any new catalog columns at their default visibility."
-  [stored]
-  (let [valid   (set (map :key column-catalog))
-        kept    (filterv #(valid (:key %)) (or stored []))
-        present (set (map :key kept))
-        added   (->> column-catalog
-                     (remove #(present (:key %)))
-                     (map (fn [c] 
-                            {:key (:key c) 
-                             :visible? (boolean (:default? c))})))]
-    (vec (concat kept added))))
+  "Reconcile a persisted column config with a catalog: keep the stored order for
+  keys that still exist, drop unknown keys (e.g. a removed :tier), and append any
+  new catalog columns at their default visibility.
+
+  Takes the catalog rather than closing over the draft board's, because the
+  waiver board has its own — different questions, different columns — and a
+  second copy of this function would be a second place for the migration rule to
+  drift. The 1-arity keeps every existing caller unchanged."
+  ([stored] (reconcile-columns stored column-catalog))
+  ([stored catalog]
+   (let [valid   (set (map :key catalog))
+         kept    (filterv #(valid (:key %)) (or stored []))
+         present (set (map :key kept))
+         added   (->> catalog
+                      (remove #(present (:key %)))
+                      (map (fn [c]
+                             {:key (:key c)
+                              :visible? (boolean (:default? c))})))]
+     (vec (concat kept added)))))
 
 (defn move-onto
   "Drop the element `key-fn` identifies as `from-k` onto the one it identifies as
@@ -495,6 +505,111 @@
   [stored]
   (into [] (distinct) (or stored [])))
 
+
+;; ---- waiver board ----
+;; The in-season board asks different questions than the draft board, so it gets
+;; its own catalog rather than more columns on that one. Nothing here is priced
+;; in auction dollars: a claim is one roster seat against a FAAB budget spent
+;; down over months, not a share of a bankroll on draft night. See
+;; `rankings.waiver`.
+
+(def waiver-column-catalog
+  "Ordered column definitions for the waiver board."
+  [{:key :rank      :label "#"      :tooltip "Rank by how much the claim gains you" :default? true}
+   {:key :name      :label "Player" :tooltip "Player"                     :default? true}
+   {:key :team      :label "Tm"     :tooltip "NFL team"                   :default? true}
+   {:key :position  :label "Pos"    :tooltip "Position and preseason rank within it" :default? true}
+   {:key :bye       :label "Bye"    :tooltip "Bye week"                   :default? true}
+   {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? true}
+   {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true}
+   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid — your share of the budget across the claims the season still allows. Blank when the league does not run FAAB" :default? true}
+   {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true}
+   {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true}
+   {:key :risk      :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile)" :default? true}
+   {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true}
+   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false}
+   {:key :tgt       :label "Tgt"    :tooltip "Targets this season"        :default? false}
+   {:key :car       :label "Car"    :tooltip "Carries this season"        :default? false}
+   {:key :preseason :label "Pre"    :tooltip "What he was projected for before the season — the number the rest-of-season line is correcting" :default? false}
+   {:key :ecr       :label "ECR"    :tooltip "FantasyPros expert rank (preseason)" :default? false}])
+
+(def waiver-columns-by-key (into {} (map (juxt :key identity)) waiver-column-catalog))
+
+(defn waiver-rank-key
+  "Descending sort key for the waiver board: Upgrade, then rest-of-season points,
+  then name.
+
+  Upgrade alone is not a total order, for the same reason Worth was not on the
+  draft board: the whole tail of the pool is worse than the man you would drop,
+  so it collapses onto a band of near-equal negatives that a stable sort would
+  leave in server order. Rest-of-season points separate them where the upgrade
+  cannot, and the name settles the rest so the order is the same on every render.
+
+  Missing values read as 0 rather than nil — a nil inside a vector sort key
+  throws rather than sorting last, exactly as `rank-key` documents."
+  [p]
+  [(- (double (or (:upgrade p) 0)))
+   (- (double (or (:ros-points p) 0)))
+   (str (:player-name p))])
+
+(def waiver-sort-accessors
+  "column key -> fn player -> sortable value. :rank is attached in the sub."
+  {:rank      :rank
+   :name      :player-name
+   :team      :team
+   :position  pos-sort-key
+   :bye       :bye
+   :ros       :ros-points
+   :upgrade   :upgrade
+   :bid       :bid
+   :trend     :trend
+   :gp        #(get-in % [:nflverse/season-to-date :games])
+   :tgt       #(get-in % [:nflverse/season-to-date :usage :targets])
+   :car       #(get-in % [:nflverse/season-to-date :usage :carries])
+   :ros-vorp  :ros-vorp
+   :preseason :points
+   :risk      :injury-risk
+   :inj       :sleeper/injury-status
+   :ecr       :fantasypros/ecr})
+
+(defn default-waiver-columns [] (default-columns waiver-column-catalog))
+
+(defn reconcile-waiver-columns [stored]
+  (reconcile-columns stored waiver-column-catalog))
+
+(defn reconcile-league-sync
+  "Reconcile a persisted synced league with the current shape, or drop it.
+
+  localStorage carries no schema stamp, so — exactly like `reconcile-columns`,
+  `reconcile-config` and `reconcile-watchlist` — every shape the app has ever
+  written has to be repairable in place. This one is repaired by being *thrown
+  away* when it does not fit, which the others cannot do and this one can: a
+  synced league is a cache of somebody else's state, re-fetchable in one click,
+  so a stale shape costs a button press. A half-repaired one costs a waiver board
+  that quietly believes the wrong people are rostered.
+
+  A team with no `:player-ids` vector is the shape that actually matters: it
+  reaches `waiver/rostered-index` as a team holding nobody, and every player on
+  it silently becomes a free agent. `:active-ids` is repaired alongside it
+  because it decides the *other* question — whether a claim needs a drop at
+  all."
+  [stored]
+  (when (and (map? stored) (sequential? (:teams stored)))
+    (-> stored
+        (update :teams (fn [ts]
+                         (into [] (comp (filter map?)
+                                        (map (fn [t]
+                                               (reduce (fn [t k]
+                                                         (update t k #(vec (filter some? %))))
+                                                       t
+                                                       ;; :active-ids is the one a
+                                                       ;; claim is actually priced
+                                                       ;; against — see
+                                                       ;; `waiver/drop-candidate`.
+                                                       [:player-ids :active-ids :starter-ids]))))
+                               ts)))
+        (update :waiver #(when (map? %) %)))))
+
 ;; ---- player-id migration ----
 ;; :player-id used to be Sleeper's id verbatim; it is now the GSIS id wherever
 ;; one resolves. Draft state saved before that change is keyed by the old value,
@@ -552,9 +667,17 @@
      :picks       []            ; [{:player-id :position :price :team-id}]
      :nominated-id nil
      :watchlist    []           ; player-ids the manager is tracking, in his own order
+     ;; ---- in-season ----
+     :league-sync  nil          ; last /api/league/sync reply: who is rostered, and FAAB
+     :my-roster-id nil          ; which roster in the synced league is mine
+     :waivers      nil          ; last /api/waivers reply
+     :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
+     :waiver-sort  {:key :upgrade :dir -1}
+     :waiver-status nil         ; what the sync/refresh is doing, or why it failed
      :modal        nil
      :sort        {:key :worth :dir -1}
      :pos-filter  nil
      :search      ""
      :view        :board
-     :columns     (default-columns)}))
+     :columns     (default-columns)
+     :waiver-columns (default-waiver-columns)}))

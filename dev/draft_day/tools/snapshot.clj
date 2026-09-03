@@ -31,10 +31,14 @@
   lets `sample-universe` report the fixture's real provenance instead of
   pretending it is current."
   [season]
-  (let [{:keys [players sources]} (pipeline/fetch-enriched-universe season)]
+  (let [{:keys [players sources through-week]} (pipeline/fetch-enriched-universe season)]
     {:schema-version pipeline/schema-version
      :season         season
      :captured-at    (pipeline/now-iso)
+     ;; Stamped like the season is: a sample captured in week 9 has to say so,
+     ;; or `sample-universe` reads it back as preseason and every rest-of-season
+     ;; projection in an offline board silently prorates over a full year.
+     :through-week   (or through-week 0)
      :sources        sources
      :players        players}))
 

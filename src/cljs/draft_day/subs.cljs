@@ -7,7 +7,9 @@
 ;; ---- simple extracts ----
 (doseq [k [:view :status :config :teams :my-team-id :players
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
-           :watchlist :import-report :universe]]
+           :watchlist :import-report :universe
+           :league-sync :my-roster-id :waivers :waiver-sort :waiver-status
+           :waiver-columns]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
@@ -112,6 +114,28 @@
                 (nil? vb) -1
                 :else (let [c (* dir (compare va vb))]
                         (if (zero? c) (compare (db/rank-key a) (db/rank-key b)) c)))))
+          players)))
+
+(defn sort-waiver-players
+  "`sort-players` over the waiver catalog: same nil-last rule, same
+  tie-into-total-order discipline, different accessors and a different total
+  order (`db/waiver-rank-key`, which leads with Upgrade rather than Worth).
+
+  Not folded into `sort-players` with a catalog argument, because the two differ
+  in *both* halves — accessors and fallback — and a shared function taking both
+  would be threading two parameters through every call site to save six lines."
+  [players key dir]
+  (let [acc (get db/waiver-sort-accessors key :upgrade)]
+    (sort (fn [a b]
+            (let [va (acc a) vb (acc b)]
+              (cond
+                (and (nil? va) (nil? vb)) (compare (db/waiver-rank-key a) (db/waiver-rank-key b))
+                (nil? va) 1
+                (nil? vb) -1
+                :else (let [c (* dir (compare va vb))]
+                        (if (zero? c)
+                          (compare (db/waiver-rank-key a) (db/waiver-rank-key b))
+                          c)))))
           players)))
 
 ;; undrafted, unfiltered by position/search — the pool the board and watch list
@@ -220,3 +244,87 @@
          (remove #(contains? drafted %))
          (keep by-id)
          vec)))
+
+;; ---- waiver board ----
+
+(rf/reg-sub :league-synced? :<- [:league-sync]
+  (fn [ls _] (boolean (seq (:teams ls)))))
+
+(rf/reg-sub :sync-teams :<- [:league-sync]
+  (fn [ls _] (vec (:teams ls))))
+
+;; Which league the persisted rosters came from, so a re-sync is one click. It
+;; rides on the sync reply rather than being stored separately, because the two
+;; must not be able to disagree about which league is on screen.
+(rf/reg-sub :synced-league-id :<- [:league-sync]
+  (fn [ls _] (:league-id ls)))
+
+(rf/reg-sub :visible-waiver-columns :<- [:waiver-columns]
+  (fn [cols _] (filterv :visible? cols)))
+
+;; What the manager has left to spend, and what it would take to be sure of a
+;; claim. Straight from the server rather than recomposed here: `:faab-left`
+;; needs the league's budget and the roster's spend, which arrive in different
+;; documents, and `rankings.waiver` already joined them once.
+(rf/reg-sub :my-faab :<- [:waivers]
+  (fn [w _] (:faab w)))
+
+(rf/reg-sub :waiver-meta :<- [:waivers]
+  (fn [w _] (select-keys w [:through-week :season-games :claims-left])))
+
+;; Which week the board is showing, as one of three answers — and three, not
+;; two, is the point. `:waivers` is nil before the first reply and stays nil
+;; after a failed one, so a boolean `(pos? (or through-week 0))` reports
+;; *preseason* whenever the board simply has not loaded. In week 10 that put an
+;; accented banner reading "no games played yet" over a loading screen, and left
+;; it there permanently if the request errored — which is the exact misreading
+;; the banner exists to prevent.
+;;
+;; :unknown = no board yet; 0 = genuinely preseason; a week = in season.
+(rf/reg-sub :season-phase :<- [:waivers]
+  (fn [w _]
+    (let [wk (:through-week w)]
+      (cond (nil? wk)  :unknown
+            (pos? wk)  :in-season
+            :else      :preseason))))
+
+(rf/reg-sub :waiver-players
+  :<- [:waivers]
+  :<- [:waiver-sort]
+  :<- [:pos-filter]
+  :<- [:search]
+  (fn [[w sort pos-filter search] _]
+    (let [q        (str/lower-case (or search ""))
+          filtered (->> (:players w)
+                        (filter #(or (nil? pos-filter) (= (:position %) pos-filter)))
+                        (filter #(matches-search? % q)))
+          ;; The board's own order, independent of the active sort column —
+          ;; exactly as `:board-players` does it, so the `#` column keeps
+          ;; meaning "where he ranks" and not "which row he is on".
+          rank-map (into {} (map-indexed (fn [i p] [(:player-id p) (inc i)])
+                                         (sort-by db/waiver-rank-key filtered)))
+          ranked   (map #(assoc % :rank (rank-map (:player-id %))) filtered)]
+      (vec (sort-waiver-players ranked (:key sort) (:dir sort))))))
+
+;; Rostered players matching the current search, with who holds them.
+;;
+;; This is what `:rostered` is *for*: search "Chase" while he is on somebody's
+;; roster and the free-agent table is simply empty, which teaches the manager
+;; nothing. Names come from the universe the browser already has rather than
+;; from the wire, so answering "who has him" costs no payload at all.
+(rf/reg-sub :rostered-matches
+  :<- [:waivers]
+  :<- [:universe-by-id]
+  :<- [:search]
+  (fn [[w by-id search] _]
+    (let [q (str/lower-case (or search ""))]
+      (when-not (str/blank? q)
+        (->> (:rostered w)
+             (keep (fn [[id team]]
+                     (when-let [p (get by-id id)]
+                       (when (matches-search? p q)
+                         {:player-name (:player-name p)
+                          :position    (:position p)
+                          :team        team}))))
+             (sort-by :player-name)
+             vec)))))

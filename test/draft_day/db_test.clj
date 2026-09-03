@@ -515,3 +515,98 @@
              {:position "WR" :pos-rank 1}]]
       (is (= [["RB" 1] ["RB" nil] ["WR" 1]]
              (mapv (juxt :position :pos-rank) (sort-by db/pos-sort-key b)))))))
+
+;; ---- waiver board ----
+
+(deftest reconcile-columns-migrates-any-catalog-it-is-given
+  ;; Generalized rather than copied for the waiver board: one migration rule,
+  ;; one place for it to be wrong.
+  (testing "the draft board's catalog is still the default"
+    (is (= (db/reconcile-columns nil) (db/reconcile-columns nil db/column-catalog))))
+  (testing "a stored waiver layout keeps its order, loses removals, gains additions"
+    (let [stored [{:key :bid :visible? false}
+                  {:key :gone-column :visible? true}
+                  {:key :upgrade :visible? true}]
+          out    (db/reconcile-waiver-columns stored)]
+      (is (= [:bid :upgrade] (mapv :key (take 2 out))) "stored order survives")
+      (is (false? (:visible? (first out))) "and so does stored visibility")
+      (is (not-any? #(= :gone-column (:key %)) out))
+      (is (= (set (map :key db/waiver-column-catalog)) (set (map :key out)))
+          "every current column is present exactly once")))
+  (testing "the two catalogs do not leak into each other"
+    (let [waiver-keys (set (map :key db/waiver-column-catalog))
+          board-keys  (set (map :key db/column-catalog))]
+      (is (not (contains? waiver-keys :worth)) "no auction dollars on a waiver board")
+      (is (not (contains? waiver-keys :market)))
+      (is (not (contains? board-keys :bid)))
+      (is (not-any? #(contains? board-keys (:key %))
+                    (filter #(#{:bid :upgrade :ros :trend} (:key %))
+                            db/waiver-column-catalog))))))
+
+(deftest every-waiver-column-can-be-sorted-and-labelled
+  ;; A column with no accessor silently falls back to :upgrade, so the header
+  ;; lights up and the order does not change — which reads as a broken table.
+  (doseq [{:keys [key label tooltip]} db/waiver-column-catalog]
+    (is (contains? db/waiver-sort-accessors key) (str key " has no sort accessor"))
+    (is (seq label) (str key " has no label"))
+    (is (seq tooltip) (str key " has no tooltip"))))
+
+(deftest waiver-rank-key-is-a-total-order
+  ;; Upgrade alone is not one: most of a free-agent pool is worse than the man
+  ;; you would drop, so the tail collapses onto near-equal negatives that a
+  ;; stable sort would leave in whatever order the server emitted.
+  (let [p (fn [nm up ros] {:player-name nm :upgrade up :ros-points ros})
+        ps [(p "c" 0.0 10.0) (p "a" 0.0 90.0) (p "b" 12.0 5.0) (p "d" 0.0 90.0)]]
+    (is (= ["b" "a" "d" "c"] (mapv :player-name (sort-by db/waiver-rank-key ps)))
+        "upgrade first, then rest-of-season points, then the name")
+    (testing "a missing value reads as 0 rather than throwing inside the key"
+      (is (vector? (db/waiver-rank-key {})))
+      (is (= 2 (count (sort-by db/waiver-rank-key [{} {:upgrade 1.0}])))))))
+
+(deftest reconcile-league-sync-throws-away-what-it-cannot-repair
+  ;; Unlike the other reconcilers this one may discard: a synced league is a
+  ;; cache of somebody else's state, re-fetchable in one click, so a bad shape
+  ;; costs a button press. A half-repaired one costs a board that believes the
+  ;; wrong people are rostered.
+  (is (nil? (db/reconcile-league-sync nil)))
+  (is (nil? (db/reconcile-league-sync "nonsense")))
+  (is (nil? (db/reconcile-league-sync {:waiver {:type :faab}})) "no :teams at all")
+  (testing "a good one passes through with its teams intact"
+    (let [ls {:teams [{:roster-id 1 :player-ids ["a" "b"] :starter-ids ["a"]}]
+              :waiver {:type :faab :budget 100}}]
+      (is (= ["a" "b"] (:player-ids (first (:teams (db/reconcile-league-sync ls))))))
+      (is (= {:type :faab :budget 100} (:waiver (db/reconcile-league-sync ls)))))))
+
+(deftest a-team-with-no-player-ids-is-repaired-not-trusted
+  ;; The shape that actually matters: it reaches `waiver/rostered-index` as a
+  ;; team holding nobody, and every player on it silently becomes a free agent.
+  (let [out (db/reconcile-league-sync {:teams [{:roster-id 1}
+                                               {:roster-id 2 :player-ids ["a" nil "b"]
+                                                :active-ids ["a" nil]}
+                                               "not a team"]})]
+    (is (= 2 (count (:teams out))) "a non-map team is dropped")
+    (is (= [] (:player-ids (first (:teams out)))))
+    (is (= ["a" "b"] (:player-ids (second (:teams out)))) "nils inside are dropped")
+    (is (every? vector? (map :starter-ids (:teams out))))
+    (testing ":active-ids is repaired too — it decides whether a claim needs a drop"
+      (is (= [] (:active-ids (first (:teams out)))))
+      (is (= ["a"] (:active-ids (second (:teams out))))))))
+
+(deftest a-persisted-sync-keeps-the-facts-that-let-it-be-redone
+  ;; The league id makes a re-sync one click, and the seat count decides whether
+  ;; a claim costs a drop. Both ride inside :league-sync, which is persisted, so
+  ;; the reconciler must not drop keys it does not recognise.
+  (let [out (db/reconcile-league-sync
+             {:teams [{:roster-id 1 :player-ids ["a"] :active-ids ["a"]}]
+              :waiver {:type :faab :budget 100}
+              :roster-size 15 :league-id "987654" :playoff-week-start 15})]
+    (is (= "987654" (:league-id out)))
+    (is (= 15 (:roster-size out)))
+    (is (= 15 (:playoff-week-start out)))))
+
+(deftest the-persisted-slice-carries-the-in-season-state
+  ;; A sync that had to be redone on every page load would be a sync nobody
+  ;; uses. The transient halves — the board itself and its request stamp — stay
+  ;; out, exactly as :ranked and :recompute-seq do.
+  (is (every? (set db/persist-keys) [:league-sync :my-roster-id :waiver-columns]))
+  (is (not-any? (set db/persist-keys) [:waivers :waiver-seq :waiver-status])))

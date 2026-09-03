@@ -72,7 +72,13 @@
             HttpResponse$BodyHandlers]
            [java.net URI]))
 
-(def ^:private base
+(def base
+  "The stats_player release both this namespace and `nflverse-weekly` pull from.
+
+  Public, and the one copy: the weekly file is a sibling asset of the same
+  release, and a second hand-written copy of this URL is one nflverse
+  reorganization away from the two namespaces disagreeing about where the data
+  lives."
   "https://github.com/nflverse/nflverse-data/releases/download/stats_player")
 
 (defn season-url [season] (str base "/stats_player_reg_" season ".csv"))
@@ -118,8 +124,12 @@
   (when-not (or (nil? s) (= "" s) (= "NA" s))
     (try (Double/parseDouble s) (catch Exception _ nil))))
 
-(defn- gsis-id
-  "The row's GSIS id, or nil when it has none or is not a position we join."
+(defn gsis-id
+  "The row's GSIS id, or nil when it has none or is not a position we join.
+
+  Public because `nflverse-weekly` reads the same file family and has to gate
+  its rows identically — a weekly aggregate that joined a position the season
+  file skips would report games for players the board has no row for."
   [row]
   (when (fantasy-positions (get row "position"))
     (not-empty (str/trim (str (get row "player_id"))))))

@@ -7,9 +7,18 @@
             [reitit.ring.middleware.parameters :as parameters]
             [jsonista.core :as json]
             [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.sleeper]
+            [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.league-sync.sleeper]
             [draft-day.rankings.engine :as engine]
+            [draft-day.rankings.model :as model]
+            [draft-day.rankings.injury :as injury]
+            [draft-day.rankings.pos-rank :as pos-rank]
+            [draft-day.rankings.ros :as ros]
+            [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]
             [draft-day.rankings.market :as market]
             [draft-day.rankings.vendor :as vendor]
@@ -59,21 +68,41 @@
   (reset-universe!)
   (json-response 200 {:status "ok"}))
 
+(defn league-id-error
+  "The 400 body for an unusable league id, or nil when it is fine.
+
+  Shared by import and sync because they take the same identifier from the same
+  field, and a second copy of the rule is how one endpoint ends up accepting
+  what the other rejects."
+  [league-id]
+  (cond
+    (str/blank? league-id)          {:error "league-id is required"}
+    (not (re-matches #"\d+" league-id)) {:error "league-id must be numeric"}))
+
 (defn league-import-handler [req]
   (let [{:keys [provider league-id]} (read-json-body req)
         league-id (str league-id)]
-    (cond
-      (str/blank? league-id)
-      (json-response 400 {:error "league-id is required"})
-
-      (not (re-matches #"\d+" league-id))
-      (json-response 400 {:error "league-id must be numeric"})
-
-      :else
+    (if-let [bad (league-id-error league-id)]
+      (json-response 400 bad)
       (let [{:keys [ok config status error]}
             (league-import/import-league {:provider provider :league-id league-id})]
         (if ok
           (json-response 200 config)
+          (json-response status {:error error}))))))
+
+(defn league-sync-handler
+  "Who is rostered right now. Separate from the import for the same reason the
+  namespaces are: an import is the league's rules and a sync is its state, and
+  the state changes every time anyone in the league makes a claim."
+  [req]
+  (let [{:keys [provider league-id]} (read-json-body req)
+        league-id (str league-id)]
+    (if-let [bad (league-id-error league-id)]
+      (json-response 400 bad)
+      (let [{:keys [ok league status error]}
+            (league-sync/sync-league {:provider provider :league-id league-id})]
+        (if ok
+          (json-response 200 league)
           (json-response status {:error error}))))))
 
 (defn resolve-scoring
@@ -143,6 +172,86 @@
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
+(defn waiver-board-inputs
+  "The three static columns the waiver board renders but does not derive.
+
+  `:points` (the preseason projection the Pre column shows and the rest-of-season
+  line is correcting), `:injury-risk` (the Risk column), and `:pos-rank` (the
+  ordinal in `util/pos-label`, and the ordering behind `db/pos-sort-key`). All
+  three are produced inside `engine/static-rankings` and none of them by
+  `rankings.ros`, so a board assembled without them renders a dash in Risk for
+  every row, a blank Pre, and \"RB\" where the tooltip promises \"RB7\" — three
+  shipped columns permanently dead, with nothing failing to say so.
+
+  Only these three, rather than `static-rankings` whole: the waiver board
+  computes its own replacement and VORP on `:ros-points` (see
+  `waiver/with-ros-vorp`), so the preseason tiers, floor and ceiling that come
+  with it would be payload nobody reads. Order matters — `pos-rank` ranks on
+  `:points`, so it has to follow the scoring."
+  [board scoring]
+  (-> (model/score-board :points {:scoring scoring} board)
+      injury/with-injury-risk
+      pos-rank/with-pos-rank))
+
+(defn without-ros-internals
+  "Drop the working state `rankings.ros` leaves behind, keeping `:ros-points`.
+
+  Same argument as `without-history`, on the same hot path: `:ros/stats` is a
+  full stat map per player, on a response re-POSTed on every refresh, and no
+  client reads it — the board renders `:ros-points`, and the GP column reads
+  `:nflverse/season-to-date`. The two game counts go with it rather than being
+  kept for a column that might want them one day; that is the reasoning the
+  removed PDM is the cautionary tale for."
+  [players]
+  (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played) players))
+
+(defn waivers-handler
+  "The in-season board: rest-of-season value over the free agents a synced
+  league actually leaves available, and what to bid for them.
+
+  Stateless on exactly the same terms as `rankings-handler` — the browser owns
+  the synced league and re-POSTs it — but it shares none of that handler's
+  money. Auction dollars price a whole roster out of a fixed bankroll on draft
+  night; a waiver claim is one seat against a budget spent down over months. See
+  `rankings.waiver`.
+
+  `:through-week` comes from the universe envelope rather than from the request,
+  so the board cannot be asked to price a week the data has not reached. In
+  preseason it is 0 and this is the preseason board, which is the honest answer
+  rather than an error."
+  [req]
+  (try
+    (let [{:keys [scoring num-teams replacement-config league my-roster-id roster-size]}
+          (read-json-body req)
+          scoring* (resolve-scoring scoring)]
+      (if-not (scoring/scores-anything? scoring*)
+        ;; Same guard and the same reason as the rankings board: an all-zero
+        ;; config scores every player 0.0, and a waiver board where nobody is an
+        ;; upgrade over anybody is a lie, not a board.
+        (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
+        (let [{:keys [players season through-week]} (universe false)
+              season-games (nflverse/games-in-season (or season (sleeper/current-season)))
+              ctx      {:league             league
+                        :my-roster-id       my-roster-id
+                        :roster-size        roster-size
+                        :num-teams          (or num-teams 12)
+                        :replacement-config replacement-config
+                        :through-week       (or through-week 0)
+                        :season-games       season-games
+                        :playoff-week-start (:playoff-week-start league)}
+              board    (-> players
+                           (vendor/for-scoring scoring*)
+                           without-history
+                           (waiver-board-inputs scoring*)
+                           (ros/with-ros scoring* ctx))
+              out      (waiver/waiver-board board ctx)]
+          (json-response 200 (assoc out
+                                    :players      (without-ros-internals (:players out))
+                                    :through-week (or through-week 0)
+                                    :season-games season-games)))))
+    (catch Exception e
+      (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
+
 (def app
   (ring/ring-handler
    (ring/router
@@ -150,7 +259,9 @@
      ["/api/players"  {:get  players-handler}]
      ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
-     ["/api/league/import"   {:post league-import-handler}]]
+     ["/api/waivers"  {:post waivers-handler}]
+     ["/api/league/import"   {:post league-import-handler}]
+     ["/api/league/sync"     {:post league-sync-handler}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})

@@ -20,7 +20,9 @@
    {:db (-> (merge (db/default-db) (fx/load-persisted))
             (update :columns db/reconcile-columns)    ; drop removed cols, add new ones
             (update :config db/reconcile-config)      ; repair a config from an older shape
-            (update :watchlist db/reconcile-watchlist)) ; a set, back when it had no order
+            (update :watchlist db/reconcile-watchlist)  ; a set, back when it had no order
+            (update :waiver-columns db/reconcile-waiver-columns)
+            (update :league-sync db/reconcile-league-sync))
     :fx [[:dispatch [:fetch-players]]]}))
 
 (rf/reg-event-fx
@@ -108,7 +110,16 @@
 
 ;; ---- UI state ----
 
-(rf/reg-event-db :set-view      (fn [db [_ v]] (assoc db :view v)))
+(rf/reg-event-fx :set-view
+  (fn [{:keys [db]} [_ v]]
+    ;; Opening the Waivers tab loads its board, because it is a second full rank
+    ;; of the universe and a manager who never opens the tab should not pay for
+    ;; one on every page load. Only when there is nothing to show: after that a
+    ;; refresh is a button, not a side effect of navigation, or every glance at
+    ;; the tab re-ranks the league.
+    (cond-> {:db (assoc db :view v)}
+      (and (= v :waivers) (nil? (:waivers db)))
+      (assoc :fx [[:dispatch [:fetch-waivers]]]))))
 (rf/reg-event-db :set-search    (fn [db [_ q]] (assoc db :search q)))
 (rf/reg-event-db :set-pos-filter (fn [db [_ p]] (assoc db :pos-filter (if (= p (:pos-filter db)) nil p))))
 (rf/reg-event-db :set-nominated (fn [db [_ id]] (assoc db :nominated-id id)))
@@ -306,6 +317,102 @@
 
 (rf/reg-event-db :league-import-failed
   (fn [db [_ err]] (assoc db :status (str "League import failed: " err))))
+
+;; ---- in-season: league sync + waivers ----
+;; The same statelessness the draft board runs on: the browser owns the synced
+;; league and re-POSTs it, and the server holds nothing between requests.
+
+(rf/reg-event-fx :set-my-roster-id [persist]
+  (fn [{:keys [db]} [_ id]]
+    ;; Re-fetches, because almost everything on the board is measured *from*
+    ;; this. The sync fires :fetch-waivers while it is still nil, so the first
+    ;; board comes back with no drop, no budget and every bid blank; without a
+    ;; refetch here, picking your team changed a dropdown and nothing else until
+    ;; you happened to press Refresh.
+    {:db  (assoc db :my-roster-id id)
+     :fx  [[:dispatch [:fetch-waivers]]]}))
+
+(rf/reg-event-fx :sync-league
+  (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
+    {:db   (assoc db :waiver-status "Syncing rosters…")
+     :http {:method :post :url "/api/league/sync"
+            :body {:provider provider :league-id league-id}
+            :on-success [:league-synced]
+            :on-failure [:league-sync-failed]}}))
+
+(rf/reg-event-fx :league-synced [persist]
+  (fn [{:keys [db]} [_ resp]]
+    ;; The reply is repaired on the way *in*, not only at boot. It is the same
+    ;; shape localStorage will hand back next session, and a provider that grew a
+    ;; field or dropped one should fail here — where the status line can say so —
+    ;; rather than a session later with no way to tell what changed.
+    (let [league (db/reconcile-league-sync resp)]
+      {:db (assoc db :league-sync league
+                  :waiver-status (if league
+                                   (str "✓ Synced " (count (:teams league)) " rosters")
+                                   "Sync returned nothing usable"))
+       :fx [[:dispatch [:fetch-waivers]]]})))
+
+(rf/reg-event-db :league-sync-failed
+  (fn [db [_ err]] (assoc db :waiver-status (str "League sync failed: " err))))
+
+(defn- waiver-request
+  "The body of an /api/waivers call. `roster-size` is what the manager's league
+  actually gives each team — the waiver board needs it to know whether a claim
+  costs a drop, and `db/roster-template` is already the one place that expands a
+  roster config into seats."
+  [db]
+  {:scoring            (get-in db [:config :scoring])
+   :num-teams          (get-in db [:config :num-teams])
+   :replacement-config (replacement-config (get-in db [:config :roster]))
+   :league             (:league-sync db)
+   :my-roster-id       (:my-roster-id db)
+   :roster-size        (count (db/roster-template (get-in db [:config :roster])))})
+
+(rf/reg-event-fx :fetch-waivers
+  (fn [{:keys [db]} _]
+    ;; Stamped and checked exactly as :recompute is, and for the identical
+    ;; hazard: a full re-rank of the universe takes long enough that overlapping
+    ;; requests answer out of order, and a reply computed against the *previous*
+    ;; roster would otherwise win and stick — telling the manager a player he
+    ;; just claimed is still available.
+    (let [n (inc (:waiver-seq db 0))]
+      {:db   (assoc db :waiver-seq n :waiver-status "Loading waiver board…")
+       :http {:method :post :url "/api/waivers"
+              :body (waiver-request db)
+              :on-success [:waivers-loaded n]
+              :on-failure [:waivers-failed]}})))
+
+(rf/reg-event-db :waivers-loaded
+  (fn [db [_ n resp]]
+    (if-not (= n (:waiver-seq db))
+      db
+      (assoc db :waivers resp :waiver-status nil))))
+
+(rf/reg-event-db :waivers-failed
+  (fn [db [_ err]]
+    ;; Leave :waivers alone — the previous board is stale but readable, which
+    ;; beats blanking it. Same call as :recompute-failed makes.
+    (assoc db :waiver-status (str "Waiver board failed: " err))))
+
+(rf/reg-event-db :set-waiver-sort
+  (fn [db [_ k]]
+    (update db :waiver-sort
+            (fn [{:keys [key dir]}]
+              (if (= key k)
+                {:key k :dir (- dir)}
+                ;; Ascending first where a lower number is better or the column
+                ;; is text; everything else is points or dollars, best-first.
+                {:key k :dir (if (#{:name :team :position :rank :ecr :bye :inj} k) 1 -1)})))))
+
+(rf/reg-event-db :toggle-waiver-column [persist]
+  (fn [db [_ k]]
+    (update db :waiver-columns
+            (fn [cols] (mapv #(if (= (:key %) k) (update % :visible? not) %) cols)))))
+
+(rf/reg-event-db :move-waiver-column-onto [persist]
+  (fn [db [_ from-k to-k]]
+    (update db :waiver-columns db/move-column-onto from-k to-k)))
 
 ;; ---- cache reset ----
 

@@ -10,6 +10,7 @@
             [draft-day.views.watchlist :as watchlist]
             [draft-day.views.columns :as columns]
             [draft-day.views.settings :as settings]
+            [draft-day.views.waivers :as waivers]
             [draft-day.views.modal :as modal]))
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
@@ -31,7 +32,7 @@
       (map (fn [[v label]]
              ^{:key v}
              [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])} label])
-           [[:board "Board"] [:league "League"] [:settings "Settings"]])]
+           [[:board "Board"] [:waivers "Waivers"] [:league "League"] [:settings "Settings"]])]
      [:div.status status]
      [:div.stats
       [:div.stat {:title "Market inflation × phase decay"}
@@ -65,6 +66,7 @@
       (case view
         :league   [roster/league-view]
         :settings [settings/settings]
+        :waivers  [waivers/waivers-view]
         [board-view])]
      (when (= modal :start-draft)
        [modal/start-draft-modal])
