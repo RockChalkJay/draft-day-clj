@@ -457,3 +457,51 @@
                                       {:provider "sleeper" :league-id "999"}))})]
       (is (= 404 (:status resp)))
       (is (= "not found" (:error (parse resp)))))))
+
+;; ---- connecting an account ----
+
+(deftest league-user-endpoint-returns-the-account-and-its-leagues
+  (with-redefs [league-sync/find-leagues
+                (fn [_] {:ok true
+                         :user {:user-id "u1" :display-name "jay" :avatar "a"}
+                         :leagues [{:league-id "L1" :name "RaiderNation" :num-teams 12}]})]
+    (let [resp (routes/league-user-handler {:query-params {"username" "rockchalkjay"}})
+          b    (parse resp)]
+      (is (= 200 (:status resp)))
+      (is (= "u1" (get-in b [:user :user-id])))
+      (is (= 1 (count (:leagues b)))))))
+
+(deftest league-user-endpoint-passes-a-404-through
+  (with-redefs [league-sync/find-leagues
+                (fn [_] {:ok false :status 404 :error "Sleeper user not found"})]
+    (let [resp (routes/league-user-handler {:query-params {"username" "nope"}})]
+      (is (= 404 (:status resp)))
+      (is (= "Sleeper user not found" (:error (parse resp)))))))
+
+(deftest a-username-is-guarded-separately-from-a-league-id
+  ;; `league-id-error` is `#"\d+"` — the path-traversal defence for an id that
+  ;; goes into a URL path segment. A username occupies the same position and is
+  ;; not numeric, so borrowing that rule would reject every real name while
+  ;; having no rule at all would pass a slash straight through.
+  (is (nil? (routes/username-error "rockchalkjay")))
+  (is (nil? (routes/username-error "a_1")))
+  ;; On evidence, not taste: `the-commish` is a real Sleeper account, so a
+  ;; letters-and-digits rule would refuse a legitimate name.
+  (is (nil? (routes/username-error "the-commish")) "hyphens are real handles")
+  (is (nil? (routes/username-error "has.dot")))
+  (is (some? (routes/username-error "")))
+  (is (some? (routes/username-error "   ")))
+  ;; What is dangerous is the path, not the punctuation.
+  (is (some? (routes/username-error "1/../evil")) "a slash injects a segment")
+  (is (some? (routes/username-error "a..b")) "and `..` climbs one")
+  (is (some? (routes/username-error "..")))
+  (is (some? (routes/username-error ".hidden")) "the segment cannot start with a dot")
+  (is (some? (routes/username-error "has space")))
+  (is (some? (routes/username-error (apply str (repeat 33 "a")))) "bounded"))
+
+(deftest league-user-endpoint-refuses-a-bad-username-before-any-fetch
+  (let [called (atom false)]
+    (with-redefs [league-sync/find-leagues (fn [_] (reset! called true) {:ok true})]
+      (let [resp (routes/league-user-handler {:query-params {"username" "1/../evil"}})]
+        (is (= 400 (:status resp)))
+        (is (false? @called) "nothing reaches the provider")))))

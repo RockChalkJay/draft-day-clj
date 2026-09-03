@@ -259,6 +259,13 @@
 (rf/reg-sub :synced-league-id :<- [:league-sync]
   (fn [ls _] (:league-id ls)))
 
+(rf/reg-sub :sleeper-username (fn [db _] (:sleeper-username db)))
+(rf/reg-sub :sleeper-user-id (fn [db _] (:sleeper-user-id db)))
+
+;; nil means "never looked up"; [] means "looked up, plays in none this season".
+;; The panel says different things for the two, so this does not normalize them.
+(rf/reg-sub :league-choices (fn [db _] (:league-choices db)))
+
 (rf/reg-sub :visible-waiver-columns :<- [:waiver-columns]
   (fn [cols _] (filterv :visible? cols)))
 

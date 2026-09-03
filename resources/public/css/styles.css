@@ -480,3 +480,14 @@ tr.upgrade .p-name { font-weight: 600; }
    table just comes back empty and the manager learns nothing. */
 .rostered-note { font-size: 12px; color: var(--muted); padding: 4px 2px; }
 .rostered-note span { color: var(--text); }
+
+/* Connecting an account. The picker is a row of buttons rather than a select:
+   there are rarely more than a handful, the choice is one click either way, and
+   a select hides the league names behind a second interaction. */
+.league-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.league-choice { text-align: left; padding: 6px 10px; border-radius: 8px;
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  cursor: pointer; font-size: 12px; }
+.league-choice:hover { border-color: var(--accent); }
+.league-choice.on { border-color: var(--accent); background: var(--panel); }
+.league-choice-name { font-weight: 600; }

@@ -340,18 +340,80 @@
             :on-success [:league-synced]
             :on-failure [:league-sync-failed]}}))
 
+(defn my-roster-id-for
+  "Which roster in this league belongs to `user-id`, or nil.
+
+  The point of connecting an account. Without it the manager picks his own team
+  out of a list of twelve before the board can name a drop, price a bid or show
+  him his roster — and until he does, all three read as blank rather than as
+  unanswered, which is what made the dropdown look like it did nothing.
+
+  nil rather than a guess when nothing matches. A co-managed team, an orphan
+  roster and a second account are all real, and the dropdown still handles them."
+  [teams user-id]
+  (when (not-empty (str user-id))
+    (some (fn [t] (when (= (str (:owner-id t)) (str user-id)) (:roster-id t)))
+          teams)))
+
 (rf/reg-event-fx :league-synced [persist]
   (fn [{:keys [db]} [_ resp]]
     ;; The reply is repaired on the way *in*, not only at boot. It is the same
     ;; shape localStorage will hand back next session, and a provider that grew a
     ;; field or dropped one should fail here — where the status line can say so —
     ;; rather than a session later with no way to tell what changed.
-    (let [league (db/reconcile-league-sync resp)]
+    (let [league (db/reconcile-league-sync resp)
+          ;; Only when it is still unset. A manager who corrected the dropdown —
+          ;; he co-manages, or plays under a second account — must not have that
+          ;; correction undone by the next re-sync.
+          mine   (or (:my-roster-id db)
+                     (my-roster-id-for (:teams league) (:sleeper-user-id db)))]
       {:db (assoc db :league-sync league
+                  :my-roster-id mine
                   :waiver-status (if league
                                    (str "✓ Synced " (count (:teams league)) " rosters")
                                    "Sync returned nothing usable"))
        :fx [[:dispatch [:fetch-waivers]]]})))
+
+(rf/reg-event-fx :league-connect
+  (fn [{:keys [db]} [_ username]]
+    {:db   (assoc db :waiver-status (str "Looking up " username "…"))
+     :http {:method :get
+            :url (str "/api/league/user?provider=sleeper&username="
+                      (js/encodeURIComponent username))
+            :on-success [:league-user-loaded]
+            :on-failure [:league-user-failed]}}))
+
+(rf/reg-event-fx :league-user-loaded [persist]
+  (fn [{:keys [db]} [_ {:keys [user leagues]}]]
+    (let [db' (assoc db :sleeper-username (:display-name user)
+                     :sleeper-user-id (:user-id user)
+                     :league-choices  (vec leagues))]
+      (cond
+        (empty? leagues)
+        {:db (assoc db' :waiver-status
+                    (str (:display-name user) " has no leagues this season."))}
+
+        ;; One league is not a choice. Making the manager pick it out of a list
+        ;; of one is a step that asks him to confirm the only possible answer.
+        (= 1 (count leagues))
+        {:db db'
+         :fx [[:dispatch [:league-choose (:league-id (first leagues))]]]}
+
+        :else
+        {:db (assoc db' :waiver-status
+                    (str "Pick one of " (count leagues) " leagues."))}))))
+
+(rf/reg-event-db :league-user-failed
+  (fn [db [_ err]] (assoc db :waiver-status (str "Lookup failed: " err))))
+
+(rf/reg-event-fx :league-choose
+  (fn [_ [_ league-id]]
+    ;; Both, because they answer different questions off the same id: the sync is
+    ;; who is rostered, the import is what the league's rules are. A manager who
+    ;; synced without importing gets a board priced under the draft config's
+    ;; scoring rather than his league's.
+    {:fx [[:dispatch [:sync-league {:provider "sleeper" :league-id league-id}]]
+          [:dispatch [:import-league {:provider "sleeper" :league-id league-id}]]]}))
 
 (rf/reg-event-db :league-sync-failed
   (fn [db [_ err]] (assoc db :waiver-status (str "League sync failed: " err))))
