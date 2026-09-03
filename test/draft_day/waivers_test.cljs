@@ -259,3 +259,57 @@
             {:player-id "c" :player-name "C" :bid 9 :upgrade 3.0}]]
     (is (= ["c" "a" "b"] (mapv :player-id (subs/sort-waiver-players ps :bid -1))))
     (is (= ["a" "c" "b"] (mapv :player-id (subs/sort-waiver-players ps :bid 1))))))
+
+;; ---- my own roster ----
+
+(deftest no-team-picked-reads-differently-from-an-empty-roster
+  ;; The whole reason the panel exists: the free-agent board never shows what the
+  ;; manager already has, so a dropdown whose only job is to identify that roster
+  ;; looked inert. nil has to reach the view as nil — normalizing it to [] would
+  ;; make "pick your team" indistinguishable from "you hold nobody".
+  (swap! rdb/app-db assoc :waivers {:players [] :my-roster nil})
+  (rf/clear-subscription-cache!)
+  (is (nil? (sub [:my-waiver-roster])))
+  (swap! rdb/app-db assoc :waivers {:players [] :my-roster []})
+  (rf/clear-subscription-cache!)
+  (is (= [] (sub [:my-waiver-roster])) "picked, but holding nobody"))
+
+(defn- render
+  "A component's hiccup, rendered inside a reactive context.
+
+  Same binding `sub` needs and for the same reason: the panel subscribes, and
+  re-frame warns on every subscribe made outside one."
+  [component]
+  (binding [reagent.ratom/*ratom-context* #js {}] (pr-str (component))))
+
+(deftest the-roster-panel-says-which-state-it-is-in
+  (let [text (fn [] (render waivers/my-roster-panel))]
+    (swap! rdb/app-db assoc :league-sync nil :waivers {:my-roster nil})
+    (rf/clear-subscription-cache!)
+    (is (re-find #"Sync a league" (text)) "no league connected at all")
+
+    (swap! rdb/app-db assoc :league-sync synced :waivers {:my-roster nil})
+    (rf/clear-subscription-cache!)
+    (is (re-find #"Pick your team" (text))
+        "synced but no team chosen — the line that was missing")
+
+    (swap! rdb/app-db assoc :league-sync synced :waivers {:my-roster []})
+    (rf/clear-subscription-cache!)
+    (is (re-find #"holds nobody" (text)))))
+
+(deftest the-roster-panel-splits-starters-from-bench-and-marks-the-seat-at-stake
+  ;; The synced league knows the real lineup; the draft config's slot template
+  ;; does not. And the marked seat is the same man the drop note names.
+  (swap! rdb/app-db assoc :league-sync synced
+         :waivers {:my-roster [{:player-id "a" :player-name "Starter A" :position "RB"
+                                :ros-points 180.0 :starter? true}
+                               {:player-id "b" :player-name "Bench B" :position "WR"
+                                :ros-points 40.0 :starter? false :drop? true}
+                               {:player-id "s-ghost" :unvalued? true :parked? true}]})
+  (rf/clear-subscription-cache!)
+  (let [out (render waivers/my-roster-panel)]
+    (is (re-find #"Starters" out))
+    (is (re-find #"Bench" out))
+    (is (re-find #"drop-seat" out) "the seat a claim would cost is marked")
+    (is (re-find #"s-ghost" out)
+        "a row the board could not value keeps its seat and shows its id")))
