@@ -281,8 +281,9 @@
                            :parked?  (not (contains? active id))
                            :drop?    (= id drop-id)}]
                 (if-let [p (get by-id id)]
-                  (merge (select-keys p [:player-id :player-name :position :team
-                                         :bye :ros-points])
+                  ;; Exactly what the panel draws. A key nobody reads is a claim
+                  ;; that something uses it — the PDM is the standing example.
+                  (merge (select-keys p [:player-id :player-name :position :ros-points])
                          flags)
                   (merge {:player-id id :unvalued? true} flags))))
             (held-ids my-team xwalk :player-ids)))))
