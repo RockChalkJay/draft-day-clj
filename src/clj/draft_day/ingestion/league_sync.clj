@@ -26,9 +26,23 @@
 (defmulti normalize-rosters
   "Pure: a provider's raw roster payload ->
 
-    {:teams  [{:roster-id :owner-id :name :player-ids :starter-ids
+    {:teams  [{:roster-id :owner-id :name :player-ids :active-ids :starter-ids
                :faab-used :faab-left :waiver-position :wins :losses}]
-     :waiver {:type :faab|:rolling|:reverse-standings :budget n}}"
+     :waiver {:type :faab|:rolling|:reverse-standings :budget n}}
+
+  `:active-ids` is required, not optional, and it is `:player-ids` minus anyone
+  the provider parks — IR, taxi, whatever the host calls it. Both readers of a
+  roster ask a different question of the two: `:player-ids` is who is
+  unavailable to everyone else, `:active-ids` is who occupies a seat a claim
+  would have to free.
+
+  A provider that omits it does not degrade gracefully. `waiver/drop-candidate`
+  reads an empty roster, never finds it full and so names no drop at all — the
+  upgrade floor falls to 0 and every row on the board is overstated by the
+  dropped player's whole rest-of-season line — while `waiver/my-roster` marks
+  every player on the panel as parked. Spelled out here because that first
+  failure is silent, and it is the same one `waiver/held-ids` was written to
+  memorialise."
   (fn [provider _raw] provider))
 
 (defn unwrap-execution
