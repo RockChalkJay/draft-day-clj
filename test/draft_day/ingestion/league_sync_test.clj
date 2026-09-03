@@ -176,3 +176,63 @@
         "an ExecutionException gives up its cause")
     (is (identical? inner (league-sync/unwrap-execution inner))
         "anything else passes through untouched")))
+
+;; ---- connecting an account ----
+
+(def ^:private raw-user
+  ;; Shape confirmed against the live API. The nulls are Sleeper's, and three of
+  ;; these keys are the reason `normalize-user` builds rather than passes through.
+  {:user_id "993960010998722560" :username "rockchalkjay"
+   :display_name "rockchalkjay" :avatar "fb846befd76ce7953cb9b21093d2697b"
+   :email nil :phone nil :token nil :is_bot false :real_name nil})
+
+(deftest a-user-is-narrowed-to-the-three-fields-the-app-needs
+  ;; The raw document carries email, phone and a token. `/api/league/user`
+  ;; returns whatever this hands back, so it is the only thing between them and
+  ;; the browser.
+  (let [u (sync-sleeper/normalize-user raw-user)]
+    (is (= {:user-id "993960010998722560"
+            :display-name "rockchalkjay"
+            :avatar "fb846befd76ce7953cb9b21093d2697b"}
+           u))
+    (is (not-any? #{:email :phone :token :is_bot :real_name} (keys u))
+        "nothing from the raw document rides along"))
+  (testing "a blank display name falls back to the username"
+    (is (= "handle" (:display-name (sync-sleeper/normalize-user
+                                    {:user_id "1" :username "handle" :display_name ""}))))))
+
+(deftest a-league-entry-carries-what-a-picker-shows
+  (let [l (sync-sleeper/normalize-league-entry
+           {:league_id 1380540443179118592 :name "RaiderNation" :season "2026"
+            :total_rosters 12 :status "in_season" :avatar "abc" :draft_id "x"})]
+    (is (= "1380540443179118592" (:league-id l)) "as a string, not a lossy number")
+    (is (= {:name "RaiderNation" :season "2026" :num-teams 12 :status "in_season"}
+           (select-keys l [:name :season :num-teams :status])))))
+
+(deftest an-account-with-no-leagues-is-an-answer-not-a-missing-account
+  ;; The trap, pinned. Sleeper answers an unknown *user* with 200 and `null`, and
+  ;; a user who plays in nothing this season with 200 and `[]`. `empty?` cannot
+  ;; tell them apart, so treating both as missing would tell a manager his
+  ;; account does not exist because he took a year off.
+  (with-redefs [league-sync/find-user    (fn [_ _] {:user-id "u1" :display-name "n"})
+                league-sync/list-leagues (fn [_ _ _] [])]
+    (let [{:keys [ok leagues user]} (league-sync/find-leagues
+                                     {:provider :sleeper :username "n"})]
+      (is ok "no leagues is a success")
+      (is (= [] leagues))
+      (is (= "u1" (:user-id user))))))
+
+(deftest an-unknown-username-keeps-its-404
+  (with-redefs [league-sync/find-user
+                (fn [_ _] (throw (ex-info "Sleeper user not found" {:status 404})))]
+    (let [{:keys [ok status error]} (league-sync/find-leagues
+                                     {:provider :sleeper :username "nope"})]
+      (is (not ok))
+      (is (= 404 status))
+      (is (= "Sleeper user not found" error)))))
+
+(deftest an-unknown-provider-cannot-look-up-an-account
+  (let [{:keys [ok status]} (league-sync/find-leagues
+                             {:provider :yahoo :username "someone"})]
+    (is (not ok))
+    (is (= 400 status))))

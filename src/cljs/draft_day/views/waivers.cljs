@@ -109,15 +109,45 @@
   ;; fallback a manager returning next session reads persisted, month-old
   ;; rosters with the re-sync button greyed out and no record of which league
   ;; they came from.
-  (let [typed (r/atom nil)]
+  (let [typed (r/atom nil)
+        ;; Same reason as `typed`: nil distinguishes "never edited" from
+        ;; "cleared", so the field can fall back to the connected account.
+        name-typed (r/atom nil)]
     (fn []
-      (let [synced? @(rf/subscribe [:league-synced?])
-            teams   @(rf/subscribe [:sync-teams])
-            mine    @(rf/subscribe [:my-roster-id])
-            status  @(rf/subscribe [:waiver-status])
-            known   @(rf/subscribe [:synced-league-id])
-            league-id (or @typed known "")]
+      (let [synced?  @(rf/subscribe [:league-synced?])
+            teams    @(rf/subscribe [:sync-teams])
+            mine     @(rf/subscribe [:my-roster-id])
+            status   @(rf/subscribe [:waiver-status])
+            known    @(rf/subscribe [:synced-league-id])
+            saved-name @(rf/subscribe [:sleeper-username])
+            choices  @(rf/subscribe [:league-choices])
+            league-id (or @typed known "")
+            username  (or @name-typed saved-name "")]
         [:div.sync-panel
+         ;; Connecting an account is the way in; the league id below is the
+         ;; fallback for a league this account cannot see, and the record of
+         ;; which one is currently synced.
+         [:div.sync-row
+          [:input {:type "text" :placeholder "Sleeper username"
+                   :value username
+                   :on-change #(reset! name-typed (.. % -target -value))
+                   :on-key-down #(when (= "Enter" (.-key %))
+                                   (when-not (str/blank? username)
+                                     (rf/dispatch [:league-connect username])))}]
+          [:button.primary {:disabled (str/blank? username)
+                            :on-click #(rf/dispatch [:league-connect username])}
+           (if saved-name "Reconnect" "Connect")]]
+         (when (seq choices)
+           [:div.league-choices
+            (for [{:keys [league-id name num-teams status]} choices]
+              ^{:key league-id}
+              [:button.league-choice
+               {:class (when (= league-id known) "on")
+                :on-click #(rf/dispatch [:league-choose league-id])}
+               [:span.league-choice-name name]
+               [:span.muted (str " · " num-teams "-team · " status)]])])
+         (when (and (some? choices) (empty? choices))
+           [:div.sync-empty "That account plays in no leagues this season."])
          [:div.sync-row
           [:input {:type "text" :placeholder "Sleeper league ID"
                    :value league-id

@@ -45,6 +45,35 @@
   memorialise."
   (fn [provider _raw] provider))
 
+(defmulti find-user
+  "Network: a manager's account on this provider, by the name he types.
+
+  -> `{:user-id :display-name :avatar}`, and nothing else. Providers hand back
+  far more than that — Sleeper's user document carries `email`, `phone` and
+  `token` keys — and none of it has any business reaching the browser, so an
+  implementation builds the map it returns rather than passing one through.
+
+  Throws ex-info with `:status` on failure; an unknown name is a 404."
+  (fn [provider _username] provider))
+
+(defmethod find-user :default
+  [provider _username]
+  (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
+
+(defmulti list-leagues
+  "Network: the leagues that account plays in, for one season.
+
+  -> `[{:league-id :name :season :num-teams :status :avatar}]`.
+
+  An empty vector is a real answer — a manager who plays no fantasy football
+  this year — and must not be reported as a missing account. `nil` season means
+  the provider's current one."
+  (fn [provider _user-id _season] provider))
+
+(defmethod list-leagues :default
+  [provider _user-id _season]
+  (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
+
 (defn unwrap-execution
   "An `ExecutionException`'s cause in its place; anything else unchanged.
 
@@ -81,6 +110,28 @@
       ;; One catch rather than two: the unwrap has to happen before the status is
       ;; read, and `ex-data` is nil for anything that is not an ex-info, so the
       ;; 502 default already covers what the second clause used to.
+      (catch Exception e
+        (let [cause (unwrap-execution e)]
+          {:ok false
+           :status (or (:status (ex-data cause)) 502)
+           :error  (ex-message cause)})))))
+
+(defn find-leagues
+  "{:provider :username :season} -> {:ok true :user {...} :leagues [...]}
+  or {:ok false :status :error}.
+
+  The same envelope `sync-league` and `league-import/import-league` return, so
+  `routes` handles all three with one shape.
+
+  Sequential rather than concurrent, because the leagues call needs the id the
+  user call returns — there is nothing to overlap."
+  [{:keys [provider username season]}]
+  (let [provider (keyword provider)]
+    (try
+      (let [user (find-user provider username)]
+        {:ok true
+         :user user
+         :leagues (list-leagues provider (:user-id user) season)})
       (catch Exception e
         (let [cause (unwrap-execution e)]
           {:ok false

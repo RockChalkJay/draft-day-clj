@@ -18,8 +18,12 @@
 
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
+;; `:league-choices` is deliberately absent: it is a listing of somebody else's
+;; state, refetched in one call, and a stale copy would offer a league the
+;; manager has since left.
 (def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist
-                   :league-sync :my-roster-id :waiver-columns])
+                   :league-sync :my-roster-id :waiver-columns
+                   :sleeper-username :sleeper-user-id])
 
 (defn make-teams-named
   "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
@@ -670,6 +674,9 @@
      ;; ---- in-season ----
      :league-sync  nil          ; last /api/league/sync reply: who is rostered, and FAAB
      :my-roster-id nil          ; which roster in the synced league is mine
+     :sleeper-username nil      ; the account the manager connected, so he types it once
+     :sleeper-user-id  nil      ; its provider id — matched against a roster's :owner-id
+     :league-choices   nil      ; leagues that account plays in; refetched, never persisted
      :waivers      nil          ; last /api/waivers reply
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}

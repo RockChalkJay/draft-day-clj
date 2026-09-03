@@ -13,7 +13,7 @@
             [draft-day.fx]
             [draft-day.subs :as subs]
             [draft-day.views.waivers :as waivers]
-            [draft-day.events]))
+            [draft-day.events :as events]))
 
 (defonce captured (atom {}))
 
@@ -313,3 +313,93 @@
     (is (re-find #"drop-seat" out) "the seat a claim would cost is marked")
     (is (re-find #"s-ghost" out)
         "a row the board could not value keeps its seat and shows its id")))
+
+;; ---- connecting an account ----
+
+(def ^:private owned
+  "A synced league where the rosters say who owns them — which the sync has
+  always carried and nothing used until now."
+  {:teams [{:roster-id 1 :owner-id "u-other" :name "Theirs"
+            :player-ids ["b"] :active-ids ["b"]}
+           {:roster-id 7 :owner-id "u-me" :name "Mine"
+            :player-ids ["a"] :active-ids ["a"]}]
+   :waiver {:type "faab" :budget 100}
+   :roster-size 15 :league-id "987654"})
+
+(deftest connecting-an-account-answers-which-team-is-mine
+  ;; The point of the unit. Until this, the manager had to pick his own roster
+  ;; out of a list of twelve before the board could name a drop, price a bid or
+  ;; draw his roster — and all three read as blank until he did.
+  (swap! rdb/app-db assoc :sleeper-user-id "u-me" :my-roster-id nil)
+  (rf/dispatch-sync [:league-synced owned])
+  (is (= 7 (:my-roster-id @rdb/app-db))))
+
+(deftest a-corrected-team-is-not-undone-by-the-next-sync
+  ;; Co-managed teams and second accounts are real; a manager who overrode the
+  ;; guess must keep his override.
+  (swap! rdb/app-db assoc :sleeper-user-id "u-me" :my-roster-id 1)
+  (rf/dispatch-sync [:league-synced owned])
+  (is (= 1 (:my-roster-id @rdb/app-db))))
+
+(deftest an-owner-nobody-matches-leaves-the-dropdown-to-answer
+  (swap! rdb/app-db assoc :sleeper-user-id "u-nobody" :my-roster-id nil)
+  (rf/dispatch-sync [:league-synced owned])
+  (is (nil? (:my-roster-id @rdb/app-db)) "a guess here would be worse than the prompt"))
+
+(deftest matching-an-owner-is-string-identity-not-number-identity
+  ;; Roster ids and owner ids cross the wire as strings; a fixture or an older
+  ;; persisted shape may hold either.
+  (is (= 7 (events/my-roster-id-for (:teams owned) "u-me")))
+  (is (nil? (events/my-roster-id-for (:teams owned) nil)))
+  (is (nil? (events/my-roster-id-for (:teams owned) "")))
+  (is (nil? (events/my-roster-id-for [] "u-me"))))
+
+(deftest one-league-is-not-a-choice
+  (rf/dispatch-sync [:league-user-loaded
+                     {:user {:user-id "u1" :display-name "jay"}
+                      :leagues [{:league-id "L1" :name "Only" :num-teams 12}]}])
+  (is (= "jay" (:sleeper-username @rdb/app-db)))
+  (is (= "u1" (:sleeper-user-id @rdb/app-db)))
+  (is (some #{:league-choose} (dispatched))
+      "asking a manager to confirm the only possible answer is a step for nothing"))
+
+(deftest several-leagues-wait-to-be-picked
+  (rf/dispatch-sync [:league-user-loaded
+                     {:user {:user-id "u1" :display-name "jay"}
+                      :leagues [{:league-id "L1" :name "One"} {:league-id "L2" :name "Two"}]}])
+  (is (= 2 (count (:league-choices @rdb/app-db))))
+  (is (not (some #{:league-choose} (dispatched)))))
+
+(deftest an-account-with-no-leagues-says-so-rather-than-failing
+  (rf/dispatch-sync [:league-user-loaded
+                     {:user {:user-id "u1" :display-name "jay"} :leagues []}])
+  (is (= [] (:league-choices @rdb/app-db)) "looked up, and plays in none")
+  (is (re-find #"no leagues" (:waiver-status @rdb/app-db)))
+  (is (not (some #{:league-choose} (dispatched)))))
+
+(deftest choosing-a-league-syncs-its-rosters-and-imports-its-rules
+  ;; Two questions off one id. A manager who synced without importing gets a
+  ;; board priced under the draft config's scoring rather than his league's.
+  (rf/dispatch-sync [:league-choose "L1"])
+  (let [evs (dispatched)]
+    (is (some #{:sync-league} evs))
+    (is (some #{:import-league} evs))))
+
+(deftest the-connected-account-survives-a-reload
+  (rf/dispatch-sync [:league-user-loaded
+                     {:user {:user-id "u1" :display-name "jay"} :leagues []}])
+  (let [slice (last (:persist @captured))]
+    (is (contains? slice :sleeper-username))
+    (is (contains? slice :sleeper-user-id))
+    (is (not (contains? slice :league-choices))
+        "a listing of somebody else's state, refetched in one call")))
+
+(deftest a-persisted-username-is-guarded-before-a-view-binds-it
+  ;; It comes back from localStorage and `sync-panel` binds it as an input's
+  ;; `:value`, so a non-string is a render error rather than a bad value.
+  (swap! rdb/app-db assoc :sleeper-username "jay")
+  (rf/clear-subscription-cache!)
+  (is (= "jay" (sub [:sleeper-username])))
+  (swap! rdb/app-db assoc :sleeper-username {:not "a name"})
+  (rf/clear-subscription-cache!)
+  (is (nil? (sub [:sleeper-username])) "a shape that is not a name reads as none"))
