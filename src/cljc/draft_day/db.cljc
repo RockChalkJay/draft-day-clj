@@ -628,6 +628,14 @@
      ;; ---- in-season ----
      :league-sync  nil          ; last /api/league/sync reply: who is rostered, and FAAB
      :my-roster-id nil          ; which roster in the synced league is mine
+     ;; The connected account. Session state, deliberately absent from
+     ;; `persist-keys`: which league is synced and which roster is mine already
+     ;; survive a reload as `:league-sync` and `:my-roster-id`, and adding keys
+     ;; here would mean bumping `fx/storage-version`, which discards every stored
+     ;; blob. A username is cheap to retype; a draft is not cheap to lose.
+     :sleeper-username nil      ; the account the manager connected
+     :sleeper-user-id  nil      ; its provider id — matched against a roster's :owner-id
+     :league-choices   nil      ; leagues that account plays in; refetched, never stored
      ;; Read from `fx/drafts-key` at boot, not from the persisted slice: an
      ;; archived draft has its own key and its own version.
      :drafts       []           ; completed drafts, oldest first

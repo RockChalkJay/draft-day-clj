@@ -23,22 +23,30 @@
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.parallel :as parallel]
+            [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.sleeper :as import-sleeper]))
 
-(defn- league-path [league-id path]
-  (str "https://api.sleeper.app/v1/league/" league-id "/" path))
+(def ^:private base "https://api.sleeper.app/v1/")
 
-(defn fetch-json
-  "Network: one Sleeper sub-resource as parsed JSON.
+(defn get-json
+  "Network: one Sleeper document at `path` under the v1 base, as parsed JSON.
 
-  A null or empty body is an error rather than an empty league: Sleeper answers
-  an unknown id with 200 and `null`, and a sync that read that as 'nobody is
-  rostered' would hand the manager a waiver board listing every player in the
-  NFL as available."
-  [league-id path]
-  (let [{:keys [status body error]} @(http/get (league-path league-id path) {:timeout 30000})]
+  `:empty-is-missing?` is a parameter rather than a constant because Sleeper
+  answers 'no such thing' and 'nothing here' with the same status and different
+  bodies, and the two need opposite treatment:
+
+  - an unknown league or user is `200` with `null` — reading that as an empty
+    league would hand back a waiver board listing the whole NFL as available, so
+    it must throw 404;
+  - a user with no leagues this season is `200` with `[]` — a real answer, and
+    throwing 404 there would tell a manager his account does not exist.
+
+  Both confirmed against the live API. `empty?` cannot tell them apart, which is
+  exactly why the caller has to say which it expects."
+  [path {:keys [empty-is-missing? not-found-msg]}]
+  (let [{:keys [status body error]} @(http/get (str base path) {:timeout 30000})]
     (cond
       error             (throw (ex-info (str "Sleeper " path " fetch failed")
                                         {:status 502 :error error}))
@@ -46,9 +54,15 @@
                                         {:status 502 :sleeper-status status}))
       :else
       (let [parsed (json/read-value body mapper)]
-        (if (empty? parsed)
-          (throw (ex-info "Sleeper league not found" {:status 404}))
+        (if (and empty-is-missing? (empty? parsed))
+          (throw (ex-info (or not-found-msg "Sleeper resource not found") {:status 404}))
           parsed)))))
+
+(defn fetch-json
+  "One of a league's sub-resources. Missing means missing — see `get-json`."
+  [league-id path]
+  (get-json (str "league/" league-id "/" path)
+            {:empty-is-missing? true :not-found-msg "Sleeper league not found"}))
 
 ;; The thunks here throw rather than being best-effort — a 404 from Sleeper is
 ;; the answer, not a missing column — so the ex-info comes back out of
@@ -60,6 +74,46 @@
    {:rosters (fn [] (fetch-json league-id "rosters"))
     :users   (fn [] (fetch-json league-id "users"))
     :league  (fn [] (league-import/fetch-raw-league :sleeper league-id))}))
+
+(defn normalize-user
+  "Pure: Sleeper's user document -> `{:user-id :display-name :avatar}`.
+
+  Built, never passed through. The raw document carries `email`, `phone` and
+  `token` alongside the three fields the app wants, and this function is the only
+  thing standing between them and the browser — `/api/league/user` returns
+  whatever it hands back."
+  [raw]
+  {:user-id      (str (:user_id raw))
+   :display-name (or (not-empty (:display_name raw)) (:username raw))
+   :avatar       (:avatar raw)})
+
+(defmethod league-sync/find-user :sleeper
+  [_ username]
+  (normalize-user
+   (get-json (str "user/" username)
+             {:empty-is-missing? true :not-found-msg "Sleeper user not found"})))
+
+(defn normalize-league-entry
+  "Pure: one league from a user's league list -> what a picker needs.
+
+  `:status` rides along because 'pre_draft' and 'in_season' are the difference
+  between a league worth syncing rosters from and one that has none yet."
+  [raw]
+  {:league-id (str (:league_id raw))
+   :name      (:name raw)
+   :season    (:season raw)
+   :num-teams (:total_rosters raw)
+   :status    (:status raw)
+   :avatar    (:avatar raw)})
+
+(defmethod league-sync/list-leagues :sleeper
+  [_ user-id season]
+  (let [season (or season (sleeper/current-season))]
+    ;; empty-is-missing? false: a manager with no leagues this season gets `[]`
+    ;; with status 200, and that is an answer, not a missing account.
+    (mapv normalize-league-entry
+          (get-json (str "user/" user-id "/leagues/nfl/" season)
+                    {:empty-is-missing? false}))))
 
 (defn team-names
   "Pure: raw users -> `{user-id display-name}`.

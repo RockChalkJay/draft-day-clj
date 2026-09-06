@@ -105,6 +105,45 @@
           (json-response 200 league)
           (json-response status {:error error}))))))
 
+(defn username-error
+  "The 400 body for an unusable username, or nil when it is fine."
+  [username]
+  (cond
+    (str/blank? username)
+    {:error "username is required"}
+
+    (not (re-matches #"[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}" username))
+    {:error "username must be 1-32 letters, digits, underscores, dots or hyphens"}
+
+    (str/includes? username "..")
+    {:error "username cannot contain '..'"}))
+
+(defn league-user-handler
+  "A manager's account and the leagues it plays in, so the app can be told who he
+  is rather than made to look up a 19-digit league id.
+
+  GET rather than POST, and query params rather than a body, because it reads
+  nothing and changes nothing — `cache-reset-handler` already takes its argument
+  the same way.
+
+  The `try` is not decoration: `read-json-body` throwing out of a sibling handler
+  is a 500 today, and this one takes user input straight from the query string."
+  [req]
+  (try
+    (let [{:strs [provider username season]} (:query-params req)
+          username (str username)]
+      (if-let [bad (username-error username)]
+        (json-response 400 bad)
+        (let [{:keys [ok user leagues status error]}
+              (league-sync/find-leagues {:provider (or (not-empty provider) "sleeper")
+                                         :username username
+                                         :season   (not-empty season)})]
+          (if ok
+            (json-response 200 {:user user :leagues leagues})
+            (json-response status {:error error})))))
+    (catch Exception e
+      (json-response 500 {:error (ex-message e)}))))
+
 (defn resolve-scoring
   "Coerce the request's scoring field into a scoring config, bounded to known
   stat keys so an oversized client map can't amplify per-player scoring.
@@ -261,7 +300,8 @@
      ["/api/rankings" {:post rankings-handler}]
      ["/api/waivers"  {:post waivers-handler}]
      ["/api/league/import"   {:post league-import-handler}]
-     ["/api/league/sync"     {:post league-sync-handler}]]
+     ["/api/league/sync"     {:post league-sync-handler}]
+     ["/api/league/user"     {:get  league-user-handler}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})

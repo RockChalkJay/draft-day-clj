@@ -266,6 +266,19 @@
 ;; button is absent rather than inert when there is nothing to keep.
 (rf/reg-sub :draft-has-picks? (fn [db _] (db/drafted-anything? db)))
 
+;; Session state, not persisted: the league and the roster that matter across a
+;; reload already survive in `:league-sync` and `:my-roster-id`, and adding keys
+;; to `persist-keys` would mean bumping `fx/storage-version` — which discards
+;; every stored blob, drafts included. The username is cheap to retype.
+;;
+;; No `:sleeper-user-id` sub: its only reader is `:league-synced`, which takes it
+;; off the map directly because it is an event handler, not a view.
+(rf/reg-sub :sleeper-username (fn [db _] (:sleeper-username db)))
+
+;; nil means "never looked up"; [] means "looked up, plays in none this season".
+;; The panel says different things for the two, so this does not normalize them.
+(rf/reg-sub :league-choices (fn [db _] (:league-choices db)))
+
 (rf/reg-sub :visible-waiver-columns :<- [:waiver-columns]
   (fn [cols _] (filterv :visible? cols)))
 
