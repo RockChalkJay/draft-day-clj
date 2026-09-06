@@ -36,3 +36,4 @@ out/
 # benchmark sweep has pulled every season from every source)
 /data/benchmark_cache/
 /data/replay_cache/
+/data/drafts/

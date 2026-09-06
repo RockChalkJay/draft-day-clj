@@ -337,3 +337,74 @@
           :league-sync :my-roster-id :waiver-columns]
          db/persist-keys)
       "and this is everything that gets stored at all"))
+
+;; ---- the draft archive ----
+
+(deftest an-archived-draft-outlives-a-storage-version-bump
+  ;; The whole reason it has its own key and its own version. A bump exists to
+  ;; stop *live* state being read under a shape it was not written for, and
+  ;; dropping the blob is the right answer for a column layout. A completed
+  ;; draft is a record of something that happened; discarding it because a
+  ;; Waivers column moved would be absurd.
+  (with-fake-storage
+    (fn [store]
+      (swap! store assoc fx/drafts-key
+             (pr-str {:v fx/drafts-version
+                      :drafts [{:archived-at "2026-09-06" :picks [{:player-id "a"}]}]}))
+      ;; the live slice, written under a version that is about to move
+      (swap! store assoc fx/store-key
+             (pr-str {:v (inc fx/storage-version) :state {:my-team-id "t3"}}))
+      (is (nil? (fx/load-persisted)) "live state is dropped, as designed")
+      (is (= 1 (count (fx/read-drafts))) "and the archive is untouched by it"))))
+
+(deftest an-unreadable-or-mis-stamped-archive-reads-as-empty-not-as-a-crash
+  (with-fake-storage
+    (fn [store]
+      (is (= [] (fx/read-drafts)) "nothing stored at all")
+      (swap! store assoc fx/drafts-key "{:v 1 :drafts [")
+      (is (= [] (fx/read-drafts)) "unreadable")
+      (swap! store assoc fx/drafts-key
+             (pr-str {:v (inc fx/drafts-version) :drafts [{:picks [1]}]}))
+      (is (= [] (fx/read-drafts)) "written under a different archive version"))))
+
+(deftest archiving-appends-rather-than-replaces
+  ;; A manager drafts in more than one league and more than one season.
+  (with-fake-storage
+    (fn [_]
+      (rf/dispatch-sync [:archive-draft])          ; nothing drafted yet
+      (is (= [] (fx/read-drafts)) "an empty shell is worse than no entry")
+      (swap! rdb/app-db assoc :picks [{:player-id "a" :price 5}]
+             :teams [{:team-id "t0"}] :my-team-id "t0")
+      (rf/dispatch-sync [:archive-draft])
+      (swap! rdb/app-db assoc :picks [{:player-id "b" :price 9}])
+      (rf/dispatch-sync [:archive-draft])
+      (let [ds (fx/read-drafts)]
+        (is (= 2 (count ds)))
+        (is (= ["a" "b"] (mapv #(-> % :picks first :player-id) ds))
+            "oldest first")))))
+
+(deftest starting-a-draft-archives-the-one-it-destroys
+  ;; The only moment a completed draft is thrown away, and it happens by pressing
+  ;; a button labelled Start Draft — so the record is taken here rather than left
+  ;; to one somebody has to remember to press.
+  (with-fake-storage
+    (fn [_]
+      (swap! rdb/app-db assoc
+             :picks [{:player-id "gibbs" :price 43}]
+             :teams [{:team-id "t0" :name "crazy rich asians"}]
+             :my-team-id "t0"
+             :league-sync {:name "RaiderNation" :season "2026"})
+      (rf/dispatch-sync [:start-draft {:num-teams 12 :starting-bankroll 200 :team-names []}])
+      (let [[d] (fx/read-drafts)]
+        (is (= "RaiderNation" (:league d)) "the league synced at the time, as context")
+        (is (= "2026" (:season d)))
+        (is (= ["gibbs"] (mapv :player-id (:picks d))))
+        (is (= 200 (get-in d [:config :starting-bankroll]))
+            "the config it was drafted under — $43 means nothing without it"))
+      (is (empty? (:picks @rdb/app-db)) "and the live board is reset, as before"))))
+
+(deftest a-fresh-start-draft-archives-nothing
+  (with-fake-storage
+    (fn [_]
+      (rf/dispatch-sync [:start-draft {:num-teams 10 :starting-bankroll 100 :team-names []}])
+      (is (= [] (fx/read-drafts))))))

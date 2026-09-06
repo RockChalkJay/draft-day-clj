@@ -19,8 +19,16 @@
  (fn [_ _]
    ;; Saved state either matches the current `fx/storage-version` or it is not
    ;; loaded at all, so there is nothing here to repair.
-   {:db (merge (db/default-db) (fx/load-persisted))
+   ;; Archived drafts live under their own key and version, so they are read
+   ;; separately and are unaffected by a `storage-version` bump.
+   {:db (assoc (merge (db/default-db) (fx/load-persisted))
+               :drafts (fx/read-drafts))
     :fx [[:dispatch [:fetch-players]]]}))
+
+;; The archive is written by an effect; this is the one place it is read back
+;; into db, so there is a single reader rather than two `conj`s that can drift.
+(rf/reg-event-db :refresh-drafts
+  (fn [db _] (assoc db :drafts (fx/read-drafts))))
 
 (rf/reg-event-fx
  :fetch-players
@@ -226,6 +234,14 @@
 (rf/reg-event-db :show-modal  (fn [db [_ m]] (assoc db :modal m)))
 (rf/reg-event-db :close-modal (fn [db _] (assoc db :modal nil)))
 
+(rf/reg-event-fx :archive-draft
+  (fn [{:keys [db]} _]
+    ;; An empty shell in the archive is worse than no entry: it looks like a
+    ;; draft that happened and produced nothing.
+    (when (db/drafted-anything? db)
+      {:archive-draft! (db/archive-entry db (.toISOString (js/Date.)))
+       :fx [[:dispatch [:refresh-drafts]]]})))
+
 (rf/reg-event-fx :start-draft [persist]
   (fn [{:keys [db]} [_ {:keys [num-teams starting-bankroll team-names]}]]
     (let [num-teams (max 2 (min 20 (or num-teams 12)))
@@ -240,7 +256,15 @@
                ;; reset ALL in-progress draft state
                (assoc :drafted {} :picks [] :nominated-id nil :modal nil)
                (assoc :my-team-id (:team-id (first teams))))
-       :fx [[:dispatch [:recompute]]]})))
+       ;; Archive on the way out. This is the one place a completed draft is
+       ;; destroyed, and it is destroyed by a button labelled Start Draft — so
+       ;; the record is taken here rather than left to one somebody has to
+       ;; remember to press. `db` is still the outgoing draft: the `:db` above
+       ;; is a value in the effect map, not an assignment that has happened yet.
+       :fx [(when (db/drafted-anything? db)
+              [:archive-draft! (db/archive-entry db (.toISOString (js/Date.)))])
+            [:dispatch [:refresh-drafts]]
+            [:dispatch [:recompute]]]})))
 
 ;; Debounced for the same reason as :set-scoring-weight — the League and Roster
 ;; fields dispatch this per keystroke, and each one re-ranks the whole universe.
