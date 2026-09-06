@@ -54,8 +54,8 @@
   Roster ids arrive as the provider's (see `league-sync.sleeper`); the board is
   keyed by GSIS wherever one resolved. `xwalk` is `db/sleeper->player-id`, and an
   id it has no entry for maps to itself — team defenses carry their abbreviation
-  in both id spaces, and an unmapped id is not evidence that it is wrong, exactly
-  as `db/remap-draft-ids` argues.
+  in both id spaces, and an unmapped id is not evidence that it is wrong: the
+  universe may be a stale cache or the offline sample.
 
   Every reader of a roster goes through this. It exists as a named function
   rather than inline in `rostered-index` because the *second* reader is what

@@ -56,8 +56,8 @@
   Read by `league-sync`, not by this namespace's own `normalize-league`. The
   waiver board is driven by the sync alone, and returning these on the import as
   well only looked tidy: `events/:league-import-loaded` select-keys them away on
-  arrival and `db/reconcile-config` would strip them regardless, so the second
-  copy was two keys nobody read and one more place for the rule to drift.
+  arrival, so the second copy was two keys nobody read and one more place for
+  the rule to drift.
 
   The mapping is small and the *unknown* case is the one that matters. Anything
   not listed reads as `:rolling`, i.e. not FAAB — and that direction is chosen,

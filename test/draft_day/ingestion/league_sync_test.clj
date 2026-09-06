@@ -46,8 +46,8 @@
 
 (deftest the-waiver-rules-are-read-by-the-sync-not-returned-by-the-import
   ;; They were on `normalize-league` too, which only looked tidy: the client
-  ;; select-keys them away on arrival and `reconcile-config` would strip them
-  ;; regardless, so it was two keys nobody read and a second place to drift.
+  ;; select-keys them away on arrival, so it was two keys nobody read and a
+  ;; second place to drift.
   (is (= {:type :faab :budget 100} (import-sleeper/waiver-settings (:league raw))))
   (is (= 15 (import-sleeper/playoff-week-start (:league raw))))
   (let [cfg (league-import/normalize-league :sleeper (:league raw))]

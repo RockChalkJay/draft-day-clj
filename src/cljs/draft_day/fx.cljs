@@ -4,7 +4,24 @@
   (:require [re-frame.core :as rf]
             [cljs.reader :as reader]))
 
-(def ^:private store-key "draft-day-state")
+(def store-key "draft-day-state")
+
+(def storage-version
+  "The shape of the persisted slice (`db/persist-keys`).
+
+  Saved state is stamped with this and read back only when the stamp matches;
+  anything else is dropped and the app opens at defaults. **Bump it whenever a
+  persisted shape changes** — a key added to or removed from the config, a
+  column added to or removed from `db/column-catalog`, a value that changes
+  type.
+
+  This is deliberately all the migration there is. The app used to repair every
+  shape it had ever written, in place, which meant a permanent record of its own
+  history spread across three reconcile functions and an id crosswalk. Starting
+  over costs a manager his column layout and, mid-draft, his picks; the version
+  is only bumped by a deploy, and a rebuilt layout is worth less than the code
+  that avoided rebuilding it."
+  1)
 
 (rf/reg-fx
  :http
@@ -46,10 +63,15 @@
 (rf/reg-fx
  :persist!
  (fn [slice]
-   (try (.setItem js/localStorage store-key (pr-str slice))
+   (try (.setItem js/localStorage store-key
+                  (pr-str {:v storage-version :state slice}))
         (catch :default _ nil))))
 
-(defn load-persisted []
+(defn load-persisted
+  "The saved slice, or nil if there is none, it is unreadable, or it was written
+  by a different `storage-version`."
+  []
   (try (when-let [s (.getItem js/localStorage store-key)]
-         (reader/read-string s))
+         (let [{:keys [v state]} (reader/read-string s)]
+           (when (= v storage-version) state)))
        (catch :default _ nil)))
