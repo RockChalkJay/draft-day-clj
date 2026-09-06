@@ -72,6 +72,19 @@
 (rf/reg-sub :universe-by-id :<- [:players]
   (fn [ps _] (into {} (map (juxt :player-id identity)) ps)))
 
+(rf/reg-sub :ranked-rules (fn [db _] (:ranked-rules db)))
+
+;; Is the board on screen priced under rules that are no longer in force?
+;;
+;; Not the same question as "is it out of date". A pick that has landed without
+;; its reply leaves numbers a pick stale, which `:recompute-failed` keeps
+;; readable on purpose. A league switch leaves numbers that are about a
+;; *different league* — see `db/rules-stamp` for why that is every column and
+;; not just the dollars.
+(rf/reg-sub :board-rules-stale? :<- [:ranked] :<- [:ranked-rules] :<- [:config]
+  (fn [[ranked rules cfg] _]
+    (boolean (and ranked (not= rules (db/rules-stamp cfg))))))
+
 (rf/reg-sub :market :<- [:ranked]
   (fn [r _] (select-keys r [:inflation :inflation-index :market-heat :market-multiplier])))
 

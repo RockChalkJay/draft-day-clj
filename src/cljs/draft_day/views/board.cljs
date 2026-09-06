@@ -318,6 +318,27 @@
 
 ;; ---- board ----
 
+(defn rules-banner
+  "Says out loud that these numbers belong to another league.
+
+  The status line is not enough here. It carries `a pick out of date`, which is
+  a difference of a dollar or two, and `priced under a different league's
+  scoring, bankroll and team count`, which is a difference in every column —
+  and it carries them in the same muted grey. The waiver tab already makes this
+  trade with its week banner: a claim load-bearing enough to be misread deserves
+  a line of its own.
+
+  It stays up if the recompute never lands, which is the case the status line
+  handled worst — a failure right after a switch used to leave the previous
+  league's whole board sitting under this league's name indefinitely."
+  []
+  (when @(rf/subscribe [:board-rules-stale?])
+    (let [{:keys [league-name]} @(rf/subscribe [:account])]
+      [:div.week-banner.stale-rules
+       (str "These prices are still the previous league's"
+            (when league-name (str " — re-pricing for " league-name))
+            ". Scoring, bankroll and team count have all moved.")])))
+
 (defn board []
   (let [players     @(rf/subscribe [:board-players])
         cols        @(rf/subscribe [:visible-columns])
@@ -333,6 +354,7 @@
         ;; current filter, so both views have a coherent number to colour by.
         n-tiers     (reduce max 1 (keep :tier players))]
     [:div.board-wrap
+     [rules-banner]
      [:div.board-controls
       [:div.filters [pos-filter] [search-box]]]
      [:div.table-scroll

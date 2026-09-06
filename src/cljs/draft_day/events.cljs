@@ -78,11 +78,15 @@
                       :scoring            (get-in db [:config :scoring])
                       :replacement-config (replacement-config (get-in db [:config :roster]))
                       :league-state       (league-state db)}
-               :on-success [:ranked-loaded n]
+               ;; The rules ride along on the reply, so the board that comes back
+               ;; can be compared against the rules in force when it is *read*
+               ;; rather than against whatever db happens to say then. Same
+               ;; pattern and same reason as the league key on `:league-synced`.
+               :on-success [:ranked-loaded n (db/rules-stamp (:config db))]
                :on-failure [:recompute-failed]}}))))
 
 (rf/reg-event-db :ranked-loaded
-  (fn [db [_ n resp]]
+  (fn [db [_ n rules resp]]
     ;; Overlapping requests can answer out of order, and each one re-ranks the
     ;; whole universe, so latency varies. Only the newest may write the board —
     ;; otherwise a slow reply computed under the previous scoring config wins and
@@ -90,7 +94,7 @@
     (if-not (= n (:recompute-seq db))
       db
       (let [err (:recompute-error db)]
-        (cond-> (assoc db :ranked resp :recompute-error nil)
+        (cond-> (assoc db :ranked resp :ranked-rules rules :recompute-error nil)
           ;; Take the status line back only while the error is still what is on
           ;; it. Other flows (a league import's "✓ Imported …") own it too, and
           ;; between the failure and this reply one of them may have spoken.
@@ -100,7 +104,10 @@
 (rf/reg-event-db :recompute-failed
   (fn [db [_ err]]
     ;; Leave :ranked alone — the previous board is stale but readable, which
-    ;; beats blanking it. The status line is what says it is stale.
+    ;; beats blanking it. The status line is what says it is stale, and
+    ;; `:ranked-rules` is what says it is stale about *another league* — a
+    ;; failure right after a switch is the case where this would otherwise sit
+    ;; there indefinitely with nothing but a muted string to explain it.
     (let [msg (str "Rankings update failed: " err)]
       (assoc db :status msg :recompute-error msg))))
 
@@ -152,8 +159,14 @@
 ;; whole reason `:watchlist-players` can keep promising an order he can trust.
 (rf/reg-event-db :watch-sort [persist]
   (fn [db [_ k]]
-    (update db :watchlist db/sort-watchlist
-            (db/index-by-id (get-in db [:ranked :players])) k)))
+    ;; Refuses while the board belongs to another league. This is the one place a
+    ;; stale read *writes*: the reordered list is persisted, so sorting during
+    ;; the window between a switch and its reply would bake the previous
+    ;; league's ranking into stored state, where nothing later would reveal it.
+    (if (not= (:ranked-rules db) (db/rules-stamp (:config db)))
+      db
+      (update db :watchlist db/sort-watchlist
+              (db/index-by-id (get-in db [:ranked :players])) k))))
 
 (rf/reg-event-db
  :set-sort
@@ -395,12 +408,15 @@
                    ;; The waiver board states *facts* about a league — who is
                    ;; rostered, what your FAAB is, which man you would drop.
                    ;; Under another league's name those are not stale, they are
-                   ;; false, so it is dropped rather than left readable. `:ranked`
-                   ;; deliberately is not: it is the same universe under
-                   ;; different dollars, which is the staleness
-                   ;; `:recompute-failed` already tolerates on purpose, and
-                   ;; blanking the whole board on every switch is worse than a
-                   ;; moment of the previous league's prices.
+                   ;; false, so it is dropped rather than left readable.
+                   ;;
+                   ;; `:ranked` is not dropped — and not because it survives the
+                   ;; switch, since almost none of it does; see `db/rules-stamp`.
+                   ;; It is kept because `:ranked-rules` lets the board *say* it
+                   ;; belongs to another league, which clearing could not: two
+                   ;; leagues on the same format would blank for nothing, and a
+                   ;; recompute that never lands would leave an empty table
+                   ;; explaining itself no better than a wrong one.
                    :waivers nil)
       ;; `:num-teams`, `:starting-bankroll` and the roster template all just
       ;; moved, and `:teams` is built from exactly those three. Without this the

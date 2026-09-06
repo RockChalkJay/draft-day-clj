@@ -68,6 +68,25 @@
   [db f & args]
   (set-config db (apply f (:config db) args)))
 
+(defn rules-stamp
+  "The half of a config a ranked board is only valid under.
+
+  A board is valid for the *rules it was priced under*, not for a moment in
+  time, and that splits two kinds of staleness that look identical in db.
+
+  A pick landed and the reply has not: the numbers are a pick out of date, which
+  is the staleness `:recompute-failed` deliberately keeps readable. But when
+  scoring, team count, bankroll or the roster move, the board is not out of date
+  — it is *about a different league*. Every column moves with them: `:points`
+  with the weights, `:vorp` and the tiers with points and replacement, every
+  dollar with the bankroll and the team count, and even the vendor columns,
+  since `rankings.vendor` flattens ECR, ADP and AAV per scoring format.
+
+  `:budget-plan` is deliberately out. It is client-only tracking that feeds no
+  valuation — the same reason `:set-position-budget` skips `:recompute`."
+  [cfg]
+  (select-keys cfg [:scoring :num-teams :starting-bankroll :roster]))
+
 (defn drafted-anything?
   [db]
   (boolean (seq (:picks db))))

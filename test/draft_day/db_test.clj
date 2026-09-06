@@ -500,6 +500,27 @@
       (is (= {:scoring :standard} (:config db')))
       (is (nil? (:leagues db'))))))
 
+(deftest a-ranked-board-is-stamped-with-the-rules-it-was-priced-under
+  ;; A board is valid for the rules it was priced under, not for a moment in
+  ;; time — which is what separates "a pick out of date" (keep it readable) from
+  ;; "about a different league" (say so).
+  (is (= [:num-teams :roster :scoring :starting-bankroll]
+         (vec (sort (keys (db/rules-stamp db/default-config)))))
+      "exactly the four the server prices against")
+
+  (testing "the client-only budget plan is not one of them"
+    ;; It feeds no valuation, which is why `:set-position-budget` skips
+    ;; `:recompute` — so a board is not made wrong by an edit to it.
+    (is (= (db/rules-stamp db/default-config)
+           (db/rules-stamp (assoc db/default-config :budget-plan {:rb 80})))))
+
+  (testing "and each of the four does move it"
+    (doseq [[k v] {:scoring :standard :num-teams 14 :starting-bankroll 300
+                   :roster (assoc db/default-roster :bench 7)}]
+      (is (not= (db/rules-stamp db/default-config)
+                (db/rules-stamp (assoc db/default-config k v)))
+          (str k " left the stamp unchanged")))))
+
 (deftest an-archived-draft-names-the-league-it-was-drafted-in
   ;; It reads the active league entry. `get-in` on a key that no longer exists
   ;; yields nil rather than throwing, so pointing this at the wrong place would

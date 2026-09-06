@@ -13,6 +13,7 @@
             [draft-day.db :as db]
             [draft-day.fx]
             [draft-day.subs :as subs]
+            [draft-day.views.board :as board]
             [draft-day.views.waivers :as waivers]
             [draft-day.events :as events]))
 
@@ -570,6 +571,118 @@
   (rf/dispatch-sync [:set-active-league "sleeper:b"])
   (is (nil? (:waivers @rdb/app-db)) "so it reads as loading rather than as another league's")
   (is (some? (:ranked @rdb/app-db)) "but the draft board is not blanked on every switch"))
+
+(deftest a-board-priced-under-another-league-s-rules-says-so
+  ;; The claim this replaces was that `:ranked` survives a switch as "the same
+  ;; universe under different dollars". It does not: scoring moves `:points`,
+  ;; which moves VORP, the tiers and every rank; the bankroll and team count move
+  ;; every dollar; and the vendor columns are flattened per scoring format, so
+  ;; ECR and ADP move too. Name, team, bye and position are what survive.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :name "Alpha"
+                                :config (assoc db/default-config :scoring :ppr)}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :name "Beta"
+                                :config (assoc db/default-config
+                                               :scoring :standard :starting-bankroll 300)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "p1" :worth 51}]}])
+  (rf/clear-subscription-cache!)
+  (is (false? (sub [:board-rules-stale?])) "its own league's board is not stale")
+
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (rf/clear-subscription-cache!)
+  (is (true? (sub [:board-rules-stale?])))
+  (is (re-find #"previous league" (render board/rules-banner))
+      "and the board says it out loud rather than leaving it to the status line")
+
+  (testing "and stops saying it once the matching reply lands"
+    (rf/dispatch-sync [:recompute])
+    (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                       (db/rules-stamp (:config @rdb/app-db))
+                       {:players [{:player-id "p1" :worth 77}]}])
+    (rf/clear-subscription-cache!)
+    (is (false? (sub [:board-rules-stale?])))
+    (is (= "nil" (render board/rules-banner)) "no banner, not an empty one")))
+
+(deftest two-leagues-on-the-same-rules-switch-without-a-word
+  ;; The reason the board is stamped with its rules rather than simply cleared on
+  ;; every switch: when the rules are the same the board is *correct*, and
+  ;; blanking it would cost a manager his screen for nothing.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :config db/default-config}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "p1" :worth 51}]}])
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (rf/clear-subscription-cache!)
+  (is (false? (sub [:board-rules-stale?])))
+  (is (some? (:ranked @rdb/app-db)) "and the board is still on screen"))
+
+(deftest a-pick-without-its-reply-is-the-staleness-that-is-tolerated
+  ;; Two kinds of stale that look the same in db. This one is a dollar or two out
+  ;; of date and must stay readable — flagging it would make the banner noise and
+  ;; the banner would stop being read.
+  (swap! rdb/app-db assoc :players [{:player-id "p1" :position "RB"}])
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "p1" :worth 51}]}])
+  (rf/dispatch-sync [:record-pick {:player-id "p1" :price "5" :team-id "t0" :position "RB"}])
+  (rf/clear-subscription-cache!)
+  (is (false? (sub [:board-rules-stale?]))))
+
+(deftest a-recompute-that-never-lands-leaves-the-warning-up
+  ;; The case the status line handled worst. `:recompute-failed` keeps `:ranked`
+  ;; on purpose, so a failure right after a switch used to leave the previous
+  ;; league's whole board under this league's name indefinitely, with one muted
+  ;; grey string to explain it.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config :scoring :standard)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "p1" :worth 51}]}])
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (rf/dispatch-sync [:recompute-failed "offline"])
+  (rf/clear-subscription-cache!)
+  (is (true? (sub [:board-rules-stale?])))
+  (is (some? (:ranked @rdb/app-db)) "still readable, as :recompute-failed intends")
+  (is (re-find #"previous league" (render board/rules-banner))
+      "but no longer silently claiming to be this league's"))
+
+(deftest sorting-the-watch-list-refuses-while-the-board-is-another-league-s
+  ;; The one place a stale read *writes*: the reordered list is persisted, so a
+  ;; sort during the window would bake the previous league's ranking into stored
+  ;; state where nothing later would reveal it.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :watchlist ["gibbs" "lamb" "bijan"]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config :scoring :standard)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "gibbs" :worth 51 :vorp 100.0}
+                                {:player-id "bijan" :worth 58 :vorp 120.0}
+                                {:player-id "lamb"  :worth 55 :vorp 110.0}]}])
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (rf/dispatch-sync [:watch-sort :rank])
+  (is (= ["gibbs" "lamb" "bijan"] (:watchlist @rdb/app-db))
+      "the manager's own order is left exactly as it was"))
 
 (deftest choosing-a-league-re-ranks-under-the-config-it-just-activated
   ;; A new league is seeded with the *previous* league's config until the import

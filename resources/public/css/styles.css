@@ -420,6 +420,10 @@ button.undo:hover { color: var(--warn); }
 .week-banner { padding: 6px 10px; border-radius: 8px; background: var(--panel2);
   border: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .week-banner.preseason { border-color: var(--accent); color: var(--text); }
+/* Not the accent the preseason banner uses: this one reports that what is on
+   screen is wrong for the league it is under, which is a warning and not a
+   fact about the calendar. */
+.week-banner.stale-rules { border-color: var(--warn); color: var(--text); }
 
 .waiver-panels { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
 
