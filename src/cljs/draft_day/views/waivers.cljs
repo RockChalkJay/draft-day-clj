@@ -103,13 +103,22 @@
   and in Settings as well, so the same three facts had four writers and no single
   place to read them."
   []
-  (let [{:keys [connected? provider username league-name season my-team-name]}
-        @(rf/subscribe [:account])
+  (let [{:keys [connected? username season my-team-name]} @(rf/subscribe [:account])
+        ;; The *league's* provider, not the account's. A league added by pasting
+        ;; an id needs no account at all, and `:account` falls back to whichever
+        ;; account happens to be connected — which is nil in that case (and, once
+        ;; ESPN exists, the wrong one).
+        league    @(rf/subscribe [:active-league])
         synced?   @(rf/subscribe [:league-synced?])
-        league-id @(rf/subscribe [:synced-league-id])
-        status    @(rf/subscribe [:waiver-status])]
+        status    @(rf/subscribe [:waiver-status])
+        ;; A league is active or it is not; whether it has a *name* yet is a
+        ;; question about the sync reply. Gating on the name meant a league whose
+        ;; sync failed read as no league at all — hiding the Re-sync button on
+        ;; the one screen that reports the failure.
+        active?    (some? league)
+        league-name (or (:name league) (:league-id league))]
     [:div.sync-panel
-     (if league-name
+     (if active?
        [:div.sync-row
         [:div.sync-who
          [:b league-name]
@@ -121,9 +130,8 @@
             [:span.muted " · no team picked"])]]
         ;; Rosters only. Re-importing the rules here would overwrite a
         ;; hand-edited scoring config under a button labelled Re-sync.
-        [:button {:disabled (nil? league-id)
-                  :on-click #(rf/dispatch [:sync-league {:provider provider
-                                                         :league-id league-id}])}
+        [:button {:on-click #(rf/dispatch [:sync-league
+                                           (select-keys league [:provider :league-id])])}
          "Re-sync rosters"]
         (when synced?
           [:button.secondary {:on-click #(rf/dispatch [:fetch-waivers])} "Refresh board"])]
@@ -132,7 +140,7 @@
           "No league active — pick one under Settings → Connected Accounts."
           (str "No league connected — this is a rest-of-season ranking of everyone, "
                "not of who is actually free. Connect your account under Settings."))])
-     (when (and league-name (not my-team-name))
+     (when (and active? synced? (not my-team-name))
        [:div.sync-empty
         "Pick your team under Settings to see your roster and what a claim would cost."])
      (when status [:div.sync-status status])]))

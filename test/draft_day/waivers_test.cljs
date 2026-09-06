@@ -8,6 +8,7 @@
             [re-frame.core :as rf]
             [re-frame.db :as rdb]
             [re-frame.registrar :as registrar]
+            [clojure.walk]
             [reagent.ratom]
             [draft-day.db :as db]
             [draft-day.fx]
@@ -320,6 +321,34 @@
   [component]
   (binding [reagent.ratom/*ratom-context* #js {}] (pr-str (component))))
 
+(defn- press!
+  "Find the button labelled `label` in a component's hiccup and call its
+  `:on-click`.
+
+  Returns the events it dispatched.
+
+  `render` stringifies, which is enough to assert what a panel *says* but not
+  what a button *does* — and the bugs in the sync strip were all in the payload a
+  click sends, which no amount of rendering reaches. `rf/dispatch` is redefined
+  rather than read off `captured`: a view calls the dispatch *function*, which
+  queues on the real router, and never touches the `:dispatch` effect the fixture
+  stubs."
+  [component label]
+  (let [found (atom nil)
+        seen  (atom [])]
+    (clojure.walk/postwalk
+     (fn [x]
+       (when (and (vector? x) (= :button (first x)) (map? (second x))
+                  (some #{label} (filter string? x)))
+         (reset! found (:on-click (second x))))
+       x)
+     (binding [reagent.ratom/*ratom-context* #js {}] (component)))
+    (if-let [f @found]
+      (with-redefs [rf/dispatch (fn [ev] (swap! seen conj ev))]
+        (f)
+        @seen)
+      (throw (ex-info (str "no button labelled " label) {})))))
+
 (deftest the-roster-panel-says-which-state-it-is-in
   (let [text (fn [] (render waivers/my-roster-panel))]
     (swap! rdb/app-db assoc :leagues {} :active-league nil :waivers {:my-roster nil})
@@ -336,6 +365,33 @@
     (swap! rdb/app-db assoc :waivers {:my-roster []})
     (rf/clear-subscription-cache!)
     (is (re-find #"holds nobody" (text)))))
+
+(deftest the-strip-re-syncs-under-the-league-s-provider-not-the-account-s
+  ;; Settings supports adding a league by pasting an id with no account
+  ;; connected. Reading the provider off `:account` fell back to whichever
+  ;; account happened to exist — nil in that case, which throws in
+  ;; `db/league-key`, and the wrong one once ESPN arrives.
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc :accounts {})
+  (rf/clear-subscription-cache!)
+  (is (= [[:sync-league {:provider "sleeper" :league-id "987654"}]]
+         (press! waivers/sync-panel "Re-sync rosters"))))
+
+(deftest a-league-whose-sync-failed-still-offers-to-retry-it
+  ;; It has no `:name` until a reply lands, and gating the strip on the name made
+  ;; it read as no league at all — hiding the retry on the one screen that
+  ;; reports the failure.
+  (swap! rdb/app-db assoc
+         :leagues {lk {:provider "sleeper" :league-id "987654"}}
+         :active-league lk
+         :waivers {:my-roster nil})
+  (rf/clear-subscription-cache!)
+  (let [out (render waivers/sync-panel)]
+    (is (re-find #"Re-sync rosters" out))
+    (is (re-find #"987654" out) "and names itself by its id until the sync answers")
+    (is (not (re-find #"No league active" out))))
+  (is (= [[:sync-league {:provider "sleeper" :league-id "987654"}]]
+         (press! waivers/sync-panel "Re-sync rosters"))))
 
 (deftest the-roster-panel-splits-starters-from-bench-and-marks-the-seat-at-stake
   ;; The synced league knows the real lineup; the draft config's slot template
@@ -458,6 +514,86 @@
     (is (some #{:recompute} evs) "the draft board re-prices")
     (is (some #{:fetch-waivers} evs) "and so does the waiver board")))
 
+(deftest switching-leagues-rebuilds-the-teams-the-new-config-describes
+  ;; The config carries :num-teams, :starting-bankroll and the roster template,
+  ;; and :teams is built from exactly those three. A switch that moved the config
+  ;; without them sent a 12-team replacement level alongside ten teams' worth of
+  ;; cash, so every dollar on the board was wrong with nothing on screen to say
+  ;; so — and the League tab drew ten columns for a twelve-team league.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :teams (db/make-teams 10 db/default-roster 200)
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a"
+                                :config (assoc db/default-config :num-teams 10)}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config
+                                               :num-teams 12 :starting-bankroll 300)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (is (= 12 (count (:teams @rdb/app-db))))
+  (is (= 300 (:bankroll (first (:teams @rdb/app-db)))))
+  (rf/dispatch-sync [:recompute])
+  (let [b (:body (last-http))]
+    (is (= 12 (:num-teams b)))
+    (is (= 12 (count (get-in b [:league-state :teams])))
+        "the count the server prices against and the count it is told must agree")))
+
+(deftest a-draft-with-picks-in-it-keeps-its-teams-across-a-switch
+  ;; Draft state is still one draft for one team (docs/TODO.md). Rebuilding the
+  ;; teams under it would throw away the picks' bankrolls and rosters, which is
+  ;; worse than the mismatch it avoids — so the switch leaves them exactly as
+  ;; `:apply-config` does.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :teams (db/make-teams 10 db/default-roster 200)
+         :picks [{:player-id "gibbs" :price 43 :team-id "t0"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config :num-teams 12)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (is (= 10 (count (:teams @rdb/app-db)))))
+
+(deftest switching-drops-the-previous-league-s-waiver-board
+  ;; The waiver board states *facts* about a league — who is rostered, what your
+  ;; FAAB is, which man you would drop. Under another league's name those are not
+  ;; stale, they are false. `:ranked` is deliberately left alone: same universe,
+  ;; different dollars, which is the staleness `:recompute-failed` tolerates on
+  ;; purpose.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :waivers {:players [{:player-id "a"}] :faab {:left 60}}
+         :ranked  {:players [{:player-id "a"}]}
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :config db/default-config}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (is (nil? (:waivers @rdb/app-db)) "so it reads as loading rather than as another league's")
+  (is (some? (:ranked @rdb/app-db)) "but the draft board is not blanked on every switch"))
+
+(deftest choosing-a-league-re-ranks-under-the-config-it-just-activated
+  ;; A new league is seeded with the *previous* league's config until the import
+  ;; answers — and if the import fails it keeps it. Without a recompute here the
+  ;; board stayed priced under the league you left while the Scoring card showed
+  ;; something else.
+  (swap! rdb/app-db assoc :players [{:player-id "p1" :position "RB"}])
+  (rf/dispatch-sync [:league-choose {:league-id "L1" :name "One"}])
+  (is (some #{:recompute} (dispatched))))
+
+(deftest a-failed-import-is-reported-where-the-league-was-chosen
+  ;; The Settings card renders `:waiver-status`; the header renders `:status`.
+  ;; Reporting into one of them put the failure on the tab nobody was looking at.
+  (rf/dispatch-sync [:league-import-failed "404"])
+  (is (re-find #"import failed" (:status @rdb/app-db)))
+  (is (re-find #"import failed" (:waiver-status @rdb/app-db))))
+
+(deftest a-sync-with-no-league-to-sync-says-so-rather-than-throwing
+  ;; `db/league-key` calls `name` on the provider, and `(name nil)` throws in
+  ;; ClojureScript — killing the event rather than reporting anything.
+  (rf/dispatch-sync [:sync-league {:provider nil :league-id "123"}])
+  (is (re-find #"no league" (:waiver-status @rdb/app-db)))
+  (is (empty? (:http @captured)) "and nothing is sent"))
+
 (deftest a-config-edit-follows-the-league-it-was-made-in
   ;; `:config` is a *copy* of the active league's config. Every writer goes
   ;; through `db/set-config`; one that skipped the mirror would have its edit
@@ -474,6 +610,33 @@
   (rf/dispatch-sync [:set-active-league "sleeper:a"])
   (is (= :half-ppr (get-in @rdb/app-db [:config :scoring]))
       "the edit is still there — it was written to the league, not only to the copy"))
+
+(deftest a-background-import-does-not-narrate-itself-as-the-league-on-screen
+  ;; Choose two leagues in quick succession and the late reply would otherwise
+  ;; pop `✓ Imported "Old"` in the header and replace the Settings import report
+  ;; — describing the league you had already switched away from.
+  ;; Asserted on what the handler *asks for* rather than on db: `:dispatch` is
+  ;; stubbed in this namespace, so a follow-on event never reaches its handler
+  ;; and a db assertion here would pass whatever the handler did.
+  (swap! rdb/app-db assoc
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :config db/default-config}}
+         :active-league "sleeper:b")
+  (rf/dispatch-sync [:league-import-loaded "sleeper:a"
+                     {:name "Old" :season "2026" :scoring :standard
+                      :unsupported-scoring ["fgm_50p"]}])
+  (let [evs (dispatched)]
+    (is (not (some #{:set-status} evs)))
+    (is (not (some #{:set-import-report} evs)))
+    (is (not (some #{:apply-config} evs))))
+  (testing "while the league on screen still announces its own import"
+    (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
+    (rf/dispatch-sync [:league-import-loaded "sleeper:b"
+                       {:name "Mine" :season "2026" :scoring :ppr}])
+    (let [evs (dispatched)]
+      (is (some #{:set-status} evs))
+      (is (some #{:set-import-report} evs))
+      (is (some #{:apply-config} evs)))))
 
 (deftest an-import-for-a-league-you-are-no-longer-on-is-stored-not-applied
   ;; Two leagues chosen in quick succession answer in whatever order the network
