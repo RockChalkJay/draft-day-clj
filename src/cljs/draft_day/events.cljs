@@ -17,13 +17,18 @@
 (rf/reg-event-fx
  :boot
  (fn [_ _]
-   {:db (-> (merge (db/default-db) (fx/load-persisted))
-            (update :columns db/reconcile-columns)    ; drop removed cols, add new ones
-            (update :config db/reconcile-config)      ; repair a config from an older shape
-            (update :watchlist db/reconcile-watchlist)  ; a set, back when it had no order
-            (update :waiver-columns db/reconcile-waiver-columns)
-            (update :league-sync db/reconcile-league-sync))
+   ;; Saved state either matches the current `fx/storage-version` or it is not
+   ;; loaded at all, so there is nothing here to repair.
+   ;; Archived drafts live under their own key and version, so they are read
+   ;; separately and are unaffected by a `storage-version` bump.
+   {:db (assoc (merge (db/default-db) (fx/load-persisted))
+               :drafts (fx/read-drafts))
     :fx [[:dispatch [:fetch-players]]]}))
+
+;; The archive is written by an effect; this is the one place it is read back
+;; into db, so there is a single reader rather than two `conj`s that can drift.
+(rf/reg-event-db :refresh-drafts
+  (fn [db _] (assoc db :drafts (fx/read-drafts))))
 
 (rf/reg-event-fx
  :fetch-players
@@ -37,22 +42,13 @@
 (rf/reg-event-fx
  :players-loaded
  (fn [{:keys [db]} [_ resp]]
-   ;; Draft state is migrated here rather than in :boot because the crosswalk
-   ;; it needs travels on the players, which have not arrived at boot time.
-   ;; Remapping is idempotent, so it runs on every load; the persist only fires
-   ;; when something actually moved.
-   (let [players  (:players resp)
-         migrated (db/remap-draft-ids db (db/sleeper->player-id players))
-         slice    (select-keys migrated db/persist-keys)
-         changed? (not= (select-keys db db/persist-keys) slice)
-         status   (str (:count resp) " players · " (:source resp))]
-     (cond-> {:db (assoc migrated
-                         :players players
-                         :universe (:universe resp)
-                         :status status
-                         :universe-status status)
-              :fx [[:dispatch [:recompute]]]}
-       changed? (assoc :persist! slice)))))
+   (let [status (str (:count resp) " players · " (:source resp))]
+     {:db (assoc db
+                 :players (:players resp)
+                 :universe (:universe resp)
+                 :status status
+                 :universe-status status)
+      :fx [[:dispatch [:recompute]]]})))
 
 (rf/reg-event-db :load-failed (fn [db [_ err]] (assoc db :status (str "Load failed: " err))))
 
@@ -238,6 +234,22 @@
 (rf/reg-event-db :show-modal  (fn [db [_ m]] (assoc db :modal m)))
 (rf/reg-event-db :close-modal (fn [db _] (assoc db :modal nil)))
 
+(rf/reg-event-fx :archive-draft
+  (fn [{:keys [db]} _]
+    ;; Two things are refused, and only the first applies on `:start-draft`.
+    ;;
+    ;; An empty shell reads as a draft that happened and produced nothing.
+    ;;
+    ;; And this is a button a manager can press repeatedly against unchanged
+    ;; state, where each press would append an entry differing only in its
+    ;; timestamp — so the list reads as several drafts where there was one. A
+    ;; draft that has moved on since is a legitimate second checkpoint; one that
+    ;; has not adds nothing.
+    (when (and (db/drafted-anything? db)
+               (not= (:picks db) (:picks (last (fx/read-drafts)))))
+      {:archive-draft! (db/archive-entry db (.toISOString (js/Date.)))
+       :fx [[:dispatch [:refresh-drafts]]]})))
+
 (rf/reg-event-fx :start-draft [persist]
   (fn [{:keys [db]} [_ {:keys [num-teams starting-bankroll team-names]}]]
     (let [num-teams (max 2 (min 20 (or num-teams 12)))
@@ -252,7 +264,15 @@
                ;; reset ALL in-progress draft state
                (assoc :drafted {} :picks [] :nominated-id nil :modal nil)
                (assoc :my-team-id (:team-id (first teams))))
-       :fx [[:dispatch [:recompute]]]})))
+       ;; Archive on the way out. This is the one place a completed draft is
+       ;; destroyed, and it is destroyed by a button labelled Start Draft — so
+       ;; the record is taken here rather than left to one somebody has to
+       ;; remember to press. `db` is still the outgoing draft: the `:db` above
+       ;; is a value in the effect map, not an assignment that has happened yet.
+       :fx [(when (db/drafted-anything? db)
+              [:archive-draft! (db/archive-entry db (.toISOString (js/Date.)))])
+            [:dispatch [:refresh-drafts]]
+            [:dispatch [:recompute]]]})))
 
 ;; Debounced for the same reason as :set-scoring-weight — the League and Roster
 ;; fields dispatch this per keystroke, and each one re-ranks the whole universe.
@@ -341,15 +361,7 @@
             :on-failure [:league-sync-failed]}}))
 
 (defn my-roster-id-for
-  "Which roster in this league belongs to `user-id`, or nil.
-
-  The point of connecting an account. Without it the manager picks his own team
-  out of a list of twelve before the board can name a drop, price a bid or show
-  him his roster — and until he does, all three read as blank rather than as
-  unanswered, which is what made the dropdown look like it did nothing.
-
-  nil rather than a guess when nothing matches. A co-managed team, an orphan
-  roster and a second account are all real, and the dropdown still handles them."
+  "Which roster in this league belongs to `user-id`, or nil."
   [teams user-id]
   (when (not-empty (str user-id))
     (some (fn [t] (when (= (str (:owner-id t)) (str user-id)) (:roster-id t)))

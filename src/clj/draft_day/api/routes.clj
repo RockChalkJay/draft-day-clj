@@ -106,23 +106,7 @@
           (json-response status {:error error}))))))
 
 (defn username-error
-  "The 400 body for an unusable username, or nil when it is fine.
-
-  A sibling of `league-id-error` and needed *because* of it: that guard is
-  `#\"\\d+\"`, which is the path-traversal defence for an id that goes into a URL
-  path segment. A username goes into the same position and is not numeric, so it
-  needs its own rule rather than borrowing one that would reject every real name.
-
-  The charset is letters, digits, underscore, dot and hyphen, and it is that wide
-  on evidence: `the-commish` is a real Sleeper account, so a stricter
-  alphanumeric rule would have refused a legitimate name and left the manager
-  with nothing to fix.
-
-  What is actually dangerous is the path, not the punctuation. A `/` would inject
-  a segment and `..` would climb one — `…/v1/user/..` resolves to `…/v1/` — so
-  those are refused, along with a leading dot that makes the whole segment `.`
-  or `..`. Everything else is handed to the provider, which is entitled to say it
-  has never heard of it."
+  "The 400 body for an unusable username, or nil when it is fine."
   [username]
   (cond
     (str/blank? username)

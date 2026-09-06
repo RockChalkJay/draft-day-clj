@@ -385,21 +385,21 @@
     (is (some #{:sync-league} evs))
     (is (some #{:import-league} evs))))
 
-(deftest the-connected-account-survives-a-reload
+(deftest the-connected-account-is-session-state-not-stored
+  ;; It used to be persisted. `fx/storage-version` is now the whole migration
+  ;; story, and `persist-keys` is pinned to it — adding a key there means
+  ;; bumping the version, which discards every stored blob including a draft.
+  ;;
+  ;; Nothing is lost by leaving it out: which league is synced and which roster
+  ;; is mine already survive a reload as `:league-sync` and `:my-roster-id`, so
+  ;; the header and the board still know where they are. Only the username is
+  ;; retyped, and only to list leagues again.
   (rf/dispatch-sync [:league-user-loaded
                      {:user {:user-id "u1" :display-name "jay"} :leagues []}])
   (let [slice (last (:persist @captured))]
-    (is (contains? slice :sleeper-username))
-    (is (contains? slice :sleeper-user-id))
-    (is (not (contains? slice :league-choices))
-        "a listing of somebody else's state, refetched in one call")))
-
-(deftest a-persisted-username-is-guarded-before-a-view-binds-it
-  ;; It comes back from localStorage and `sync-panel` binds it as an input's
-  ;; `:value`, so a non-string is a render error rather than a bad value.
-  (swap! rdb/app-db assoc :sleeper-username "jay")
-  (rf/clear-subscription-cache!)
-  (is (= "jay" (sub [:sleeper-username])))
-  (swap! rdb/app-db assoc :sleeper-username {:not "a name"})
-  (rf/clear-subscription-cache!)
-  (is (nil? (sub [:sleeper-username])) "a shape that is not a name reads as none"))
+    (is (not (contains? slice :sleeper-username)))
+    (is (not (contains? slice :sleeper-user-id)))
+    (is (not (contains? slice :league-choices))))
+  (testing "and the two that must survive a reload still do"
+    (is (some #{:league-sync} db/persist-keys))
+    (is (some #{:my-roster-id} db/persist-keys))))

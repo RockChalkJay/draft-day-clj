@@ -259,16 +259,21 @@
 (rf/reg-sub :synced-league-id :<- [:league-sync]
   (fn [ls _] (:league-id ls)))
 
-;; Guarded because it is persisted and `sync-panel` binds it straight into an
-;; input's `:value`, where a non-string is a render error rather than a bad
-;; value. Every other persisted key with a shape gets a `db/reconcile-*` at
-;; boot; these two are scalars, and one line here is cheaper than a repair
-;; function that #42 would delete along with the rest of that approach.
+(rf/reg-sub :drafts (fn [db _] (:drafts db)))
+
+;; Whether there is a draft worth archiving — the same question
+;; `db/drafted-anything?` answers for the event, asked from the view so the
+;; button is absent rather than inert when there is nothing to keep.
+(rf/reg-sub :draft-has-picks? (fn [db _] (db/drafted-anything? db)))
+
+;; Session state, not persisted: the league and the roster that matter across a
+;; reload already survive in `:league-sync` and `:my-roster-id`, and adding keys
+;; to `persist-keys` would mean bumping `fx/storage-version` — which discards
+;; every stored blob, drafts included. The username is cheap to retype.
 ;;
 ;; No `:sleeper-user-id` sub: its only reader is `:league-synced`, which takes it
 ;; off the map directly because it is an event handler, not a view.
-(rf/reg-sub :sleeper-username
-  (fn [db _] (let [n (:sleeper-username db)] (when (string? n) n))))
+(rf/reg-sub :sleeper-username (fn [db _] (:sleeper-username db)))
 
 ;; nil means "never looked up"; [] means "looked up, plays in none this season".
 ;; The panel says different things for the two, so this does not normalize them.

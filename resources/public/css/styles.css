@@ -491,3 +491,11 @@ tr.upgrade .p-name { font-weight: 600; }
 .league-choice:hover { border-color: var(--accent); }
 .league-choice.on { border-color: var(--accent); background: var(--panel); }
 .league-choice-name { font-weight: 600; }
+
+/* Archived drafts. Deliberately plain: this is a record to glance at, not a
+   board to work from — the live board is one tab away. */
+.archive-list { list-style: none; margin: 0; padding: 0; display: flex;
+  flex-direction: column; gap: 8px; }
+.archive-entry { padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel2); font-size: 12px; }
+.archive-head { margin-bottom: 2px; }

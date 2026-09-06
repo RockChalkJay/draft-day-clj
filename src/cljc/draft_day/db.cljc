@@ -1,8 +1,7 @@
 (ns draft-day.db
   "app-db shape, the column catalog, and roster/league helpers. No reagent here —
   pure data + functions so it can be required from events and views alike."
-  (:require [clojure.string :as str]
-            [draft-day.scoring :as scoring]))
+  (:require [clojure.string :as str]))
 
 ;; ---- roster / teams ----
 
@@ -18,12 +17,45 @@
 
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
-;; `:league-choices` is deliberately absent: it is a listing of somebody else's
-;; state, refetched in one call, and a stale copy would offer a league the
-;; manager has since left.
-(def persist-keys [:config :teams :drafted :picks :columns :my-team-id :watchlist
-                   :league-sync :my-roster-id :waiver-columns
-                   :sleeper-username :sleeper-user-id])
+(def persist-keys
+  "The slice of db that survives a reload, written to localStorage under
+  `fx/storage-version`.
+
+  Changing the shape of anything in here means bumping that version, so a blob
+  written under the old shape is dropped rather than merged into the new one.
+  There is no in-place repair; see `fx/storage-version` for the whole rule and
+  what it costs. Both column catalogs are in scope — `:columns` is keyed off
+  `column-catalog` and `:waiver-columns` off `waiver-column-catalog` — as are
+  the nested shapes: a key under `:config`, a slot in `default-roster`, a field
+  on a team, a pick, or a synced league."
+  [:config :teams :drafted :picks :columns :my-team-id :watchlist
+   :league-sync :my-roster-id :waiver-columns])
+
+(defn drafted-anything?
+  [db]
+  (boolean (seq (:picks db))))
+
+(defn archive-entry
+  "A completed draft, reduced to what a record needs — see `fx/drafts-version`
+  for why this shape has a version of its own.
+
+  Carries the config it was drafted under, because prices only mean anything
+  against the scoring and the bankroll that produced them: `$43` for a running
+  back is a different statement in a 10-team standard league than in a 12-team
+  PPR one, and the archive is read long after `:config` has moved on.
+
+  `:league` is the Sleeper league synced at the time, when there was one. It is
+  context, not a key — the draft board's teams are the manager's own, typed into
+  the Start Draft modal, and they are not the synced league's rosters."
+  [db now]
+  {:archived-at now
+   :season      (get-in db [:league-sync :season])
+   :league      (get-in db [:league-sync :name])
+   :my-team-id  (:my-team-id db)
+   :config      (:config db)
+   :teams       (:teams db)
+   :drafted     (:drafted db)
+   :picks       (:picks db)})
 
 (defn make-teams-named
   "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
@@ -358,54 +390,11 @@
    :proj-tgt      :espn/proj-targets
    :proj-rec      :espn/proj-receptions})
 
-(defn reconcile-config
-  "Reconcile a persisted config with the current shape: drop keys the app no
-  longer has, fill in ones added since the blob was written, and when :scoring is
-  a custom map, give it a 0 for any stat key it predates.
-
-  localStorage carries no schema stamp, so — exactly like `reconcile-columns` —
-  every shape the app has ever persisted has to be repairable in place. A blob
-  written before :scoring existed (or one poisoned by the old
-  `:enable-custom-scoring` race, which could store nil) otherwise reaches the
-  Settings page as a nil scoring config and throws."
-  [stored]
-  (let [cfg (merge default-config stored)
-        s   (:scoring cfg)]
-    (-> cfg
-        (select-keys (keys default-config))
-        (assoc :roster      (merge default-roster (:roster cfg))
-               :budget-plan (merge default-budget-plan (:budget-plan cfg))
-               :scoring     (cond
-                              (map? s) (merge (zipmap scoring/stat-keys (repeat 0)) s)
-                              (contains? scoring/presets s) s
-                              :else (:scoring default-config))))))
-
 (defn default-columns
   "Initial visibility for a catalog, in its own order."
   ([] (default-columns column-catalog))
   ([catalog]
    (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) catalog)))
-
-(defn reconcile-columns
-  "Reconcile a persisted column config with a catalog: keep the stored order for
-  keys that still exist, drop unknown keys (e.g. a removed :tier), and append any
-  new catalog columns at their default visibility.
-
-  Takes the catalog rather than closing over the draft board's, because the
-  waiver board has its own — different questions, different columns — and a
-  second copy of this function would be a second place for the migration rule to
-  drift. The 1-arity keeps every existing caller unchanged."
-  ([stored] (reconcile-columns stored column-catalog))
-  ([stored catalog]
-   (let [valid   (set (map :key catalog))
-         kept    (filterv #(valid (:key %)) (or stored []))
-         present (set (map :key kept))
-         added   (->> catalog
-                      (remove #(present (:key %)))
-                      (map (fn [c]
-                             {:key (:key c)
-                              :visible? (boolean (:default? c))})))]
-     (vec (concat kept added)))))
 
 (defn move-onto
   "Drop the element `key-fn` identifies as `from-k` onto the one it identifies as
@@ -497,18 +486,23 @@
       (into (vec (sort-by (comp keyfn by-id) known)) unknown))
     (vec ids)))
 
-(defn reconcile-watchlist
-  "Reconcile a persisted watch list with the current shape: an ordered vector of
-  distinct player-ids.
+(defn sleeper->player-id
+  "{sleeper-id canonical-player-id} from a loaded universe.
 
-  The list was a set until it became orderable, and localStorage carries no
-  schema stamp — so, exactly like `reconcile-columns` and `reconcile-config`,
-  every shape the app has ever written has to be repairable in place. A set
-  reaching the ordered code unrepaired is the worst kind of wrong: `conj` puts a
-  new id wherever the hash says, and a drag would silently do nothing."
-  [stored]
-  (into [] (distinct) (or stored [])))
+  `:player-id` is the GSIS id wherever one resolves, but a synced league's
+  rosters arrive keyed by Sleeper's, so the waiver board needs a translation
+  between the two id spaces on every request — see `waiver/held-ids`. Ids with
+  no entry (team defenses, anyone absent from the crosswalk) map to themselves,
+  so applying it twice is a no-op.
 
+  This is a live translation, not a migration: it is the one piece of the old
+  id-remap machinery that outlived it, because the two id spaces still coexist
+  at runtime rather than only across a saved blob."
+  [players]
+  (into {}
+        (keep (fn [p] (when-let [s (get-in p [:ids :sleeper])]
+                        [s (:player-id p)])))
+        players))
 
 ;; ---- waiver board ----
 ;; The in-season board asks different questions than the draft board, so it gets
@@ -578,19 +572,17 @@
 
 (defn default-waiver-columns [] (default-columns waiver-column-catalog))
 
-(defn reconcile-waiver-columns [stored]
-  (reconcile-columns stored waiver-column-catalog))
-
 (defn reconcile-league-sync
-  "Reconcile a persisted synced league with the current shape, or drop it.
+  "Accept a synced league only if it has the shape the waiver board reads, or
+  drop it.
 
-  localStorage carries no schema stamp, so — exactly like `reconcile-columns`,
-  `reconcile-config` and `reconcile-watchlist` — every shape the app has ever
-  written has to be repairable in place. This one is repaired by being *thrown
-  away* when it does not fit, which the others cannot do and this one can: a
+  This is the one `reconcile-*` the version stamp does not replace, because it
+  is not a migration: it validates a *provider's* response on the way in
+  (`:league-sync-loaded`), and no version of ours governs what Sleeper returns.
+  Dropping is the right repair here and was never available to the others: a
   synced league is a cache of somebody else's state, re-fetchable in one click,
-  so a stale shape costs a button press. A half-repaired one costs a waiver board
-  that quietly believes the wrong people are rostered.
+  so a bad shape costs a button press, while a half-repaired one costs a waiver
+  board that quietly believes the wrong people are rostered.
 
   A team with no `:player-ids` vector is the shape that actually matters: it
   reaches `waiver/rostered-index` as a team holding nobody, and every player on
@@ -614,44 +606,6 @@
                                ts)))
         (update :waiver #(when (map? %) %)))))
 
-;; ---- player-id migration ----
-;; :player-id used to be Sleeper's id verbatim; it is now the GSIS id wherever
-;; one resolves. Draft state saved before that change is keyed by the old value,
-;; so it is remapped once the universe arrives — the crosswalk needed to do it
-;; rides on each player as :ids, which is the whole reason that envelope exists.
-
-(defn sleeper->player-id
-  "{sleeper-id canonical-player-id} from a loaded universe.
-
-  Ids that were never remapped (team defenses, players absent from the pinned
-  crosswalk) map to themselves, so applying this to already-migrated state is a
-  no-op. That is what makes it safe to run on every load rather than gating it
-  behind a version stamp."
-  [players]
-  (into {}
-        (keep (fn [p] (when-let [s (get-in p [:ids :sleeper])]
-                        [s (:player-id p)])))
-        players))
-
-(defn remap-draft-ids
-  "Rewrite every player-id held in draft state through `xwalk`.
-
-  An id with no entry is left exactly as it was. An unknown id is not evidence
-  that it is wrong — the universe may simply be a stale cache or the offline
-  sample — and dropping a pick would destroy a real record of what a manager
-  paid."
-  [db xwalk]
-  (let [->id  #(get xwalk % %)
-        slot  (fn [s] (cond-> s (:player-id s) (update :player-id ->id)))]
-    (-> db
-        (update :drafted #(into {} (map (fn [[k v]] [(->id k) v])) %))
-        (update :picks #(mapv (fn [p] (update p :player-id ->id)) %))
-        (update :watchlist #(into [] (comp (map ->id) (distinct)) %))
-        (update :nominated-id #(some-> % ->id))
-        (update :teams
-                (fn [teams]
-                  (mapv (fn [t] (update t :roster #(mapv slot %))) teams))))))
-
 ;; ---- initial db ----
 
 (defn default-db []
@@ -674,9 +628,17 @@
      ;; ---- in-season ----
      :league-sync  nil          ; last /api/league/sync reply: who is rostered, and FAAB
      :my-roster-id nil          ; which roster in the synced league is mine
-     :sleeper-username nil      ; the account the manager connected, so he types it once
+     ;; The connected account. Session state, deliberately absent from
+     ;; `persist-keys`: which league is synced and which roster is mine already
+     ;; survive a reload as `:league-sync` and `:my-roster-id`, and adding keys
+     ;; here would mean bumping `fx/storage-version`, which discards every stored
+     ;; blob. A username is cheap to retype; a draft is not cheap to lose.
+     :sleeper-username nil      ; the account the manager connected
      :sleeper-user-id  nil      ; its provider id — matched against a roster's :owner-id
-     :league-choices   nil      ; leagues that account plays in; refetched, never persisted
+     :league-choices   nil      ; leagues that account plays in; refetched, never stored
+     ;; Read from `fx/drafts-key` at boot, not from the persisted slice: an
+     ;; archived draft has its own key and its own version.
+     :drafts       []           ; completed drafts, oldest first
      :waivers      nil          ; last /api/waivers reply
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}

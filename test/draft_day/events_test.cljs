@@ -7,7 +7,7 @@
             [re-frame.db :as rdb]
             [re-frame.registrar :as registrar]
             [draft-day.db :as db]
-            [draft-day.fx]
+            [draft-day.fx :as fx]
             [draft-day.scoring :as scoring]
             [draft-day.events]))
 
@@ -234,13 +234,6 @@
     (testing "sorting re-ranks nothing: the watch list feeds no valuation"
       (is (empty? (:http @captured))))))
 
-(deftest a-watch-list-persisted-as-a-set-is-repaired-at-boot
-  ;; localStorage carries no schema stamp, and the list was a set before it had
-  ;; an order. Rehing the ordered code unrepaired, `conj` would put a new star
-  ;; wherever the hash said and a drag would silently do nothing.
-  (is (vector? (db/reconcile-watchlist #{"gibbs" "chase"})))
-  (is (= #{"gibbs" "chase"} (set (db/reconcile-watchlist #{"gibbs" "chase"})))))
-
 ;; ---- a config change made before the universe lands is not lost ----
 
 (deftest a-scoring-change-with-no-players-yet-is-picked-up-on-load
@@ -250,11 +243,176 @@
   (rf/dispatch-sync [:players-loaded {:players [{:player-id "p1"}] :count 1 :source "sample"}])
   (is (= :standard (scoring-now)) "and the choice survived the wait"))
 
-;; ---- boot repairs what localStorage may hold ----
+;; ---- boot loads only what this version wrote ----
 
-(deftest boot-repairs-a-config-from-an-older-shape
-  (with-redefs [draft-day.fx/load-persisted (fn [] {:config {:scoring nil :num-tiers 5}})]
+(defn- with-fake-storage
+  "Run `f` against an empty in-memory localStorage. Node has none, and the
+  version gate is the one piece of persistence with a decision in it."
+  [f]
+  (let [store (atom {})
+        prev  (.-localStorage js/globalThis)]
+    (set! (.-localStorage js/globalThis)
+          #js {:getItem (fn [k] (get @store k nil))
+               :setItem (fn [k v] (swap! store assoc k v) nil)})
+    (try (f store) (finally (set! (.-localStorage js/globalThis) prev)))))
+
+(deftest saved-state-is-read-back-only-under-the-version-that-wrote-it
+  (with-fake-storage
+    (fn [store]
+      (let [write! #(swap! store assoc fx/store-key (pr-str %))]
+        (testing "a blob this version stamped comes back whole"
+          (write! {:v fx/storage-version :state {:my-team-id "t3"}})
+          (is (= {:my-team-id "t3"} (fx/load-persisted))))
+
+        (testing "a blob from another version is dropped rather than repaired"
+          (write! {:v (inc fx/storage-version) :state {:my-team-id "t3"}})
+          (is (nil? (fx/load-persisted))))
+
+        (testing "an unstamped blob — every shape written before the stamp — is
+                  dropped the same way"
+          (write! {:my-team-id "t3" :watchlist #{"gibbs"}})
+          (is (nil? (fx/load-persisted))))
+
+        (testing "unreadable junk is nil, not a throw at boot"
+          (swap! store assoc fx/store-key "{:v 1 :state")
+          (is (nil? (fx/load-persisted))))
+
+        (testing "nothing stored at all"
+          (swap! store dissoc fx/store-key)
+          (is (nil? (fx/load-persisted))))))))
+
+(deftest boot-opens-at-defaults-when-there-is-nothing-to-load
+  (with-redefs [draft-day.fx/load-persisted (fn [] nil)]
     (rf/dispatch-sync [:boot])
-    (is (= (:scoring db/default-config) (scoring-now)) "nil scoring cannot reach Settings")
-    (is (not (contains? (:config @rdb/app-db) :num-tiers)) "a dropped key does not linger")
-    (is (seq (:columns @rdb/app-db)))))
+    (is (= (:scoring db/default-config) (scoring-now)))
+    (is (= (db/default-columns) (:columns @rdb/app-db)))))
+
+(deftest boot-takes-a-loaded-slice-as-it-stands
+  ;; It was written by this version, so there is nothing to reconcile: whatever
+  ;; the slice holds wins, and every key it does not hold comes from default-db.
+  (with-redefs [draft-day.fx/load-persisted
+                (fn [] {:my-team-id "t3" :watchlist ["gibbs"]})]
+    (rf/dispatch-sync [:boot])
+    (is (= "t3" (:my-team-id @rdb/app-db)))
+    (is (= ["gibbs"] (:watchlist @rdb/app-db)))
+    (is (= (db/default-columns) (:columns @rdb/app-db)) "and the rest is default")))
+
+;; ---- the shape the version stands for ----
+
+(deftest the-persisted-shape-is-pinned-to-the-version-that-reads-it
+  ;; Nothing repairs a stored blob any more, so `fx/storage-version` is the only
+  ;; thing standing between a changed shape and a manager reading it under the
+  ;; old one. Remembering to bump it is exactly the kind of discipline that gets
+  ;; forgotten, and both failure modes are silent for existing users only: a new
+  ;; column never appears on their board, a removed one renders as a column of
+  ;; dashes under a blank header. So the shapes are written down here — change
+  ;; any of them and this test fails until the version moves with them.
+  ;;
+  ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
+  ;; persisted the same way, and a Waivers column is exactly the kind of change
+  ;; that would otherwise slip past.
+  (is (= 1 fx/storage-version)
+      "the shapes below changed: bump fx/storage-version and update this test")
+
+  (is (= [:rank :ecr :name :team :bye :position :worth :value :market :espn-value
+          :fp-aav :bargain :vorp :risk :inj :edge :adp :tier :fp-tier :proj
+          :ceiling :floor :prior-tgt :prior-rec :prior-tgt-pct :proj-tgt :proj-rec]
+         (mapv :key db/column-catalog))
+      "a stored :columns vector is keyed off this list")
+
+  (is (= [:rank :name :team :position :bye :ros :upgrade :bid :trend :gp :risk
+          :inj :ros-vorp :tgt :car :preseason :ecr]
+         (mapv :key db/waiver-column-catalog))
+      "and a stored :waiver-columns vector off this one")
+
+  (is (= [:budget-plan :num-teams :roster :scoring :starting-bankroll]
+         (vec (sort (keys db/default-config))))
+      "a stored :config is this map")
+
+  (is (= [:bench :dst :flex :k :qb :rb :te :wr]
+         (vec (sort (keys db/default-roster))))
+      "including its nested roster, which a new bench slot would change")
+
+  (is (= [:config :teams :drafted :picks :columns :my-team-id :watchlist
+          :league-sync :my-roster-id :waiver-columns]
+         db/persist-keys)
+      "and this is everything that gets stored at all"))
+
+;; ---- the draft archive ----
+
+(deftest an-archived-draft-outlives-a-storage-version-bump
+  ;; The whole reason it has its own key and its own version. A bump exists to
+  ;; stop *live* state being read under a shape it was not written for, and
+  ;; dropping the blob is the right answer for a column layout. A completed
+  ;; draft is a record of something that happened; discarding it because a
+  ;; Waivers column moved would be absurd.
+  (with-fake-storage
+    (fn [store]
+      (swap! store assoc fx/drafts-key
+             (pr-str {:v fx/drafts-version
+                      :drafts [{:archived-at "2026-09-06" :picks [{:player-id "a"}]}]}))
+      ;; the live slice, written under a version that is about to move
+      (swap! store assoc fx/store-key
+             (pr-str {:v (inc fx/storage-version) :state {:my-team-id "t3"}}))
+      (is (nil? (fx/load-persisted)) "live state is dropped, as designed")
+      (is (= 1 (count (fx/read-drafts))) "and the archive is untouched by it"))))
+
+(deftest an-unreadable-or-mis-stamped-archive-reads-as-empty-not-as-a-crash
+  (with-fake-storage
+    (fn [store]
+      (is (= [] (fx/read-drafts)) "nothing stored at all")
+      (swap! store assoc fx/drafts-key "{:v 1 :drafts [")
+      (is (= [] (fx/read-drafts)) "unreadable")
+      (swap! store assoc fx/drafts-key
+             (pr-str {:v (inc fx/drafts-version) :drafts [{:picks [1]}]}))
+      (is (= [] (fx/read-drafts)) "written under a different archive version"))))
+
+(deftest archiving-appends-rather-than-replaces
+  ;; A manager drafts in more than one league and more than one season.
+  (with-fake-storage
+    (fn [_]
+      (rf/dispatch-sync [:archive-draft])          ; nothing drafted yet
+      (is (= [] (fx/read-drafts)) "an empty shell is worse than no entry")
+      (swap! rdb/app-db assoc :picks [{:player-id "a" :price 5}]
+             :teams [{:team-id "t0"}] :my-team-id "t0")
+      (rf/dispatch-sync [:archive-draft])
+      (swap! rdb/app-db assoc :picks [{:player-id "b" :price 9}])
+      (rf/dispatch-sync [:archive-draft])
+      (let [ds (fx/read-drafts)]
+        (is (= 2 (count ds)))
+        (is (= ["a" "b"] (mapv #(-> % :picks first :player-id) ds))
+            "oldest first"))
+      (testing "pressing it again on an unchanged draft adds nothing"
+        (rf/dispatch-sync [:archive-draft])
+        (is (= 2 (count (fx/read-drafts)))
+            "two entries differing only in timestamp read as two drafts"))
+      (testing "but a draft that has moved on is a real second checkpoint"
+        (swap! rdb/app-db update :picks conj {:player-id "c" :price 2})
+        (rf/dispatch-sync [:archive-draft])
+        (is (= 3 (count (fx/read-drafts))))))))
+
+(deftest starting-a-draft-archives-the-one-it-destroys
+  ;; The only moment a completed draft is thrown away, and it happens by pressing
+  ;; a button labelled Start Draft — so the record is taken here rather than left
+  ;; to one somebody has to remember to press.
+  (with-fake-storage
+    (fn [_]
+      (swap! rdb/app-db assoc
+             :picks [{:player-id "gibbs" :price 43}]
+             :teams [{:team-id "t0" :name "crazy rich asians"}]
+             :my-team-id "t0"
+             :league-sync {:name "RaiderNation" :season "2026"})
+      (rf/dispatch-sync [:start-draft {:num-teams 12 :starting-bankroll 200 :team-names []}])
+      (let [[d] (fx/read-drafts)]
+        (is (= "RaiderNation" (:league d)) "the league synced at the time, as context")
+        (is (= "2026" (:season d)))
+        (is (= ["gibbs"] (mapv :player-id (:picks d))))
+        (is (= 200 (get-in d [:config :starting-bankroll]))
+            "the config it was drafted under — $43 means nothing without it"))
+      (is (empty? (:picks @rdb/app-db)) "and the live board is reset, as before"))))
+
+(deftest a-fresh-start-draft-archives-nothing
+  (with-fake-storage
+    (fn [_]
+      (rf/dispatch-sync [:start-draft {:num-teams 10 :starting-bankroll 100 :team-names []}])
+      (is (= [] (fx/read-drafts))))))

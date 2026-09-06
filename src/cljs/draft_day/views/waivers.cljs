@@ -96,19 +96,8 @@
 ;; ---- panels ----
 
 (defn sync-panel
-  "Connect a league, and say plainly when none is connected.
-
-  Without a synced league the board still ranks every player by rest-of-season
-  value, which is useful — but it is not a *waiver* board, because it cannot know
-  who is already taken. That distinction is the whole reason this panel is loud
-  rather than a settings field."
-  []
-  ;; `nil` rather than "" so the field can tell 'never typed in' from 'cleared',
-  ;; and fall back to the id the last sync came back with. It lives in a
-  ;; component-local atom, which empties on every mount — so without that
-  ;; fallback a manager returning next session reads persisted, month-old
-  ;; rosters with the re-sync button greyed out and no record of which league
-  ;; they came from.
+ "Connect a league, and say plainly when none is connected."
+ []
   (let [typed (r/atom nil)
         ;; Same reason as `typed`: nil distinguishes "never edited" from
         ;; "cleared", so the field can fall back to the connected account.

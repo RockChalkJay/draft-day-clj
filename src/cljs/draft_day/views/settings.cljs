@@ -201,6 +201,41 @@
            [[:qb "QB"] [:rb "RB"] [:wr "WR"] [:te "TE"]
             [:flex "FLEX"] [:k "K"] [:dst "DST"] [:bench "Bench"]])]]))
 
+(defn draft-archive
+  "Completed drafts, kept because the board destroys one every time a new draft
+  starts and a season's prices are worth more than the state that produced them.
+
+  Read-only. Restoring a draft into the live board is deliberately not offered:
+  it would overwrite whatever draft is running with one priced under a different
+  config, and there is no sensible answer to what should happen to the league
+  synced in between."
+  []
+  (let [drafts (reverse @(rf/subscribe [:drafts]))
+        live?  @(rf/subscribe [:draft-has-picks?])]
+    [:section.settings-card.draft-archive
+     [:h3 "Draft Archive"]
+     [:p.muted "Completed drafts are archived automatically when you start a new one. 
+                They are kept separately from the rest of your saved state, so an app 
+                update cannot discard them."]
+     (if (seq drafts)
+       [:ul.archive-list
+        (for [{:keys [archived-at season league picks teams config]} drafts]
+          ^{:key archived-at}
+          [:li.archive-entry
+           [:div.archive-head
+            [:b (or league "Draft")]
+            (when season [:span.muted (str " \u00b7 " season)])]
+           [:div.muted
+            (str (count picks) " picks \u00b7 " (count teams) " teams \u00b7 $"
+                 (:starting-bankroll config) " each \u00b7 "
+                 (subs (str archived-at) 0 10))]])]
+       [:p.muted "No drafts archived yet."])
+     (when live?
+       [:div.row
+        [:button {:on-click #(rf/dispatch [:archive-draft])}
+         "Archive current draft"]
+        [:span.muted "Keeps a copy without starting a new draft."]])]))
+
 (defn- danger-zone []
   [:section.settings-card.danger-zone
    [:h3 "Danger Zone"]
@@ -210,6 +245,7 @@
 (defn settings []
   [:div.settings
    [sleeper-import]
+   [draft-archive]
    [league-config]
    [budget-config]
    [scoring-config]
