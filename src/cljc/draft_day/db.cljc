@@ -12,6 +12,19 @@
 
 (def default-roster {:qb 1 :rb 2 :wr 2 :te 1 :flex 1 :k 1 :dst 1 :bench 6})
 
+(def positions
+  "Not `roster-order`, which orders slots — FLEX and BENCH are seats, not
+  positions. The order is load-bearing twice over: the board's filter chips read
+  it, and so does `position-rank`, which sorts the waiver roster's bench."
+  ["QB" "RB" "WR" "TE" "K" "DST"])
+
+(def ^:private position-index (zipmap positions (range)))
+
+(defn position-rank
+  "Unknown or missing sorts last."
+  [pos]
+  (get position-index pos (count positions)))
+
 (defn roster-template [roster-cfg]
   (vec (mapcat (fn [[label k]] (repeat (get roster-cfg k 0) label)) roster-order)))
 

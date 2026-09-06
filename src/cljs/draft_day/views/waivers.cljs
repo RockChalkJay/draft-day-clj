@@ -172,9 +172,10 @@
   elsewhere on the screen; this is the part that visibly answers 'which team am
   I'.
 
-  Starters above bench, because the synced league knows the real lineup and the
-  draft config's slot template does not. A row the board could not value keeps
-  its seat and says so rather than vanishing — see `waiver/my-roster`."
+  Starters above bench, in the league's own lineup order, because the synced
+  league knows the real lineup and the draft config's slot template does not.
+  A row the board could not value keeps its seat and says so rather than
+  vanishing — see `waiver/my-roster`."
   []
   (let [roster  @(rf/subscribe [:my-waiver-roster])
         synced? @(rf/subscribe [:league-synced?])]
@@ -206,6 +207,7 @@
                      (when (:parked? p) [:span.parked-tag {:title "IR or taxi"} " IR"])
                      (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
                     [:td.num (board/format-whole (:ros-points p))]])
+             ;; `group-by` keeps the server's order — `waiver/roster-sort-key`.
              {starters true bench false} (group-by (comp boolean :starter?) roster)]
          [:table.roster
           [:thead [:tr [:th.slot "Pos"] [:th "Player"] [:th.num "ROS"]]]

@@ -292,8 +292,6 @@
 
 ;; ---- filters ----
 
-(def ^:private positions ["QB" "RB" "WR" "TE" "K" "DST"])
-
 ;; Public, and shared with the waiver board rather than copied onto it. They read
 ;; and write the same `:pos-filter`/`:search` in app-db, which is deliberate: a
 ;; manager who filters to RB and switches to Waivers is still asking about
@@ -308,7 +306,7 @@
                                   :on-click #(rf/dispatch [:set-pos-filter pos])} pos])]
     [:div.pos-filter
      [:button {:class (when (nil? active) "on") :on-click #(rf/dispatch [:set-pos-filter nil])} "All"]
-     (map pos-button-fn positions)]))
+     (map pos-button-fn db/positions)]))
 
 (defn search-box []
   (let [q @(rf/subscribe [:search])]

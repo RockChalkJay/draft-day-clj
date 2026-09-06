@@ -250,6 +250,16 @@
      :players (mapv (fn [p] (-> p (assoc :ros-vorp (:vorp p)) (dissoc :vorp)))
                     (replacement/with-vorp board levels :ros-points))}))
 
+(defn roster-sort-key
+  "Starters in the league's own lineup order — `slot-idx` is `{id slot}` off
+  `:starter-ids` — so a WR starting at FLEX keeps that seat rather than sorting
+  up beside the other receivers. Everyone else follows by position, then points."
+  [slot-idx {:keys [starter? player-id position ros-points]}]
+  [(if starter? 0 1)
+   (get slot-idx player-id (count slot-idx))
+   (db/position-rank position)
+   (- (or ros-points 0.0))])
+
 (defn my-roster
   "The manager's own roster, for the panel beside the board — or nil.
 
@@ -267,26 +277,38 @@
   nil rather than `[]` when no team is picked, because the panel says something
   different for 'pick your team' than for 'this roster is empty'.
 
+  Ordered here, not in the view: `:player-ids` arrives in Sleeper's order, which
+  is by id string. See `roster-sort-key`.
+
   Ids go through `held-ids` like every other roster reader; see its docstring for
   what happened the one time they did not."
   [my-team xwalk by-id drop]
   (when my-team
-    (let [starters (set (held-ids my-team xwalk :starter-ids))
+    (let [lineup   (held-ids my-team xwalk :starter-ids)
+          ;; An unfilled slot is "0": it takes an index and matches nobody,
+          ;; which is what keeps the seats below it in their real places.
+          slot-idx (zipmap lineup (range))
+          starters (set lineup)
           active   (set (held-ids my-team xwalk :active-ids))
           drop-id  (:player-id drop)]
-      (mapv (fn [id]
-              (let [flags {:starter? (contains? starters id)
-                           ;; IR and taxi: rostered, but holding no seat a claim
-                           ;; could take. Same distinction `held-ids` draws.
-                           :parked?  (not (contains? active id))
-                           :drop?    (= id drop-id)}]
-                (if-let [p (get by-id id)]
-                  ;; Exactly what the panel draws. A key nobody reads is a claim
-                  ;; that something uses it — the PDM is the standing example.
-                  (merge (select-keys p [:player-id :player-name :position :ros-points])
-                         flags)
-                  (merge {:player-id id :unvalued? true} flags))))
-            (held-ids my-team xwalk :player-ids)))))
+      (->> (held-ids my-team xwalk :player-ids)
+           (map (fn [id]
+                  (let [flags {:starter? (contains? starters id)
+                               ;; IR and taxi: rostered, but holding no seat a
+                               ;; claim could take. Same distinction `held-ids`
+                               ;; draws.
+                               :parked?  (not (contains? active id))
+                               :drop?    (= id drop-id)}]
+                    (if-let [p (get by-id id)]
+                      ;; Exactly what the panel draws. A key nobody reads is a
+                      ;; claim that something uses it — the PDM is the standing
+                      ;; example.
+                      (merge (select-keys p [:player-id :player-name
+                                             :position :ros-points])
+                             flags)
+                      (merge {:player-id id :unvalued? true} flags)))))
+           (sort-by #(roster-sort-key slot-idx %))
+           vec))))
 
 (defn waiver-board
   "The whole answer:
