@@ -29,7 +29,44 @@
   the nested shapes: a key under `:config`, a slot in `default-roster`, a field
   on a team, a pick, or a synced league."
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
-   :league-sync :my-roster-id :waiver-columns])
+   :accounts :leagues :active-league :waiver-columns])
+
+;; ---- accounts and leagues ----
+
+(defn league-key
+  "The id a league is stored under: provider and league id together.
+
+  Composite on purpose. A league id is only unique *within* a provider, so a
+  bare id collides the day a second provider arrives — and the collision is the
+  silent kind, where an ESPN league quietly reads a Sleeper league's rosters."
+  [provider league-id]
+  (str (name provider) ":" league-id))
+
+(defn active-league
+  "The league everything on screen is about, or nil when none is connected."
+  [db]
+  (get-in db [:leagues (:active-league db)]))
+
+(defn set-config
+  "Write `:config`, mirroring it into the active league's entry.
+
+  Scoring, roster and team count are *per league* — a manager with a PPR league
+  and a standard one has two of each. `:config` stays at the top of db as the
+  active league's copy, so every existing consumer (the rankings request, the
+  board, the scoring editor) reads one key and knows nothing about leagues.
+  That copy is only safe while there is exactly one function that writes it:
+  a writer that skipped the mirror would have its edit reverted, silently, by
+  the next switch away and back."
+  [db cfg]
+  (let [db (assoc db :config cfg)]
+    (if-let [k (:active-league db)]
+      (assoc-in db [:leagues k :config] cfg)
+      db)))
+
+(defn update-config
+  "`set-config` over a function of the current config."
+  [db f & args]
+  (set-config db (apply f (:config db) args)))
 
 (defn drafted-anything?
   [db]
@@ -44,18 +81,24 @@
   back is a different statement in a 10-team standard league than in a 12-team
   PPR one, and the archive is read long after `:config` has moved on.
 
-  `:league` is the Sleeper league synced at the time, when there was one. It is
+  `:league` is the league that was active at the time, when there was one. It is
   context, not a key — the draft board's teams are the manager's own, typed into
-  the Start Draft modal, and they are not the synced league's rosters."
+  the Start Draft modal, and they are not the synced league's rosters.
+
+  It reads the active league entry rather than a top-level key on purpose: this
+  is the reader that would fail *silently* if it were pointed at a key that no
+  longer exists, since `get-in` yields nil rather than throwing, and every
+  future archive would lose its league with nothing to say so."
   [db now]
-  {:archived-at now
-   :season      (get-in db [:league-sync :season])
-   :league      (get-in db [:league-sync :name])
-   :my-team-id  (:my-team-id db)
-   :config      (:config db)
-   :teams       (:teams db)
-   :drafted     (:drafted db)
-   :picks       (:picks db)})
+  (let [lg (active-league db)]
+    {:archived-at now
+     :season      (:season lg)
+     :league      (:name lg)
+     :my-team-id  (:my-team-id db)
+     :config      (:config db)
+     :teams       (:teams db)
+     :drafted     (:drafted db)
+     :picks       (:picks db)}))
 
 (defn make-teams-named
   "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
@@ -625,17 +668,17 @@
      :picks       []            ; [{:player-id :position :price :team-id}]
      :nominated-id nil
      :watchlist    []           ; player-ids the manager is tracking, in his own order
-     ;; ---- in-season ----
-     :league-sync  nil          ; last /api/league/sync reply: who is rostered, and FAAB
-     :my-roster-id nil          ; which roster in the synced league is mine
-     ;; The connected account. Session state, deliberately absent from
-     ;; `persist-keys`: which league is synced and which roster is mine already
-     ;; survive a reload as `:league-sync` and `:my-roster-id`, and adding keys
-     ;; here would mean bumping `fx/storage-version`, which discards every stored
-     ;; blob. A username is cheap to retype; a draft is not cheap to lose.
-     :sleeper-username nil      ; the account the manager connected
-     :sleeper-user-id  nil      ; its provider id — matched against a roster's :owner-id
-     :league-choices   nil      ; leagues that account plays in; refetched, never stored
+     ;; ---- accounts and leagues ----
+     ;; A manager plays in more than one league, and one day across more than one
+     ;; provider. Both maps are keyed so a second provider is a new entry rather
+     ;; than a second shape: accounts by provider, leagues by `league-key`.
+     :accounts     {}           ; provider -> {:provider :user-id :username}
+     ;; league-key -> {:provider :league-id :name :season :my-roster-id
+     ;;                :config  — this league's scoring/roster/team count
+     ;;                :sync    — last /api/league/sync reply: who is rostered, and FAAB}
+     :leagues      {}
+     :active-league nil         ; which league-key everything on screen is about
+     :league-choices   nil      ; leagues an account plays in; refetched, never stored
      ;; Read from `fx/drafts-key` at boot, not from the persisted slice: an
      ;; archived draft has its own key and its own version.
      :drafts       []           ; completed drafts, oldest first

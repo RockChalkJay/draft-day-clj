@@ -20,8 +20,12 @@
   history spread across three reconcile functions and an id crosswalk. Starting
   over costs a manager his column layout and, mid-draft, his picks; the version
   is only bumped by a deploy, and a rebuilt layout is worth less than the code
-  that avoided rebuilding it."
-  1)
+  that avoided rebuilding it.
+
+  2: leagues are keyed by provider and league id, with the account and the
+  active league stored alongside; `:league-sync` and `:my-roster-id` are gone.
+  Archived drafts are under `drafts-key` and survive this."
+  2)
 
 (def drafts-key "draft-day-drafts")
 

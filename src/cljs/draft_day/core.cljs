@@ -15,6 +15,33 @@
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
 
+(defn league-switcher
+  "Which league the whole app is about, on every tab.
+
+  A dropdown once there is more than one, a plain label when there is one, and a
+  route to Settings when there is none — because a select with a single option is
+  a control that asks you to confirm the only possible answer, and one with no
+  options is a control that cannot be used."
+  []
+  (let [leagues @(rf/subscribe [:league-list])
+        active  @(rf/subscribe [:active-league-key])
+        {:keys [league-name my-team-name]} @(rf/subscribe [:account])]
+    [:div.league-switcher
+     (cond
+       (empty? leagues)
+       [:button.link {:on-click #(rf/dispatch [:set-view :settings])} "Connect a league"]
+
+       (= 1 (count leagues))
+       [:span.league-label [:b (or league-name "League")]]
+
+       :else
+       [:select {:value (str active)
+                 :title "Switch league — the board, the prices and the waiver wire all follow"
+                 :on-change #(rf/dispatch [:set-active-league (.. % -target -value)])}
+        (for [[k e] leagues]
+          ^{:key k} [:option {:value k} (or (:name e) (:league-id e))])])
+     (when my-team-name [:span.league-team my-team-name])]))
+
 (defn- header []
   (let [market  @(rf/subscribe [:market])
         my-team @(rf/subscribe [:my-team])
@@ -33,6 +60,7 @@
              ^{:key v}
              [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])} label])
            [[:board "Board"] [:waivers "Waivers"] [:league "League"] [:settings "Settings"]])]
+     [league-switcher]
      [:div.status status]
      [:div.stats
       [:div.stat {:title "Market inflation × phase decay"}

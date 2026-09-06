@@ -311,7 +311,7 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 1 fx/storage-version)
+  (is (= 2 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
   (is (= [:rank :ecr :name :team :bye :position :worth :value :market :espn-value
@@ -334,9 +334,12 @@
       "including its nested roster, which a new bench slot would change")
 
   (is (= [:config :teams :drafted :picks :columns :my-team-id :watchlist
-          :league-sync :my-roster-id :waiver-columns]
+          :accounts :leagues :active-league :waiver-columns]
          db/persist-keys)
-      "and this is everything that gets stored at all"))
+      "and this is everything that gets stored at all")
+
+  (is (= "sleeper:123" (db/league-key "sleeper" "123"))
+      "and a league is stored under provider *and* id — see `db/league-key`"))
 
 ;; ---- the draft archive ----
 
@@ -401,7 +404,8 @@
              :picks [{:player-id "gibbs" :price 43}]
              :teams [{:team-id "t0" :name "crazy rich asians"}]
              :my-team-id "t0"
-             :league-sync {:name "RaiderNation" :season "2026"})
+             :leagues {"sleeper:1" {:name "RaiderNation" :season "2026"}}
+             :active-league "sleeper:1")
       (rf/dispatch-sync [:start-draft {:num-teams 12 :starting-bankroll 200 :team-names []}])
       (let [[d] (fx/read-drafts)]
         (is (= "RaiderNation" (:league d)) "the league synced at the time, as context")
