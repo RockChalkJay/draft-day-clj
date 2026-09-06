@@ -46,20 +46,119 @@
   [numeric-field label value
    {:step "0.01" :parse js/parseFloat :on-change on-change}])
 
-(defn- sleeper-import []
-  (let [league-id (r/atom "1380540443179118592")]
+(defn- league-row
+  "One league under its account: what it is, whose team is whose, and the two
+  buttons that act on it."
+  [[k entry] active-key]
+  (let [active? (= k active-key)
+        teams   (vec (get-in entry [:sync :teams]))
+        mine    (:my-roster-id entry)]
+    [:div.league-row {:class (when active? "on")}
+     [:div.league-row-head
+      [:button.league-pick {:class (when active? "on")
+                            :disabled active?
+                            :on-click #(rf/dispatch [:set-active-league k])}
+       (if active? "Active" "Make active")]
+      [:b (or (:name entry) (:league-id entry))]
+      [:span.muted (str " · " (or (:season entry) "—")
+                        (when (seq teams) (str " · " (count teams) " teams")))]]
+     [:div.league-row-actions
+      (when (seq teams)
+        [:label.field.inline
+         [:span "My team"]
+         [:select {:value (str mine)
+                   :on-change (fn [e]
+                                (let [v (.. e -target -value)]
+                                  ;; The roster id round-trips through the DOM as
+                                  ;; a string; the synced league keys on the
+                                  ;; number the provider sent, so it has to go
+                                  ;; back as one or nothing matches and the board
+                                  ;; silently reports no drop and no budget.
+                                  (rf/dispatch [:set-my-roster-id
+                                                (when-not (str/blank? v)
+                                                  (js/parseInt v 10))])))
+                   ;; Only the active league's roster id is writable, because
+                   ;; `:set-my-roster-id` writes to whichever league is active.
+                   ;; A dropdown that silently retargeted another league is
+                   ;; worse than one that asks you to switch first.
+                   :disabled (not active?)}
+          [:option {:value ""} "— pick a team —"]
+          (for [t teams]
+            ^{:key (:roster-id t)}
+            [:option {:value (str (:roster-id t))} (:name t)])]])
+      ;; Rosters only, not the rules. `:league-choose` re-imports as well, which
+      ;; would silently overwrite a hand-edited scoring config every time the
+      ;; manager pressed a button labelled Re-sync.
+      [:button {:disabled (not active?)
+                :on-click #(rf/dispatch [:sync-league (select-keys entry [:provider :league-id])])}
+       "Re-sync"]]]))
+
+(defn- connected-accounts
+  "The one place an account, a league and a team are set.
+
+  They used to be settable from the Settings import card and from two rows of
+  the Waivers panel, with a real league id hardcoded into the first — three
+  inputs writing state that the rest of the app read from one key. Everything
+  that identifies the manager now lives here, and every other view reads
+  `:account`."
+  []
+  (let [typed  (r/atom nil)
+        typed-id (r/atom "")]
     (fn []
-      [:section.settings-card.sleeper
-       [:h3 "Import from Sleeper"]
-       [:p.muted "Paste a Sleeper league ID to pull its scoring + roster settings."]
-       [:div.row
-        [:input {:type "text"
-                 :placeholder "League ID"
-                 :value @league-id
-                 :on-change #(reset! league-id (.. % -target -value))}]
-        [:button.primary {:on-click #(when (seq @league-id)
-                                       (rf/dispatch [:import-league {:provider "sleeper" :league-id @league-id}]))}
-         "Load from Sleeper"]]])))
+      (let [accounts   @(rf/subscribe [:accounts])
+            leagues    @(rf/subscribe [:league-list])
+            active-key @(rf/subscribe [:active-league-key])
+            choices    @(rf/subscribe [:league-choices])
+            status     @(rf/subscribe [:waiver-status])
+            acct       (first (vals accounts))
+            username   (or @typed (:username acct) "")
+            connect!   #(when-not (str/blank? username)
+                          (rf/dispatch [:league-connect username]))]
+        [:section.settings-card.accounts
+         [:h3 "Connected Accounts"]
+         [:p.muted "Connect a fantasy account to pull its leagues. Everything on the
+                    board — scoring, rosters, waivers — follows whichever league is
+                    active."]
+         [:div.row
+          [:input {:type "text" :placeholder "Sleeper username"
+                   :value username
+                   :on-change #(reset! typed (.. % -target -value))
+                   :on-key-down #(when (= "Enter" (.-key %)) (connect!))}]
+          [:button.primary {:disabled (str/blank? username) :on-click connect!}
+           (if acct "Reconnect" "Connect")]]
+         (when acct
+           [:p.muted (str "Sleeper · " (:username acct))])
+
+         ;; Leagues that account plays in but has not been added yet. Once a
+         ;; league is stored it is listed below instead, so this list shrinks as
+         ;; leagues are picked rather than doubling them.
+         (when-let [unadded (seq (remove #(contains? (into #{} (map first) leagues)
+                                                     (db/league-key "sleeper" (:league-id %)))
+                                         choices))]
+           [:div.league-choices
+            (for [{:keys [league-id name num-teams status] :as choice} unadded]
+              ^{:key league-id}
+              [:button.league-choice {:on-click #(rf/dispatch [:league-choose choice])}
+               [:span.league-choice-name name]
+               [:span.muted (str " · " num-teams "-team · " status)]])])
+         (when (and (some? choices) (empty? choices))
+           [:div.sync-empty "That account plays in no leagues this season."])
+
+         (if (seq leagues)
+           [:div.league-rows
+            (for [[k _ :as row] leagues]
+              ^{:key k} [league-row row active-key])]
+           [:p.muted "No leagues yet — connect an account, or paste a league ID below."])
+
+         [:div.row
+          [:input {:type "text" :placeholder "Sleeper league ID"
+                   :value @typed-id
+                   :on-change #(reset! typed-id (.. % -target -value))}]
+          [:button {:disabled (str/blank? @typed-id)
+                    :on-click #(rf/dispatch [:league-choose (str/trim @typed-id)])}
+           "Add league"]
+          [:span.muted "For a league this account is not in."]]
+         (when status [:div.sync-status status])]))))
 
 (defn- league-config []
   (let [cfg @(rf/subscribe [:config])]
@@ -244,7 +343,7 @@
 
 (defn settings []
   [:div.settings
-   [sleeper-import]
+   [connected-accounts]
    [draft-archive]
    [league-config]
    [budget-config]

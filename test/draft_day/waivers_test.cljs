@@ -8,10 +8,12 @@
             [re-frame.core :as rf]
             [re-frame.db :as rdb]
             [re-frame.registrar :as registrar]
+            [clojure.walk]
             [reagent.ratom]
             [draft-day.db :as db]
             [draft-day.fx]
             [draft-day.subs :as subs]
+            [draft-day.views.board :as board]
             [draft-day.views.waivers :as waivers]
             [draft-day.events :as events]))
 
@@ -60,6 +62,24 @@
    :waiver {:type "faab" :budget 100}
    :roster-size 15 :league-id "987654"})
 
+(def ^:private lk (db/league-key "sleeper" "987654"))
+
+(defn- with-league!
+  "Put a league in db and make it active, the way `:league-choose` would.
+
+  Every one of these tests used to set `:league-sync` and `:my-roster-id` at the
+  top of db. Both now live on the active league's entry, which is the whole
+  point of the reshape: a manager with two leagues has two of each."
+  ([] (with-league! nil nil))
+  ([sync mine]
+   (swap! rdb/app-db assoc
+          :leagues {lk (cond-> {:provider "sleeper" :league-id "987654"}
+                         sync (assoc :sync sync)
+                         mine (assoc :my-roster-id mine))}
+          :active-league lk)))
+
+(defn- league-entry [] (get-in @rdb/app-db [:leagues lk]))
+
 ;; ---- the stale-reply guard ----
 
 (deftest a-reply-computed-against-the-previous-roster-cannot-win
@@ -89,7 +109,7 @@
 (deftest the-request-carries-the-league-the-browser-owns
   ;; Same statelessness the draft board runs on: the server holds nothing
   ;; between requests, so everything it needs rides on the call.
-  (swap! rdb/app-db assoc :league-sync synced :my-roster-id 1)
+  (with-league! synced 1)
   (rf/dispatch-sync [:fetch-waivers])
   (let [b (:body (last-http))]
     (is (= "/api/waivers" (:url (last-http))))
@@ -108,39 +128,59 @@
   ;; It is the same shape localStorage will hand back next session, so a
   ;; provider that grew or dropped a field should fail here — where the status
   ;; line can say so — rather than a session later with nothing to explain it.
-  (rf/dispatch-sync [:league-synced synced])
-  (is (= 2 (count (get-in @rdb/app-db [:league-sync :teams]))))
+  (with-league!)
+  (rf/dispatch-sync [:league-synced lk synced])
+  (is (= 2 (count (get-in (league-entry) [:sync :teams]))))
   (is (re-find #"Synced" (:waiver-status @rdb/app-db)))
   (is (some #{:fetch-waivers} (dispatched))
       "and the board is refreshed against the rosters that just arrived")
   (testing "a reply that is not a league is refused rather than half-stored"
-    (rf/dispatch-sync [:league-synced {:not "a league"}])
-    (is (nil? (:league-sync @rdb/app-db)))
+    (rf/dispatch-sync [:league-synced lk {:not "a league"}])
+    (is (nil? (:sync (league-entry))))
     (is (re-find #"nothing usable" (:waiver-status @rdb/app-db)))))
+
+(deftest a-sync-is-written-to-the-league-it-was-asked-for
+  ;; The key rides on the request rather than being read off `:active-league` at
+  ;; reply time. A manager who switches leagues while a sync is in flight would
+  ;; otherwise have one league's rosters written into the other's entry — and
+  ;; the waiver board would name players nobody in that league holds.
+  (swap! rdb/app-db assoc
+         :leagues {lk       {:provider "sleeper" :league-id "987654"}
+                   "sleeper:other" {:provider "sleeper" :league-id "other"}}
+         :active-league "sleeper:other")
+  (rf/dispatch-sync [:league-synced lk synced])
+  (is (= 2 (count (get-in (league-entry) [:sync :teams]))))
+  (is (nil? (get-in @rdb/app-db [:leagues "sleeper:other" :sync]))
+      "the league on screen is untouched by a reply that is not about it"))
 
 (deftest picking-my-team-re-prices-the-board
   ;; Almost everything on the board is measured *from* this: the sync fires
   ;; :fetch-waivers while it is still nil, so the first board comes back with no
   ;; drop, no budget and every bid blank. Without a refetch, picking your team
   ;; changed a dropdown and nothing else until you happened to press Refresh.
+  (with-league! synced nil)
   (rf/dispatch-sync [:set-my-roster-id 1])
-  (is (= 1 (:my-roster-id @rdb/app-db)))
+  (is (= 1 (:my-roster-id (league-entry))))
   (is (some #{:fetch-waivers} (dispatched))))
 
 (deftest the-league-id-comes-back-with-the-rosters
   ;; So a re-sync is one click. The input lives in a component-local atom that
   ;; empties on reload; without this the manager returns to persisted, month-old
   ;; rosters with no record of which league they came from.
-  (rf/dispatch-sync [:league-synced synced])
+  (with-league!)
+  (rf/dispatch-sync [:league-synced lk synced])
   (rf/clear-subscription-cache!)
   (is (= "987654" (sub [:synced-league-id])))
-  (is (contains? (last (:persist @captured)) :league-sync)
+  (is (contains? (last (:persist @captured)) :leagues)
       "and it is persisted along with them"))
 
 (deftest a-sync-survives-a-reload
-  (rf/dispatch-sync [:league-synced synced])
+  (with-league!)
+  (rf/dispatch-sync [:league-synced lk synced])
   (let [slice (last (:persist @captured))]
-    (is (contains? slice :league-sync) "a sync redone on every page load is one nobody uses")
+    (is (= 2 (count (get-in slice [:leagues lk :sync :teams])))
+        "a sync redone on every page load is one nobody uses")
+    (is (contains? slice :active-league) "including which of them is on screen")
     (is (not (contains? slice :waivers)) "the board itself is not persisted, like :ranked")))
 
 ;; ---- arriving at the tab ----
@@ -282,25 +322,83 @@
   [component]
   (binding [reagent.ratom/*ratom-context* #js {}] (pr-str (component))))
 
+(defn- press!
+  "Find the button labelled `label` in a component's hiccup and call its
+  `:on-click`.
+
+  Returns the events it dispatched.
+
+  `render` stringifies, which is enough to assert what a panel *says* but not
+  what a button *does* — and the bugs in the sync strip were all in the payload a
+  click sends, which no amount of rendering reaches. `rf/dispatch` is redefined
+  rather than read off `captured`: a view calls the dispatch *function*, which
+  queues on the real router, and never touches the `:dispatch` effect the fixture
+  stubs."
+  [component label]
+  (let [found (atom nil)
+        seen  (atom [])]
+    (clojure.walk/postwalk
+     (fn [x]
+       (when (and (vector? x) (= :button (first x)) (map? (second x))
+                  (some #{label} (filter string? x)))
+         (reset! found (:on-click (second x))))
+       x)
+     (binding [reagent.ratom/*ratom-context* #js {}] (component)))
+    (if-let [f @found]
+      (with-redefs [rf/dispatch (fn [ev] (swap! seen conj ev))]
+        (f)
+        @seen)
+      (throw (ex-info (str "no button labelled " label) {})))))
+
 (deftest the-roster-panel-says-which-state-it-is-in
   (let [text (fn [] (render waivers/my-roster-panel))]
-    (swap! rdb/app-db assoc :league-sync nil :waivers {:my-roster nil})
+    (swap! rdb/app-db assoc :leagues {} :active-league nil :waivers {:my-roster nil})
     (rf/clear-subscription-cache!)
     (is (re-find #"Sync a league" (text)) "no league connected at all")
 
-    (swap! rdb/app-db assoc :league-sync synced :waivers {:my-roster nil})
+    (with-league! synced nil)
+    (swap! rdb/app-db assoc :waivers {:my-roster nil})
     (rf/clear-subscription-cache!)
     (is (re-find #"Pick your team" (text))
         "synced but no team chosen — the line that was missing")
 
-    (swap! rdb/app-db assoc :league-sync synced :waivers {:my-roster []})
+    (with-league! synced nil)
+    (swap! rdb/app-db assoc :waivers {:my-roster []})
     (rf/clear-subscription-cache!)
     (is (re-find #"holds nobody" (text)))))
+
+(deftest the-strip-re-syncs-under-the-league-s-provider-not-the-account-s
+  ;; Settings supports adding a league by pasting an id with no account
+  ;; connected. Reading the provider off `:account` fell back to whichever
+  ;; account happened to exist — nil in that case, which throws in
+  ;; `db/league-key`, and the wrong one once ESPN arrives.
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc :accounts {})
+  (rf/clear-subscription-cache!)
+  (is (= [[:sync-league {:provider "sleeper" :league-id "987654"}]]
+         (press! waivers/sync-panel "Re-sync rosters"))))
+
+(deftest a-league-whose-sync-failed-still-offers-to-retry-it
+  ;; It has no `:name` until a reply lands, and gating the strip on the name made
+  ;; it read as no league at all — hiding the retry on the one screen that
+  ;; reports the failure.
+  (swap! rdb/app-db assoc
+         :leagues {lk {:provider "sleeper" :league-id "987654"}}
+         :active-league lk
+         :waivers {:my-roster nil})
+  (rf/clear-subscription-cache!)
+  (let [out (render waivers/sync-panel)]
+    (is (re-find #"Re-sync rosters" out))
+    (is (re-find #"987654" out) "and names itself by its id until the sync answers")
+    (is (not (re-find #"No league active" out))))
+  (is (= [[:sync-league {:provider "sleeper" :league-id "987654"}]]
+         (press! waivers/sync-panel "Re-sync rosters"))))
 
 (deftest the-roster-panel-splits-starters-from-bench-and-marks-the-seat-at-stake
   ;; The synced league knows the real lineup; the draft config's slot template
   ;; does not. And the marked seat is the same man the drop note names.
-  (swap! rdb/app-db assoc :league-sync synced
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc
          :waivers {:my-roster [{:player-id "a" :player-name "Starter A" :position "RB"
                                 :ros-points 180.0 :starter? true}
                                {:player-id "b" :player-name "Bench B" :position "WR"
@@ -330,21 +428,24 @@
   ;; The point of the unit. Until this, the manager had to pick his own roster
   ;; out of a list of twelve before the board could name a drop, price a bid or
   ;; draw his roster — and all three read as blank until he did.
-  (swap! rdb/app-db assoc :sleeper-user-id "u-me" :my-roster-id nil)
-  (rf/dispatch-sync [:league-synced owned])
-  (is (= 7 (:my-roster-id @rdb/app-db))))
+  (with-league!)
+  (swap! rdb/app-db assoc-in [:accounts "sleeper"] {:provider "sleeper" :user-id "u-me"})
+  (rf/dispatch-sync [:league-synced lk owned])
+  (is (= 7 (:my-roster-id (league-entry)))))
 
 (deftest a-corrected-team-is-not-undone-by-the-next-sync
   ;; Co-managed teams and second accounts are real; a manager who overrode the
   ;; guess must keep his override.
-  (swap! rdb/app-db assoc :sleeper-user-id "u-me" :my-roster-id 1)
-  (rf/dispatch-sync [:league-synced owned])
-  (is (= 1 (:my-roster-id @rdb/app-db))))
+  (with-league! nil 1)
+  (swap! rdb/app-db assoc-in [:accounts "sleeper"] {:provider "sleeper" :user-id "u-me"})
+  (rf/dispatch-sync [:league-synced lk owned])
+  (is (= 1 (:my-roster-id (league-entry)))))
 
 (deftest an-owner-nobody-matches-leaves-the-dropdown-to-answer
-  (swap! rdb/app-db assoc :sleeper-user-id "u-nobody" :my-roster-id nil)
-  (rf/dispatch-sync [:league-synced owned])
-  (is (nil? (:my-roster-id @rdb/app-db)) "a guess here would be worse than the prompt"))
+  (with-league!)
+  (swap! rdb/app-db assoc-in [:accounts "sleeper"] {:provider "sleeper" :user-id "u-nobody"})
+  (rf/dispatch-sync [:league-synced lk owned])
+  (is (nil? (:my-roster-id (league-entry))) "a guess here would be worse than the prompt"))
 
 (deftest matching-an-owner-is-string-identity-not-number-identity
   ;; Roster ids and owner ids cross the wire as strings; a fixture or an older
@@ -358,8 +459,9 @@
   (rf/dispatch-sync [:league-user-loaded
                      {:user {:user-id "u1" :display-name "jay"}
                       :leagues [{:league-id "L1" :name "Only" :num-teams 12}]}])
-  (is (= "jay" (:sleeper-username @rdb/app-db)))
-  (is (= "u1" (:sleeper-user-id @rdb/app-db)))
+  (is (= {:provider "sleeper" :user-id "u1" :username "jay"}
+         (get-in @rdb/app-db [:accounts "sleeper"]))
+      "keyed by provider, so a second provider lands beside it rather than over it")
   (is (some #{:league-choose} (dispatched))
       "asking a manager to confirm the only possible answer is a step for nothing"))
 
@@ -380,26 +482,304 @@
 (deftest choosing-a-league-syncs-its-rosters-and-imports-its-rules
   ;; Two questions off one id. A manager who synced without importing gets a
   ;; board priced under the draft config's scoring rather than his league's.
-  (rf/dispatch-sync [:league-choose "L1"])
-  (let [evs (dispatched)]
+  (rf/dispatch-sync [:league-choose {:league-id "L1" :name "One" :season "2026"}])
+  (let [evs (dispatched)
+        k   (db/league-key "sleeper" "L1")]
     (is (some #{:sync-league} evs))
-    (is (some #{:import-league} evs))))
+    (is (some #{:import-league} evs))
+    (is (= k (:active-league @rdb/app-db)) "and it becomes the league on screen")
+    (is (= "One" (get-in @rdb/app-db [:leagues k :name]))
+        "named from the picker, so the switcher has something to say before the sync lands")))
 
-(deftest the-connected-account-is-session-state-not-stored
-  ;; It used to be persisted. `fx/storage-version` is now the whole migration
-  ;; story, and `persist-keys` is pinned to it — adding a key there means
-  ;; bumping the version, which discards every stored blob including a draft.
+(deftest a-bare-league-id-is-accepted-as-well-as-a-picked-one
+  ;; The Settings field for a league the connected account is not in.
+  (rf/dispatch-sync [:league-choose "L9"])
+  (is (= (db/league-key "sleeper" "L9") (:active-league @rdb/app-db)))
+  (is (= "L9" (get-in @rdb/app-db [:leagues (db/league-key "sleeper" "L9") :league-id]))))
+
+(deftest switching-leagues-re-prices-both-boards
+  ;; The failure this whole reshape exists to prevent: scoring is per league, so
+  ;; a switch that moved only the rosters would leave Worth priced under the
+  ;; league you left, with nothing on screen to say so.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a"
+                                :config (assoc db/default-config :scoring :standard)}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config :scoring :ppr)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (is (= :ppr (get-in @rdb/app-db [:config :scoring]))
+      "the active league's rules become the board's rules")
+  (let [evs (dispatched)]
+    (is (some #{:recompute} evs) "the draft board re-prices")
+    (is (some #{:fetch-waivers} evs) "and so does the waiver board")))
+
+(deftest switching-leagues-rebuilds-the-teams-the-new-config-describes
+  ;; The config carries :num-teams, :starting-bankroll and the roster template,
+  ;; and :teams is built from exactly those three. A switch that moved the config
+  ;; without them sent a 12-team replacement level alongside ten teams' worth of
+  ;; cash, so every dollar on the board was wrong with nothing on screen to say
+  ;; so — and the League tab drew ten columns for a twelve-team league.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :teams (db/make-teams 10 db/default-roster 200)
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a"
+                                :config (assoc db/default-config :num-teams 10)}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config
+                                               :num-teams 12 :starting-bankroll 300)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (is (= 12 (count (:teams @rdb/app-db))))
+  (is (= 300 (:bankroll (first (:teams @rdb/app-db)))))
+  (rf/dispatch-sync [:recompute])
+  (let [b (:body (last-http))]
+    (is (= 12 (:num-teams b)))
+    (is (= 12 (count (get-in b [:league-state :teams])))
+        "the count the server prices against and the count it is told must agree")))
+
+(deftest a-draft-with-picks-in-it-keeps-its-teams-across-a-switch
+  ;; Draft state is still one draft for one team (docs/TODO.md). Rebuilding the
+  ;; teams under it would throw away the picks' bankrolls and rosters, which is
+  ;; worse than the mismatch it avoids — so the switch leaves them exactly as
+  ;; `:apply-config` does.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :teams (db/make-teams 10 db/default-roster 200)
+         :picks [{:player-id "gibbs" :price 43 :team-id "t0"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config :num-teams 12)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (is (= 10 (count (:teams @rdb/app-db)))))
+
+(deftest switching-drops-the-previous-league-s-waiver-board
+  ;; The waiver board states *facts* about a league — who is rostered, what your
+  ;; FAAB is, which man you would drop. Under another league's name those are not
+  ;; stale, they are false. `:ranked` is deliberately left alone: same universe,
+  ;; different dollars, which is the staleness `:recompute-failed` tolerates on
+  ;; purpose.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :waivers {:players [{:player-id "a"}] :faab {:left 60}}
+         :ranked  {:players [{:player-id "a"}]}
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :config db/default-config}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (is (nil? (:waivers @rdb/app-db)) "so it reads as loading rather than as another league's")
+  (is (some? (:ranked @rdb/app-db)) "but the draft board is not blanked on every switch"))
+
+(deftest a-board-priced-under-another-league-s-rules-says-so
+  ;; The claim this replaces was that `:ranked` survives a switch as "the same
+  ;; universe under different dollars". It does not: scoring moves `:points`,
+  ;; which moves VORP, the tiers and every rank; the bankroll and team count move
+  ;; every dollar; and the vendor columns are flattened per scoring format, so
+  ;; ECR and ADP move too. Name, team, bye and position are what survive.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :name "Alpha"
+                                :config (assoc db/default-config :scoring :ppr)}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :name "Beta"
+                                :config (assoc db/default-config
+                                               :scoring :standard :starting-bankroll 300)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "p1" :worth 51}]}])
+  (rf/clear-subscription-cache!)
+  (is (false? (sub [:board-rules-stale?])) "its own league's board is not stale")
+
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (rf/clear-subscription-cache!)
+  (is (true? (sub [:board-rules-stale?])))
+  (is (re-find #"previous league" (render board/rules-banner))
+      "and the board says it out loud rather than leaving it to the status line")
+
+  (testing "and stops saying it once the matching reply lands"
+    (rf/dispatch-sync [:recompute])
+    (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                       (db/rules-stamp (:config @rdb/app-db))
+                       {:players [{:player-id "p1" :worth 77}]}])
+    (rf/clear-subscription-cache!)
+    (is (false? (sub [:board-rules-stale?])))
+    (is (= "nil" (render board/rules-banner)) "no banner, not an empty one")))
+
+(deftest two-leagues-on-the-same-rules-switch-without-a-word
+  ;; The reason the board is stamped with its rules rather than simply cleared on
+  ;; every switch: when the rules are the same the board is *correct*, and
+  ;; blanking it would cost a manager his screen for nothing.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :config db/default-config}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "p1" :worth 51}]}])
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (rf/clear-subscription-cache!)
+  (is (false? (sub [:board-rules-stale?])))
+  (is (some? (:ranked @rdb/app-db)) "and the board is still on screen"))
+
+(deftest a-pick-without-its-reply-is-the-staleness-that-is-tolerated
+  ;; Two kinds of stale that look the same in db. This one is a dollar or two out
+  ;; of date and must stay readable — flagging it would make the banner noise and
+  ;; the banner would stop being read.
+  (swap! rdb/app-db assoc :players [{:player-id "p1" :position "RB"}])
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "p1" :worth 51}]}])
+  (rf/dispatch-sync [:record-pick {:player-id "p1" :price "5" :team-id "t0" :position "RB"}])
+  (rf/clear-subscription-cache!)
+  (is (false? (sub [:board-rules-stale?]))))
+
+(deftest a-recompute-that-never-lands-leaves-the-warning-up
+  ;; The case the status line handled worst. `:recompute-failed` keeps `:ranked`
+  ;; on purpose, so a failure right after a switch used to leave the previous
+  ;; league's whole board under this league's name indefinitely, with one muted
+  ;; grey string to explain it.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config :scoring :standard)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "p1" :worth 51}]}])
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (rf/dispatch-sync [:recompute-failed "offline"])
+  (rf/clear-subscription-cache!)
+  (is (true? (sub [:board-rules-stale?])))
+  (is (some? (:ranked @rdb/app-db)) "still readable, as :recompute-failed intends")
+  (is (re-find #"previous league" (render board/rules-banner))
+      "but no longer silently claiming to be this league's"))
+
+(deftest sorting-the-watch-list-refuses-while-the-board-is-another-league-s
+  ;; The one place a stale read *writes*: the reordered list is persisted, so a
+  ;; sort during the window would bake the previous league's ranking into stored
+  ;; state where nothing later would reveal it.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :watchlist ["gibbs" "lamb" "bijan"]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config :scoring :standard)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:recompute])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db))
+                     {:players [{:player-id "gibbs" :worth 51 :vorp 100.0}
+                                {:player-id "bijan" :worth 58 :vorp 120.0}
+                                {:player-id "lamb"  :worth 55 :vorp 110.0}]}])
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (rf/dispatch-sync [:watch-sort :rank])
+  (is (= ["gibbs" "lamb" "bijan"] (:watchlist @rdb/app-db))
+      "the manager's own order is left exactly as it was"))
+
+(deftest choosing-a-league-re-ranks-under-the-config-it-just-activated
+  ;; A new league is seeded with the *previous* league's config until the import
+  ;; answers — and if the import fails it keeps it. Without a recompute here the
+  ;; board stayed priced under the league you left while the Scoring card showed
+  ;; something else.
+  (swap! rdb/app-db assoc :players [{:player-id "p1" :position "RB"}])
+  (rf/dispatch-sync [:league-choose {:league-id "L1" :name "One"}])
+  (is (some #{:recompute} (dispatched))))
+
+(deftest a-failed-import-is-reported-where-the-league-was-chosen
+  ;; The Settings card renders `:waiver-status`; the header renders `:status`.
+  ;; Reporting into one of them put the failure on the tab nobody was looking at.
+  (rf/dispatch-sync [:league-import-failed "404"])
+  (is (re-find #"import failed" (:status @rdb/app-db)))
+  (is (re-find #"import failed" (:waiver-status @rdb/app-db))))
+
+(deftest a-sync-with-no-league-to-sync-says-so-rather-than-throwing
+  ;; `db/league-key` calls `name` on the provider, and `(name nil)` throws in
+  ;; ClojureScript — killing the event rather than reporting anything.
+  (rf/dispatch-sync [:sync-league {:provider nil :league-id "123"}])
+  (is (re-find #"no league" (:waiver-status @rdb/app-db)))
+  (is (empty? (:http @captured)) "and nothing is sent"))
+
+(deftest a-config-edit-follows-the-league-it-was-made-in
+  ;; `:config` is a *copy* of the active league's config. Every writer goes
+  ;; through `db/set-config`; one that skipped the mirror would have its edit
+  ;; silently reverted by the next switch away and back.
+  (swap! rdb/app-db assoc
+         :players [{:player-id "p1" :position "RB"}]
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b"
+                                :config (assoc db/default-config :scoring :standard)}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:select-scoring-preset :half-ppr])
+  (rf/dispatch-sync [:set-active-league "sleeper:b"])
+  (is (= :standard (get-in @rdb/app-db [:config :scoring])))
+  (rf/dispatch-sync [:set-active-league "sleeper:a"])
+  (is (= :half-ppr (get-in @rdb/app-db [:config :scoring]))
+      "the edit is still there — it was written to the league, not only to the copy"))
+
+(deftest a-background-import-does-not-narrate-itself-as-the-league-on-screen
+  ;; Choose two leagues in quick succession and the late reply would otherwise
+  ;; pop `✓ Imported "Old"` in the header and replace the Settings import report
+  ;; — describing the league you had already switched away from.
+  ;; Asserted on what the handler *asks for* rather than on db: `:dispatch` is
+  ;; stubbed in this namespace, so a follow-on event never reaches its handler
+  ;; and a db assertion here would pass whatever the handler did.
+  (swap! rdb/app-db assoc
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :config db/default-config}}
+         :active-league "sleeper:b")
+  (rf/dispatch-sync [:league-import-loaded "sleeper:a"
+                     {:name "Old" :season "2026" :scoring :standard
+                      :unsupported-scoring ["fgm_50p"]}])
+  (let [evs (dispatched)]
+    (is (not (some #{:set-status} evs)))
+    (is (not (some #{:set-import-report} evs)))
+    (is (not (some #{:apply-config} evs))))
+  (testing "while the league on screen still announces its own import"
+    (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
+    (rf/dispatch-sync [:league-import-loaded "sleeper:b"
+                       {:name "Mine" :season "2026" :scoring :ppr}])
+    (let [evs (dispatched)]
+      (is (some #{:set-status} evs))
+      (is (some #{:set-import-report} evs))
+      (is (some #{:apply-config} evs)))))
+
+(deftest an-import-for-a-league-you-are-no-longer-on-is-stored-not-applied
+  ;; Two leagues chosen in quick succession answer in whatever order the network
+  ;; decides. Applying the late one would re-price the board you are looking at
+  ;; under a league you left.
+  (swap! rdb/app-db assoc
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
+                   "sleeper:b" {:provider "sleeper" :league-id "b" :config db/default-config}}
+         :active-league "sleeper:b")
+  (rf/dispatch-sync [:league-import-loaded "sleeper:a"
+                     {:name "Old" :season "2026" :scoring :standard :num-teams 10}])
+  (is (= :standard (get-in @rdb/app-db [:leagues "sleeper:a" :config :scoring]))
+      "kept, so switching to it later opens under its own rules")
+  (is (not (some #{:apply-config} (dispatched)))
+      "but the board on screen is left alone"))
+
+(deftest the-connected-account-is-stored-but-the-league-list-is-not
+  ;; The account is persisted now — the version bump this reshape needed was
+  ;; already being paid, and a username retyped every session is a login the app
+  ;; is pretending not to have.
   ;;
-  ;; Nothing is lost by leaving it out: which league is synced and which roster
-  ;; is mine already survive a reload as `:league-sync` and `:my-roster-id`, so
-  ;; the header and the board still know where they are. Only the username is
-  ;; retyped, and only to list leagues again.
+  ;; The league *list* is not. It is a snapshot of what an account plays in this
+  ;; season, refetched in one click, and a stored copy would go stale the first
+  ;; time a manager joined a league.
   (rf/dispatch-sync [:league-user-loaded
                      {:user {:user-id "u1" :display-name "jay"} :leagues []}])
   (let [slice (last (:persist @captured))]
-    (is (not (contains? slice :sleeper-username)))
-    (is (not (contains? slice :sleeper-user-id)))
+    (is (= "jay" (get-in slice [:accounts "sleeper" :username])))
     (is (not (contains? slice :league-choices))))
-  (testing "and the two that must survive a reload still do"
-    (is (some #{:league-sync} db/persist-keys))
-    (is (some #{:my-roster-id} db/persist-keys))))
+  (testing "and everything a reload needs is in the persisted slice"
+    (is (some #{:accounts} db/persist-keys))
+    (is (some #{:leagues} db/persist-keys))
+    (is (some #{:active-league} db/persist-keys))))

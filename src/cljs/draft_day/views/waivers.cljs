@@ -11,7 +11,6 @@
   week — in preseason the rest-of-season board *is* the draft board, which is the
   honest answer but the one a manager is most likely to misread as live."
   (:require [clojure.string :as str]
-            [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.db :as db]
             [draft-day.views.board :as board]
@@ -96,81 +95,55 @@
 ;; ---- panels ----
 
 (defn sync-panel
- "Connect a league, and say plainly when none is connected."
- []
-  (let [typed (r/atom nil)
-        ;; Same reason as `typed`: nil distinguishes "never edited" from
-        ;; "cleared", so the field can fall back to the connected account.
-        name-typed (r/atom nil)]
-    (fn []
-      (let [synced?  @(rf/subscribe [:league-synced?])
-            teams    @(rf/subscribe [:sync-teams])
-            mine     @(rf/subscribe [:my-roster-id])
-            status   @(rf/subscribe [:waiver-status])
-            known    @(rf/subscribe [:synced-league-id])
-            saved-name @(rf/subscribe [:sleeper-username])
-            choices  @(rf/subscribe [:league-choices])
-            league-id (or @typed known "")
-            username  (or @name-typed saved-name "")]
-        [:div.sync-panel
-         ;; Connecting an account is the way in; the league id below is the
-         ;; fallback for a league this account cannot see, and the record of
-         ;; which one is currently synced.
-         [:div.sync-row
-          [:input {:type "text" :placeholder "Sleeper username"
-                   :value username
-                   :on-change #(reset! name-typed (.. % -target -value))
-                   :on-key-down #(when (= "Enter" (.-key %))
-                                   (when-not (str/blank? username)
-                                     (rf/dispatch [:league-connect username])))}]
-          [:button.primary {:disabled (str/blank? username)
-                            :on-click #(rf/dispatch [:league-connect username])}
-           (if saved-name "Reconnect" "Connect")]]
-         (when (seq choices)
-           [:div.league-choices
-            (for [{:keys [league-id name num-teams status]} choices]
-              ^{:key league-id}
-              [:button.league-choice
-               {:class (when (= league-id known) "on")
-                :on-click #(rf/dispatch [:league-choose league-id])}
-               [:span.league-choice-name name]
-               [:span.muted (str " · " num-teams "-team · " status)]])])
-         (when (and (some? choices) (empty? choices))
-           [:div.sync-empty "That account plays in no leagues this season."])
-         [:div.sync-row
-          [:input {:type "text" :placeholder "Sleeper league ID"
-                   :value league-id
-                   :on-change #(reset! typed (.. % -target -value))}]
-          [:button {:disabled (str/blank? league-id)
-                    :on-click #(rf/dispatch [:sync-league {:provider "sleeper"
-                                                           :league-id league-id}])}
-           (if synced? "Re-sync rosters" "Sync rosters")]
-          (when synced?
-            [:button.secondary {:on-click #(rf/dispatch [:fetch-waivers])} "Refresh board"])]
-         (when status [:div.sync-status status])
-         (if synced?
-           [:div.sync-team
-            [:label "My team "
-             [:select {:value (str mine)
-                       :on-change (fn [e]
-                                    (let [v (.. e -target -value)]
-                                      ;; The roster id round-trips through the
-                                      ;; DOM as a string; the synced league keys
-                                      ;; on the number the provider sent, so it
-                                      ;; has to go back as one or nothing
-                                      ;; matches and the board silently reports
-                                      ;; no drop and no budget.
-                                      (rf/dispatch [:set-my-roster-id
-                                                    (when-not (str/blank? v)
-                                                      (js/parseInt v 10))])))}
-              [:option {:value ""} "— pick a team —"]
-              (for [t teams]
-                ^{:key (:roster-id t)}
-                [:option {:value (str (:roster-id t))} (:name t)])]]]
-           [:div.sync-empty
-            "No league connected — this is a rest-of-season ranking of "
-            [:em "everyone"] ", not of who is actually free. "
-            "Sync a Sleeper league to see the waiver wire."])]))))
+  "A status strip, not a form: which league and team the board is about, and the
+  two buttons that refresh it.
+
+  Every input that *sets* identity has moved to Settings. It used to be settable
+  here — a username row, a league picker, a league-id row and a team dropdown —
+  and in Settings as well, so the same three facts had four writers and no single
+  place to read them."
+  []
+  (let [{:keys [connected? username season my-team-name]} @(rf/subscribe [:account])
+        ;; The *league's* provider, not the account's. A league added by pasting
+        ;; an id needs no account at all, and `:account` falls back to whichever
+        ;; account happens to be connected — which is nil in that case (and, once
+        ;; ESPN exists, the wrong one).
+        league    @(rf/subscribe [:active-league])
+        synced?   @(rf/subscribe [:league-synced?])
+        status    @(rf/subscribe [:waiver-status])
+        ;; A league is active or it is not; whether it has a *name* yet is a
+        ;; question about the sync reply. Gating on the name meant a league whose
+        ;; sync failed read as no league at all — hiding the Re-sync button on
+        ;; the one screen that reports the failure.
+        active?    (some? league)
+        league-name (or (:name league) (:league-id league))]
+    [:div.sync-panel
+     (if active?
+       [:div.sync-row
+        [:div.sync-who
+         [:b league-name]
+         (when season [:span.muted (str " · " season)])
+         (when username [:span.muted (str " · " username)])
+         [:span.sync-team-name
+          (if my-team-name
+            (str " · " my-team-name)
+            [:span.muted " · no team picked"])]]
+        ;; Rosters only. Re-importing the rules here would overwrite a
+        ;; hand-edited scoring config under a button labelled Re-sync.
+        [:button {:on-click #(rf/dispatch [:sync-league
+                                           (select-keys league [:provider :league-id])])}
+         "Re-sync rosters"]
+        (when synced?
+          [:button.secondary {:on-click #(rf/dispatch [:fetch-waivers])} "Refresh board"])]
+       [:div.sync-empty
+        (if connected?
+          "No league active — pick one under Settings → Connected Accounts."
+          (str "No league connected — this is a rest-of-season ranking of everyone, "
+               "not of who is actually free. Connect your account under Settings."))])
+     (when (and active? synced? (not my-team-name))
+       [:div.sync-empty
+        "Pick your team under Settings to see your roster and what a claim would cost."])
+     (when status [:div.sync-status status])]))
 
 (defn faab-panel []
   (let [{:keys [type budget left rival-max]} @(rf/subscribe [:my-faab])
@@ -193,10 +166,11 @@
   "What the manager already has, beside what he could claim.
 
   The board is free agents only, so without this the tab never shows the roster
-  a claim is measured against — and the `My team` dropdown, whose whole job is to
-  identify that roster, appears to do nothing when it changes. Picking a team
-  moves Upgrade, Bid and the budget, but all of those are numbers elsewhere on
-  the screen; this is the part that visibly answers 'which team am I'.
+  a claim is measured against — and the `My team` dropdown in Settings, whose
+  whole job is to identify that roster, appears to do nothing when it changes.
+  Picking a team moves Upgrade, Bid and the budget, but all of those are numbers
+  elsewhere on the screen; this is the part that visibly answers 'which team am
+  I'.
 
   Starters above bench, because the synced league knows the real lineup and the
   draft config's slot template does not. A row the board could not value keeps
@@ -213,7 +187,7 @@
        ;; nil, not empty: no team is picked. This is the line that was missing —
        ;; it says what the dropdown is for.
        (nil? roster)
-       [:p.muted "Pick your team above to see your roster and what a claim would cost."]
+       [:p.muted "Pick your team under Settings to see your roster and what a claim would cost."]
 
        (empty? roster)
        [:p.muted "This team holds nobody yet."]

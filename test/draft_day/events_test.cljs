@@ -105,16 +105,17 @@
   ;; computed under the previous scoring config could land last and stick.
   (rf/dispatch-sync [:recompute])
   (rf/dispatch-sync [:recompute])
-  (let [n (:recompute-seq @rdb/app-db)]
+  (let [n     (:recompute-seq @rdb/app-db)
+        rules (db/rules-stamp (:config @rdb/app-db))]
     (is (= 2 n))
-    (rf/dispatch-sync [:ranked-loaded (dec n) {:players [{:player-id "stale"}]}])
+    (rf/dispatch-sync [:ranked-loaded (dec n) rules {:players [{:player-id "stale"}]}])
     (is (nil? (:ranked @rdb/app-db)) "the superseded reply is dropped")
 
-    (rf/dispatch-sync [:ranked-loaded n {:players [{:player-id "fresh"}]}])
+    (rf/dispatch-sync [:ranked-loaded n rules {:players [{:player-id "fresh"}]}])
     (is (= "fresh" (-> @rdb/app-db :ranked :players first :player-id)))
 
     (testing "a reply that arrives even later, from an older request, still loses"
-      (rf/dispatch-sync [:ranked-loaded (dec n) {:players [{:player-id "stale"}]}])
+      (rf/dispatch-sync [:ranked-loaded (dec n) rules {:players [{:player-id "stale"}]}])
       (is (= "fresh" (-> @rdb/app-db :ranked :players first :player-id))))))
 
 (deftest every-recompute-carries-the-scoring-config-as-it-stands
@@ -129,7 +130,8 @@
 
 (deftest a-failed-recompute-keeps-the-old-board-and-says-so
   (rf/dispatch-sync [:recompute])
-  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db) {:players [{:player-id "p1"}]}])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db)) {:players [{:player-id "p1"}]}])
   (rf/dispatch-sync [:recompute-failed "boom"])
   (is (= "p1" (-> @rdb/app-db :ranked :players first :player-id))
       "stale but readable beats blank")
@@ -137,13 +139,15 @@
 
   (testing "and the next success clears the error"
     (rf/dispatch-sync [:recompute])
-    (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db) {:players []}])
+    (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                       (db/rules-stamp (:config @rdb/app-db)) {:players []}])
     (is (= "1 players · sample" (:status @rdb/app-db)))))
 
 (deftest a-successful-recompute-does-not-stamp-over-someone-elses-status
   (rf/dispatch-sync [:set-status "✓ Imported \"RaiderNation\" (2026)"])
   (rf/dispatch-sync [:recompute])
-  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db) {:players []}])
+  (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                     (db/rules-stamp (:config @rdb/app-db)) {:players []}])
   (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db)))
 
   (testing "not even when it is clearing an earlier failure of its own"
@@ -153,7 +157,8 @@
     (rf/dispatch-sync [:recompute-failed "boom"])
     (rf/dispatch-sync [:set-status "✓ Imported \"RaiderNation\" (2026)"])
     (rf/dispatch-sync [:recompute])
-    (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db) {:players []}])
+    (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
+                       (db/rules-stamp (:config @rdb/app-db)) {:players []}])
     (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db)))))
 
 ;; ---- which way a column opens ----
@@ -212,7 +217,12 @@
 
 (deftest sorting-the-watch-list-rewrites-the-order-and-leaves-it-alone
   (let [wl #(:watchlist @rdb/app-db)]
-    (swap! rdb/app-db assoc :ranked
+    ;; `:ranked-rules` alongside `:ranked`, because that is what `:ranked-loaded`
+    ;; always writes and what says this board is priced under the rules in force.
+    ;; `:watch-sort` refuses without it — see the stale-read-that-writes guard.
+    (swap! rdb/app-db assoc
+           :ranked-rules (db/rules-stamp (:config @rdb/app-db))
+           :ranked
            {:players [{:player-id "gibbs" :position "RB" :pos-rank 2 :worth 51 :vorp 100.0 :points 240.0}
                       {:player-id "bijan" :position "RB" :pos-rank 1 :worth 58 :vorp 120.0 :points 260.0}
                       {:player-id "lamb"  :position "WR" :pos-rank 1 :worth 55 :vorp 110.0 :points 250.0}]})
@@ -311,7 +321,7 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 1 fx/storage-version)
+  (is (= 2 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
   (is (= [:rank :ecr :name :team :bye :position :worth :value :market :espn-value
@@ -334,9 +344,12 @@
       "including its nested roster, which a new bench slot would change")
 
   (is (= [:config :teams :drafted :picks :columns :my-team-id :watchlist
-          :league-sync :my-roster-id :waiver-columns]
+          :accounts :leagues :active-league :waiver-columns]
          db/persist-keys)
-      "and this is everything that gets stored at all"))
+      "and this is everything that gets stored at all")
+
+  (is (= "sleeper:123" (db/league-key "sleeper" "123"))
+      "and a league is stored under provider *and* id — see `db/league-key`"))
 
 ;; ---- the draft archive ----
 
@@ -401,7 +414,8 @@
              :picks [{:player-id "gibbs" :price 43}]
              :teams [{:team-id "t0" :name "crazy rich asians"}]
              :my-team-id "t0"
-             :league-sync {:name "RaiderNation" :season "2026"})
+             :leagues {"sleeper:1" {:name "RaiderNation" :season "2026"}}
+             :active-league "sleeper:1")
       (rf/dispatch-sync [:start-draft {:num-teams 12 :starting-bankroll 200 :team-names []}])
       (let [[d] (fx/read-drafts)]
         (is (= "RaiderNation" (:league d)) "the league synced at the time, as context")

@@ -8,7 +8,7 @@
 (doseq [k [:view :status :config :teams :my-team-id :players
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
            :watchlist :import-report :universe
-           :league-sync :my-roster-id :waivers :waiver-sort :waiver-status
+           :accounts :leagues :waivers :waiver-sort :waiver-status
            :waiver-columns]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
@@ -71,6 +71,19 @@
 ;; valuation comes from :players-by-id.
 (rf/reg-sub :universe-by-id :<- [:players]
   (fn [ps _] (into {} (map (juxt :player-id identity)) ps)))
+
+(rf/reg-sub :ranked-rules (fn [db _] (:ranked-rules db)))
+
+;; Is the board on screen priced under rules that are no longer in force?
+;;
+;; Not the same question as "is it out of date". A pick that has landed without
+;; its reply leaves numbers a pick stale, which `:recompute-failed` keeps
+;; readable on purpose. A league switch leaves numbers that are about a
+;; *different league* — see `db/rules-stamp` for why that is every column and
+;; not just the dollars.
+(rf/reg-sub :board-rules-stale? :<- [:ranked] :<- [:ranked-rules] :<- [:config]
+  (fn [[ranked rules cfg] _]
+    (boolean (and ranked (not= rules (db/rules-stamp cfg))))))
 
 (rf/reg-sub :market :<- [:ranked]
   (fn [r _] (select-keys r [:inflation :inflation-index :market-heat :market-multiplier])))
@@ -245,6 +258,55 @@
          (keep by-id)
          vec)))
 
+;; ---- the active league ----
+;;
+;; `:active-league` in db is a *key*; the sub of that name is the entry, because
+;; every view wants the league and none of them want the string. The raw key has
+;; its own name so the two can never be mistaken for one another.
+
+(rf/reg-sub :active-league-key (fn [db _] (:active-league db)))
+
+(rf/reg-sub :active-league :<- [:leagues] :<- [:active-league-key]
+  (fn [[leagues k] _] (get leagues k)))
+
+;; The switcher's rows, ordered by name so they do not reshuffle on every write
+;; to the leagues map.
+(rf/reg-sub :league-list :<- [:leagues]
+  (fn [leagues _]
+    (vec (sort-by (fn [[k e]] [(str (:name e)) k]) leagues))))
+
+;; Kept as subs of their own so nothing downstream — the waiver board, its
+;; roster panel, its team picker — has to know the league entry exists.
+(rf/reg-sub :league-sync :<- [:active-league]
+  (fn [lg _] (:sync lg)))
+
+(rf/reg-sub :my-roster-id :<- [:active-league]
+  (fn [lg _] (:my-roster-id lg)))
+
+;; Which team in the synced league is the manager's, by name. Nothing computed
+;; this before, which is why the header could name the league but not the team.
+(rf/reg-sub :my-team-name :<- [:league-sync] :<- [:my-roster-id]
+  (fn [[ls mine] _]
+    (when (some? mine)
+      (some (fn [t] (when (= (:roster-id t) mine) (:name t))) (:teams ls)))))
+
+;; The one read-path for "who am I and what am I looking at". The header, the
+;; Settings card and the Waivers strip all render from this rather than each
+;; reaching into a different corner of db — which is how identity came to be
+;; settable in three places and readable in none.
+(rf/reg-sub :account
+  :<- [:accounts] :<- [:active-league] :<- [:active-league-key] :<- [:my-team-name]
+  (fn [[accounts lg k team-name] _]
+    (let [acct (or (get accounts (:provider lg)) (first (vals accounts)))]
+      {:connected?   (boolean acct)
+       :provider     (:provider acct)
+       :username     (:username acct)
+       :league-key   k
+       :league-name  (:name lg)
+       :season       (:season lg)
+       :my-roster-id (:my-roster-id lg)
+       :my-team-name team-name})))
+
 ;; ---- waiver board ----
 
 (rf/reg-sub :league-synced? :<- [:league-sync]
@@ -256,8 +318,8 @@
 ;; Which league the persisted rosters came from, so a re-sync is one click. It
 ;; rides on the sync reply rather than being stored separately, because the two
 ;; must not be able to disagree about which league is on screen.
-(rf/reg-sub :synced-league-id :<- [:league-sync]
-  (fn [ls _] (:league-id ls)))
+(rf/reg-sub :synced-league-id :<- [:active-league]
+  (fn [lg _] (:league-id lg)))
 
 (rf/reg-sub :drafts (fn [db _] (:drafts db)))
 
@@ -265,15 +327,6 @@
 ;; `db/drafted-anything?` answers for the event, asked from the view so the
 ;; button is absent rather than inert when there is nothing to keep.
 (rf/reg-sub :draft-has-picks? (fn [db _] (db/drafted-anything? db)))
-
-;; Session state, not persisted: the league and the roster that matter across a
-;; reload already survive in `:league-sync` and `:my-roster-id`, and adding keys
-;; to `persist-keys` would mean bumping `fx/storage-version` — which discards
-;; every stored blob, drafts included. The username is cheap to retype.
-;;
-;; No `:sleeper-user-id` sub: its only reader is `:league-synced`, which takes it
-;; off the map directly because it is an event handler, not a view.
-(rf/reg-sub :sleeper-username (fn [db _] (:sleeper-username db)))
 
 ;; nil means "never looked up"; [] means "looked up, plays in none this season".
 ;; The panel says different things for the two, so this does not normalize them.

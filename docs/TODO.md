@@ -24,6 +24,23 @@ between a league's real rules and what the board can score.
 
 - **Add stats and player pic to the on the block card** Include additional stats like target percentage, number of targets, number of receptions.
 
+- **Per-league draft state.** `:teams`, `:drafted`, `:picks` and `:my-team-id`
+  are still one draft for one team, sitting beside a `:leagues` map that holds
+  everything else per league. Switching leagues therefore re-prices the board
+  but keeps the draft that is on it. Fine while drafts are done — a manager who
+  drafts in two leagues does so months apart — but it must be settled before the
+  next preseason, and moving them into the league entry is another
+  `fx/storage-version` bump when it happens.
+
+- **Points for the current week alongside rest-of-season.** The waiver board
+  answers "who helps me from here" and never "who helps me this Sunday". Needs
+  Sleeper's `/projections/nfl/{season}/{week}`, a new ingestion column and a
+  second scored line beside `:ros-points`.
+
+- **Comparison UI** — free agent against your roster, free agent against free
+  agent. Large LOE, and it wants the weekly/rest-of-season split above first,
+  since most of a comparison is which of the two numbers you are comparing.
+
 - ~~Drag-and-drop column bugs found reviewing #12: droppable `text/plain` payload,
   picker drag dead in Firefox, missing `preventDefault`, insertion line flicker~~
 
@@ -41,6 +58,9 @@ between a league's real rules and what the board can score.
     it needs a real argument before it happens.
   - Only Sleeper syncs. ESPN and Yahoo need server-side auth, which is why the
     sync is backend-proxied — adding one is two `defmethod`s and a `:require`.
+    The browser is now ready for them too: accounts are keyed by provider and
+    leagues by `db/league-key` (`provider:league-id`), so a second provider is a
+    new entry rather than a second shape.
   - **The bundled sample predates the in-season columns.** It stamps
     `:schema-version 5`, carries no `:through-week` and no
     `:nflverse/season-to-date`, so `DRAFTDAY_OFFLINE=1` can only ever show the

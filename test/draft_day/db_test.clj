@@ -449,8 +449,8 @@
 
 (deftest a-persisted-sync-keeps-the-facts-that-let-it-be-redone
   ;; The league id makes a re-sync one click, and the seat count decides whether
-  ;; a claim costs a drop. Both ride inside :league-sync, which is persisted, so
-  ;; the reconciler must not drop keys it does not recognise.
+  ;; a claim costs a drop. Both ride inside the league entry's :sync, which is
+  ;; persisted, so the reconciler must not drop keys it does not recognise.
   (let [out (db/reconcile-league-sync
              {:teams [{:roster-id 1 :player-ids ["a"] :active-ids ["a"]}]
               :waiver {:type :faab :budget 100}
@@ -463,5 +463,77 @@
   ;; A sync that had to be redone on every page load would be a sync nobody
   ;; uses. The transient halves — the board itself and its request stamp — stay
   ;; out, exactly as :ranked and :recompute-seq do.
-  (is (every? (set db/persist-keys) [:league-sync :my-roster-id :waiver-columns]))
-  (is (not-any? (set db/persist-keys) [:waivers :waiver-seq :waiver-status])))
+  ;;
+  ;; The sync and the roster id now ride inside `:leagues`, because a manager has
+  ;; one of each *per league*; `:active-league` is what says which of them the
+  ;; board is currently about, and is useless without them.
+  (is (every? (set db/persist-keys) [:accounts :leagues :active-league :waiver-columns]))
+  (is (not-any? (set db/persist-keys) [:waivers :waiver-seq :waiver-status
+                                       :league-choices])))
+
+(deftest a-league-is-keyed-by-provider-as-well-as-by-id
+  ;; A league id is only unique *within* a provider. A bare id collides the day a
+  ;; second provider arrives, and the collision is the silent kind: an ESPN
+  ;; league quietly reading a Sleeper league's rosters.
+  (is (= "sleeper:123" (db/league-key "sleeper" "123")))
+  (is (= "sleeper:123" (db/league-key :sleeper "123")) "a keyword provider spells the same")
+  (is (not= (db/league-key "sleeper" "123") (db/league-key "espn" "123"))))
+
+(deftest the-active-league-is-the-entry-not-the-key
+  (let [db {:leagues {"sleeper:1" {:name "RaiderNation"}} :active-league "sleeper:1"}]
+    (is (= {:name "RaiderNation"} (db/active-league db)))
+    (is (nil? (db/active-league (assoc db :active-league "sleeper:9"))))
+    (is (nil? (db/active-league {})))))
+
+(deftest a-config-edit-is-written-to-the-league-not-only-to-the-copy
+  ;; `:config` at the top of db is the *active* league's config, so every
+  ;; existing consumer reads one key and knows nothing about leagues. That copy
+  ;; is only safe while one function writes it: a writer that skipped the mirror
+  ;; would have its edit reverted, silently, by the next switch away and back.
+  (let [db  {:leagues {"sleeper:1" {:config {:scoring :ppr}}} :active-league "sleeper:1"
+             :config {:scoring :ppr}}
+        db' (db/update-config db assoc :scoring :standard)]
+    (is (= :standard (get-in db' [:config :scoring])))
+    (is (= :standard (get-in db' [:leagues "sleeper:1" :config :scoring]))))
+  (testing "with no league active it is still just the config"
+    (let [db' (db/set-config {:config {:scoring :ppr}} {:scoring :standard})]
+      (is (= {:scoring :standard} (:config db')))
+      (is (nil? (:leagues db'))))))
+
+(deftest a-ranked-board-is-stamped-with-the-rules-it-was-priced-under
+  ;; A board is valid for the rules it was priced under, not for a moment in
+  ;; time — which is what separates "a pick out of date" (keep it readable) from
+  ;; "about a different league" (say so).
+  (is (= [:num-teams :roster :scoring :starting-bankroll]
+         (vec (sort (keys (db/rules-stamp db/default-config)))))
+      "exactly the four the server prices against")
+
+  (testing "the client-only budget plan is not one of them"
+    ;; It feeds no valuation, which is why `:set-position-budget` skips
+    ;; `:recompute` — so a board is not made wrong by an edit to it.
+    (is (= (db/rules-stamp db/default-config)
+           (db/rules-stamp (assoc db/default-config :budget-plan {:rb 80})))))
+
+  (testing "and each of the four does move it"
+    (doseq [[k v] {:scoring :standard :num-teams 14 :starting-bankroll 300
+                   :roster (assoc db/default-roster :bench 7)}]
+      (is (not= (db/rules-stamp db/default-config)
+                (db/rules-stamp (assoc db/default-config k v)))
+          (str k " left the stamp unchanged")))))
+
+(deftest an-archived-draft-names-the-league-it-was-drafted-in
+  ;; It reads the active league entry. `get-in` on a key that no longer exists
+  ;; yields nil rather than throwing, so pointing this at the wrong place would
+  ;; cost every future archive its league with nothing to say so.
+  (let [entry (db/archive-entry
+               {:leagues {"sleeper:1" {:name "RaiderNation" :season "2026"}}
+                :active-league "sleeper:1"
+                :my-team-id "t0" :config {:starting-bankroll 200}
+                :teams [] :drafted {} :picks [{:player-id "a"}]}
+               "2026-09-06T00:00:00Z")]
+    (is (= "RaiderNation" (:league entry)))
+    (is (= "2026" (:season entry))))
+  (testing "and says nothing rather than guessing when no league was connected"
+    (let [entry (db/archive-entry {:picks [{:player-id "a"}]} "2026-09-06T00:00:00Z")]
+      (is (nil? (:league entry)))
+      (is (= 1 (count (:picks entry)))))))

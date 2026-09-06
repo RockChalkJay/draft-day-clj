@@ -78,11 +78,15 @@
                       :scoring            (get-in db [:config :scoring])
                       :replacement-config (replacement-config (get-in db [:config :roster]))
                       :league-state       (league-state db)}
-               :on-success [:ranked-loaded n]
+               ;; The rules ride along on the reply, so the board that comes back
+               ;; can be compared against the rules in force when it is *read*
+               ;; rather than against whatever db happens to say then. Same
+               ;; pattern and same reason as the league key on `:league-synced`.
+               :on-success [:ranked-loaded n (db/rules-stamp (:config db))]
                :on-failure [:recompute-failed]}}))))
 
 (rf/reg-event-db :ranked-loaded
-  (fn [db [_ n resp]]
+  (fn [db [_ n rules resp]]
     ;; Overlapping requests can answer out of order, and each one re-ranks the
     ;; whole universe, so latency varies. Only the newest may write the board —
     ;; otherwise a slow reply computed under the previous scoring config wins and
@@ -90,7 +94,7 @@
     (if-not (= n (:recompute-seq db))
       db
       (let [err (:recompute-error db)]
-        (cond-> (assoc db :ranked resp :recompute-error nil)
+        (cond-> (assoc db :ranked resp :ranked-rules rules :recompute-error nil)
           ;; Take the status line back only while the error is still what is on
           ;; it. Other flows (a league import's "✓ Imported …") own it too, and
           ;; between the failure and this reply one of them may have spoken.
@@ -100,7 +104,10 @@
 (rf/reg-event-db :recompute-failed
   (fn [db [_ err]]
     ;; Leave :ranked alone — the previous board is stale but readable, which
-    ;; beats blanking it. The status line is what says it is stale.
+    ;; beats blanking it. The status line is what says it is stale, and
+    ;; `:ranked-rules` is what says it is stale about *another league* — a
+    ;; failure right after a switch is the case where this would otherwise sit
+    ;; there indefinitely with nothing but a muted string to explain it.
     (let [msg (str "Rankings update failed: " err)]
       (assoc db :status msg :recompute-error msg))))
 
@@ -152,8 +159,14 @@
 ;; whole reason `:watchlist-players` can keep promising an order he can trust.
 (rf/reg-event-db :watch-sort [persist]
   (fn [db [_ k]]
-    (update db :watchlist db/sort-watchlist
-            (db/index-by-id (get-in db [:ranked :players])) k)))
+    ;; Refuses while the board belongs to another league. This is the one place a
+    ;; stale read *writes*: the reordered list is persisted, so sorting during
+    ;; the window between a switch and its reply would bake the previous
+    ;; league's ranking into stored state, where nothing later would reveal it.
+    (if (not= (:ranked-rules db) (db/rules-stamp (:config db)))
+      db
+      (update db :watchlist db/sort-watchlist
+              (db/index-by-id (get-in db [:ranked :players])) k))))
 
 (rf/reg-event-db
  :set-sort
@@ -260,7 +273,8 @@
           teams (db/make-teams-named (take num-teams (concat team-names (repeat "")))
                                      (:roster cfg) bankroll)]
       {:db (-> db
-               (assoc :config cfg :teams teams)
+               (db/set-config cfg)
+               (assoc :teams teams)
                ;; reset ALL in-progress draft state
                (assoc :drafted {} :picks [] :nominated-id nil :modal nil)
                (assoc :my-team-id (:team-id (first teams))))
@@ -282,7 +296,7 @@
           teams (if (empty? (:picks db))
                   (db/make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
                   (:teams db))]
-      {:db (assoc db :config cfg :teams teams)
+      {:db (-> db (db/set-config cfg) (assoc :teams teams))
        :debounce {:id :recompute :event [:recompute]}})))
 
 ;; Manager's per-position budget plan — client-only tracking, so no team
@@ -290,11 +304,11 @@
 (rf/reg-event-db :set-position-budget [persist]
   (fn [db [_ bucket v]]
     (let [v (if (and (number? v) (not (js/isNaN v))) (max 0 v) 0)]
-      (assoc-in db [:config :budget-plan bucket] v))))
+      (db/update-config db assoc-in [:budget-plan bucket] v))))
 
 (rf/reg-event-fx :select-scoring-preset [persist]
   (fn [{:keys [db]} [_ preset]]
-    {:db (assoc-in db [:config :scoring] preset)
+    {:db (db/update-config db assoc :scoring preset)
      :fx [[:dispatch [:recompute]]]}))
 
 ;; Seeded from the shared preset table rather than a fetched one: picking Custom
@@ -305,7 +319,7 @@
     (let [s (get-in db [:config :scoring])]
       (if (map? s)
         {}
-        {:db (assoc-in db [:config :scoring] (scoring/resolve-config s))
+        {:db (db/update-config db assoc :scoring (scoring/resolve-config s))
          :fx [[:dispatch [:recompute]]]}))))
 
 (rf/reg-event-fx :set-scoring-weight [persist]
@@ -314,29 +328,52 @@
     ;; cleared input box can never reach the request body — it used to serialize
     ;; as null, 400 the rankings call, and blank the board until localStorage was
     ;; cleared by hand. Debounced because each edit re-ranks the whole universe.
-    {:db (assoc-in db [:config :scoring stat-key] (scoring/usable-weight v))
+    {:db (db/update-config db assoc-in [:scoring stat-key] (scoring/usable-weight v))
      :debounce {:id :recompute :event [:recompute]}}))
 
 (rf/reg-event-fx :import-league
   (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
+    ;; The key rides along on the reply, so imported rules land in the league they
+    ;; were fetched for. Without it a slow import answering after the manager has
+    ;; switched leagues would write one league's scoring over another's.
     {:db   (assoc db :status "Importing league…")
      :http {:method :post :url "/api/league/import"
             :body {:provider provider :league-id league-id}
-            :on-success [:league-import-loaded]
+            :on-success [:league-import-loaded (db/league-key provider league-id)]
             :on-failure [:league-import-failed]}}))
 
 ;; A failed import now arrives at :league-import-failed, because the :http effect
 ;; routes any non-2xx there; this handler only ever sees a real config.
-(rf/reg-event-fx :league-import-loaded
-  (fn [_ [_ resp]]
-    {:fx [[:dispatch [:apply-config (select-keys resp [:scoring :roster :num-teams])]]
-          [:dispatch [:set-import-report (select-keys resp [:name :season :unsupported-scoring])]]
-          [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]}))
+(rf/reg-event-fx :league-import-loaded [persist]
+  (fn [{:keys [db]} [_ k resp]]
+    (let [cfg    (select-keys resp [:scoring :roster :num-teams])
+          known? (contains? (:leagues db) k)
+          ;; Only the active league's rules may touch the board. A second
+          ;; league's import is stored and waits to be switched to.
+          live?  (or (nil? k) (= k (:active-league db)))]
+      ;; The status line and the import report describe *the board*, so they are
+      ;; gated with `:apply-config` rather than fired unconditionally. Choose two
+      ;; leagues in quick succession and the late reply would otherwise announce
+      ;; `✓ Imported "Old"` over the league you had already switched to.
+      {:db (cond-> db
+             known? (-> (update-in [:leagues k :config] merge cfg)
+                        (update-in [:leagues k] merge (select-keys resp [:name :season]))))
+       :fx (if live?
+             [[:dispatch [:apply-config cfg]]
+              [:dispatch [:set-import-report (select-keys resp [:name :season :unsupported-scoring])]]
+              [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]
+             [])})))
 
 (rf/reg-event-db :set-import-report (fn [db [_ r]] (assoc db :import-report r)))
 
 (rf/reg-event-db :league-import-failed
-  (fn [db [_ err]] (assoc db :status (str "League import failed: " err))))
+  (fn [db [_ err]]
+    ;; Both status lines. The Settings card — where a league is chosen, and so
+    ;; where this failure is a consequence of something just pressed — renders
+    ;; `:waiver-status`; the header renders `:status`. Reporting into only one of
+    ;; them put the failure on the tab the manager was not looking at.
+    (let [msg (str "League import failed: " err)]
+      (assoc db :status msg :waiver-status msg))))
 
 ;; ---- in-season: league sync + waivers ----
 ;; The same statelessness the draft board runs on: the browser owns the synced
@@ -349,16 +386,76 @@
     ;; board comes back with no drop, no budget and every bid blank; without a
     ;; refetch here, picking your team changed a dropdown and nothing else until
     ;; you happened to press Refresh.
-    {:db  (assoc db :my-roster-id id)
-     :fx  [[:dispatch [:fetch-waivers]]]}))
+    (if-let [k (:active-league db)]
+      {:db  (assoc-in db [:leagues k :my-roster-id] id)
+       :fx  [[:dispatch [:fetch-waivers]]]}
+      {})))
+
+;; ---- the active league ----
+
+(defn activate
+  "Make `k` the league everything on screen is about, swapping in its config,
+  its teams and whatever the last league's board asserted about *its* league.
+
+  `default-config` underneath, because a league whose import never landed has
+  scoring and roster but no bankroll, and a nil bankroll reaches the rankings
+  request as null."
+  [db k]
+  (let [cfg (merge db/default-config (get-in db [:leagues k :config]))]
+    (cond-> (assoc db
+                   :active-league k
+                   :config cfg
+                   ;; The waiver board states *facts* about a league — who is
+                   ;; rostered, what your FAAB is, which man you would drop.
+                   ;; Under another league's name those are not stale, they are
+                   ;; false, so it is dropped rather than left readable.
+                   ;;
+                   ;; `:ranked` is not dropped — and not because it survives the
+                   ;; switch, since almost none of it does; see `db/rules-stamp`.
+                   ;; It is kept because `:ranked-rules` lets the board *say* it
+                   ;; belongs to another league, which clearing could not: two
+                   ;; leagues on the same format would blank for nothing, and a
+                   ;; recompute that never lands would leave an empty table
+                   ;; explaining itself no better than a wrong one.
+                   :waivers nil)
+      ;; `:num-teams`, `:starting-bankroll` and the roster template all just
+      ;; moved, and `:teams` is built from exactly those three. Without this the
+      ;; rankings request carries a 12-team replacement level alongside ten
+      ;; teams' worth of cash, and every dollar on the board is wrong with
+      ;; nothing on screen to say so.
+      ;;
+      ;; Same rule `:apply-config` uses: a draft with picks in it keeps its
+      ;; teams, because they are that draft's and not the league's — see the
+      ;; per-league draft state note in docs/TODO.md.
+      (empty? (:picks db))
+      (assoc :teams (db/make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))))))
+
+(rf/reg-event-fx :set-active-league [persist]
+  (fn [{:keys [db]} [_ k]]
+    ;; One league, one set of numbers. Both boards are recomputed because both
+    ;; are priced under this league's rules: the draft board off its scoring, the
+    ;; waiver board off its rosters and its FAAB. A switch that moved only the
+    ;; waiver board would leave Worth quietly priced under the league you left.
+    ;;
+    (if (contains? (:leagues db) k)
+      {:db (activate db k)
+       :fx [[:dispatch [:recompute]]
+            [:dispatch [:fetch-waivers]]]}
+      {})))
 
 (rf/reg-event-fx :sync-league
   (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
-    {:db   (assoc db :waiver-status "Syncing rosters…")
-     :http {:method :post :url "/api/league/sync"
-            :body {:provider provider :league-id league-id}
-            :on-success [:league-synced]
-            :on-failure [:league-sync-failed]}}))
+    ;; Guarded because `db/league-key` calls `name` on the provider, and `(name
+    ;; nil)` throws in ClojureScript — which kills the event rather than
+    ;; reporting anything. A caller that cannot say which league it means has
+    ;; nothing to sync.
+    (if-not (and provider league-id)
+      {:db (assoc db :waiver-status "Nothing to sync — no league is selected.")}
+      {:db   (assoc db :waiver-status "Syncing rosters…")
+       :http {:method :post :url "/api/league/sync"
+              :body {:provider provider :league-id league-id}
+              :on-success [:league-synced (db/league-key provider league-id)]
+              :on-failure [:league-sync-failed]}})))
 
 (defn my-roster-id-for
   "Which roster in this league belongs to `user-id`, or nil."
@@ -368,22 +465,32 @@
           teams)))
 
 (rf/reg-event-fx :league-synced [persist]
-  (fn [{:keys [db]} [_ resp]]
+  (fn [{:keys [db]} [_ k resp]]
     ;; The reply is repaired on the way *in*, not only at boot. It is the same
     ;; shape localStorage will hand back next session, and a provider that grew a
     ;; field or dropped one should fail here — where the status line can say so —
     ;; rather than a session later with no way to tell what changed.
-    (let [league (db/reconcile-league-sync resp)
+    (let [league   (db/reconcile-league-sync resp)
+          entry    (get (:leagues db) k)
+          provider (:provider entry)
           ;; Only when it is still unset. A manager who corrected the dropdown —
           ;; he co-manages, or plays under a second account — must not have that
           ;; correction undone by the next re-sync.
-          mine   (or (:my-roster-id db)
-                     (my-roster-id-for (:teams league) (:sleeper-user-id db)))]
-      {:db (assoc db :league-sync league
-                  :my-roster-id mine
-                  :waiver-status (if league
-                                   (str "✓ Synced " (count (:teams league)) " rosters")
-                                   "Sync returned nothing usable"))
+          mine     (or (:my-roster-id entry)
+                       (my-roster-id-for (:teams league)
+                                         (get-in db [:accounts provider :user-id])))]
+      {:db (-> db
+               (update-in [:leagues k] merge
+                          (cond-> {:sync league :my-roster-id mine}
+                            ;; The provider is the only half of the reply the
+                            ;; league entry could not already know; name and
+                            ;; season ride along so a league synced by pasting
+                            ;; its id is still readable in the switcher.
+                            (:name league)   (assoc :name (:name league))
+                            (:season league) (assoc :season (:season league))))
+               (assoc :waiver-status (if league
+                                       (str "✓ Synced " (count (:teams league)) " rosters")
+                                       "Sync returned nothing usable")))
        :fx [[:dispatch [:fetch-waivers]]]})))
 
 (rf/reg-event-fx :league-connect
@@ -397,9 +504,17 @@
 
 (rf/reg-event-fx :league-user-loaded [persist]
   (fn [{:keys [db]} [_ {:keys [user leagues]}]]
-    (let [db' (assoc db :sleeper-username (:display-name user)
-                     :sleeper-user-id (:user-id user)
-                     :league-choices  (vec leagues))]
+    ;; Keyed by provider, so connecting a second Sleeper account replaces the
+    ;; first while an ESPN one lands beside it. Accounts are persisted: a
+    ;; username retyped every session is a login the app is pretending not to
+    ;; have.
+    (let [provider "sleeper"
+          db' (-> db
+                  (assoc-in [:accounts provider]
+                            {:provider provider
+                             :user-id  (:user-id user)
+                             :username (:display-name user)})
+                  (assoc :league-choices (vec leagues)))]
       (cond
         (empty? leagues)
         {:db (assoc db' :waiver-status
@@ -409,7 +524,7 @@
         ;; of one is a step that asks him to confirm the only possible answer.
         (= 1 (count leagues))
         {:db db'
-         :fx [[:dispatch [:league-choose (:league-id (first leagues))]]]}
+         :fx [[:dispatch [:league-choose (first leagues)]]]}
 
         :else
         {:db (assoc db' :waiver-status
@@ -418,14 +533,38 @@
 (rf/reg-event-db :league-user-failed
   (fn [db [_ err]] (assoc db :waiver-status (str "Lookup failed: " err))))
 
-(rf/reg-event-fx :league-choose
-  (fn [_ [_ league-id]]
-    ;; Both, because they answer different questions off the same id: the sync is
-    ;; who is rostered, the import is what the league's rules are. A manager who
-    ;; synced without importing gets a board priced under the draft config's
-    ;; scoring rather than his league's.
-    {:fx [[:dispatch [:sync-league {:provider "sleeper" :league-id league-id}]]
-          [:dispatch [:import-league {:provider "sleeper" :league-id league-id}]]]}))
+(rf/reg-event-fx :league-choose [persist]
+  (fn [{:keys [db]} [_ league]]
+    ;; Takes either the picker's league map or a bare id typed into the settings
+    ;; field. The map carries a name and season the sync would only supply on
+    ;; reply, and the switcher wants something to say in the meantime.
+    (let [league    (if (map? league) league {:league-id league})
+          league-id (:league-id league)
+          provider  "sleeper"
+          k         (db/league-key provider league-id)
+          ;; What we already knew about this league wins over the seed — a
+          ;; re-chosen league keeps its team and its rules — but the picker's
+          ;; name and season are fresher than either.
+          entry     (merge {:provider provider :league-id league-id
+                            :config   (:config db)}
+                           (get (:leagues db) k)
+                           (select-keys league [:name :season]))]
+      ;; Both requests, because they answer different questions off the same id:
+      ;; the sync is who is rostered, the import is what the league's rules are.
+      ;; A manager who synced without importing gets a board priced under the
+      ;; previous league's scoring rather than this one's. Neither is dispatched
+      ;; through :set-active-league — each triggers its own recompute on reply,
+      ;; and a third would re-rank the universe for nothing.
+      ;; `:recompute` here as well as on the import's reply, because until that
+      ;; reply lands this league holds the *previous* league's config as a seed —
+      ;; and if the import fails it holds it for good. Re-ranking now costs one
+      ;; extra pass and buys a board that always matches the scoring the Settings
+      ;; card is displaying; leaving it out meant a failed import priced the new
+      ;; league under the old one's rules with nothing on screen to say so.
+      {:db (-> db (assoc-in [:leagues k] entry) (activate k))
+       :fx [[:dispatch [:sync-league {:provider provider :league-id league-id}]]
+            [:dispatch [:import-league {:provider provider :league-id league-id}]]
+            [:dispatch [:recompute]]]})))
 
 (rf/reg-event-db :league-sync-failed
   (fn [db [_ err]] (assoc db :waiver-status (str "League sync failed: " err))))
@@ -436,12 +575,15 @@
   costs a drop, and `db/roster-template` is already the one place that expands a
   roster config into seats."
   [db]
-  {:scoring            (get-in db [:config :scoring])
-   :num-teams          (get-in db [:config :num-teams])
-   :replacement-config (replacement-config (get-in db [:config :roster]))
-   :league             (:league-sync db)
-   :my-roster-id       (:my-roster-id db)
-   :roster-size        (count (db/roster-template (get-in db [:config :roster])))})
+  ;; Both halves come off the *active* league entry, so the payload the server
+  ;; sees is unchanged and `rankings.waiver` knows nothing about a leagues map.
+  (let [lg (db/active-league db)]
+    {:scoring            (get-in db [:config :scoring])
+     :num-teams          (get-in db [:config :num-teams])
+     :replacement-config (replacement-config (get-in db [:config :roster]))
+     :league             (:sync lg)
+     :my-roster-id       (:my-roster-id lg)
+     :roster-size        (count (db/roster-template (get-in db [:config :roster])))}))
 
 (rf/reg-event-fx :fetch-waivers
   (fn [{:keys [db]} _]
