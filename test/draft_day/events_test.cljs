@@ -381,7 +381,15 @@
       (let [ds (fx/read-drafts)]
         (is (= 2 (count ds)))
         (is (= ["a" "b"] (mapv #(-> % :picks first :player-id) ds))
-            "oldest first")))))
+            "oldest first"))
+      (testing "pressing it again on an unchanged draft adds nothing"
+        (rf/dispatch-sync [:archive-draft])
+        (is (= 2 (count (fx/read-drafts)))
+            "two entries differing only in timestamp read as two drafts"))
+      (testing "but a draft that has moved on is a real second checkpoint"
+        (swap! rdb/app-db update :picks conj {:player-id "c" :price 2})
+        (rf/dispatch-sync [:archive-draft])
+        (is (= 3 (count (fx/read-drafts))))))))
 
 (deftest starting-a-draft-archives-the-one-it-destroys
   ;; The only moment a completed draft is thrown away, and it happens by pressing

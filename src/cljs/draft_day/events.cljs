@@ -236,9 +236,17 @@
 
 (rf/reg-event-fx :archive-draft
   (fn [{:keys [db]} _]
-    ;; An empty shell in the archive is worse than no entry: it looks like a
-    ;; draft that happened and produced nothing.
-    (when (db/drafted-anything? db)
+    ;; Two things are refused, and only the first applies on `:start-draft`.
+    ;;
+    ;; An empty shell reads as a draft that happened and produced nothing.
+    ;;
+    ;; And this is a button a manager can press repeatedly against unchanged
+    ;; state, where each press would append an entry differing only in its
+    ;; timestamp — so the list reads as several drafts where there was one. A
+    ;; draft that has moved on since is a legitimate second checkpoint; one that
+    ;; has not adds nothing.
+    (when (and (db/drafted-anything? db)
+               (not= (:picks db) (:picks (last (fx/read-drafts)))))
       {:archive-draft! (db/archive-entry db (.toISOString (js/Date.)))
        :fx [[:dispatch [:refresh-drafts]]]})))
 

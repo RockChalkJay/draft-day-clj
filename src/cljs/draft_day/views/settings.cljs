@@ -214,7 +214,9 @@
         live?  @(rf/subscribe [:draft-has-picks?])]
     [:section.settings-card.draft-archive
      [:h3 "Draft Archive"]
-     [:p.muted "Completed drafts are archived automatically when you start a new one. They are kept separately from the rest of your saved state, so an app update cannot discard them."]
+     [:p.muted "Completed drafts are archived automatically when you start a new one. 
+                They are kept separately from the rest of your saved state, so an app 
+                update cannot discard them."]
      (if (seq drafts)
        [:ul.archive-list
         (for [{:keys [archived-at season league picks teams config]} drafts]

@@ -32,11 +32,6 @@
    :league-sync :my-roster-id :waiver-columns])
 
 (defn drafted-anything?
-  "Has this draft got anything in it worth keeping?
-
-  Guards the archive against filling up with empty shells: opening the Start
-  Draft modal twice in a row, or setting up teams and walking away, should not
-  leave a record behind."
   [db]
   (boolean (seq (:picks db))))
 
