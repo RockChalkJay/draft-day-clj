@@ -23,6 +23,42 @@
   that avoided rebuilding it."
   1)
 
+(def drafts-key "draft-day-drafts")
+
+(def drafts-version
+  "The shape of an archived draft (`db/archive-entry`).
+
+  Its own key and its own version, deliberately separate from `store-key` and
+  `storage-version`. Those exist to stop *live* state being read back under a
+  shape it was not written for, and their remedy — drop the blob, open at
+  defaults — is right for a column layout and survivable for a draft in
+  progress. A completed draft is neither. It is a record of something that
+  happened, the whole point of keeping it is that it outlives the state that
+  produced it, and discarding it because a Waivers column moved would be absurd.
+
+  So a `storage-version` bump cannot reach these, and this version moves only
+  when the archived shape itself changes."
+  1)
+
+(defn read-drafts
+  "Archived drafts, oldest first — or [] when there are none, the blob is
+  unreadable, or it carries a different `drafts-version`."
+  []
+  (try (if-let [s (.getItem js/localStorage drafts-key)]
+         (let [{:keys [v drafts]} (reader/read-string s)]
+           (if (= v drafts-version) (vec drafts) []))
+         [])
+       (catch :default _ [])))
+
+(rf/reg-fx
+ :archive-draft!
+ (fn [entry]
+   ;; Appends. A manager drafts in more than one league and more than one
+   ;; season, and this is the only place those records go.
+   (try (.setItem js/localStorage drafts-key
+                  (pr-str {:v drafts-version :drafts (conj (read-drafts) entry)}))
+        (catch :default _ nil))))
+
 (rf/reg-fx
  :http
  (fn [{:keys [method url body on-success on-failure]}]

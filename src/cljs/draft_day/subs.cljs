@@ -259,6 +259,13 @@
 (rf/reg-sub :synced-league-id :<- [:league-sync]
   (fn [ls _] (:league-id ls)))
 
+(rf/reg-sub :drafts (fn [db _] (:drafts db)))
+
+;; Whether there is a draft worth archiving — the same question
+;; `db/drafted-anything?` answers for the event, asked from the view so the
+;; button is absent rather than inert when there is nothing to keep.
+(rf/reg-sub :draft-has-picks? (fn [db _] (db/drafted-anything? db)))
+
 (rf/reg-sub :visible-waiver-columns :<- [:waiver-columns]
   (fn [cols _] (filterv :visible? cols)))
 

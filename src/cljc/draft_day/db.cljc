@@ -31,6 +31,32 @@
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
    :league-sync :my-roster-id :waiver-columns])
 
+(defn drafted-anything?
+  [db]
+  (boolean (seq (:picks db))))
+
+(defn archive-entry
+  "A completed draft, reduced to what a record needs — see `fx/drafts-version`
+  for why this shape has a version of its own.
+
+  Carries the config it was drafted under, because prices only mean anything
+  against the scoring and the bankroll that produced them: `$43` for a running
+  back is a different statement in a 10-team standard league than in a 12-team
+  PPR one, and the archive is read long after `:config` has moved on.
+
+  `:league` is the Sleeper league synced at the time, when there was one. It is
+  context, not a key — the draft board's teams are the manager's own, typed into
+  the Start Draft modal, and they are not the synced league's rosters."
+  [db now]
+  {:archived-at now
+   :season      (get-in db [:league-sync :season])
+   :league      (get-in db [:league-sync :name])
+   :my-team-id  (:my-team-id db)
+   :config      (:config db)
+   :teams       (:teams db)
+   :drafted     (:drafted db)
+   :picks       (:picks db)})
+
 (defn make-teams-named
   "Build `(count names)` fresh (empty-roster, full-bankroll) teams with the given
   names; a blank name falls back to the default (\"You\"/\"Team N\")."
@@ -602,6 +628,9 @@
      ;; ---- in-season ----
      :league-sync  nil          ; last /api/league/sync reply: who is rostered, and FAAB
      :my-roster-id nil          ; which roster in the synced league is mine
+     ;; Read from `fx/drafts-key` at boot, not from the persisted slice: an
+     ;; archived draft has its own key and its own version.
+     :drafts       []           ; completed drafts, oldest first
      :waivers      nil          ; last /api/waivers reply
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}
