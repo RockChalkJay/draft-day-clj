@@ -8,6 +8,14 @@ A fantasy football auction-draft assistant (auction-focused, VBD). Clojure backe
 
 It has an in-season half too: a Waivers view that syncs a real league's rosters, re-projects every player over the games that are left, and prices a claim against a FAAB budget. Draft-day dollars stop at the draft — see "The in-season half" below.
 
+## Docstrings and comments
+
+The `clojure` skill's "Comments & docstrings" section governs every function you write or edit here, and it wins over the surrounding file. Three lines is the ceiling on a function docstring; default to none.
+
+Most of this codebase predates that rule and reads nothing like it — `rankings/waiver.clj`, `db.cljc` and the ingestion namespaces carry paragraphs on individual functions. Those are not a target to match and not precedent for a new one. Leave them alone unless the task is explicitly to trim them; rewriting neighbouring docstrings is its own change, not a free rider on a behaviour fix.
+
+Where the long-form prose goes instead: a fact about the *domain* (a vendor's quirk, why an obvious approach is wrong, what broke last time) belongs in the ns docstring or in this file, once, with the function pointing at it.
+
 ## Commands
 
 Backend (Leiningen, `project.clj`):

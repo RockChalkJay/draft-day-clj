@@ -171,6 +171,61 @@
     (is (:parked? (by "bad")) "on IR: rostered, holding no seat a claim could take")
     (is (not (:parked? (by "star"))))))
 
+(def ^:private ordering-board
+  "Wide enough for a wrong order to show: two QBs, a K, a DST, and WRs on both
+  sides of the lineup."
+  (into board [(p "qb1" "QB" 300.0) (p "qb2" "QB" 250.0)
+               (p "wr-flex" "WR" 130.0) (p "te1" "TE" 110.0)
+               (p "k1" "K" 120.0) (p "dst1" "DST" 100.0)
+               (p "rb-bench" "RB" 60.0)
+               (p "wr-b1" "WR" 80.0) (p "wr-b2" "WR" 95.0)]))
+
+(defn- ordered-roster
+  "`:player-ids` shuffled against both orderings: a fixture already in the right
+  order proves nothing."
+  [& {:keys [starter-ids held-extra]}]
+  (let [ids (into (held "k1" "wr-flex" "rb-bench" "qb1" "te1" "star"
+                        "dst1" "qb2" "ok" "wr-b1" "wr-b2")
+                  (or held-extra []))
+        lg  {:teams [{:roster-id 1 :name "Mine" :player-ids ids :active-ids ids
+                      :starter-ids (or starter-ids []) :faab-left 60}]
+             :waiver {:type :faab :budget 100}}]
+    (:my-roster
+     (waiver/waiver-board ordering-board
+                          {:league lg :my-roster-id 1 :roster-size 20
+                           :num-teams 12 :through-week 8 :season-games 17}))))
+
+(deftest my-roster-starters-come-back-in-the-leagues-lineup-order
+  ;; Sleeper's `starters` array *is* the lineup, slot by slot, and the "0" it
+  ;; writes into an unfilled slot must consume an index without moving anyone.
+  (let [lineup (-> (held "qb1" "star" "ok" "te1")
+                   (conj "0")
+                   (into (held "wr-flex" "k1" "dst1")))
+        roster (ordered-roster :starter-ids lineup)
+        names  (->> roster (filter :starter?) (mapv :player-id))]
+    (is (= ["qb1" "star" "ok" "te1" "wr-flex" "k1" "dst1"] names)
+        "the FLEX receiver keeps his seat between the TE and the K")
+    (is (every? :starter? (take 7 roster)) "starters lead the vector")))
+
+(deftest my-roster-bench-is-ordered-by-position-then-by-points
+  (let [roster (ordered-roster :starter-ids (held "qb1" "star" "ok" "te1"
+                                                  "wr-flex" "k1" "dst1")
+                               :held-extra [(sleeper-id "ghost")])
+        bench  (->> roster (remove :starter?) (mapv :player-id))]
+    (is (= ["qb2" "rb-bench" "wr-b2" "wr-b1" (sleeper-id "ghost")] bench)
+        "QB before RB before WR, better points first inside a position")
+    (is (:unvalued? (last roster))
+        "a row the board cannot value keeps its seat, at the bottom of its block")))
+
+(deftest a-league-with-no-lineup-set-falls-back-to-position-order
+  ;; `starters` is null for a league nobody has set a lineup in. Nothing is a
+  ;; starter, and the whole roster is one positionally ordered block.
+  (let [roster (ordered-roster)]
+    (is (not-any? :starter? roster))
+    (is (= ["qb1" "qb2" "star" "rb-bench" "wr-flex" "wr-b2" "ok" "wr-b1"
+            "te1" "k1" "dst1"]
+           (mapv :player-id roster)))))
+
 (deftest my-roster-marks-the-seat-a-claim-would-cost
   (let [{:keys [my-roster players]} (run)
         dropped (first (filter :drop? my-roster))
