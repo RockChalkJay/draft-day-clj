@@ -198,15 +198,25 @@
   taxi cannot be started, so counting him would credit the roster with a starter
   it does not have.
 
-  nil `slots` (a request that sent no roster config) leaves the key off entirely
-  rather than reporting 0 for everyone, which would read as 'nobody helps you'."
+  The key is left off entirely — not set to 0 — in the two cases where there is
+  no lineup to measure against: a request that carried no roster config, and a
+  manager who has not picked his team. The second is the default state, and
+  without the guard every free agent's delta is his *entire* line, which is both
+  meaningless and numerically identical to `:upgrade` beside it, so nothing on
+  screen says it is not answering. `:my-roster` keeps nil rather than `[]` for
+  the same reason.
+
+  `before` is passed in rather than recomputed: it is the same value for every
+  candidate, and this runs once per free agent on a response re-POSTed with
+  every refresh."
   [fas roster drop slots]
-  (if-not (seq slots)
+  (if-not (and (seq slots) (seq roster))
     fas
-    (mapv (fn [p]
-            (assoc p :lineup-upgrade
-                   (lineup/upgrade roster p drop slots :ros-points)))
-          fas)))
+    (let [before (lineup/lineup-points roster slots :ros-points)]
+      (mapv (fn [p]
+              (assoc p :lineup-upgrade
+                     (lineup/upgrade-from before roster p drop slots :ros-points)))
+            fas))))
 
 (defn with-bids
   "Assoc `:bid` on every free agent: his share of the remaining budget.

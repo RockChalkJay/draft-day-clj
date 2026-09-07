@@ -53,6 +53,20 @@
   (reduce (fn [t [_ p]] (+ t (double (score-key p)))) 0.0
           (best-lineup players slots score-key)))
 
+(defn upgrade-from
+  "`upgrade` with the before-total already computed.
+
+  It is the same value for every candidate against one roster, and the caller
+  scores a whole free-agent pool — several hundred rows on a response the board
+  re-POSTs on every refresh — so recomputing it per candidate is that many
+  redundant sorts."
+  [before roster candidate drop slots score-key]
+  (let [kept  (if drop
+                (remove #(= (:player-id %) (:player-id drop)) roster)
+                roster)
+        after (lineup-points (conj (vec kept) candidate) slots score-key)]
+    (- after before)))
+
 (defn upgrade
   "Points a claim adds to the *starting lineup*, after the drop.
 
@@ -66,9 +80,5 @@
   0 means he would not start and the drop was not starting either. That is the
   common case for a bench stash, and it is the answer `:upgrade` cannot give."
   [roster candidate drop slots score-key]
-  (let [before (lineup-points roster slots score-key)
-        kept   (if drop
-                 (remove #(= (:player-id %) (:player-id drop)) roster)
-                 roster)
-        after  (lineup-points (conj (vec kept) candidate) slots score-key)]
-    (- after before)))
+  (upgrade-from (lineup-points roster slots score-key)
+                roster candidate drop slots score-key))

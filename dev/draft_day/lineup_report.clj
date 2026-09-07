@@ -82,7 +82,7 @@
           position (double (or upgrade 0.0)) (double (or lineup-upgrade 0.0))
           (if bid (str "$" bid) "–")))
 
-(defn report-one [{:keys [players my-roster roster through-week starting-slots]} label]
+(defn report-one [{:keys [players my-roster roster through-week]} label]
   (let [valued  (filter #(number? (:lineup-upgrade %)) players)
         by-upg  (vec (sort-by #(- (double (or (:upgrade %) 0.0))) valued))
         by-lin  (vec (sort-by (juxt #(- (double (or (:lineup-upgrade %) 0.0)))

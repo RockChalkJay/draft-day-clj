@@ -114,3 +114,13 @@
   (doseq [cand [(p "x" "WR" 1.0) (p "y" "QB" 5.0) (p "z" "DST" 0.0)]]
     (is (zero? (lineup/upgrade roster cand bench-drop slots :ros-points))
         (str (:player-id cand)))))
+
+(deftest upgrade-from-agrees-with-upgrade
+  ;; The hoisted-total variant is the one the board actually calls, so it must
+  ;; not be able to drift from the one the tests above pin.
+  (let [before (pts roster)]
+    (doseq [cand [(p "x" "WR" 200.0) (p "y" "QB" 180.0) (p "z" "K" 120.0)]
+            drp  [nil bench-drop starting-drop]]
+      (is (= (lineup/upgrade roster cand drp slots :ros-points)
+             (lineup/upgrade-from before roster cand drp slots :ros-points))
+          (str (:player-id cand) " / " (:player-id drp))))))

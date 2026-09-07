@@ -451,3 +451,20 @@
   (is (nil? (:my-roster-players (waiver/waiver-board board {:league nil :num-teams 12
                                                             :through-week 8
                                                             :season-games 17})))))
+
+(deftest no-team-picked-means-no-lineup-delta
+  ;; The default state until the manager sets :my-roster-id. Without the guard
+  ;; the empty lineup makes every free agent's delta his whole line — both
+  ;; meaningless and numerically identical to :upgrade beside it, so nothing on
+  ;; screen says the column is not answering.
+  (let [slots (draft-day.db/starting-slots draft-day.db/default-roster)
+        out   (waiver/waiver-board
+               [(p "a" "WR" 200.0)]
+               {:league {:teams [{:roster-id 1 :name "X"
+                                  :player-ids [] :active-ids []}]}
+                :my-roster-id nil :num-teams 12 :through-week 8
+                :season-games 17 :starting-slots slots})
+        row   (first (:players out))]
+    (is (nil? (:my-roster out)) "precondition: no team picked")
+    (is (not (contains? row :lineup-upgrade))
+        "absent, not zero and not his whole line")))
