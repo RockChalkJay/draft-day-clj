@@ -846,3 +846,62 @@
   (is (= "NE" (waivers/week-matchup {:week/opponent "NE" :week/home? nil} 1)))
   ;; An explicit false still prints the away marker.
   (is (= "@ NE" (waivers/week-matchup {:week/opponent "NE" :week/home? false} 1))))
+
+;; ---- comparing two players ----
+
+(defn- compare-ids [] (:compare @rdb/app-db))
+
+(deftest compare-holds-two-and-evicts-the-older
+  ;; A third pick is not refused: the point of the tile is holding one player
+  ;; and clicking down the board through challengers, which a refusal breaks.
+  (rf/dispatch-sync [:compare-toggle "a"])
+  (is (= ["a"] (compare-ids)))
+  (rf/dispatch-sync [:compare-toggle "b"])
+  (is (= ["a" "b"] (compare-ids)))
+  (rf/dispatch-sync [:compare-toggle "c"])
+  (is (= ["b" "c"] (compare-ids)) "the older slot goes, the newer is held")
+  (rf/dispatch-sync [:compare-toggle "d"])
+  (is (= ["c" "d"] (compare-ids))))
+
+(deftest clicking-a-picked-row-unpicks-it
+  (rf/dispatch-sync [:compare-toggle "a"])
+  (rf/dispatch-sync [:compare-toggle "b"])
+  (rf/dispatch-sync [:compare-toggle "a"])
+  (is (= ["b"] (compare-ids)))
+  (rf/dispatch-sync [:compare-clear])
+  (is (= [] (compare-ids))))
+
+(deftest a-comparison-is-never-persisted
+  ;; Transient like :nominated-id — a question being asked now, not a layout.
+  (is (not (contains? (set db/persist-keys) :compare))))
+
+(deftest compare-resolves-free-agents-and-my-own-roster
+  ;; Either side may be a player the manager already holds: "should I claim this
+  ;; man over the one I would drop" is the question in its most direct form, and
+  ;; :players is free agents only.
+  (swap! rdb/app-db assoc
+         :waivers {:players [{:player-id "fa" :player-name "Free Agent"}]
+                   :my-roster-players [{:player-id "mine" :player-name "My Guy"}]}
+         :compare ["mine" "fa"])
+  (let [ps (sub [:compare-players])]
+    (is (= ["My Guy" "Free Agent"] (mapv :player-name ps))
+        "in the order they were picked, not board order")))
+
+(deftest compare-drops-a-player-who-is-no-longer-there
+  ;; Refreshed board, somebody claimed him. Dropping beats rendering a blank
+  ;; half of a comparison.
+  (swap! rdb/app-db assoc
+         :waivers {:players [{:player-id "fa" :player-name "Free Agent"}]}
+         :compare ["gone" "fa"])
+  (is (= ["Free Agent"] (mapv :player-name (sub [:compare-players])))))
+
+(deftest compare-ignores-the-board-filters
+  ;; :waiver-players is filtered by position and search; a comparison outlives
+  ;; both, so it reads the unfiltered pool.
+  (swap! rdb/app-db assoc
+         :waivers {:players [{:player-id "qb" :player-name "A QB" :position "QB"}
+                             {:player-id "rb" :player-name "A RB" :position "RB"}]}
+         :pos-filter "QB"
+         :search "zzz"
+         :compare ["qb" "rb"])
+  (is (= 2 (count (sub [:compare-players])))))

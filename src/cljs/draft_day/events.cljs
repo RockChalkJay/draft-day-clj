@@ -630,6 +630,23 @@
   (fn [db [_ from-k to-k]]
     (update db :waiver-columns db/move-column-onto from-k to-k)))
 
+;; ---- comparison ----
+
+(rf/reg-event-db :compare-toggle
+  (fn [db [_ id]]
+    ;; Two slots, filled left then right. A third pick evicts the *older* rather
+    ;; than being refused, so one player can be held while the board is clicked
+    ;; through challengers — which is the whole reason the tile has no backdrop.
+    (let [c (vec (:compare db))]
+      (assoc db :compare
+             (cond
+               (some #{id} c)   (vec (remove #{id} c))
+               (< (count c) 2)  (conj c id)
+               :else            [(second c) id])))))
+
+(rf/reg-event-db :compare-clear
+  (fn [db _] (assoc db :compare [])))
+
 ;; ---- cache reset ----
 
 (rf/reg-event-fx

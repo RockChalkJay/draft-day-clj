@@ -330,9 +330,25 @@
            (sort-by #(roster-sort-key slot-idx %))
            vec))))
 
+(defn my-roster-players
+  "The manager's own roster as full board rows, so a player he already holds can
+  be compared against a free agent on the same columns.
+
+  Deliberately not a widening of `my-roster`, whose trimmed shape the panel
+  depends on, and deliberately full rows rather than a second trimmed shape: the
+  comparison reads the same keys on both sides, so one shape means one renderer.
+  It is a roster, so the cost is bounded at a dozen or so rows.
+
+  `:upgrade` and `:bid` are absent rather than zero — you cannot claim a man you
+  already hold, and a 0 there would read as a claim worth nothing."
+  [my-team xwalk by-id]
+  (when my-team
+    (with-trend (keep #(get by-id %) (held-ids my-team xwalk :player-ids)))))
+
 (defn waiver-board
   "The whole answer:
-  `{:players :my-roster :rostered :faab :claims-left :replacement-levels}`.
+  `{:players :my-roster :my-roster-players :rostered :faab :claims-left
+    :replacement-levels}`.
 
   `:players` is the free agents only. Shipping every rostered player too would be
   most of the universe re-sent on every refresh for rows the board does not
@@ -364,6 +380,7 @@
                              (with-bids waiver (:faab-left my-team) n)
                              with-trend)
      :my-roster          (my-roster my-team xwalk by-id drop)
+     :my-roster-players  (my-roster-players my-team xwalk by-id)
      :rostered           rostered
      :replacement-levels levels
      :claims-left        n

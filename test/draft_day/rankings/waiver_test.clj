@@ -394,3 +394,37 @@
     (is (< (abs (- 15.1 (:week-points a))) 1e-9))          ; 8.1 + 3.8 + 3.2
     ;; Not projected this week: no key, not a zero.
     (is (not (contains? b :week-points)))))
+
+;; ---- my roster as comparable rows ----
+
+(deftest my-roster-players-are-full-rows-not-the-panel-shape
+  ;; The comparison tile reads the same keys on both sides, so one shape means
+  ;; one renderer. `:my-roster` is trimmed to what the panel draws and cannot
+  ;; serve that.
+  (let [{:keys [my-roster my-roster-players]} (run)
+        by-id (into {} (map (juxt :player-id identity)) my-roster-players)]
+    (is (= #{"star" "meh"} (set (keys by-id)))
+        "the manager's own seats, in the board's id space")
+    (is (= 180.0 (:ros-points (by-id "star"))))
+    ;; Full rows carry what the panel shape drops — the id envelope among it.
+    (is (contains? (by-id "star") :ids))
+    (is (contains? (by-id "star") :ros-vorp))
+    (is (not (contains? (first my-roster) :ids))
+        "the panel shape stays trimmed")))
+
+(deftest my-roster-players-cannot-be-claimed
+  ;; You cannot claim a man you already hold, and a 0 would read as a claim
+  ;; worth nothing rather than as a question that does not apply.
+  (let [{:keys [my-roster-players]} (run)]
+    (is (every? #(not (contains? % :upgrade)) my-roster-players))
+    (is (every? #(not (contains? % :bid)) my-roster-players))
+    ;; :trend does apply — it is a fact about the player, not about a claim.
+    (is (every? #(contains? % :trend) my-roster-players))))
+
+(deftest my-roster-players-are-absent-without-a-team
+  ;; nil, not [] — the same distinction `:my-roster` keeps, so a caller cannot
+  ;; read "no team picked" as "this roster is empty".
+  (is (nil? (:my-roster-players (run :my-roster-id nil))))
+  (is (nil? (:my-roster-players (waiver/waiver-board board {:league nil :num-teams 12
+                                                            :through-week 8
+                                                            :season-games 17})))))

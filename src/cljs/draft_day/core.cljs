@@ -11,6 +11,7 @@
             [draft-day.views.columns :as columns]
             [draft-day.views.settings :as settings]
             [draft-day.views.waivers :as waivers]
+            [draft-day.views.compare :as compare]
             [draft-day.views.modal :as modal]))
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
@@ -96,6 +97,12 @@
         :settings [settings/settings]
         :waivers  [waivers/waivers-view]
         [board-view])]
+     ;; Mounted here rather than inside the waivers view because it is
+     ;; `position: fixed` and needs no place in that DOM — and because putting
+     ;; it there would make `views.waivers` and `views.compare` require each
+     ;; other, which ClojureScript will not load.
+     (when (= view :waivers)
+       [compare/compare-tile])
      (when (= modal :start-draft)
        [modal/start-draft-modal])
      (when (= modal :reset-cache)

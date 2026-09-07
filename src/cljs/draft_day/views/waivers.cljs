@@ -297,7 +297,8 @@
   (let [players @(rf/subscribe [:waiver-players])
         cols    @(rf/subscribe [:visible-waiver-columns])
         sort    @(rf/subscribe [:waiver-sort])
-        week    (:week @(rf/subscribe [:waiver-meta]))]
+        week    (:week @(rf/subscribe [:waiver-meta]))
+        comparing (set @(rf/subscribe [:compare]))]
     [:div.waivers-view
      [week-banner]
      [:div.waiver-panels [sync-panel] [faab-panel]]
@@ -313,8 +314,15 @@
         [:tbody
          (map (fn [p]
                 ^{:key (:player-id p)}
-                [:tr {:class (when (and (:drop-candidate p) (pos? (or (:upgrade p) 0)))
-                               "upgrade")}
+                [:tr {:class (->> [(when (and (:drop-candidate p)
+                                              (pos? (or (:upgrade p) 0)))
+                                     "upgrade")
+                                   (when (comparing (:player-id p)) "comparing")]
+                                  (remove nil?) (str/join " "))
+                      ;; Click to compare. A second row fills the other slot; a
+                      ;; third evicts the older, so one player can be held while
+                      ;; the board is clicked through challengers.
+                      :on-click #(rf/dispatch [:compare-toggle (:player-id p)])}
                  (map (fn [{k :key}] ^{:key k} [cell k p week]) cols)])
               players)]]]
       [:aside.waiver-roster-col [my-roster-panel]]]

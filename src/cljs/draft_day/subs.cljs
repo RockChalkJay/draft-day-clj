@@ -9,7 +9,7 @@
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
            :watchlist :import-report :universe
            :accounts :leagues :waivers :waiver-sort :waiver-status
-           :waiver-columns]]
+           :waiver-columns :compare]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
@@ -408,3 +408,22 @@
                           :team        team}))))
              (sort-by :player-name)
              vec)))))
+
+;; The two players being compared, in the order they were picked.
+;;
+;; Resolved against the free agents *and* the manager's own roster, because
+;; either side of a comparison may be a player he already holds — that is the
+;; question "should I claim this man over the one I would drop" in its most
+;; direct form. Deliberately not `:waiver-players`: that one is filtered by
+;; position and search, and a comparison outlives both.
+;;
+;; A pick that no longer resolves is dropped rather than rendered blank. It means
+;; the board was refreshed and somebody claimed him, so he is genuinely no longer
+;; a thing to compare.
+(rf/reg-sub :compare-players
+  :<- [:waivers]
+  :<- [:compare]
+  (fn [[w ids] _]
+    (let [by-id (into {} (map (juxt :player-id identity))
+                      (concat (:players w) (:my-roster-players w)))]
+      (vec (keep #(get by-id %) ids)))))

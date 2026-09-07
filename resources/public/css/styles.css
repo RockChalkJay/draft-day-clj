@@ -543,3 +543,95 @@ tr.upgrade .p-name { font-weight: 600; }
 .archive-entry { padding: 8px 10px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--panel2); font-size: 12px; }
 .archive-head { margin-bottom: 2px; }
+
+/* ---- compare tile ----
+   Two players side by side on the two horizons the waiver board carries.
+
+   A floating card with no backdrop, deliberately: the whole interaction is
+   holding one player fixed and clicking down the board through challengers, and
+   `.modal-overlay`'s scrim swallows exactly those clicks. It is `.nom-tile`'s
+   vocabulary, not `.modal`'s, for the same reason — the on-the-block tile is an
+   inline panel too. */
+.cmp-float { position: fixed; top: 78px; left: 50%; transform: translateX(-50%);
+  z-index: 40; }
+.cmp-tile { background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; width: min(620px, 94vw);
+  /* The one drop shadow in the stylesheet. Everything else sits in the page;
+     this sits above it, and with no scrim to say so the shadow is the only
+     thing that does. */
+  box-shadow: 0 10px 30px rgba(0,0,0,.55); }
+
+.cmp-top { display: flex; align-items: baseline; margin-bottom: 12px; }
+.cmp-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); }
+.cmp-close { margin-left: auto; background: none; border: none; color: var(--muted);
+  font-size: 15px; line-height: 1; cursor: pointer; padding: 2px 6px;
+  border-radius: 6px; }
+.cmp-close:hover { color: var(--text); background: var(--panel2); }
+
+/* Head and every row share one three-column grid, so a column means one player
+   the whole way down the tile. */
+.cmp-head, .cmp-row { display: grid; grid-template-columns: 1fr 168px 1fr; gap: 10px; }
+.cmp-head { align-items: start; }
+.cmp-who { display: flex; gap: 10px; min-width: 0; }
+.cmp-who.r { flex-direction: row-reverse; text-align: right; }
+.cmp-face { flex: 0 0 56px; width: 56px; height: 56px; border-radius: 10px;
+  background: var(--panel2); border: 1px dashed var(--border); overflow: hidden;
+  position: relative; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); }
+.cmp-face img { position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; }
+.cmp-name { font-size: 16px; font-weight: 700; line-height: 1.15; }
+.cmp-meta { color: var(--muted); font-size: 11px; margin: 3px 0 0; }
+.cmp-week { align-self: center; text-align: center; font-size: 10px;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.cmp-empty { color: var(--muted); font-size: 12px; align-self: center; }
+
+/* One rule per band, on the 14px rhythm `.nt-vals` set. */
+.cmp-band { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+.cmp-row { align-items: center; padding: 3px 0; }
+.cmp-v { font-variant-numeric: tabular-nums; color: var(--muted); }
+.cmp-v.l { text-align: right; }
+.cmp-v.r { text-align: left; }
+/* The leader is said with weight and colour; the trailing side recedes rather
+   than the winner shouting. No second hue — direction already carries who. */
+.cmp-v.win { color: var(--text); font-weight: 700; }
+
+.cmp-mid { min-width: 0; }
+.cmp-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); text-align: center; margin-bottom: 3px; }
+
+/* The lean bar, and the only place this tile spends any boldness. Anchored at
+   the centre and filling toward whoever leads, so a column of rows shows
+   agreement as one direction and a split as a zigzag — which is the thing two
+   columns of numbers cannot show, and the reason the tile exists. */
+.cmp-bar { position: relative; height: 6px; background: var(--panel2);
+  border-radius: 3px; overflow: hidden; }
+.cmp-bar::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 1px; background: var(--border); }
+.cmp-bar i { position: absolute; top: 0; bottom: 0; background: var(--accent);
+  border-radius: 3px; }
+.cmp-bar i.l { right: 50%; }
+.cmp-bar i.r { left: 50%; }
+
+/* The two horizons are the question; the band under them is evidence. */
+.cmp-row.big { padding: 7px 0; }
+.cmp-row.big .cmp-v { font-size: 20px; }
+.cmp-row.big .cmp-lbl { font-size: 10px; }
+.cmp-row.big .cmp-bar { height: 8px; }
+
+.cmp-read { margin-top: 12px; color: var(--text); font-size: 12px;
+  line-height: 1.45; text-align: center; }
+.cmp-note { color: var(--muted); font-size: 11px; text-align: center;
+  margin-top: 10px; }
+
+/* A compared row keeps its tier stripe: the accent is an inset shadow, not a
+   background, for the reason the board's insertion line is (a border reflows
+   the table mid-interaction). */
+table.board tbody tr.comparing { box-shadow: inset 3px 0 0 var(--accent); }
+
+@media (max-width: 900px) {
+  .cmp-float { top: 68px; }
+  .cmp-head, .cmp-row { grid-template-columns: 1fr 96px 1fr; }
+}
