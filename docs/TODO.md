@@ -32,14 +32,70 @@ between a league's real rules and what the board can score.
   next preseason, and moving them into the league entry is another
   `fx/storage-version` bump when it happens.
 
-- **Points for the current week alongside rest-of-season.** The waiver board
-  answers "who helps me from here" and never "who helps me this Sunday". Needs
-  Sleeper's `/projections/nfl/{season}/{week}`, a new ingestion column and a
-  second scored line beside `:ros-points`.
+- ~~Points for the current week alongside rest-of-season~~ Shipped. Sleeper's
+  weekly endpoint returns the same entry shape the season line already parses
+  and names the same vendor behind both, and it carries the opponent, so this
+  cost one fetch rather than the ingestion project it looks like. Cached apart
+  from the universe on a far shorter TTL — it is the only column in the app that
+  goes stale in under a day. Open follow-up: **mid-Sunday the board projects the
+  wrong week.** `:through-week` is the newest week nflverse has published and it
+  publishes as games finish, so partial week-6 rows push it to 6 and the board
+  asks for week 7 while week 6 is being played. Honest rather than mislabelled —
+  the banner names the week — but the fix is a slate-completeness check ("a week
+  is reached once its full slate has rows") rather than a calendar.
 
-- **Comparison UI** — free agent against your roster, free agent against free
-  agent. Large LOE, and it wants the weekly/rest-of-season split above first,
-  since most of a comparison is which of the two numbers you are comparing.
+- ~~Comparison UI — free agent against your roster, free agent against free
+  agent~~ Shipped, and the "large LOE" estimate was wrong: it was the
+  weekly/rest-of-season split it depended on that looked expensive, and that
+  turned out to be one fetch. Rows lean toward whoever leads so a split between
+  the two horizons reads as a zigzag, and the tile names the split without
+  picking for you.
+
+- **Neither board is reachable from a keyboard.** Rows on the draft board
+  (click to nominate) and the waiver board (click to compare) have no
+  `tabIndex` and no key handler, so both features are mouse-only. The cheap fix
+  makes it worse — `tabIndex 0` on six hundred rows means tabbing off the search
+  box walks the whole table — so it wants the roving-tabindex grid pattern with
+  arrow-key movement and a single tab stop, applied to both boards at once.
+  Raised and deliberately deferred reviewing #52.
+
+- **Multi-source projections: a blended mean.** Every forward-looking number on
+  both boards comes from one vendor — Rotowire, via Sleeper. A mean across
+  vendors is the most robust result in the forecasting literature, and
+  `market.clj` already does exactly this for auction dollars: normalize each
+  source to a common basis, `keep` what the player has, average. The difference
+  is that `market` is display-only while a blended projection would be
+  load-bearing — `:points` feeds VORP, tiers, Value and Worth; `:ros-points`
+  feeds `:upgrade` and `:bid`. So it is a `rankings/model.clj` registry
+  candidate validated in `dev/`, not a display layer, and it does not ship on
+  the strength of the argument: `model/blend.clj` holds two candidates that
+  looked like improvements over two seasons and lost over five. Note the harness
+  scores **preseason draft** rankings only — there is nothing equivalent for
+  `:ros-points` or a weekly line, so an in-season blend needs one built before
+  it can be judged. One convenience: scoring is linear, so averaging the stat
+  lines and averaging the scored points give the same answer — which stops being
+  true for any non-linear rule (FG distance buckets, DST points-allowed tiers),
+  the same set `scoring-coverage.md` already tracks.
+
+- **A vendor-disagreement column, measured and shelved.** The idea was a `±`
+  beside each projection showing how far ESPN and Sleeper disagree — display
+  only, so it needs no validation, and two players projecting the same number
+  with different agreement is not a tie. ESPN's full projected line is already
+  downloaded and its stat ids verified (3 pass yd, 4 pass td, 20 int, 19/26/44
+  two-point, 23/24/25 rush, 42/43/53/58 receiving, 72 fumbles lost, 83/86
+  kicking). What stopped it, measured against the live 2026 feed over 400
+  name-matched players:
+  - **No second weekly source.** ESPN publishes a season projection, so only
+    rest-of-season could ever carry a spread. A weekly one would be a second
+    37MB fetch per week.
+  - **A house bias that would read as an opinion.** Median ESPN/Sleeper is 1.13
+    for RB and 0.96 for TE, so a raw gap says "ESPN likes him" about every back
+    on the board. It needs per-position bias correction to mean anything.
+  - **Team defenses are unmappable.** Their ids sit in a 93-106 band whose
+    members cannot be told apart by magnitude, and guessing produces a confident
+    wrong number.
+  The residual disagreement is real once the bias is removed (IQR of the ratio
+  is 0.19-0.26 for RB/WR/TE), so this is shelved rather than rejected.
 
 - ~~Drag-and-drop column bugs found reviewing #12: droppable `text/plain` payload,
   picker drag dead in Firefox, missing `preventDefault`, insertion line flicker~~

@@ -48,10 +48,40 @@
   (into {} (keep (fn [[fmt k]] (when-let [v (adp stats k)] [fmt {:sleeper/adp v}])))
         adp-keys))
 
+(def ^:private fgm-buckets
+  "The made-field-goal columns Sleeper publishes on a *season* line. Not the
+  whole set — there are no sub-40 buckets — so their sum is a floor."
+  [:fgm_40_49 :fgm_50p])
+
+(defn- summed-fgm
+  "A kicker's made field goals, when Sleeper did not publish the total.
+
+  Its season projections carry no `:fgm` at all — 0 of 45 kickers — only these
+  distance buckets and a yardage total, so the presets' 3.0 weight multiplied
+  nothing and every kicker scored on extra points alone. Aubrey came out at 42
+  against Sleeper's own 116, and the position compressed into a 39-42 band with
+  no spread in it.
+
+  Summing what *is* published recovers most of that (Aubrey 93) and keeps the
+  whole line one vendor's opinion. ESPN publishes a real total and was the
+  obvious alternative, but it projects him 35.5 field goals against Sleeper's
+  ~25 — importing it would price kickers out of a different house than every
+  other player on the board. Deliberately a floor rather than a guess: the
+  sub-40 kicks are missing and no published column implies them.
+
+  The weekly endpoint *does* send `:fgm`, so this only ever fills a gap."
+  [stats]
+  (let [made (keep #(get stats %) fgm-buckets)]
+    (when (seq made) (double (reduce + made)))))
+
 (defn- scored-stats
   "The subset of a Sleeper stats map the scoring engine reads, as doubles."
   [stats]
-  (into {} (keep (fn [k] (when-let [v (get stats k)] [k (double v)]))) stat-keys))
+  (let [base (into {} (keep (fn [k] (when-let [v (get stats k)] [k (double v)])))
+                   stat-keys)]
+    (if (:fgm base)
+      base
+      (if-let [fgm (summed-fgm stats)] (assoc base :fgm fgm) base))))
 
 (defn normalize-entry
   "Sleeper projection entry -> a universe player map, or nil if it is not a

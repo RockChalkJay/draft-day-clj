@@ -97,10 +97,11 @@
 
   (testing "weights on stats nothing is projected for are not evidence of a league"
     ;; What the editor leaves behind when every weight a manager can reach is
-    ;; zeroed: the unprojected four are rendered disabled, so they keep whatever
-    ;; the preset set. They cannot move a single player's points.
+    ;; zeroed: the unprojected ones are rendered disabled, so they keep whatever
+    ;; the preset set. They cannot move a single player's points. `:fgm` left
+    ;; this set when kickers got a projected total.
     (let [only-unprojected (select-keys (:ppr scoring/presets) scoring/unprojected-stats)]
-      (is (= 4 (count only-unprojected)))
+      (is (= 3 (count only-unprojected)))
       (is (every? pos? (vals only-unprojected)))
       (is (not (scoring/scores-anything? only-unprojected)))
       (is (not (scoring/scores-anything?
@@ -110,3 +111,14 @@
 
 (deftest unprojected-stats-are-real-stat-keys
   (is (every? (set scoring/stat-keys) scoring/unprojected-stats)))
+
+(deftest field-goals-are-projected-now
+  ;; Kickers carry a :fgm summed from the buckets Sleeper publishes, so the
+  ;; scoring editor must let a league price it and `scores-anything?` must count
+  ;; it. Leaving it in the set locked FG Made for the one position the fill
+  ;; exists for.
+  (is (not (contains? scoring/unprojected-stats :fgm)))
+  (is (scoring/scores-anything? {:fgm 3.0})
+      "a config that can only move kickers is still a config")
+  ;; Team defenses genuinely have none of these, so they stay.
+  (is (= #{:ff :def_td :safe} scoring/unprojected-stats)))

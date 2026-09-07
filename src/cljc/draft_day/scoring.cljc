@@ -97,13 +97,17 @@
           :else                   :ppr)))
 
 (def unprojected-stats
-  "Stat keys we score but that Sleeper's projections never carry — checked
-  against both the live universe and the bundled sample, where all four appear
-  zero times. Kickers are projected for extra points but not field goals, and
-  team defenses for sacks/interceptions/fumble recoveries but not forced fumbles,
-  defensive touchdowns or safeties. A weight on these cannot move any player's
-  points, so the editor shows them but will not pretend they are editable."
-  #{:fgm :ff :def_td :safe})
+  "Stat keys we score but that Sleeper's projections never carry: team defenses
+  are projected for sacks, interceptions and fumble recoveries but not forced
+  fumbles, defensive touchdowns or safeties. A weight on these cannot move any
+  player's points, so the editor shows them but will not pretend they are
+  editable.
+
+  `:fgm` was here too, and is not any more: kickers now carry one, summed from
+  the distance buckets Sleeper does publish (`sleeper/scored-stats`). Leaving it
+  would have locked FG Made in the scoring editor for the one position that fix
+  exists for, and made `scores-anything?` reject a config that scores kickers."
+  #{:ff :def_td :safe})
 
 (defn scores-anything?
   "True when at least one weight can actually move a player's points. An empty

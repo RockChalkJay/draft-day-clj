@@ -147,3 +147,40 @@
     (is (nil? (get-in by-id ["9509" :home?])))
     (is (= "TB" (get-in by-id ["9509" :opponent])))        ; still known
     (is (some? (get-in by-id ["9509" :stats])))))          ; still projected
+
+;; ---- kickers get their field goals back ----
+
+(deftest a-kicker-without-a-published-total-gets-one-from-the-buckets
+  ;; Sleeper's season line carries no :fgm at all — 0 of 45 kickers — so the
+  ;; presets' 3.0 weight multiplied nothing and every kicker scored on extra
+  ;; points alone.
+  (let [entry {:player_id "K1" :team "DAL"
+               :player {:first_name "Brandon" :last_name "Aubrey" :position "K"}
+               :stats {:fgm_40_49 9.0 :fgm_50p 8.0 :fgm_yds 841.0 :xpm 42.0
+                       :pts_ppr 116.0}}
+        st    (:stats (sleeper/normalize-entry entry))]
+    (is (= 17.0 (:fgm st)) "the two published buckets, summed")
+    (is (= 42.0 (:xpm st)))
+    ;; 3*17 + 42 = 93 against the 42 it scored before, and Sleeper's own 116.
+    (is (< (abs (- 93.0 (scoring/player-points {:stats st}
+                                               (scoring/resolve-config :half-ppr))))
+           1e-9))))
+
+(deftest a-published-total-is-never-overruled
+  ;; The weekly endpoint does send :fgm; this only ever fills a gap.
+  (let [entry {:player_id "K1" :team "DAL"
+               :player {:first_name "B" :last_name "A" :position "K"}
+               :stats {:fgm 1.68 :fgm_40_49 0.41 :fgm_50p 0.2 :xpm 2.46
+                       :pts_ppr 6.26}}]
+    (is (= 1.68 (get-in (sleeper/normalize-entry entry) [:stats :fgm])))))
+
+(deftest a-kicker-with-no-buckets-at-all-gets-no-invented-total
+  ;; A floor, not a guess: with nothing published there is nothing to sum.
+  (let [entry {:player_id "K2" :team "X"
+               :player {:first_name "No" :last_name "Legs" :position "K"}
+               :stats {:xpm 12.0 :pts_ppr 12.0}}]
+    (is (nil? (get-in (sleeper/normalize-entry entry) [:stats :fgm])))))
+
+(deftest nobody-but-a-kicker-is-touched
+  (let [rb (sleeper/normalize-entry (first sample-entries))]
+    (is (nil? (get-in rb [:stats :fgm])))))
