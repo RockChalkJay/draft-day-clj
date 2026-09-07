@@ -86,3 +86,10 @@
   (is (nil? (confidence/level "DST" 1)))
   (is (nil? (confidence/separation {:position "DST" :week-pos-rank 2}
                                    {:position "DST" :week-pos-rank 9}))))
+
+(deftest coin-flip-is-a-verdict-not-the-absence-of-one
+  ;; The distinction the predicate exists to keep: a pair the measurement looked
+  ;; at and could not separate, against one it never looked at.
+  (is (true?  (confidence/coin-flip? (confidence/separation (wr 8) (wr 10)))))
+  (is (false? (confidence/coin-flip? (confidence/separation (wr 3) (wr 15)))))
+  (is (false? (confidence/coin-flip? nil)) "never measured is not too close"))

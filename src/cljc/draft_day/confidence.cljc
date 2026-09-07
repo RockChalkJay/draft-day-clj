@@ -74,6 +74,15 @@
       (and slight (>= gap slight)) :slight
       :else                        :coin-flip)))
 
+(defn coin-flip?
+  "Did the measurement look at this pair and decline to separate them?
+
+  False for a pair it never looked at — see `separation` on the three refusals.
+  A predicate rather than the caller testing the keyword, so `:coin-flip` stays
+  inside the namespace that defines the bands."
+  [sep]
+  (= :coin-flip (:level sep)))
+
 (defn separation
   "`{:level :clear|:slight|:coin-flip :gap n}` for two players, or nil.
 
