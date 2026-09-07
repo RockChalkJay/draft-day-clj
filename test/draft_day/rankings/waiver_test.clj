@@ -518,3 +518,60 @@
   ;; against, so it must not silently get a different answer.
   (let [rows [["a" "WR" 10.0] ["b" "RB" 5.0] ["c" "TE" 7.0]]]
     (is (= "b" (drop-for rows nil)))))
+
+;; ---- two bidding pools ----
+
+(defn- bids-for
+  "Bids for [lineup-upgrade upgrade] pairs, given a budget and claims left."
+  [pairs budget n]
+  (->> (map-indexed (fn [i [lu up]]
+                      (cond-> {:player-id (str i) :upgrade up}
+                        lu (assoc :lineup-upgrade lu)))
+                    pairs)
+       (#(waiver/with-bids % {:type :faab} budget n))
+       (mapv :bid)))
+
+(deftest each-pool-conserves-its-own-share-and-together-the-budget
+  ;; The restated form of the property the old single-pool rule had. Two
+  ;; questions, two pools: lineup upgrades are worth money, stashes are worth
+  ;; keeping ordered and cheap.
+  (let [budget 100
+        bids   (bids-for [[20.0 60.0] [10.0 40.0]      ; lineup pool
+                          [0.0 120.0] [0.0 30.0] [0.0 10.0]]  ; stash pool
+                         budget 5)
+        lineup (reduce + (take 2 bids))
+        stash  (reduce + (drop 2 bids))]
+    (is (<= 83 lineup 87) "the lineup pool takes 1 - stash-share of the budget")
+    (is (<= 13 stash 17)  "and the stash pool takes stash-share")
+    (is (<= (- budget 5) (reduce + bids) (+ budget 5))
+        "together they still spend the budget")))
+
+(deftest a-lineup-upgrade-outbids-a-stash-of-the-same-bench-value
+  ;; The behaviour change, stated as a comparison rather than a constant.
+  (let [[starter stash] (bids-for [[15.0 60.0] [0.0 60.0]] 100 4)]
+    (is (> starter stash))))
+
+(deftest a-stash-still-gets-a-real-bid-rather-than-zero
+  ;; Why the share exists at all: only 0.2-4.8% of a real free-agent pool has a
+  ;; positive lineup delta, so pricing purely on it would bid $0 for ~95% of the
+  ;; board and lose every distinction among bench stashes.
+  (let [[_ big small] (bids-for [[30.0 40.0] [0.0 120.0] [0.0 20.0]] 100 3)]
+    (is (pos? big) "the best stash is worth something")
+    (is (> big small) "and stashes stay ordered among themselves")))
+
+(deftest an-empty-pool-hands-its-share-to-the-other
+  ;; Without this a manager with one lineup upgrade available leaves
+  ;; stash-share of his budget unallocated and every stash bid rounds away.
+  (testing "no lineup upgrades at all — the pre-lineup rule exactly"
+    (let [bids (bids-for [[0.0 80.0] [0.0 20.0]] 100 2)]
+      (is (<= 98 (reduce + bids) 102))))
+  (testing "no stashes at all"
+    (let [bids (bids-for [[30.0 40.0] [10.0 20.0]] 100 2)]
+      (is (<= 98 (reduce + bids) 102)))))
+
+(deftest with-no-lineup-delta-anywhere-the-bids-are-what-they-always-were
+  ;; A request that sent no roster config. Every lineup weight is 0, every
+  ;; stash weight is the old :upgrade, and the stash pool takes the whole
+  ;; budget — which is the old rule, reached without a special case.
+  (let [absent (bids-for [[nil 80.0] [nil 20.0]] 100 2)]
+    (is (= [80 20] absent))))

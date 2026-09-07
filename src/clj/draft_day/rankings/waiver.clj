@@ -182,19 +182,46 @@
         left (- (long end) 1 (long (or through-week 0)))]
     (max 0 left)))
 
-(defn bid-pool
-  "The total upgrade the bids are a share of: the best `n` upgrades available.
+(def stash-share
+  "The slice of a FAAB budget reserved for players who would not crack the
+  starting lineup.
 
-  Summing over *every* free agent instead would divide the budget among hundreds
-  of players a manager will never claim, and every real target would round to
-  nothing. `n` is the number of claims the season still allows, so the pool is
-  the set of players he could actually still add."
-  [fas n]
-  (->> fas
-       (map #(max 0.0 (double (or (:upgrade %) 0.0))))
-       (sort >)
-       (take n)
-       (reduce + 0.0)))
+  CHOSEN, NOT MEASURED — the same standing as `ros/PRIOR-GAMES`, and `dev/` is
+  where it would earn a number. Measured on a real 12-team league, only 0.2-4.8%
+  of free agents have a positive lineup delta, so pricing purely on that would
+  bid $0 for about 95% of the board and lose every distinction between bench
+  stashes — which do have real bye-week and injury value. Reserving a slice
+  keeps them ordered and cheap without pretending a backup quarterback improves
+  the lineup."
+  0.15)
+
+(defn weights
+  "`[lineup-weight stash-weight]` for one free agent.
+
+  A player is in exactly one pool: anyone who would improve the starting lineup
+  is priced on that and carries no stash weight, and everyone else is priced on
+  the bench delta `:upgrade` measures.
+
+  This is also what keeps the old behaviour reachable without a special case.
+  With no `:lineup-upgrade` anywhere — a request that sent no roster config, or
+  a manager who has not picked his team — every lineup weight is 0, every stash
+  weight is the old `:upgrade`, and the stash pool takes the whole budget. That
+  is the pre-lineup rule exactly."
+  [p]
+  (let [lu (max 0.0 (double (or (:lineup-upgrade p) 0.0)))]
+    (if (pos? lu)
+      [lu 0.0]
+      [0.0 (max 0.0 (double (or (:upgrade p) 0.0)))])))
+
+(defn bid-pool
+  "The total weight the bids are a share of: the best `n` of them.
+
+  Summing over *every* free agent instead would divide the budget among
+  hundreds of players a manager will never claim, and every real target would
+  round to nothing. `n` is the number of claims the season still allows, so the
+  pool is the set of players he could actually still add."
+  [ws n]
+  (->> ws (sort >) (take n) (reduce + 0.0)))
 
 (defn faab?
   "Does this league run FAAB? True for `:faab` and for its JSON spelling.
@@ -248,23 +275,37 @@
 (defn with-bids
   "Assoc `:bid` on every free agent: his share of the remaining budget.
 
+  TWO POOLS, because the two questions are different. A player who improves the
+  starting lineup is worth real money; a bench stash is worth keeping ordered
+  and cheap. `stash-share` splits the budget between them, and each pool
+  conserves its own share, so the two together still spend the budget — the
+  property `waiver-test` pins.
+
+  An empty pool hands its share to the other. Without that, a manager with a
+  single lineup upgrade available would leave `stash-share` of his budget
+  unallocated and every stash bid would round to nothing.
+
   nil rather than a number in the two cases where there is no bid to make — a
   league that does not run FAAB, and a manager with nothing left to spend. A
   zero would read as 'worth nothing' when the truth is 'there is nothing to
   bid', which is the same distinction `league-sync` keeps by reporting
   `:faab-left` nil outside FAAB."
   [fas {:keys [type]} budget-left n]
-  (let [pool (bid-pool fas n)]
-    (if-not (and (faab? type) (number? budget-left) (pos? budget-left) (pos? pool))
+  (let [ws    (mapv weights fas)
+        lin   (bid-pool (map first ws) n)
+        stash (bid-pool (map second ws) n)]
+    (if-not (and (faab? type) (number? budget-left) (pos? budget-left)
+                 (pos? (+ lin stash)))
       (mapv #(assoc % :bid nil) fas)
-      (mapv (fn [p]
-              (let [up (max 0.0 (double (or (:upgrade p) 0.0)))]
-                (assoc p :bid (-> (* (/ up pool) budget-left)
-                                  (min budget-left)
-                                  Math/rint
-                                  long
-                                  (max 0)))))
-            fas))))
+      (let [lin-budget   (if (pos? stash) (* (- 1.0 stash-share) budget-left) budget-left)
+            stash-budget (if (pos? lin) (* stash-share budget-left) budget-left)]
+        (mapv (fn [p [lu st]]
+                (let [share (cond
+                              (pos? lu) (* (/ lu lin) lin-budget)
+                              (pos? st) (* (/ st stash) stash-budget)
+                              :else     0.0)]
+                  (assoc p :bid (-> share (min budget-left) Math/rint long (max 0)))))
+              fas ws)))))
 
 (defn rival-max
   "The largest budget anyone *else* still holds — what it would take to be sure.
