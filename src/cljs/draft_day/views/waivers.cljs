@@ -200,8 +200,9 @@
   A row the board could not value keeps its seat and says so rather than
   vanishing — see `waiver/my-roster`."
   []
-  (let [roster  @(rf/subscribe [:my-waiver-roster])
-        synced? @(rf/subscribe [:league-synced?])]
+  (let [roster    @(rf/subscribe [:my-waiver-roster])
+        synced?   @(rf/subscribe [:league-synced?])
+        comparing (set @(rf/subscribe [:compare]))]
     [:div.roster-panel.waiver-roster
      [:div.roster-head [:h3 "My Roster"]]
      (cond
@@ -218,18 +219,31 @@
 
        :else
        (let [row (fn [p]
-                   ^{:key (:player-id p)}
-                   [:tr {:class (str (when (:drop? p) "drop-seat ")
-                                     (when (:parked? p) "parked"))}
-                    [:td.slot (or (:position p) "–")]
-                    [:td.slot-player
-                     (if (:unvalued? p)
-                       [:span.muted {:title (str "No projection for id " (:player-id p))}
-                        (:player-id p)]
-                       (:player-name p))
-                     (when (:parked? p) [:span.parked-tag {:title "IR or taxi"} " IR"])
-                     (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
-                    [:td.num (board/format-whole (:ros-points p))]])
+                   ;; A row the board could not value has no entry in
+                   ;; `:my-roster-players`, so selecting it would put an id in
+                   ;; `:compare` that never resolves — a click that does
+                   ;; nothing, silently. It keeps its seat and stays inert.
+                   (let [pick? (not (:unvalued? p))]
+                     ^{:key (:player-id p)}
+                     [:tr {:class (->> [(when (:drop? p) "drop-seat")
+                                        (when (:parked? p) "parked")
+                                        (when pick? "pickable")
+                                        (when (comparing (:player-id p)) "comparing")]
+                                       (remove nil?) (str/join " "))
+                           ;; The other half of the comparison: a claim is
+                           ;; usually weighed against a man you already hold, and
+                           ;; this panel is where he is on screen.
+                           :on-click (when pick?
+                                       #(rf/dispatch [:compare-toggle (:player-id p)]))}
+                      [:td.slot (or (:position p) "–")]
+                      [:td.slot-player
+                       (if (:unvalued? p)
+                         [:span.muted {:title (str "No projection for id " (:player-id p))}
+                          (:player-id p)]
+                         (:player-name p))
+                      (when (:parked? p) [:span.parked-tag {:title "IR or taxi"} " IR"])
+                      (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
+                      [:td.num (board/format-whole (:ros-points p))]]))
              ;; `group-by` keeps the server's order — `waiver/roster-sort-key`.
              {starters true bench false} (group-by (comp boolean :starter?) roster)]
          [:table.roster
@@ -297,7 +311,8 @@
   (let [players @(rf/subscribe [:waiver-players])
         cols    @(rf/subscribe [:visible-waiver-columns])
         sort    @(rf/subscribe [:waiver-sort])
-        week    (:week @(rf/subscribe [:waiver-meta]))]
+        week    (:week @(rf/subscribe [:waiver-meta]))
+        comparing (set @(rf/subscribe [:compare]))]
     [:div.waivers-view
      [week-banner]
      [:div.waiver-panels [sync-panel] [faab-panel]]
@@ -313,8 +328,15 @@
         [:tbody
          (map (fn [p]
                 ^{:key (:player-id p)}
-                [:tr {:class (when (and (:drop-candidate p) (pos? (or (:upgrade p) 0)))
-                               "upgrade")}
+                [:tr {:class (->> [(when (and (:drop-candidate p)
+                                              (pos? (or (:upgrade p) 0)))
+                                     "upgrade")
+                                   (when (comparing (:player-id p)) "comparing")]
+                                  (remove nil?) (str/join " "))
+                      ;; Click to compare. A second row fills the other slot; a
+                      ;; third evicts the older, so one player can be held while
+                      ;; the board is clicked through challengers.
+                      :on-click #(rf/dispatch [:compare-toggle (:player-id p)])}
                  (map (fn [{k :key}] ^{:key k} [cell k p week]) cols)])
               players)]]]
       [:aside.waiver-roster-col [my-roster-panel]]]

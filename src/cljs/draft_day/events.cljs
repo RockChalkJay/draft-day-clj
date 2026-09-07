@@ -417,7 +417,13 @@
                    ;; leagues on the same format would blank for nothing, and a
                    ;; recompute that never lands would leave an empty table
                    ;; explaining itself no better than a wrong one.
-                   :waivers nil)
+                   :waivers nil
+                   ;; The comparison goes with the board it was asked about. It
+                   ;; would mostly re-resolve — the players are the same real
+                   ;; players — but a free agent in one league is rostered in
+                   ;; another, and that side would silently vanish out of a tile
+                   ;; still open around it.
+                   :compare [])
       ;; `:num-teams`, `:starting-bankroll` and the roster template all just
       ;; moved, and `:teams` is built from exactly those three. Without this the
       ;; rankings request carries a 12-team replacement level alongside ten
@@ -629,6 +635,23 @@
 (rf/reg-event-db :move-waiver-column-onto [persist]
   (fn [db [_ from-k to-k]]
     (update db :waiver-columns db/move-column-onto from-k to-k)))
+
+;; ---- comparison ----
+
+(rf/reg-event-db :compare-toggle
+  (fn [db [_ id]]
+    ;; Two slots, filled left then right. A third pick evicts the *older* rather
+    ;; than being refused, so one player can be held while the board is clicked
+    ;; through challengers — which is the whole reason the tile has no backdrop.
+    (let [c (vec (:compare db))]
+      (assoc db :compare
+             (cond
+               (some #{id} c)   (vec (remove #{id} c))
+               (< (count c) 2)  (conj c id)
+               :else            [(second c) id])))))
+
+(rf/reg-event-db :compare-clear
+  (fn [db _] (assoc db :compare [])))
 
 ;; ---- cache reset ----
 

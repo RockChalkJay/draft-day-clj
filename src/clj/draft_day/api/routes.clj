@@ -297,6 +297,15 @@
               out      (waiver/waiver-board board ctx)]
           (json-response 200 (assoc out
                                     :players      (without-projection-internals (:players out))
+                                    ;; Same strip as :players — these are full
+                                    ;; rows and carry the same working state.
+                                    ;; `some->` so nil survives: it means no team
+                                    ;; picked, which `mapv` would flatten to the
+                                    ;; empty roster its sibling :my-roster is
+                                    ;; careful to keep distinct.
+                                    :my-roster-players
+                                    (some-> (:my-roster-players out)
+                                            without-projection-internals)
                                     :through-week (or through-week 0)
                                     :season-games season-games
                                     ;; nil when there is no weekly line at all;

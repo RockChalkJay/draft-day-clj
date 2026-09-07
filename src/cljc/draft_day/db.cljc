@@ -722,6 +722,10 @@
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}
      :waiver-status nil         ; what the sync/refresh is doing, or why it failed
+     ;; At most two player-ids, in the order they were picked. Transient like
+     ;; `:nominated-id` and deliberately outside `persist-keys`: a comparison is
+     ;; a question being asked right now, not a layout worth restoring.
+     :compare      []
      :modal        nil
      :sort        {:key :worth :dir -1}
      :pos-filter  nil
