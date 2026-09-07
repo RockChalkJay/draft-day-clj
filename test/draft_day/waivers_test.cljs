@@ -291,6 +291,24 @@
     (is (nil? (cls -0.4)))
     (is (= "–" (txt -0.4)))))
 
+(deftest the-weekly-rank-cell-carries-its-position
+  ;; The column exists because "4.2" says nothing and "WR19" says something, so
+  ;; the ordinal without its scale would be the worse half of the pair.
+  (let [txt (fn [p] (last (waivers/cell :week-rank p 5)))]
+    (is (= "WR19" (txt {:position "WR" :week-pos-rank 19})))
+    ;; Nobody projects him this week — a bye, or he is nobody's starter. There
+    ;; is no rank, and inventing a last place would be a claim about a player
+    ;; the weekly line has no opinion on.
+    (is (= "–" (txt {:position "WR"})))))
+
+(deftest the-form-cell-keeps-a-decimal
+  ;; Rounding to whole points is right for a full-season projection and wrong
+  ;; for a per-game rate: 8.4 and 8.6 are a real difference between two players
+  ;; and would print identically.
+  (let [txt (fn [p] (last (waivers/cell :form p 5)))]
+    (is (= "8.4" (txt {:form-points 8.44})))
+    (is (= "–" (txt {})))))
+
 (deftest sorting-puts-players-with-nothing-to-say-last-in-both-directions
   ;; Same rule `sort-players` keeps: a nil is not a low value, it is an absent
   ;; one, and it must not float to the top when the column is reversed.

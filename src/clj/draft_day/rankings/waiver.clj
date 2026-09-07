@@ -41,9 +41,12 @@
   is a fact.
 
   WHAT IS DISPLAY ONLY. `:trend` compares recent opportunity to the season's and
-  feeds nothing — same shelf as `:injury-risk` and `:tcm`, and for the reason
+  `:form-points` scores what the last few weeks were actually worth; both feed
+  nothing — same shelf as `:injury-risk` and `:tcm`, and for the reason
   `rankings.injury` spells out: the repo has already shipped one signal that was
-  computed on every pick and consumed by nothing."
+  computed on every pick and consumed by nothing. `:week-pos-rank` is the one
+  in-season signal that is *not* on that shelf, and it is added elsewhere — see
+  `rankings.pos-rank`."
   (:require [draft-day.db :as db]
             [draft-day.rankings.replacement :as replacement]
             [draft-day.scoring :as scoring]))
@@ -231,6 +234,30 @@
 
 (defn with-trend [fas]
   (mapv (fn [p] (assoc p :trend (trend p))) fas))
+
+;; The other reading of a weekly number, and the reason both are shown. A
+;; projection is what a model expects of a player; form is what his current role
+;; has actually been worth. They disagree on exactly the players a waiver board
+;; exists for — a back who has just taken over a backfield is worth more than a
+;; vendor has got round to saying — so this sits beside `:week-points` rather
+;; than being blended into it. Blending was measured and bought +0.37%.
+
+(defn form-points
+  "Points per game over `nflverse-weekly/recent-window`, under the league's own
+  weights, or nil before he has played inside the window.
+
+  Scored from the window's own stat map rather than from a vendor's points, the
+  same rule `ros.clj` follows, and put on a per-game basis for the same reason
+  it does: a three-week total and a two-week total are not comparable numbers."
+  [{:nflverse/keys [recent]} scoring]
+  (let [{:keys [games stats]} recent]
+    (when (and games (pos? games) (seq stats))
+      (/ (scoring/player-points {:stats stats} scoring) (double games)))))
+
+(defn with-form-points [players scoring]
+  (mapv (fn [p]
+          (if-let [v (form-points p scoring)] (assoc p :form-points v) p))
+        players))
 
 ;; ---- this week ----
 ;; The other half of the question `:ros-points` answers. Rest-of-season says who

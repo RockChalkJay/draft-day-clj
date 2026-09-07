@@ -395,6 +395,29 @@
     ;; Not projected this week: no key, not a zero.
     (is (not (contains? b :week-points)))))
 
+(deftest form-points-are-per-game-under-the-league-weights
+  ;; The window is a *total* over however many games the player has inside it,
+  ;; so the division is what makes a three-week and a two-week window
+  ;; comparable at all.
+  (let [ppr (scoring/resolve-config :ppr)
+        [a] (waiver/with-form-points
+              [{:player-id "a"
+                :nflverse/recent {:games 3 :stats {:rush_yd 240.0 :rec 15.0
+                                                   :rec_yd 180.0 :rush_td 3.0}}}]
+              ppr)]
+    ;; 24 + 15 + 18 + 18 = 75 over 3 games
+    (is (< (abs (- 25.0 (:form-points a))) 1e-9))))
+
+(deftest form-points-are-absent-rather-than-zero
+  ;; The preseason board, a rookie who has not debuted, and every DST — nflverse
+  ;; publishes no DST row. A 0.0 would rank them below a player who has actually
+  ;; been bad, which is a claim the data does not make.
+  (let [ppr (scoring/resolve-config :ppr)
+        got (fn [p] (:form-points (first (waiver/with-form-points [p] ppr))))]
+    (is (nil? (got {:player-id "preseason"})))
+    (is (nil? (got {:player-id "no-games" :nflverse/recent {:games 0 :stats {}}})))
+    (is (nil? (got {:player-id "no-stats" :nflverse/recent {:games 2 :stats {}}})))))
+
 ;; ---- my roster as comparable rows ----
 
 (deftest my-roster-players-are-full-rows-not-the-panel-shape

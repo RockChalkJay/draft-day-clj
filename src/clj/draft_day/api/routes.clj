@@ -293,7 +293,13 @@
                            (waiver-board-inputs scoring*)
                            (ros/with-ros scoring* ctx)
                            (pipeline/assoc-weekly (:lines weekly))
-                           (waiver/with-week-points scoring*))
+                           (waiver/with-week-points scoring*)
+                           ;; The second positional rank, over this week rather
+                           ;; than the preseason. Deliberately not folded into
+                           ;; `waiver-board-inputs`: that runs before the weekly
+                           ;; line is joined, so there would be nothing to rank.
+                           (pos-rank/with-pos-rank :week-points :week-pos-rank)
+                           (waiver/with-form-points scoring*))
               out      (waiver/waiver-board board ctx)]
           (json-response 200 (assoc out
                                     :players      (without-projection-internals (:players out))
