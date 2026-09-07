@@ -32,42 +32,52 @@
 
   Display only. Nothing downstream reads :pos-rank — like `injury/:injury-risk`
   and `tcm`, and for the same reason: the market already prices what it knows,
-  and a board signal that quietly re-enters the valuation charges a player twice.")
+  and a board signal that quietly re-enters the valuation charges a player twice.
+
+  A SECOND SCALE. The waiver board runs this again over `:week-points`, landing
+  on `:week-pos-rank` — the same technique on a different horizon, the way
+  `replacement/with-vorp` already takes a `score-key`. That one is not only
+  display: `draft-day.confidence` is calibrated in rank gaps, so it is the unit
+  the comparison tile decides whether to believe a weekly gap in. Two keys
+  rather than one, for the reason `engine/static-rankings` gives about expert
+  tiers — a preseason ordinal and a this-week ordinal under one name would be
+  two scales merged into one number.")
 
 (defn- rank-key
-  "Descending sort key within a position: points first, player-id to break ties.
+  "Descending sort key within a position: score first, player-id to break ties.
 
   The tiebreak is not cosmetic. Identical projections are common on the tail —
   Sleeper rounds — and without a total order the ordinal would flicker between
   two recomputes of the same board, so a player's `RB47` would silently become
   `RB48` when nothing about him changed."
-  [p]
-  [(- (double (:points p))) (str (:player-id p))])
+  [score-key p]
+  [(- (score-key p)) (str (:player-id p))])
 
 (defn- ranks-for-position
   "Seq of [player-id ordinal] for one position's players, best first. Players the
-  model never scored are skipped rather than ranked last — see `with-pos-rank`."
-  [players]
+  score never reached are skipped rather than ranked last — see `with-pos-rank`."
+  [players score-key]
   (->> players
-       (filter #(number? (:points %)))
-       (sort-by rank-key)
+       (filter #(number? (score-key %)))
+       (sort-by #(rank-key score-key %))
        (map-indexed (fn [i p] [(:player-id p) (inc i)]))))
 
 (defn with-pos-rank
-  "Assoc :pos-rank — 1-based rank within the player's own position, best first.
+  "Assoc a 1-based rank within the player's own position, best first.
 
-  A player the model left without :points is untouched, so the board renders the
-  bare position rather than inventing a rank for a row it could not score. Row
-  order is preserved: this builds an id->ordinal index and maps it back over the
-  board, exactly as `tiers/with-tiers` does, so nothing downstream of here sees
-  the pool reordered."
-  [board]
-  (let [index (into {}
-                    (mapcat (comp ranks-for-position val))
-                    (group-by :position board))]
-    (mapv (fn [p]
-            (if-let [n (index (:player-id p))]
-              (assoc p :pos-rank n)
-              p))
-          board)))
-
+  A player the score left blank is untouched, so the board renders the bare
+  position rather than inventing a rank for a row it could not score — which is
+  also how a player nobody projects this week gets no `:week-pos-rank` at all.
+  Row order is preserved: this builds an id->ordinal index and maps it back over
+  the board, exactly as `tiers/with-tiers` does, so nothing downstream of here
+  sees the pool reordered."
+  ([board] (with-pos-rank board :points :pos-rank))
+  ([board score-key out-key]
+   (let [index (into {}
+                     (mapcat #(ranks-for-position (val %) score-key))
+                     (group-by :position board))]
+     (mapv (fn [p]
+             (if-let [n (index (:player-id p))]
+               (assoc p out-key n)
+               p))
+           board))))

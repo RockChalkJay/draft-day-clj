@@ -108,3 +108,62 @@
   ;; live layer. If it ever moves, RB1 becomes a scarcity signal and stops being
   ;; an identifier — and this is the test that says so out loud.
   (is (= (shipped #{}) (shipped #{"RB0" "RB1" "WR0"}))))
+
+;; ---- the second scale ----
+;; The waiver board ranks the same pool again over `:week-points`. Everything
+;; above still has to hold on a key that is missing far more often than
+;; `:points` is: only the ~14% of the universe Sleeper projects in a given week
+;; carries a weekly line at all.
+
+(defn- week-player [id pos pts]
+  (cond-> {:player-id id :position pos :points 100.0}
+    pts (assoc :week-points pts)))
+
+(def ^:private week-board
+  [(week-player "r1" "RB" 12.4)
+   (week-player "w1" "WR" 18.0)
+   (week-player "r2" "RB" 17.9)
+   (week-player "k1" "K"  8.0)
+   (week-player "d1" "DST" 6.5)
+   (week-player "bye" "RB" nil)])
+
+(defn- week-ranks [b]
+  (into {} (map (juxt :player-id :week-pos-rank))
+        (pos-rank/with-pos-rank b :week-points :week-pos-rank)))
+
+(deftest a-second-score-key-ranks-onto-its-own-output-key
+  (let [ranked (pos-rank/with-pos-rank week-board :week-points :week-pos-rank)
+        by-id  (into {} (map (juxt :player-id identity)) ranked)]
+    (is (= {"r1" 2 "r2" 1 "w1" 1 "k1" 1 "d1" 1} (dissoc (week-ranks week-board) "bye"))
+        "ranks restart per position on the weekly number, not the preseason one")
+    (testing "and the preseason rank is untouched, since two horizons under one
+             key would be two scales merged into one number"
+      (is (every? #(nil? (:pos-rank %)) ranked))
+      (is (= 100.0 (:points (by-id "r1")))))))
+
+(deftest kickers-and-defenses-rank-on-the-weekly-scale-too
+  ;; Same reason as the preseason case: :vorp is nil for both by design, so a
+  ;; score-keyed rank is the only one that reaches them. Their *gap* is worth
+  ;; nothing (see `draft-day.confidence`), but the ordinal is still real.
+  (let [r (week-ranks week-board)]
+    (is (= 1 (r "k1")))
+    (is (= 1 (r "d1")))))
+
+(deftest a-player-with-no-weekly-line-gets-no-weekly-rank
+  ;; The common case rather than the edge case, and the one the tile depends on:
+  ;; a bye or an unprojected player must be absent from the scale, not last on
+  ;; it, or `confidence/separation` would compute a gap against a rank that
+  ;; means nothing.
+  (let [r (week-ranks week-board)]
+    (is (nil? (r "bye")))
+    (is (= #{1 2} (set (keep r ["r1" "r2" "bye"])))
+        "and he consumes no ordinal the projected backs need")))
+
+(deftest the-weekly-scale-keeps-the-tiebreak
+  ;; Weekly projections round harder than season ones — a whole slate lands on
+  ;; the same tenth — so the flicker this guards against is likelier here.
+  (let [tied [(week-player "b" "WR" 9.1) (week-player "a" "WR" 9.1)
+              (week-player "c" "WR" 9.1)]
+        r    (week-ranks tied)]
+    (is (= #{1 2 3} (set (vals r))))
+    (is (= r (week-ranks (reverse tied))))))

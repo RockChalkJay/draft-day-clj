@@ -27,8 +27,11 @@
   Archived drafts are under `drafts-key` and survive this.
 
   3: the waiver board grew Wk and Opp columns — this week's projected points and
-  this week's opponent — so `db/waiver-column-catalog` changed shape."
-  3)
+  this week's opponent — so `db/waiver-column-catalog` changed shape.
+
+  4: it grew Wk# and Form alongside them — this week's rank within his position,
+  and points per game over the last three weeks."
+  4)
 
 (def drafts-key "draft-day-drafts")
 

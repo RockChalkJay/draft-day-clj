@@ -66,6 +66,10 @@
                             (number? pts) (board/format-whole pts)
                             (and week (= week (:bye p))) [:span.muted "Bye"]
                             :else [:span.muted "–"])])
+    ;; The position travels with the ordinal, because the whole point of the
+    ;; column is that "WR19" means something where "4.2" does not.
+    :week-rank (let [n (:week-pos-rank p)]
+                 [:td.num.muted (if n (str (:position p) n) "–")])
     :opp       [:td.muted (week-matchup p week)]
     ;; The headline. Signed, because a free agent worse than the man you would
     ;; drop is not an add — and flattening that to zero would make the whole
@@ -86,6 +90,10 @@
                          :title (when (:trend p)
                                   "Recent opportunity per game against his season rate")}
                 (format-trend (:trend p))]
+    ;; One decimal, unlike the whole-number projections beside it: this is a
+    ;; per-game rate and rounding 8.4 and 8.6 both to 8 hides the comparison the
+    ;; column exists to make.
+    :form      [:td.num.muted (board/format-one-decimal (:form-points p))]
     :gp        [:td.num.muted (or (get-in p [:nflverse/season-to-date :games]) "–")]
     :tgt       [:td.num.muted (board/format-whole
                                (get-in p [:nflverse/season-to-date :usage :targets]))]

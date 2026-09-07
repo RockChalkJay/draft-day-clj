@@ -371,6 +371,28 @@
     (is (not-any? #(contains? % :ros/games-remaining) (:players b)))
     (is (not-any? #(contains? % :ros/games-played) (:players b)))))
 
+(deftest the-strip-keeps-the-nflverse-half-the-board-renders
+  ;; Tested on the function rather than through the endpoint, because the
+  ;; offline fixture carries no in-season rows at all — an endpoint assertion
+  ;; here passes whether or not the strip exists, which is worse than no test.
+  ;;
+  ;; The trap is that the two `:nflverse/` keys go opposite ways: the recent
+  ;; window is server-side working state now that `form-points` scores it, while
+  ;; season-to-date is what GP, Tgt and Car render. Dropping the prefix
+  ;; wholesale would take the wrong one.
+  (let [[p] (routes/without-projection-internals
+             [{:player-id "a"
+               :ros-points 91.0 :week-points 12.4 :form-points 8.2
+               :nflverse/recent {:games 3 :stats {:rec 18.0}}
+               :nflverse/season-to-date {:games 8 :usage {:targets 60}}
+               :ros/stats {:rec 90.0} :week/stats {:rec 6.0}
+               :week/opponent "SF"}])]
+    (is (not (contains? p :nflverse/recent)))
+    (is (= {:games 8 :usage {:targets 60}} (:nflverse/season-to-date p)))
+    (is (= [91.0 12.4 8.2 "SF"]
+           ((juxt :ros-points :week-points :form-points :week/opponent) p))
+        "the three scored numbers and the rendered weekly fields survive")))
+
 (deftest waivers-endpoint-prices-in-rest-of-season-points-not-auction-dollars
   ;; The draft board's money prices a whole roster out of a bankroll on draft
   ;; night; a claim is one seat against a budget spent over months.

@@ -595,10 +595,12 @@
    {:key :bye       :label "Bye"    :tooltip "Bye week"                   :default? true}
    {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? true}
    {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank when he is not projected — a bye, or nobody's starter" :default? true}
+   {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false}
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true}
    {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid — your share of the budget across the claims the season still allows. Blank when the league does not run FAAB" :default? true}
    {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true}
+   {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules — what his current role has been worth, against what the projection expects of it" :default? false}
    {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true}
    {:key :risk      :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile)" :default? true}
    {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true}
@@ -636,10 +638,12 @@
    :bye       :bye
    :ros       :ros-points
    :week      :week-points
+   :week-rank :week-pos-rank
    :opp       :week/opponent
    :upgrade   :upgrade
    :bid       :bid
    :trend     :trend
+   :form      :form-points
    :gp        #(get-in % [:nflverse/season-to-date :games])
    :tgt       #(get-in % [:nflverse/season-to-date :usage :targets])
    :car       #(get-in % [:nflverse/season-to-date :usage :carries])
