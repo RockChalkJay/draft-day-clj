@@ -240,13 +240,15 @@
   "Assoc `:lineup-upgrade` — what the claim adds to the manager's *starting*
   lineup, against `:upgrade`'s bench delta. See `rankings.lineup`.
 
-  DISPLAY ONLY for now, and deliberately so: `:upgrade`, `:bid` and
-  `db/waiver-rank-key` are untouched, so this changes no ordering and no money.
-  It is on the `:trend`/`:injury-risk` shelf, with one difference worth naming
-  because `rankings.injury` warns about exactly this shape — the removed PDM was
-  computed on every pick and read by nothing. A column a manager *reads* is
-  consumed, and this one is here to be read until the numbers say whether it
-  should become the headline.
+  THE BOARD'S HEADLINE. `db/waiver-rank-key` leads with this and `with-bids`
+  prices most of the FAAB budget on it, so it is no longer the display-only
+  signal it shipped as. It earned that: measured on a real league the bench
+  delta it replaces put ten quarterbacks on top, none of whom would ever start,
+  each carrying an $8 bid.
+
+  `:upgrade` stays alongside rather than being removed. Most of a free-agent
+  pool has no lineup effect at all, so it is what keeps that majority ordered —
+  as the first sort tiebreak, and as the stash pool's weight in `with-bids`.
 
   The lineup is drawn from active seats, not `:player-ids`: a player on IR or
   taxi cannot be started, so counting him would credit the roster with a starter

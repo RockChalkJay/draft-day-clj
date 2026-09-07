@@ -132,7 +132,8 @@
 (defn sort-waiver-players
   "`sort-players` over the waiver catalog: same nil-last rule, same
   tie-into-total-order discipline, different accessors and a different total
-  order (`db/waiver-rank-key`, which leads with Upgrade rather than Worth).
+  order (`db/waiver-rank-key`, which leads with the lineup delta rather
+  than Worth).
 
   Not folded into `sort-players` with a catalog argument, because the two differ
   in *both* halves — accessors and fallback — and a shared function taking both
