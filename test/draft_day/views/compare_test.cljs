@@ -4,6 +4,7 @@
   Not reachable from `lein test` — run with
   `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing]]
+            [draft-day.confidence :as confidence]
             [draft-day.views.compare :as cmp]))
 
 ;; ---- which way a row leans ----
@@ -97,6 +98,27 @@
   ;; Projected in his bye week is a data disagreement, not a bye — believe the
   ;; projection, which is the thing the column actually renders.
   (is (false? (boolean (cmp/on-bye? {:bye 7 :week-points 9.1} 7)))))
+
+;; ---- how much of the gap to believe ----
+
+(defn- wk [pos rank] {:position pos :week-pos-rank rank :player-name (str pos rank)})
+
+(deftest the-calibration-sentence-names-the-gap-and-what-it-is-worth
+  (let [say (fn [a b] (text (cmp/separation-line a (confidence/separation a b))))]
+    (is (re-find #"Too close to call — 2 WRs apart" (say (wk "WR" 8) (wk "WR" 10))))
+    (is (re-find #"about half the time" (say (wk "WR" 8) (wk "WR" 10))))
+    (is (re-find #"A slight edge — 12 WRs apart" (say (wk "WR" 3) (wk "WR" 15))))
+    (is (re-find #"A clear gap — 30 WRs apart" (say (wk "WR" 1) (wk "WR" 31))))))
+
+(deftest the-sentence-is-singular-for-a-gap-of-one
+  (is (re-find #"1 WR apart"
+               (text (cmp/separation-line (wk "WR" 8)
+                                          {:level :coin-flip :gap 1})))))
+
+(deftest nothing-is-said-where-nothing-was-measured
+  ;; A cross-position pair, a DST, or a player with no weekly line. Silence is
+  ;; the honest output — see `draft-day.confidence`.
+  (is (nil? (cmp/separation-line (wk "WR" 8) nil))))
 
 ;; ---- what the tile compares ----
 

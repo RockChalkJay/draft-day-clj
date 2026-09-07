@@ -597,6 +597,12 @@ tr.upgrade .p-name { font-weight: 600; }
 /* The leader is said with weight and colour; the trailing side recedes rather
    than the winner shouting. No second hue — direction already carries who. */
 .cmp-v.win { color: var(--text); font-weight: 700; }
+/* The slot the abandoned vendor spread was going to take. Rank goes here so the
+   row needs no new geometry — and it is what carries the comparison on exactly
+   the rows where the bar deliberately says nothing. Weight and colour are reset
+   so it recedes under a winning value rather than inheriting its emphasis. */
+.cmp-sub { display: block; margin-top: 1px; font-size: 10px; font-weight: 400;
+  letter-spacing: .02em; color: var(--muted); }
 
 .cmp-mid { min-width: 0; }
 .cmp-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .05em;
@@ -614,6 +620,13 @@ tr.upgrade .p-name { font-weight: 600; }
   border-radius: 3px; }
 .cmp-bar i.l { right: 50%; }
 .cmp-bar i.r { left: 50%; }
+/* The third state: a gap the measurement says is not worth believing. A short
+   symmetric fill straddling the centre reads as a needle resting at zero — a
+   balance that has not tipped — and cannot be taken for either an empty track
+   (no weekly line, so no track is drawn at all) or a real edge (one-sided, in
+   --accent). Deliberately not --warn: nothing here is failing, and red already
+   means a negative number on this board. */
+.cmp-bar i.even { left: 37%; width: 26%; background: var(--muted); opacity: .55; }
 
 /* The two horizons are the question; the band under them is evidence. */
 .cmp-row.big { padding: 7px 0; }
@@ -625,6 +638,10 @@ tr.upgrade .p-name { font-weight: 600; }
   line-height: 1.45; text-align: center; }
 .cmp-note { color: var(--muted); font-size: 11px; text-align: center;
   margin-top: 10px; }
+/* Under the reading line, and quieter than it: the reading line says what the
+   two horizons show, this says how much of it to believe. */
+.cmp-cal { margin-top: 6px; color: var(--muted); font-size: 11px;
+  line-height: 1.4; text-align: center; }
 
 /* A compared row keeps its tier stripe: the accent is an inset shadow, not a
    background, for the reason the board's insertion line is (a border reflows

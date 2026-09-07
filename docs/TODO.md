@@ -77,7 +77,17 @@ between a league's real rules and what the board can score.
   true for any non-linear rule (FG distance buckets, DST points-allowed tiers),
   the same set `scoring-coverage.md` already tracks.
 
-- **A vendor-disagreement column, measured and shelved.** The idea was a `±`
+- ~~**A vendor-disagreement column.**~~ Superseded rather than shelved. It was
+  reaching for "is this difference real", and vendor agreement turns out to be a
+  poor proxy for that: the ESPN/Sleeper spread is 0.78 points against a real
+  median error of 4.04, so two vendors agreeing says far more about their shared
+  method than about the player. `draft-day.confidence` answers the same question
+  against **actual outcomes** instead, and in rank gaps rather than points, so it
+  needs no error model and is identical under any scoring config. The findings
+  that stopped the spread stand and are kept below, because they are facts about
+  the ESPN feed that the next idea to reach for it will need.
+
+  The original entry: the idea was a `±`
   beside each projection showing how far ESPN and Sleeper disagree — display
   only, so it needs no validation, and two players projecting the same number
   with different agreement is not a tie. ESPN's full projected line is already
@@ -95,7 +105,18 @@ between a league's real rules and what the board can score.
     members cannot be told apart by magnitude, and guessing produces a confident
     wrong number.
   The residual disagreement is real once the bias is removed (IQR of the ratio
-  is 0.19-0.26 for RB/WR/TE), so this is shelved rather than rejected.
+  is 0.19-0.26 for RB/WR/TE) — but it is a fifth of the error it would be
+  standing in for, which is what settled it.
+
+- **The calibration is one vendor, one season, half-PPR.** `confidence/win-rates`
+  was measured from 2025 Rotowire weekly projections against 2025 actuals. The
+  *shape* travels — a rank gap needs no error model and is scoring-invariant —
+  but the percentages may not, and nothing re-derives them. They live in one
+  named table with its provenance in the ns docstring so that re-measuring is a
+  data change. Two gaps worth closing: no position outside QB/RB/WR/TE/K was
+  measured at all (DST gets no verdict, deliberately), and the deep-pool split
+  that matters most for a waiver board — where discrimination is *worst* — is
+  recorded in prose rather than in the table the code reads.
 
 - ~~Drag-and-drop column bugs found reviewing #12: droppable `text/plain` payload,
   picker drag dead in Firefox, missing `preventDefault`, insertion line flicker~~

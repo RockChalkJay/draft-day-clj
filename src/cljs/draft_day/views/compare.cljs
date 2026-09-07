@@ -12,11 +12,20 @@
   assert a verdict the number does not carry. Same restraint the board applies
   to `:trend` and `:injury-risk`.
 
+  The weekly row takes that restraint one step further, because the bar there
+  used to assert something measurement does not support: two players a few
+  ranks apart are a coin flip (see `draft-day.confidence`). So its track has
+  three states, and they have to stay distinguishable — no track at all when
+  there is no weekly line, a centred muted fill when the board cannot separate
+  them, and a directional accent fill only when it can. Collapsing the first
+  two is the bug #52 shipped once, where missing data rendered as a tie.
+
   It floats without a backdrop. The interaction is holding one player and
   clicking down the board through challengers, and a scrim swallows exactly
   those clicks — see `.cmp-float` in styles.css."
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
+            [draft-day.confidence :as confidence]
             [draft-day.views.board :as board]
             [draft-day.views.controls :as controls]
             [draft-day.views.util :as util]
@@ -88,6 +97,36 @@
 
       :else nil)))
 
+(defn separation-line
+  "What the weekly rank gap is worth, said as measured rather than as a rate.
+
+  nil where `confidence/separation` declines to answer, which is most of the
+  board — a bye, a cross-position pair, a DST. Saying nothing is the point:
+  this only speaks where there is a measurement behind it."
+  [a sep]
+  (when sep
+    (let [pos  (:position a)
+          gap  (:gap sep)
+          apart (str gap " " pos (when (> gap 1) "s") " apart")]
+      ;; Three sentences of one shape: the verdict, the gap, then what the gap
+      ;; was measured to be worth. Parallel because they appear in the same slot
+      ;; and a manager reads them as one another's alternatives.
+      (case (:level sep)
+        :coin-flip [:span "Too close to call — " apart
+                    ", which the weekly projection calls right about half the time."]
+        :slight    [:span "A slight edge — " apart
+                    ", which the weekly projection calls right closer to six times in ten."]
+        :clear     [:span "A clear gap — " apart
+                    ", which the weekly projection has usually called right."]))))
+
+(defn week-rank-label
+  "\"WR8\" under a weekly number, or nil. The ordinal carries its own scale for
+  the reason the board's Wk# column does — and it is what keeps the row legible
+  on exactly the comparisons where the bar deliberately says nothing."
+  [p]
+  (when-let [n (:week-pos-rank p)]
+    (str (:position p) n)))
+
 (def bands
   "The tile's three bands, in reading order: the question, the evidence for it,
   and what the claim costs.
@@ -102,10 +141,15 @@
   "What the tile compares. `:bar?` false where neither side is better; `:big?`
   marks the two horizons, which are the question rather than the evidence."
   [{:band :horizon  :label "This week"      :f :week-points :big? true
-    :fmt board/format-whole}
+    :fmt board/format-whole :sub week-rank-label :calibrated? true}
    {:band :horizon  :label "Rest of season" :f :ros-points  :big? true
     :fmt board/format-whole}
    {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend}
+   ;; What the role has been worth, against what the projection expects of it.
+   ;; The disagreement is the waiver-wire buy, so it belongs beside the horizons
+   ;; rather than folded into them.
+   {:band :evidence :label "Form / game"    :f :form-points
+    :fmt board/format-one-decimal}
    {:band :evidence :label "Opportunity / game" :f opportunity-per-game
     :fmt #(if (number? %) (.toFixed % 1) "–")}
    {:band :evidence :label "Games played"   :bar? false
@@ -122,27 +166,36 @@
 
 ;; ---- rendering ----
 
-(defn value-cell [side v fmt winner?]
-  [:div {:class (str "cmp-v " (name side) (when winner? " win"))} (fmt v)])
+(defn value-cell [side v fmt winner? sub]
+  [:div {:class (str "cmp-v " (name side) (when winner? " win"))}
+   (fmt v)
+   (when sub [:span.cmp-sub sub])])
 
-(defn metric-row [{:keys [label f fmt better bar? big?] :or {bar? true}} a b]
+(defn metric-row
+  "One row. `sep` is `confidence/separation` for the pair, and only a row marked
+  `:calibrated?` consults it — the rest have no measurement behind them."
+  [{:keys [label f fmt better bar? big? sub calibrated?] :or {bar? true}} a b sep]
   (let [va (f a)
         vb (f b)
         ;; The track is drawn only when both sides are numbers, so an empty one
         ;; means "even" and nothing else. Drawing it whenever the row *could*
         ;; compare made a preseason board of missing data look like four ties.
         track? (and bar? (number? va) (number? vb))
-        lean   (when track? (lean va vb better))]
+        ;; A measured tie, which is not the same as no data and must not look
+        ;; like it. The needle rests at zero rather than the track being absent.
+        even?  (and calibrated? (= :coin-flip (:level sep)))
+        lean   (when (and track? (not even?)) (lean va vb better))]
     [:div {:class (str "cmp-row" (when big? " big"))}
-     [value-cell :l va fmt (= :l (:side lean))]
+     [value-cell :l va fmt (= :l (:side lean)) (when sub (sub a))]
      [:div.cmp-mid
       [:div.cmp-lbl label]
       (when track?
         [:div.cmp-bar
-         (when lean
-           [:i {:class (name (:side lean))
-                :style {:width (str (* 50.0 (:frac lean)) "%")}}])])]
-     [value-cell :r vb fmt (= :r (:side lean))]]))
+         (cond
+           even? [:i.even]
+           lean  [:i {:class (name (:side lean))
+                      :style {:width (str (* 50.0 (:frac lean)) "%")}}])])]
+     [value-cell :r vb fmt (= :r (:side lean)) (when sub (sub b))]]))
 
 (defn face
   "Silhouette underneath, headshot on top. Same arrangement as `controls/face`
@@ -177,7 +230,8 @@
           ;; the universe the browser already holds — the same indirection
           ;; `player-stats/nominated-stats` uses, and for the same reason.
           shot    (fn [p] (util/headshot-url (get by-id (:player-id p))))
-          [a b]   players]
+          [a b]   players
+          sep     (when b (confidence/separation a b))]
       (when a
         [:div.cmp-float
          [:div.cmp-tile
@@ -196,15 +250,17 @@
             [:<>
              [:div.cmp-band
               (for [r (rows-by-band :horizon)]
-                ^{:key (:label r)} [metric-row r a b])
+                ^{:key (:label r)} [metric-row r a b sep])
               (when-let [line (reading-line a b week)]
-                [:p.cmp-read line])]
+                [:p.cmp-read line])
+              (when-let [line (separation-line a sep)]
+                [:p.cmp-cal line])]
              [:div.cmp-band
               (for [r (rows-by-band :evidence)]
-                ^{:key (:label r)} [metric-row r a b])]
+                ^{:key (:label r)} [metric-row r a b sep])]
              [:div.cmp-band
               (for [r (rows-by-band :claim)]
-                ^{:key (:label r)} [metric-row r a b])
+                ^{:key (:label r)} [metric-row r a b sep])
               ;; From whichever side is a free agent — with a rostered player on
               ;; the left, only the right one carries a claim.
               (when-let [drop (some :drop-candidate [a b])]
