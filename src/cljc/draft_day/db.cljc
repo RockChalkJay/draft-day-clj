@@ -28,6 +28,32 @@
 (defn roster-template [roster-cfg]
   (vec (mapcat (fn [[label k]] (repeat (get roster-cfg k 0) label)) roster-order)))
 
+(def ^:private flex-positions
+  "What a FLEX seat accepts."
+  #{"RB" "WR" "TE"})
+
+(defn slot-accepts?
+  "Can a player at `position` occupy a `slot` from `roster-template`?
+
+  The one copy of the FLEX rule on this side of the wire. It had four spellings
+  — `events/eligible?`, `rankings.pdm`, `replacement/flex-starter-keys` and
+  `benchmark.simulate` — and `replacement.clj`'s docstring already calls that
+  drift out by name. BENCH accepts anyone, which is what makes this usable for
+  seating as well as for starting; `starting-slots` is what drops the bench."
+  [slot position]
+  (or (= slot position)
+      (and (= slot "FLEX") (contains? flex-positions position))
+      (= slot "BENCH")))
+
+(defn starting-slots
+  "The seats that actually score: `roster-template` without the bench.
+
+  A bench seat holds a player and contributes nothing, so a lineup total that
+  counted them would just be the roster total and every claim would look like an
+  upgrade."
+  [roster-cfg]
+  (filterv #(not= "BENCH" %) (roster-template roster-cfg)))
+
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
 (def persist-keys
@@ -598,6 +624,7 @@
    {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false}
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true}
+   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start \u2014 unlike Upg, which measures him against your worst bench player" :default? false}
    {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid — your share of the budget across the claims the season still allows. Blank when the league does not run FAAB" :default? true}
    {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true}
    {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules — what his current role has been worth, against what the projection expects of it" :default? false}
@@ -641,6 +668,7 @@
    :week-rank :week-pos-rank
    :opp       :week/opponent
    :upgrade   :upgrade
+   :lineup    :lineup-upgrade
    :bid       :bid
    :trend     :trend
    :form      :form-points

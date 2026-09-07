@@ -194,10 +194,9 @@
 
 ;; ---- draft actions ----
 
-(defn- eligible? [slot-pos position]
-  (or (= slot-pos position)
-      (and (= slot-pos "FLEX") (#{"RB" "WR" "TE"} position))
-      (= slot-pos "BENCH")))
+;; One copy of the FLEX rule, in `db` so both sides of the wire read the same
+;; one — this file's private version was the fourth spelling of it.
+(def ^:private eligible? db/slot-accepts?)
 
 (defn- fill-slot [roster position player-id]
   (if-let [idx (first (keep-indexed (fn [i s] (when (and (nil? (:player-id s))
@@ -589,6 +588,10 @@
      :replacement-config (replacement-config (get-in db [:config :roster]))
      :league             (:sync lg)
      :my-roster-id       (:my-roster-id lg)
+     ;; The whole roster config, not just `replacement-config` — that one drops
+     ;; K and DST, which fill starting slots and score. See
+     ;; `waiver/with-lineup-upgrade`.
+     :roster             (get-in db [:config :roster])
      :roster-size        (count (db/roster-template (get-in db [:config :roster])))}))
 
 (rf/reg-event-fx :fetch-waivers

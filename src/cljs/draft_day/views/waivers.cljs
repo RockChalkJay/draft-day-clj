@@ -82,6 +82,17 @@
     ;; the digits have to come from the same value.
     :upgrade   (let [n (js/Math.round (or (:upgrade p) 0))]
                  [:td.num {:class (util/sign-class n)} (util/signed n)])
+    ;; Absent when the request carried no roster config, which is a different
+    ;; answer from a lineup this claim would not change.
+    ;; Signed and coloured like Upg, because it goes negative for a real reason:
+    ;; the drop can be a starter, and a claim that costs you lineup points is
+    ;; exactly what this column exists to show. Absent (a request that carried
+    ;; no roster config) is a dash, not a zero.
+    :lineup    (let [n (:lineup-upgrade p)]
+                 (if (number? n)
+                   (let [r (js/Math.round n)]
+                     [:td.num {:class (util/sign-class r)} (util/signed r)])
+                   [:td.num [:span.muted "–"]]))
     ;; A nil bid and a $0 bid are different answers and must not render the
     ;; same. nil is "this league does not bid"; $0 is a legal FAAB bid that says
     ;; he is worth the minimum.

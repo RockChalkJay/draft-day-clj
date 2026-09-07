@@ -48,6 +48,7 @@
   in-season signal that is *not* on that shelf, and it is added elsewhere — see
   `rankings.pos-rank`."
   (:require [draft-day.db :as db]
+            [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.replacement :as replacement]
             [draft-day.scoring :as scoring]))
 
@@ -180,6 +181,42 @@
   spellings, rather than a coercion repeated at each caller."
   [type]
   (= :faab (when type (keyword type))))
+
+(defn with-lineup-upgrade
+  "Assoc `:lineup-upgrade` — what the claim adds to the manager's *starting*
+  lineup, against `:upgrade`'s bench delta. See `rankings.lineup`.
+
+  DISPLAY ONLY for now, and deliberately so: `:upgrade`, `:bid` and
+  `db/waiver-rank-key` are untouched, so this changes no ordering and no money.
+  It is on the `:trend`/`:injury-risk` shelf, with one difference worth naming
+  because `rankings.injury` warns about exactly this shape — the removed PDM was
+  computed on every pick and read by nothing. A column a manager *reads* is
+  consumed, and this one is here to be read until the numbers say whether it
+  should become the headline.
+
+  The lineup is drawn from active seats, not `:player-ids`: a player on IR or
+  taxi cannot be started, so counting him would credit the roster with a starter
+  it does not have.
+
+  The key is left off entirely — not set to 0 — in the two cases where there is
+  no lineup to measure against: a request that carried no roster config, and a
+  manager who has not picked his team. The second is the default state, and
+  without the guard every free agent's delta is his *entire* line, which is both
+  meaningless and numerically identical to `:upgrade` beside it, so nothing on
+  screen says it is not answering. `:my-roster` keeps nil rather than `[]` for
+  the same reason.
+
+  `before` is passed in rather than recomputed: it is the same value for every
+  candidate, and this runs once per free agent on a response re-POSTed with
+  every refresh."
+  [fas roster drop slots]
+  (if-not (and (seq slots) (seq roster))
+    fas
+    (let [before (lineup/lineup-points roster slots :ros-points)]
+      (mapv (fn [p]
+              (assoc p :lineup-upgrade
+                     (lineup/upgrade before roster p drop slots :ros-points)))
+            fas))))
 
 (defn with-bids
   "Assoc `:bid` on every free agent: his share of the remaining budget.
@@ -387,7 +424,8 @@
   connected one yet. Everyone is free, there is nothing to drop and no budget to
   bid, and the board is a rest-of-season ranking, which is a useful thing on its
   own."
-  [board {:keys [league my-roster-id roster-size num-teams replacement-config] :as ctx}]
+  [board {:keys [league my-roster-id roster-size num-teams replacement-config
+                 starting-slots] :as ctx}]
   (let [{:keys [teams waiver]} league
         xwalk    (db/sleeper->player-id board)
         rostered (rostered-index teams xwalk)
@@ -399,11 +437,17 @@
         ;; who synced without importing has never set to match this league — and
         ;; a wrong seat count decides the one question `drop-candidate` asks.
         seats    (or (:roster-size league) roster-size)
-        drop     (when my-team
-                   (drop-candidate (held-ids my-team xwalk :active-ids) by-id seats))
+        ;; One binding, read by the drop and by the lineup. `held-ids`' own
+        ;; docstring is about what happened the one time two readers of a roster
+        ;; disagreed, and two call sites that must stay in step is that shape.
+        active   (held-ids my-team xwalk :active-ids)
+        drop     (when my-team (drop-candidate active by-id seats))
         n        (claims-left ctx)]
     {:players            (-> (free-agents players rostered)
                              (with-upgrade drop)
+                             (with-lineup-upgrade
+                               (vec (keep #(get by-id %) active))
+                               drop starting-slots)
                              (with-bids waiver (:faab-left my-team) n)
                              with-trend)
      :my-roster          (my-roster my-team xwalk by-id drop)
