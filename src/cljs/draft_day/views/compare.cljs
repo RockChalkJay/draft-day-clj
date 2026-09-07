@@ -148,6 +148,12 @@
    ;; What the role has been worth, against what the projection expects of it.
    ;; The disagreement is the waiver-wire buy, so it belongs beside the horizons
    ;; rather than folded into them.
+   ;;
+   ;; It keeps a directional bar, and `draft-day.confidence` deliberately does
+   ;; not reach it: form is *realized* production, not a forecast. A player who
+   ;; scored more over the last three weeks did outscore the other, and the bar
+   ;; says that happened rather than predicting it will. The calibration exists
+   ;; because a weekly projection is a claim about a game nobody has played.
    {:band :evidence :label "Form / game"    :f :form-points
     :fmt board/format-one-decimal}
    {:band :evidence :label "Opportunity / game" :f opportunity-per-game

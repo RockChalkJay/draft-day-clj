@@ -40,10 +40,18 @@
   (is (= :slight (confidence/level "QB" 500))))
 
 (deftest the-thresholds-match-the-table-they-were-read-off
-  ;; Guards the pair from drifting apart: every :slight gap must actually clear
-  ;; 55% in `win-rates`, and the gap below the smallest measured one must not.
-  (doseq [[pos {:keys [slight clear]}] confidence/separating-gaps]
-    (let [rates (get confidence/win-rates pos)]
+  ;; Guards the pair from drifting apart, and in both directions. Iterating only
+  ;; `separating-gaps` would miss the likelier drift: `win-rates` is the table
+  ;; somebody re-deriving the calibration edits first, and a position added
+  ;; there but forgotten here reports as never-measured though it was.
+  (doseq [pos (into (set (keys confidence/win-rates))
+                    (keys confidence/separating-gaps))]
+    (let [rates (get confidence/win-rates pos)
+          {:keys [slight clear]} (get confidence/separating-gaps pos)]
+      (is (some? rates) (str pos " has a threshold but no measured rates"))
+      (is (contains? confidence/separating-gaps pos)
+          (str pos " was measured but has no threshold, so `level` reports it
+               as never measured"))
       (when slight
         (is (>= (get rates slight) confidence/slight-threshold)
             (str pos " :slight at " slight)))
