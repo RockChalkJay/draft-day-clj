@@ -89,7 +89,7 @@
         ;; to call" — two sentences disagreeing about the same number. Worse was
         ;; the split, which framed a buy-Sunday-or-hold decision around a weekly
         ;; difference that is not there.
-        even? (= :coin-flip (:level sep))
+        even? (confidence/coin-flip? sep)
         wk    (when-not even? (ahead a b :week-points))
         ros   (ahead a b :ros-points)]
     (cond
@@ -208,7 +208,7 @@
         track? (and bar? (number? va) (number? vb))
         ;; A measured tie, which is not the same as no data and must not look
         ;; like it. The needle rests at zero rather than the track being absent.
-        even?  (and calibrated? (= :coin-flip (:level sep)))
+        even?  (and calibrated? (confidence/coin-flip? sep))
         lean   (when (and track? (not even?)) (lean va vb better))]
     [:div {:class (str "cmp-row" (when big? " big"))}
      [value-cell :l va fmt (= :l (:side lean)) (when sub (sub a))]
