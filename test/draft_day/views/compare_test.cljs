@@ -48,35 +48,35 @@
 (deftest reading-line-names-the-split
   ;; The whole reason the tile exists: the two horizons disagree, and a table of
   ;; numbers hides that behind arithmetic.
-  (let [s (text (cmp/reading-line odunze jennings 5))]
+  (let [s (text (cmp/reading-line odunze jennings 5 nil))]
     (is (re-find #"Rome Odunze projects higher this week" s))
     (is (re-find #"Jauan Jennings is the better rest-of-season hold" s))))
 
 (deftest reading-line-says-so-when-they-agree
   (let [better (assoc jennings :week-points 18.0 :ros-points 140.0)
-        s      (text (cmp/reading-line odunze better 5))]
+        s      (text (cmp/reading-line odunze better 5 nil))]
     (is (= "Jauan Jennings is ahead on both." s))))
 
 (deftest reading-line-never-picks-for-you
   ;; When the horizons split there is no answer without knowing whether the
   ;; manager is buying this Sunday or the rest of the year.
-  (let [s (text (cmp/reading-line odunze jennings 5))]
+  (let [s (text (cmp/reading-line odunze jennings 5 nil))]
     (is (not (re-find #"(?i)should|take |better claim|pick " s)))))
 
 (deftest reading-line-leads-with-a-bye
   ;; A bye outranks every other reading: the weekly number is not low, it does
   ;; not exist.
-  (let [s (text (cmp/reading-line (dissoc odunze :week-points) jennings 7))]
+  (let [s (text (cmp/reading-line (dissoc odunze :week-points) jennings 7 nil))]
     (is (= "Rome Odunze is on bye this week." s))))
 
 (deftest reading-line-falls-back-to-rest-of-season
   (let [a (dissoc odunze :week-points)
         b (dissoc jennings :week-points)
-        s (text (cmp/reading-line a b nil))]
+        s (text (cmp/reading-line a b nil nil))]
     (is (re-find #"Jauan Jennings is ahead rest-of-season" s))))
 
 (deftest reading-line-is-absent-with-nothing-to-say
-  (is (nil? (cmp/reading-line {:player-name "A"} {:player-name "B"} nil))))
+  (is (nil? (cmp/reading-line {:player-name "A"} {:player-name "B"} nil nil))))
 
 ;; ---- evidence ----
 
@@ -98,6 +98,53 @@
   ;; Projected in his bye week is a data disagreement, not a bye — believe the
   ;; projection, which is the thing the column actually renders.
   (is (false? (boolean (cmp/on-bye? {:bye 7 :week-points 9.1} 7)))))
+
+;; ---- the sentence must not outrun the measurement ----
+;; The tile prints the reading line directly above the calibration line, so a
+;; weekly claim here that `separation-line` disclaims underneath is two
+;; sentences disagreeing about one number. Found in the live app, not by these
+;; tests: `reading-line` predates the calibration and read `:week-points` raw.
+
+(def ^:private coin-flip {:level :coin-flip :gap 5})
+(def ^:private clear-gap {:level :clear :gap 30})
+
+(deftest a-coin-flip-week-is-not-a-weekly-lead
+  ;; Nabers vs McConkey, the live reproduction: ahead on *both* raw numbers, so
+  ;; the tile said "ahead on both" directly above "Too close to call".
+  (let [weaker (assoc jennings :ros-points 80.0)
+        s      (text (cmp/reading-line odunze weaker 5 coin-flip))]
+    (is (not (re-find #"this week" s)))
+    (is (not (re-find #"ahead on both" s)))
+    (is (re-find #"Rome Odunze is ahead rest-of-season" s))))
+
+(deftest a-coin-flip-does-not-manufacture-a-split
+  ;; The worse half of the bug. A split sentence frames a real decision — buy
+  ;; for Sunday, or hold for the season — and doing that on a weekly difference
+  ;; the measurement says is absent is worse than saying nothing.
+  (let [s (text (cmp/reading-line odunze jennings 5 coin-flip))]
+    (is (not (re-find #"projects higher this week" s))
+        "odunze leads the week and jennings the season, but the week is noise")
+    (is (re-find #"Jauan Jennings is ahead rest-of-season" s))))
+
+(deftest a-measured-gap-still-gets-its-sentence
+  ;; The fix removes a claim; it must not silence the line generally.
+  (let [s (text (cmp/reading-line odunze jennings 5 clear-gap))]
+    (is (re-find #"Rome Odunze projects higher this week" s))
+    (is (re-find #"Jauan Jennings is the better rest-of-season hold" s))))
+
+(deftest the-coin-flip-sentence-does-not-repeat-the-calibration
+  ;; Two branches end at rest-of-season and must stay distinct. "no weekly
+  ;; projection separates them" is about *absent data*; a coin flip has data,
+  ;; and `separation-line` explains it underneath in its own terms.
+  (let [flip (text (cmp/reading-line odunze jennings 5 coin-flip))
+        gone (text (cmp/reading-line (dissoc odunze :week-points)
+                                     (dissoc jennings :week-points) 5 nil))]
+    (is (not (re-find #"no weekly" flip)))
+    (is (re-find #"no weekly" gone) "the missing-data wording is still reachable")))
+
+(deftest a-bye-still-outranks-a-coin-flip
+  (let [s (text (cmp/reading-line (dissoc odunze :week-points) jennings 7 coin-flip))]
+    (is (= "Rome Odunze is on bye this week." s))))
 
 ;; ---- how much of the gap to believe ----
 

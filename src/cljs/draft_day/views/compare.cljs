@@ -77,11 +77,21 @@
   It never says which player to take: when they disagree there is no answer
   without knowing whether the manager is buying this Sunday or the rest of the
   year, and a tile that guessed would be confidently wrong half the time. It
-  names the split and stops."
-  [a b week]
-  (let [bye (first (filter #(on-bye? % week) [a b]))
-        wk  (ahead a b :week-points)
-        ros (ahead a b :ros-points)]
+  names the split and stops.
+
+  `sep` is `confidence/separation` for the pair, and it is required rather than
+  defaulted — see the coin-flip branch for what a `sep`-less call would print."
+  [a b week sep]
+  (let [bye   (first (filter #(on-bye? % week) [a b]))
+        ;; A weekly lead the measurement calls a coin flip is not a lead. This
+        ;; sentence used to read it straight off `:week-points`, so on a close
+        ;; pair the tile printed "X is ahead on both" directly above "Too close
+        ;; to call" — two sentences disagreeing about the same number. Worse was
+        ;; the split, which framed a buy-Sunday-or-hold decision around a weekly
+        ;; difference that is not there.
+        even? (= :coin-flip (:level sep))
+        wk    (when-not even? (ahead a b :week-points))
+        ros   (ahead a b :ros-points)]
     (cond
       bye [:span [:b (:player-name bye)] " is on bye this week."]
 
@@ -91,6 +101,15 @@
 
       (and wk ros)
       [:span [:b (:player-name wk)] " is ahead on both."]
+
+      ;; Deliberately not merged with the branch below, though both end at
+      ;; rest-of-season. That one means *neither player has a weekly line* — a
+      ;; bye, or nobody projects him — and says so. This one means the line
+      ;; exists and does not discriminate, which `separation-line` states
+      ;; underneath in the terms it was measured in. Saying it twice, in two
+      ;; vocabularies, is what this branch exists to avoid.
+      (and ros even?)
+      [:span [:b (:player-name ros)] " is ahead rest-of-season."]
 
       ros [:span [:b (:player-name ros)] " is ahead rest-of-season, and no weekly "
            "projection separates them."]
@@ -257,7 +276,7 @@
              [:div.cmp-band
               (for [r (rows-by-band :horizon)]
                 ^{:key (:label r)} [metric-row r a b sep])
-              (when-let [line (reading-line a b week)]
+              (when-let [line (reading-line a b week sep)]
                 [:p.cmp-read line])
               (when-let [line (separation-line a sep)]
                 [:p.cmp-cal line])]
