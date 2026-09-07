@@ -61,9 +61,10 @@
   several hundred rows on a response the board re-POSTs on every refresh.
 
   Signed, and the negative case is real rather than a guard: **the drop can be a
-  starter**. `waiver/drop-candidate` names the lowest-scoring player holding an
-  active seat, and on a roster whose bench is thin that man is in the lineup —
-  so claiming a free agent who would not start costs exactly what the drop was
+  starter**. `waiver/drop-candidate` prefers a drop that costs the lineup
+  nothing, but a roster can fail to offer one — every bench seat empty, or a
+  bench thinner than the claim — and then the cheapest available drop is still
+  a starter, so claiming a free agent who would not start costs what he was
   contributing. A board that clamped this at 0 would hide the one thing the
   manager most needs to know, which is that the claim makes his lineup worse.
 

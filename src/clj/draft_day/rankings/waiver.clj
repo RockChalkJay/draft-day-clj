@@ -110,13 +110,33 @@
   `roster-size` is how many seats the league gives each team. Absent, the roster
   is treated as full: naming a drop that was not needed costs a suggestion,
   while missing one that was needed costs a roster spot the manager did not
-  know he was spending."
-  [held by-id roster-size]
+  know he was spending.
+
+  WHICH PLAYER, AND WHY IT IS NOT SIMPLY THE LOWEST SCORER. With `slots` the
+  drop is whoever costs the **starting lineup** least to lose, ties broken by
+  lowest `:ros-points`. On a deep bench every bench player costs nothing, so the
+  tiebreak decides and the answer is the one the old rule gave.
+
+  It diverges exactly where the old rule was wrong. Measured on a real 12-team
+  league, the lowest-scoring active player was the manager's *only kicker* — a
+  starter — so every claim was priced as costing his whole line and 442 of 457
+  free agents came out negative. That was not the board finding bad claims; it
+  was the board charging every claim for a seat it did not have to empty.
+
+  Without `slots` — a request that carried no roster config — it keeps the
+  points rule exactly, because there is no lineup to cost anything against."
+  [held by-id roster-size slots]
   (when-not (and roster-size (< (count held) roster-size))
-    (->> held
-         (keep #(get by-id %))
-         (sort-by #(double (or (:ros-points %) 0.0)))
-         first)))
+    (let [players (vec (keep #(get by-id %) held))
+          points  #(double (or (:ros-points %) 0.0))]
+      (if-not (seq slots)
+        (first (sort-by points players))
+        (let [full (lineup/lineup-points players slots :ros-points)
+              cost (fn [p]
+                     (- full (lineup/lineup-points
+                              (remove #(= (:player-id %) (:player-id p)) players)
+                              slots :ros-points)))]
+          (first (sort-by (juxt cost points) players)))))))
 
 (defn with-upgrade
   "Assoc `:upgrade` — rest-of-season points gained by making the claim — on every
@@ -441,7 +461,7 @@
         ;; docstring is about what happened the one time two readers of a roster
         ;; disagreed, and two call sites that must stay in step is that shape.
         active   (held-ids my-team xwalk :active-ids)
-        drop     (when my-team (drop-candidate active by-id seats))
+        drop     (when my-team (drop-candidate active by-id seats starting-slots))
         n        (claims-left ctx)]
     {:players            (-> (free-agents players rostered)
                              (with-upgrade drop)

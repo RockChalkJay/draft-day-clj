@@ -468,3 +468,53 @@
     (is (nil? (:my-roster out)) "precondition: no team picked")
     (is (not (contains? row :lineup-upgrade))
         "absent, not zero and not his whole line")))
+
+;; ---- a drop that costs the lineup least ----
+
+(defn- drop-for
+  "The named drop for a roster of [id pos ros] triples, with and without slots."
+  [rows slots]
+  (let [ps    (mapv (fn [[id pos pts]] (p id pos pts)) rows)
+        by-id (into {} (map (juxt :player-id identity)) ps)
+        held  (mapv first rows)]
+    (:player-id (waiver/drop-candidate held by-id (count rows) slots))))
+
+(def ^:private lineup-slots
+  (draft-day.db/starting-slots draft-day.db/default-roster))
+
+(deftest a-deep-bench-still-names-the-player-the-old-rule-did
+  ;; The property that keeps this from being a behaviour change on most rosters:
+  ;; every bench player costs the lineup nothing, so the tiebreak decides and
+  ;; the tiebreak is the old rule.
+  (let [rows [["qb1" "QB" 260.0] ["rb1" "RB" 180.0] ["rb2" "RB" 150.0]
+              ["wr1" "WR" 170.0] ["wr2" "WR" 120.0] ["te1" "TE" 95.0]
+              ["k1" "K" 100.0] ["d1" "DST" 80.0]
+              ["bench1" "WR" 60.0] ["bench2" "RB" 40.0]]]
+    (is (= "bench2" (drop-for rows lineup-slots)))
+    (is (= "bench2" (drop-for rows nil)) "and the points rule agrees here")))
+
+(deftest the-only-kicker-is-not-the-drop-just-because-he-scores-least
+  ;; The measured case. On a real 12-team league the lowest-scoring active
+  ;; player was the manager's only kicker — a starter — so every claim was
+  ;; priced as costing his whole line and 442 of 457 free agents came out
+  ;; negative. The points rule still picks him; the lineup rule must not.
+  ;; QB/RB/RB/WR/WR/TE/FLEX/K/DST seats a lineup of
+  ;; qb1 rb1 rb2 wr1 wr3 te1 rb3(FLEX) k1 d1 — so wr2 at 120 is the only man
+  ;; NOT starting, however healthy his number looks. Names say so: two players
+  ;; called "bench" that both start is how the first draft of this test lied.
+  (let [rows [["qb1" "QB" 260.0] ["rb1" "RB" 180.0] ["rb2" "RB" 150.0]
+              ["wr1" "WR" 170.0] ["wr3" "WR" 140.0] ["rb3" "RB" 130.0]
+              ["wr2" "WR" 120.0] ["te1" "TE" 95.0]
+              ["k1" "K" 39.0] ["d1" "DST" 80.0]]]
+    (is (= "k1" (drop-for rows nil))
+        "precondition: the kicker is the lowest scorer, so the old rule takes him")
+    (is (= "wr2" (drop-for rows lineup-slots))
+        "the lineup rule takes the one man who is not starting")
+    (is (not= "k1" (drop-for rows lineup-slots))
+        "and never the only kicker, whose seat nobody else can fill")))
+
+(deftest with-no-slots-the-points-rule-is-kept-exactly
+  ;; A request that carried no roster config has no lineup to cost anything
+  ;; against, so it must not silently get a different answer.
+  (let [rows [["a" "WR" 10.0] ["b" "RB" 5.0] ["c" "TE" 7.0]]]
+    (is (= "b" (drop-for rows nil)))))
