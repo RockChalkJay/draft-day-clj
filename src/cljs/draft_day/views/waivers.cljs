@@ -32,7 +32,17 @@
 (defn format-trend [t]
   (if (number? t) (str (.toFixed t 2) "×") "–"))
 
-(defn cell [k p]
+(defn week-matchup
+  "This week's game as `vs NE` / `@ SEA`, or `Bye` when the week the board is
+  showing is his. Without the week a bye is indistinguishable from a player
+  nobody projects, so this reads it rather than inferring from a missing line."
+  [p week]
+  (cond
+    (:week/opponent p) (str (if (:week/home? p) "vs " "@ ") (:week/opponent p))
+    (and week (= week (:bye p))) "Bye"
+    :else "–"))
+
+(defn cell [k p week]
   (case k
     :rank      [:td.num.muted (:rank p)]
     :name      [:td.player
@@ -44,6 +54,12 @@
     :position  [:td (util/pos-label p)]
     :bye       [:td.num (or (:bye p) "–")]
     :ros       [:td.num (board/format-whole (:ros-points p))]
+    ;; No weekly line is not a weekly zero: he is on bye, or nobody projects
+    ;; him. The dash says that; a 0 would claim he plays and does nothing.
+    :week      [:td.num (if (number? (:week-points p))
+                          (board/format-whole (:week-points p))
+                          [:span.muted "–"])]
+    :opp       [:td.muted (week-matchup p week)]
     ;; The headline. Signed, because a free agent worse than the man you would
     ;; drop is not an add — and flattening that to zero would make the whole
     ;; tail of the pool look equally plausible.
@@ -217,6 +233,31 @@
            (when (seq bench)
              [:<> [:tr.roster-group [:td {:col-span 3} "Bench"]] (map row bench)])]]))]))
 
+(defn relative-age
+  "An ISO timestamp as a coarse age. Coarse on purpose — the question is whether
+  the number predates today's news, not what minute it landed."
+  [iso]
+  (when iso
+    (let [mins (/ (- (js/Date.now) (.getTime (js/Date. iso))) 60000)
+          ago  (fn [n unit] (str n " " unit (when (not= 1 n) "s") " ago"))]
+      (cond
+        (< mins 2)    "just now"
+        (< mins 60)   (ago (js/Math.round mins) "minute")
+        (< mins 1440) (ago (js/Math.round (/ mins 60)) "hour")
+        :else         (ago (js/Math.round (/ mins 1440)) "day")))))
+
+(defn week-note
+  "How old this week's projection is.
+
+  It revises through the week as injury news and inactives land, so a board that
+  cannot date it implies it is current — and on a Sunday morning that is the
+  difference between a projection and a wrong answer."
+  [{:keys [week week-fetched-at]}]
+  (when week
+    (let [age (relative-age week-fetched-at)]
+      [:span.week-age (str "Week " week " projection"
+                           (when age (str ", updated " age)))])))
+
 (defn week-banner
   "Which season this board is for — in three states, not two.
 
@@ -227,11 +268,14 @@
   failed refresh, states a fact about the season on no evidence at all, in week
   10 as readily as in August."
   []
-  (let [{:keys [through-week]} @(rf/subscribe [:waiver-meta])]
+  (let [{:keys [through-week] :as meta} @(rf/subscribe [:waiver-meta])]
     (case @(rf/subscribe [:season-phase])
-      :in-season [:div.week-banner (str "Rest-of-season, through week " through-week)]
+      :in-season [:div.week-banner
+                  (str "Rest-of-season, through week " through-week)
+                  [week-note meta]]
       :preseason [:div.week-banner.preseason
-                  "Preseason — no games played yet, so this is the full-season projection."]
+                  "Preseason — no games played yet, so this is the full-season projection."
+                  [week-note meta]]
       [:div.week-banner "Loading the rest-of-season board…"])))
 
 ;; ---- the view ----
@@ -239,7 +283,8 @@
 (defn waivers-view []
   (let [players @(rf/subscribe [:waiver-players])
         cols    @(rf/subscribe [:visible-waiver-columns])
-        sort    @(rf/subscribe [:waiver-sort])]
+        sort    @(rf/subscribe [:waiver-sort])
+        week    (:week @(rf/subscribe [:waiver-meta]))]
     [:div.waivers-view
      [week-banner]
      [:div.waiver-panels [sync-panel] [faab-panel]]
@@ -257,7 +302,7 @@
                 ^{:key (:player-id p)}
                 [:tr {:class (when (and (:drop-candidate p) (pos? (or (:upgrade p) 0)))
                                "upgrade")}
-                 (map (fn [{k :key}] ^{:key k} [cell k p]) cols)])
+                 (map (fn [{k :key}] ^{:key k} [cell k p week]) cols)])
               players)]]]
       [:aside.waiver-roster-col [my-roster-panel]]]
      (when-let [rostered @(rf/subscribe [:rostered-matches])]

@@ -232,17 +232,20 @@
       injury/with-injury-risk
       pos-rank/with-pos-rank))
 
-(defn without-ros-internals
-  "Drop the working state `rankings.ros` leaves behind, keeping `:ros-points`.
+(defn without-projection-internals
+  "Drop the working state the projections leave behind, keeping the two scored
+  numbers `:ros-points` and `:week-points`.
 
-  Same argument as `without-history`, on the same hot path: `:ros/stats` is a
-  full stat map per player, on a response re-POSTed on every refresh, and no
-  client reads it — the board renders `:ros-points`, and the GP column reads
-  `:nflverse/season-to-date`. The two game counts go with it rather than being
+  Same argument as `without-history`, on the same hot path: these are full stat
+  maps per player, on a response re-POSTed on every refresh, and no client reads
+  them — the board renders the scored points, and the GP column reads
+  `:nflverse/season-to-date`. The game counts go with them rather than being
   kept for a column that might want them one day; that is the reasoning the
-  removed PDM is the cautionary tale for."
+  removed PDM is the cautionary tale for. `:week/opponent`, `:week/home?` and
+  `:week/updated-at` stay: those are rendered."
   [players]
-  (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played) players))
+  (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats)
+        players))
 
 (defn waivers-handler
   "The in-season board: rest-of-season value over the free agents a synced
@@ -269,7 +272,13 @@
         ;; upgrade over anybody is a lie, not a board.
         (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
         (let [{:keys [players season through-week]} (universe false)
-              season-games (nflverse/games-in-season (or season (sleeper/current-season)))
+              season*      (or season (sleeper/current-season))
+              season-games (nflverse/games-in-season season*)
+              ;; The next unplayed week, read off the data the way :through-week
+              ;; is, never off the calendar. Loaded per request rather than with
+              ;; the universe: see `pipeline/load-weekly`.
+              week         (inc (or through-week 0))
+              weekly       (pipeline/load-weekly season* week)
               ctx      {:league             league
                         :my-roster-id       my-roster-id
                         :roster-size        roster-size
@@ -282,12 +291,18 @@
                            (vendor/for-scoring scoring*)
                            without-history
                            (waiver-board-inputs scoring*)
-                           (ros/with-ros scoring* ctx))
+                           (ros/with-ros scoring* ctx)
+                           (pipeline/assoc-weekly (:lines weekly))
+                           (waiver/with-week-points scoring*))
               out      (waiver/waiver-board board ctx)]
           (json-response 200 (assoc out
-                                    :players      (without-ros-internals (:players out))
+                                    :players      (without-projection-internals (:players out))
                                     :through-week (or through-week 0)
-                                    :season-games season-games)))))
+                                    :season-games season-games
+                                    ;; nil when there is no weekly line at all;
+                                    ;; the board then reads rest-of-season only.
+                                    :week         (:week weekly)
+                                    :week-fetched-at (:fetched-at weekly))))))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 

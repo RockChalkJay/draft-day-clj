@@ -327,3 +327,69 @@
     (testing "opting out changes only the reporting, never the join"
       (is (= (dissoc (join {:expected-partial? true}) :expected-partial?)
              (dissoc (join {}) :expected-partial?))))))
+
+;; ---- weekly projections cache ----
+
+(def ^:private weekly-lines
+  {"9509" {:stats {:rush_yd 81.0 :rec 3.8} :opponent "TB" :home? true
+           :updated-at 1788755441199}})
+
+(deftest weekly-cache-answers-only-for-its-own-week
+  ;; A week rollover invalidates regardless of TTL: a fresh file for last week
+  ;; is not a fresh file.
+  (let [env {:schema-version pipeline/weekly-schema-version
+             :season 2026 :week 5 :lines weekly-lines}]
+    (is (true?  (pipeline/weekly-usable? env 2026 5)))
+    (is (false? (pipeline/weekly-usable? env 2026 6)))
+    (is (false? (pipeline/weekly-usable? env 2025 5)))
+    (is (false? (pipeline/weekly-usable? (assoc env :schema-version 0) 2026 5)))
+    (is (false? (pipeline/weekly-usable? (assoc env :lines {}) 2026 5)))
+    (is (false? (pipeline/weekly-usable? nil 2026 5)))))
+
+(deftest weekly-join-crosses-the-two-id-spaces
+  ;; The lines arrive in Sleeper's id space; :player-id is the GSIS id wherever
+  ;; one resolves. Joining them directly matches only the players who have no
+  ;; crosswalk entry, which reads as a thin vendor rather than as a bug — the
+  ;; same failure `waiver/held-ids` exists to prevent.
+  (let [players [{:player-id "00-0036223" :ids {:sleeper "9509"}}    ; crosswalked
+                 {:player-id "ARI"}                                  ; DST: same in both
+                 {:player-id "00-0031234" :ids {:sleeper "4034"}}]   ; not projected
+        lines   (assoc weekly-lines "ARI" {:stats {:sack 2.4} :opponent "LAC"
+                                           :home? false :updated-at 1})
+        [a d b] (pipeline/assoc-weekly players lines)]
+    (is (= "TB" (:week/opponent a)))
+    (is (= "LAC" (:week/opponent d)))
+    (is (not (contains? b :week/stats)))))
+
+(deftest weekly-join-leaves-unprojected-players-untouched
+  ;; No key at all rather than a zero — a bye and a projected nothing are
+  ;; different answers, and only absence can say the first.
+  (let [[a b] (pipeline/assoc-weekly [{:player-id "9509"} {:player-id "4034"}]
+                                     weekly-lines)]
+    (is (= "TB" (:week/opponent a)))
+    (is (true? (:week/home? a)))
+    (is (= {:rush_yd 81.0 :rec 3.8} (:week/stats a)))
+    (is (= 1788755441199 (:week/updated-at a)))
+    (is (= {:player-id "4034"} b))
+    (is (not (contains? b :week/stats)))))
+
+(deftest weekly-join-is-a-no-op-with-no-lines
+  ;; The weekly asset does not exist until week 1 is played, so every consumer
+  ;; has to work with these columns entirely absent.
+  (is (= [{:player-id "1"}] (pipeline/assoc-weekly [{:player-id "1"}] nil))))
+
+(deftest weekly-offline-fetches-nothing
+  (with-redefs [pipeline/offline? (constantly true)]
+    (is (nil? (pipeline/load-weekly 2026 1 {:path (tmp "weekly-offline")})))))
+
+(deftest weekly-falls-back-to-the-stale-copy-for-the-same-week
+  (with-redefs [pipeline/offline? (constantly false)]
+    (let [path (tmp "weekly-stale")]
+      (pipeline/delete-cache! path)
+      (with-redefs [sleeper/fetch-weekly (fn [& _] weekly-lines)]
+        (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:refresh true :path path})))))
+      ;; Sleeper down: the cached week still answers …
+      (with-redefs [sleeper/fetch-weekly (fn [& _] (throw (ex-info "down" {})))]
+        (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:refresh true :path path}))))
+        ;; … but not for a different week, where it would be simply wrong.
+        (is (nil? (pipeline/load-weekly 2026 6 {:refresh true :path path})))))))

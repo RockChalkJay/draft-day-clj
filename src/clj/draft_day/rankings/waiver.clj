@@ -44,7 +44,8 @@
   `rankings.injury` spells out: the repo has already shipped one signal that was
   computed on every pick and consumed by nothing."
   (:require [draft-day.db :as db]
-            [draft-day.rankings.replacement :as replacement]))
+            [draft-day.rankings.replacement :as replacement]
+            [draft-day.scoring :as scoring]))
 
 ;; ---- who is available ----
 
@@ -229,6 +230,24 @@
 
 (defn with-trend [fas]
   (mapv (fn [p] (assoc p :trend (trend p))) fas))
+
+;; ---- this week ----
+;; The other half of the question `:ros-points` answers. Rest-of-season says who
+;; helps you from here; this says who helps you on Sunday, and the two routinely
+;; disagree — which is the point of showing both rather than a blend of them.
+;; The line itself is joined at request time by `ingestion.pipeline/assoc-weekly`
+;; (see that section's comment for why it is cached apart from the universe).
+
+(defn with-week-points
+  "Score the joined weekly line under the league's own weights. A player Sleeper
+  did not project this week gets no key at all rather than a zero — not playing
+  and projected to do nothing are different answers."
+  [players scoring]
+  (mapv (fn [p]
+          (if-let [stats (:week/stats p)]
+            (assoc p :week-points (scoring/player-points {:stats stats} scoring))
+            p))
+        players))
 
 ;; ---- orchestration ----
 

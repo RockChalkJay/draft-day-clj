@@ -32,6 +32,9 @@ out/
 # local data cache (bundled sample is committed). Globbed: the filename carries
 # the row schema version, so a bump orphans the old file rather than reusing it.
 /data/players_cache*.transit
+# this week's projections, cached apart from the universe and on a far shorter
+# TTL — see ingestion/pipeline.clj for why the two cannot share a file
+/data/weekly_projections*.transit
 # research-harness caches: derived, re-fetchable, and large (~100MB once a
 # benchmark sweep has pulled every season from every source)
 /data/benchmark_cache/

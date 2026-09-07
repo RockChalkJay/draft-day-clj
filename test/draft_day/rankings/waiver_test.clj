@@ -1,6 +1,7 @@
 (ns draft-day.rankings.waiver-test
   (:require [clojure.test :refer [deftest is testing]]
-            [draft-day.rankings.waiver :as waiver]))
+            [draft-day.rankings.waiver :as waiver]
+            [draft-day.scoring :as scoring]))
 
 (defn sleeper-id
   "The Sleeper spelling of a board id.
@@ -383,3 +384,13 @@
     (is (= 1.0 (waiver/trend flat)))
     (is (nil? (waiver/trend {})) "no in-season rows, no opinion")
     (is (nil? (waiver/trend {:nflverse/season-to-date {:games 0 :usage {}}})))))
+
+(deftest week-points-score-under-the-league-weights
+  ;; The weekly number is the league's, not the vendor's — same rule as the
+  ;; season line, which is why the two are comparable at all.
+  (let [board [{:player-id "a" :week/stats {:rush_yd 81.0 :rec 3.8 :rec_yd 32.0}}
+               {:player-id "b"}]
+        [a b] (waiver/with-week-points board (scoring/resolve-config :ppr))]
+    (is (< (abs (- 15.1 (:week-points a))) 1e-9))          ; 8.1 + 3.8 + 3.2
+    ;; Not projected this week: no key, not a zero.
+    (is (not (contains? b :week-points)))))

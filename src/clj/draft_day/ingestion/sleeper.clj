@@ -47,6 +47,11 @@
   (into {} (keep (fn [[fmt k]] (when-let [v (adp stats k)] [fmt {:sleeper/adp v}])))
         adp-keys))
 
+(defn- scored-stats
+  "The subset of a Sleeper stats map the scoring engine reads, as doubles."
+  [stats]
+  (into {} (keep (fn [k] (when-let [v (get stats k)] [k (double v)]))) stat-keys))
+
 (defn normalize-entry
   "Sleeper projection entry -> a universe player map, or nil if it is not a
   projectable, fantasy-relevant player.
@@ -63,8 +68,7 @@
        :position              (canon-pos pos)
        :team                  (or team (:team_abbr player))
        :bye                   nil
-       :stats                 (into {} (keep (fn [k] (when-let [v (get stats k)] [k (double v)]))
-                                             stat-keys))
+       :stats                 (scored-stats stats)
        :vendor/by-format      (adp-by-format stats)
        :sleeper/injury-status (:injury_status player)
        :sleeper/years-exp     (:years_exp player)})))
@@ -145,3 +149,59 @@
   "Network: {team-abbrev bye-week} for a season (defaults to current)."
   ([] (fetch-byes (current-season)))
   ([season] (schedule->byes (fetch-schedule season))))
+
+;; ---- weekly projections ----
+;; The same projections endpoint, one week at a time. The payload's own `company`
+;; field says rotowire for both horizons, so a weekly number and a season number
+;; are one house's opinion at two ranges rather than two houses disagreeing —
+;; which is what makes showing them side by side honest.
+;;
+;; Three quirks. The entry carries its own `opponent`, so the matchup costs no
+;; second fetch; a nil one means a bye or a player nobody projects, and only the
+;; ~14% Sleeper actually projects carry one. Home/away is *not* on the entry —
+;; both teams of a game share one `game_id` — so it comes from the schedule
+;; `fetch-byes` already parses. And these revise through the week as injury news
+;; and inactives land, so `:updated-at` is carried: a consumer that cannot say
+;; how old the number is will imply it is current, and on a Sunday morning that
+;; is the difference between a projection and a wrong answer.
+
+(defn- weekly-url [season week]
+  (str base "/projections/nfl/" season "/" week "?season_type=regular"
+       (apply str (map #(str "&position[]=" %) fantasy-positions))))
+
+(defn fetch-weekly-entries
+  "Network: raw weekly projection entries for one week (throws on failure)."
+  [season week]
+  (let [{:keys [status body error]} @(http/get (weekly-url season week)
+                                               {:timeout 30000})]
+    (cond
+      error          (throw (ex-info "Sleeper weekly fetch failed"
+                                     {:week week :error error}))
+      (= 200 status) (json/read-value body mapper)
+      :else          (throw (ex-info "Sleeper weekly non-200"
+                                     {:week week :status status})))))
+
+(defn home-teams [games week]
+  (into #{} (comp (filter #(= week (:week %))) (keep :home)) games))
+
+(defn weekly-line
+  "Pure: one entry -> its weekly line, or nil when Sleeper does not project the
+  player that week. The `pts_ppr` gate is `normalize-entry`'s, for its reason."
+  [{:keys [stats opponent team updated_at]} homes]
+  (when (and stats (:pts_ppr stats))
+    {:stats      (scored-stats stats)
+     :opponent   opponent
+     :home?      (contains? homes team)
+     :updated-at updated_at}))
+
+(defn weekly-by-id [entries homes]
+  (into {} (keep (fn [{:keys [player_id] :as entry}]
+                   (when-let [line (weekly-line entry homes)]
+                     [player_id line])))
+        entries))
+
+(defn fetch-weekly
+  "Network: {player-id weekly-line} for one week of a season."
+  [season week]
+  (weekly-by-id (fetch-weekly-entries season week)
+                (home-teams (fetch-schedule season) week)))

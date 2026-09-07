@@ -85,3 +85,57 @@
         result   (into {} (map (juxt :player-id :bye))
                        (sleeper/assoc-byes universe {"ATL" 1 "GB" 3}))]
     (is (= {"1" 1 "2" 3 "3" nil} result))))
+
+;; ---- weekly projections ----
+;; Shaped like live /projections/nfl/{season}/{week} entries: same envelope as
+;; the season line plus :opponent, :week and :updated_at.
+(def ^:private sample-weekly
+  [{:player_id "9509" :team "ATL" :opponent "TB" :week 1 :updated_at 1788755441199
+    :player {:first_name "Bijan" :last_name "Robinson" :position "RB"}
+    :stats {:rush_yd 81.0 :rush_td 0.6 :rec 3.8 :rec_yd 32.0 :pts_ppr 18.4
+            :rec_fd 2.1}}                                  ; rec_fd is not scored
+   {:player_id "4034" :team "GB" :opponent nil :week 1
+    :player {:first_name "Bye" :last_name "Guy" :position "RB"}
+    :stats {:gp 0.0}}                                      ; no pts_ppr -> excluded
+   {:player_id "ARI" :team "ARI" :opponent "LAC" :week 1 :updated_at 1788755441000
+    :player {:first_name "Arizona" :last_name "Cardinals" :position "DEF"}
+    :stats {:sack 2.4 :int 0.8 :pts_ppr 7.1}}])
+
+(deftest weekly-keeps-only-projected-players
+  (let [by-id (sleeper/weekly-by-id sample-weekly #{"ATL"})]
+    (is (= #{"9509" "ARI"} (set (keys by-id))))            ; the bye entry drops out
+    (is (= 18.4 (get-in sample-weekly [0 :stats :pts_ppr])))
+    ;; pts_ppr gates but is never carried — points come from :stats under the
+    ;; league's own weights, exactly as the season line does.
+    (is (nil? (get-in by-id ["9509" :stats :pts_ppr])))
+    (is (nil? (get-in by-id ["9509" :stats :rec_fd])))))
+
+(deftest weekly-carries-opponent-and-side
+  (let [by-id (sleeper/weekly-by-id sample-weekly #{"ATL"})]
+    (is (= "TB" (get-in by-id ["9509" :opponent])))
+    (is (true? (get-in by-id ["9509" :home?])))            ; ATL in the home set
+    (is (= "LAC" (get-in by-id ["ARI" :opponent])))
+    (is (false? (get-in by-id ["ARI" :home?])))))
+
+(deftest weekly-line-scores-under-league-weights
+  ;; The line is scored the same way the season line is, so it is the *league's*
+  ;; number rather than the vendor's: half-PPR here is
+  ;; 81*.1 + .6*6 + 3.8*.5 + 32*.1 = 8.1 + 3.6 + 1.9 + 3.2.
+  (let [line (get (sleeper/weekly-by-id sample-weekly #{}) "9509")
+        pts  #(scoring/player-points line (scoring/resolve-config %))]
+    (is (< (abs (- 16.8 (pts :half-ppr))) 1e-9))
+    (is (< (abs (- 18.7 (pts :ppr))) 1e-9))                ; +1.9 for full PPR
+    (is (< (abs (- 14.9 (pts :standard))) 1e-9))))         ; -1.9 for no PPR
+
+(deftest weekly-carries-its-own-timestamp
+  ;; These revise through the week; a consumer that cannot date the number will
+  ;; imply it is current.
+  (let [by-id (sleeper/weekly-by-id sample-weekly #{})]
+    (is (= 1788755441199 (get-in by-id ["9509" :updated-at])))))
+
+(deftest home-teams-scopes-to-the-week
+  (let [games [{:home "ATL" :away "TB" :week 1}
+               {:home "GB"  :away "CHI" :week 2}]]
+    (is (= #{"ATL"} (sleeper/home-teams games 1)))
+    (is (= #{"GB"}  (sleeper/home-teams games 2)))
+    (is (= #{}      (sleeper/home-teams games 3)))))

@@ -420,6 +420,12 @@ button.undo:hover { color: var(--warn); }
 .week-banner { padding: 6px 10px; border-radius: 8px; background: var(--panel2);
   border: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .week-banner.preseason { border-color: var(--accent); color: var(--text); }
+/* How old this week's projection is, said next to the week it is for. Muted
+   because it is provenance rather than a number you read the board by — but
+   present, because a weekly projection revises through the week and one that
+   cannot be dated reads as current. */
+.week-age { color: var(--muted); margin-left: 8px; }
+.week-age::before { content: "· "; }
 /* Not the accent the preseason banner uses: this one reports that what is on
    screen is wrong for the league it is under, which is a warning and not a
    fact about the calendar. */

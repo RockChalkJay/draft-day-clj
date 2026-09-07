@@ -594,6 +594,8 @@
    {:key :position  :label "Pos"    :tooltip "Position and preseason rank within it" :default? true}
    {:key :bye       :label "Bye"    :tooltip "Bye week"                   :default? true}
    {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? true}
+   {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank when he is not projected — a bye, or nobody's starter" :default? true}
+   {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true}
    {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid — your share of the budget across the claims the season still allows. Blank when the league does not run FAAB" :default? true}
    {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true}
@@ -633,6 +635,8 @@
    :position  pos-sort-key
    :bye       :bye
    :ros       :ros-points
+   :week      :week-points
+   :opp       :week/opponent
    :upgrade   :upgrade
    :bid       :bid
    :trend     :trend
