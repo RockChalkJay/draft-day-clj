@@ -120,6 +120,70 @@
   ;; the honest output — see `draft-day.confidence`.
   (is (nil? (cmp/separation-line (wk "WR" 8) nil))))
 
+;; ---- the three track states ----
+;; The substance of the calibration, and what the sentence above is only
+;; commentary on. All three have to stay mutually distinguishable: an absent
+;; track means "no weekly line", a centred fill means "measured tie", and a
+;; directional fill means "the board separates them". Collapsing the first two
+;; is the bug #52 shipped once, where missing data rendered as a tie.
+
+(defn- row-by-label [label]
+  (first (filter #(= label (:label %)) cmp/rows)))
+
+(defn- track
+  "The `<i>` inside a rendered row's bar, or `:no-track` when no bar was drawn
+  at all. Walks the hiccup rather than pattern-matching a fixed shape, so a
+  layout change does not silently turn every assertion vacuous."
+  [row a b sep]
+  (let [hit (atom :no-track)]
+    (letfn [(walk [x]
+              (when (vector? x)
+                (when (= :div.cmp-bar (first x))
+                  (reset! hit (or (second x) :empty-track)))
+                (doseq [c x] (walk c))))]
+      (walk (cmp/metric-row row a b sep)))
+    @hit))
+
+(def ^:private wr8  {:position "WR" :week-pos-rank 8  :week-points 13.8 :ros-points 96.0})
+(def ^:private wr10 {:position "WR" :week-pos-rank 10 :week-points 12.9 :ros-points 119.0})
+(def ^:private wr41 {:position "WR" :week-pos-rank 41 :week-points 8.1  :ros-points 119.0})
+
+(deftest a-clear-gap-still-draws-a-directional-bar
+  ;; The calibration removes a claim; it must not remove the tile's whole point.
+  (let [i (track (row-by-label "This week") wr8 wr41
+                 (confidence/separation wr8 wr41))]
+    (is (= :i (first i)))
+    (is (= "l" (:class (second i))) "and it leans toward the better player")
+    (is (pos? (js/parseFloat (:width (:style (second i))))))))
+
+(deftest a-coin-flip-gap-draws-a-centred-fill-instead
+  (let [i (track (row-by-label "This week") wr8 wr10
+                 (confidence/separation wr8 wr10))]
+    (is (= [:i.even] i) "no direction, no width — a needle resting at zero")))
+
+(deftest no-weekly-line-draws-no-track-at-all
+  ;; The state that must never be confused with a measured tie.
+  (is (= :no-track (track (row-by-label "This week")
+                          wr8 (dissoc wr10 :week-points :week-pos-rank) nil))))
+
+(deftest rest-of-season-is-unaffected-by-the-weekly-verdict
+  ;; `sep` reaches every row, but only `:calibrated?` ones may consult it. A
+  ;; coin flip this week says nothing about a dozen games from here, and
+  ;; suppressing this bar too would be the regression that is easiest to ship.
+  (let [coin (confidence/separation wr8 wr10)]
+    (is (= :coin-flip (:level coin)) "precondition: the weekly row is a tie")
+    (let [i (track (row-by-label "Rest of season") wr8 wr10 coin)]
+      (is (= :i (first i)))
+      (is (= "r" (:class (second i))) "and still leans to the better hold"))))
+
+(deftest the-weekly-row-carries-a-rank-subline
+  ;; What makes the row legible on exactly the comparisons where the bar says
+  ;; nothing on purpose.
+  (is (re-find #"WR8" (text (cmp/metric-row (row-by-label "This week")
+                                            wr8 wr10 nil))))
+  (is (re-find #"WR10" (text (cmp/metric-row (row-by-label "This week")
+                                             wr8 wr10 nil)))))
+
 ;; ---- what the tile compares ----
 
 (deftest bars-only-where-a-side-can-be-better
