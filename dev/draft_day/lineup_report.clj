@@ -23,6 +23,7 @@
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.api.routes :as routes]
+            [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.vendor :as vendor]
             [draft-day.rankings.waiver :as waiver]
@@ -83,6 +84,7 @@
           (if bid (str "$" bid) "–")))
 
 (defn report-one [{:keys [players my-roster roster through-week]} label]
+  (let [slots (db/starting-slots roster)]
   (let [valued  (filter #(number? (:lineup-upgrade %)) players)
         by-upg  (vec (sort-by #(- (double (or (:upgrade %) 0.0))) valued))
         by-lin  (vec (sort-by (juxt #(- (double (or (:lineup-upgrade %) 0.0)))
@@ -98,16 +100,27 @@
                      (count (db/starting-slots roster))
                      through-week (count valued)))
     (println (format "my roster rows: %d" (count my-roster)))
-    ;; The drop is the whole story when the deltas are dominated by a constant:
-    ;; `drop-candidate` names the lowest-scoring player holding an ACTIVE seat,
-    ;; and nothing stops that man being a starter.
+    ;; What matters about the drop is what losing him COSTS THE LINEUP, not
+    ;; whether he happens to hold a starting slot. Roster 1's drop is a starting
+    ;; DST whose cost is zero, because a second DST is sitting behind him —
+    ;; flagging that as "*** A STARTER ***" was a false alarm, and it is exactly
+    ;; the confusion this report exists to remove.
     (when-let [d (:drop-candidate (first players))]
-      (let [starter? (some #(and (= (:player-id %) (:player-id d)) (:starter? %))
-                           my-roster)]
-        (println (format "drop candidate  : %s (%s, %.1f ros) — %s"
-                         (:player-name d) (:position d)
-                         (double (or (:ros-points d) 0.0))
-                         (if starter? "*** A STARTER ***" "on the bench")))))
+      (let [ros-of  #(double (or (:ros-points %) 0.0))
+            ;; `my-roster` is built off :player-ids and so includes IR and
+            ;; taxi, each flagged :parked?. The board chooses its drop over
+            ;; :active-ids, which excludes them — seating a parked player here
+            ;; would make a real starter look free to drop, and the report would
+            ;; be disagreeing with the thing it exists to explain.
+            seated  (filterv #(and (:ros-points %) (not (:parked? %))) my-roster)
+            full    (lineup/lineup-points seated slots :ros-points)
+            without (lineup/lineup-points
+                     (remove #(= (:player-id %) (:player-id d)) seated)
+                     slots :ros-points)
+            cost    (- full without)]
+        (println (format "drop candidate  : %s (%s, %.1f ros) — costs the lineup %.1f%s"
+                         (:player-name d) (:position d) (ros-of d) cost
+                         (if (pos? cost) "  <-- NO FREE DROP AVAILABLE" "")))))
     (println (format "\nlineup delta > 0 : %d of %d  (%.1f%%)"
                      (count nonzero) (count valued)
                      (* 100.0 (/ (count nonzero) (max 1 (count valued))))))
@@ -120,7 +133,7 @@
     (println "\ntop 10 by CURRENT upgrade:")
     (doseq [[i p] (map-indexed vector (take 10 by-upg))] (println (fmt-row i p)))
     (println "\ntop 10 by LINEUP delta:")
-    (doseq [[i p] (map-indexed vector (take 10 by-lin))] (println (fmt-row i p)))))
+    (doseq [[i p] (map-indexed vector (take 10 by-lin))] (println (fmt-row i p))))))
 
 (defn -main [& args]
   (let [opts (apply hash-map args)
