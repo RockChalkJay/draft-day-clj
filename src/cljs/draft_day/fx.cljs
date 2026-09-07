@@ -30,8 +30,11 @@
   this week's opponent — so `db/waiver-column-catalog` changed shape.
 
   4: it grew Wk# and Form alongside them — this week's rank within his position,
-  and points per game over the last three weeks."
-  4)
+  and points per game over the last three weeks.
+
+  5: and Lineup — what a claim adds to the starting lineup rather than to the
+  bench."
+  5)
 
 (def drafts-key "draft-day-drafts")
 

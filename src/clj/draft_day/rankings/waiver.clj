@@ -48,6 +48,7 @@
   in-season signal that is *not* on that shelf, and it is added elsewhere — see
   `rankings.pos-rank`."
   (:require [draft-day.db :as db]
+            [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.replacement :as replacement]
             [draft-day.scoring :as scoring]))
 
@@ -180,6 +181,32 @@
   spellings, rather than a coercion repeated at each caller."
   [type]
   (= :faab (when type (keyword type))))
+
+(defn with-lineup-upgrade
+  "Assoc `:lineup-upgrade` — what the claim adds to the manager's *starting*
+  lineup, against `:upgrade`'s bench delta. See `rankings.lineup`.
+
+  DISPLAY ONLY for now, and deliberately so: `:upgrade`, `:bid` and
+  `db/waiver-rank-key` are untouched, so this changes no ordering and no money.
+  It is on the `:trend`/`:injury-risk` shelf, with one difference worth naming
+  because `rankings.injury` warns about exactly this shape — the removed PDM was
+  computed on every pick and read by nothing. A column a manager *reads* is
+  consumed, and this one is here to be read until the numbers say whether it
+  should become the headline.
+
+  The lineup is drawn from active seats, not `:player-ids`: a player on IR or
+  taxi cannot be started, so counting him would credit the roster with a starter
+  it does not have.
+
+  nil `slots` (a request that sent no roster config) leaves the key off entirely
+  rather than reporting 0 for everyone, which would read as 'nobody helps you'."
+  [fas roster drop slots]
+  (if-not (seq slots)
+    fas
+    (mapv (fn [p]
+            (assoc p :lineup-upgrade
+                   (lineup/upgrade roster p drop slots :ros-points)))
+          fas)))
 
 (defn with-bids
   "Assoc `:bid` on every free agent: his share of the remaining budget.
@@ -387,7 +414,8 @@
   connected one yet. Everyone is free, there is nothing to drop and no budget to
   bid, and the board is a rest-of-season ranking, which is a useful thing on its
   own."
-  [board {:keys [league my-roster-id roster-size num-teams replacement-config] :as ctx}]
+  [board {:keys [league my-roster-id roster-size num-teams replacement-config
+                 starting-slots] :as ctx}]
   (let [{:keys [teams waiver]} league
         xwalk    (db/sleeper->player-id board)
         rostered (rostered-index teams xwalk)
@@ -404,6 +432,10 @@
         n        (claims-left ctx)]
     {:players            (-> (free-agents players rostered)
                              (with-upgrade drop)
+                             (with-lineup-upgrade
+                               (keep #(get by-id %)
+                                     (held-ids my-team xwalk :active-ids))
+                               drop starting-slots)
                              (with-bids waiver (:faab-left my-team) n)
                              with-trend)
      :my-roster          (my-roster my-team xwalk by-id drop)

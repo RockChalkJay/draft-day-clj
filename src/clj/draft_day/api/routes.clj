@@ -6,6 +6,7 @@
             [reitit.ring :as ring]
             [reitit.ring.middleware.parameters :as parameters]
             [jsonista.core :as json]
+            [draft-day.db :as db]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.sleeper :as sleeper]
@@ -268,7 +269,8 @@
   rather than an error."
   [req]
   (try
-    (let [{:keys [scoring num-teams replacement-config league my-roster-id roster-size]}
+    (let [{:keys [scoring num-teams replacement-config league my-roster-id roster-size
+                  roster]}
           (read-json-body req)
           scoring* (resolve-scoring scoring)]
       (if-not (scoring/scores-anything? scoring*)
@@ -291,7 +293,14 @@
                         :replacement-config replacement-config
                         :through-week       (or through-week 0)
                         :season-games       season-games
-                        :playoff-week-start (:playoff-week-start league)}
+                        :playoff-week-start (:playoff-week-start league)
+                        ;; The scoring seats, for `waiver/with-lineup-upgrade`.
+                        ;; Off `:roster` and deliberately not
+                        ;; `replacement-config`: that one drops K and DST
+                        ;; because replacement prices neither, which is right
+                        ;; there and wrong here — both fill a starting slot and
+                        ;; both score.
+                        :starting-slots (when roster (db/starting-slots roster))}
               board    (-> players
                            (vendor/for-scoring scoring*)
                            without-history
