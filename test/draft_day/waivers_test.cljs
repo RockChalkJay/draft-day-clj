@@ -808,16 +808,29 @@
     (is (= [:span.muted "–"] (txt {})))
     (is (= 0 (txt {:week-points 0.2})))))
 
-(deftest projection-age-is-coarse
-  ;; The question is whether the number predates today's news, not what minute
-  ;; it landed.
+(deftest projection-timestamp-cannot-rot
+  ;; Absolute, not relative: this label exists to expose staleness and is
+  ;; rendered once, so an age computed at render would go stale in exactly the
+  ;; case it is for — a tab left open on a Sunday morning.
   (let [ago #(.toISOString (js/Date. (- (js/Date.now) (* % 60000))))]
-    (is (= "just now"      (waivers/relative-age (ago 0))))
-    (is (= "35 minutes ago" (waivers/relative-age (ago 35))))
-    (is (= "1 hour ago"    (waivers/relative-age (ago 62))))
-    (is (= "3 hours ago"   (waivers/relative-age (ago 180))))
-    (is (= "2 days ago"    (waivers/relative-age (ago 2880))))
-    (is (nil? (waivers/relative-age nil)))))
+    ;; Same instant, read twice an hour apart, reads the same both times.
+    (is (= (waivers/fetched-at-label (ago 5))
+           (waivers/fetched-at-label (ago 5))))
+    ;; Today is a bare clock time; older carries the date so it cannot be read
+    ;; as this morning.
+    (is (not (re-find #"," (waivers/fetched-at-label (ago 1)))))
+    (is (re-find #"," (waivers/fetched-at-label (ago (* 60 48)))))
+    (is (nil? (waivers/fetched-at-label nil)))))
+
+(deftest week-cell-names-the-bye-it-cannot-project
+  ;; A bye is the common reason this cell is empty, and Opp — the column that
+  ;; would say so — is off by default.
+  (let [txt (fn [p wk] (last (waivers/cell :week p wk)))]
+    (is (= [:span.muted "Bye"] (txt {:bye 6} 6)))
+    (is (= [:span.muted "–"]   (txt {:bye 6} 5)))
+    (is (= [:span.muted "–"]   (txt {} 5)))
+    ;; A projected number always wins, bye week or not.
+    (is (= 12 (txt {:week-points 11.6 :bye 6} 6)))))
 
 (deftest week-note-is-absent-without-a-week
   ;; The weekly asset 404s until week 1 is played, so the board has to render

@@ -490,22 +490,37 @@
     (write-transit! path env)
     env))
 
+(defonce ^:private weekly-memo
+  ;; The decoded envelope, so a fresh file is not re-read and re-decoded on every
+  ;; /api/waivers — the same reason `api.routes` holds the universe in an atom.
+  ;;
+  ;; It is safe here and was not there because it is not the whole cache, only a
+  ;; copy of it: `cache-fresh?` still gates on the file's own mtime and
+  ;; `weekly-answers?` on the season and week, so this expires exactly when the
+  ;; file does. Keyed by path so a test's temp cache cannot answer for another's.
+  (atom nil))
+
 (defn load-weekly
   "The weekly envelope for one week, or nil when there is nothing to project.
   See the section comment above for why this is cached apart from the universe."
   ([season week] (load-weekly season week {}))
   ([season week {:keys [refresh path] :or {path default-weekly-cache-path}}]
    (when-not (offline?)
-     (let [cached (read-weekly path)
-           env    (if (and (not refresh)
-                           (cache-fresh? path (weekly-ttl-hours))
-                           (weekly-answers? cached season week))
-                    cached
-                    (try
-                      (live-weekly season week path)
-                      (catch Exception e
-                        (log/warn e "weekly projections fetch failed:" (ex-message e))
-                        (when (weekly-answers? cached season week) cached))))]
+     (let [fresh? (and (not refresh) (cache-fresh? path (weekly-ttl-hours)))
+           memo   (let [{:keys [memo-path env]} @weekly-memo]
+                    (when (and fresh? (= memo-path path)
+                               (weekly-answers? env season week))
+                      env))
+           env    (or memo
+                      (let [cached (read-weekly path)]
+                        (if (and fresh? (weekly-answers? cached season week))
+                          cached
+                          (try
+                            (live-weekly season week path)
+                            (catch Exception e
+                              (log/warn e "weekly projections fetch failed:" (ex-message e))
+                              (when (weekly-answers? cached season week) cached))))))]
+       (reset! weekly-memo {:memo-path path :env env})
        ;; "Nobody is projected" is cached like any other answer, but it is not a
        ;; week the board can show. Sleeper serves week 19 with a 200 and 750
        ;; unprojected entries rather than a 404, so past the regular season this

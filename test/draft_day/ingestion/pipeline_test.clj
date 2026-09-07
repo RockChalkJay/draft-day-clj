@@ -410,3 +410,23 @@
         (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:refresh true :path path}))))
         ;; … but not for a different week, where it would be simply wrong.
         (is (nil? (pipeline/load-weekly 2026 6 {:refresh true :path path})))))))
+
+(deftest weekly-fresh-cache-is-not-re-read-per-call
+  ;; The decoded envelope is held in memory for the same reason `api.routes`
+  ;; holds the universe: a fresh file should not be re-read and re-decoded on
+  ;; every /api/waivers. It must still expire with the file, which the mtime
+  ;; and season/week checks — not the memo — decide.
+  (with-redefs [pipeline/offline? (constantly false)]
+    (let [path  (tmp "weekly-memo")
+          reads (atom 0)]
+      (pipeline/delete-cache! path)
+      (with-redefs [sleeper/fetch-weekly (fn [& _] weekly-lines)]
+        (pipeline/load-weekly 2026 5 {:refresh true :path path}))
+      (with-redefs [pipeline/read-transit (fn [p] (swap! reads inc) nil)]
+        (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:path path}))))
+        (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:path path}))))
+        (is (zero? @reads) "a fresh, already-decoded week was served from memory")
+        ;; A different week is a different answer, memo or not.
+        (with-redefs [sleeper/fetch-weekly (fn [& _] {})]
+          (is (nil? (pipeline/load-weekly 2026 6 {:path path})))
+          (is (pos? @reads) "a week the memo cannot answer for still reads disk"))))))
