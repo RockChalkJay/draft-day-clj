@@ -36,23 +36,28 @@ budges: **max move 2 slots, mean 0.4**. Every starting TE gains ~12 points in st
 replacement-level TE rises with them, VORP absorbs part of even that. The board is right;
 the auction dollars at one position come out low.
 
-### Kickers are wrong in every league, including the presets
+### Kickers were wrong in every league — mostly fixed
 
-Sleeper emits `fgm` on **0 of 44 kickers**. It publishes only distance buckets (`fgm_40_49`
-on all 44, `fgm_50p` on 40, `fgm_yds` on 44, plus `fgmiss_40_49`, `fgmiss_50p`, `xpmiss`),
-and `fgm` is the key the presets price at 3.0 — so that weight multiplies nothing and every
-kicker is scored on extra points alone:
+Sleeper emits `fgm` on **0 of 45 kickers**. It publishes only distance buckets (`fgm_40_49`
+on all 45, `fgm_50p` on 40, `fgm_yds` on 45, plus `fgmiss_40_49`, `fgmiss_50p`, `xpmiss`),
+and `fgm` is the key the presets price at 3.0 — so that weight multiplied nothing and every
+kicker was scored on extra points alone, compressing the position into a 39–42 band:
 
-| Kicker | Scored 3/4/5 by distance | What Draft Day scores |
-| --- | --- | --- |
-| Brandon Aubrey | 118.0 | 42.0 |
-| Cam Little | 114.0 | 42.0 |
-| Ka'imi Fairbairn | 114.0 | 39.0 |
+| Kicker | Sleeper's own total | Was scored | Now scored |
+| --- | --- | --- | --- |
+| Brandon Aubrey | 116.0 | 42.0 | 93.0 |
+| Ka'imi Fairbairn | 113.0 | 39.0 | 90.0 |
+| Cam Little | 112.0 | 42.0 | 90.0 |
 
-The position compresses into a 39–42 band with no real spread. Harmless in practice — K is a
-$1 nomination and the understatement is near-uniform, so ordering is noise either way — but
-it is the only entry here that bites a league running nothing but a stock preset, and the
-only one no import warning covers, since `fgm` sits in `stat-keys` and so looks supported.
+`sleeper/scored-stats` now sums the published buckets into `:fgm` when Sleeper sends no
+total. That is **a floor, not the answer**: the sub-40 kicks are still missing, so a kicker
+reads about 20% light and the residue is what is left of this entry. It is close to uniform
+across the position, so ordering is now roughly right where before there was no spread at all.
+
+ESPN publishes a real total (stat id 83, verified against its own buckets summing to it) and
+was the obvious alternative. It is deliberately not used: it projects Aubrey 35.5 field goals
+against Sleeper's ~25, so importing it would price kickers out of a different projection
+house than every other player on the board. The whole line stays one vendor's opinion.
 
 ### Extractable but not yet extracted, low stakes
 
@@ -76,5 +81,6 @@ one out in that set — it is inert today but *is* recoverable from the distance
 The cheapest fix with real return is three keys — `rec_fd`, `rush_fd`, `bonus_rec_te` —
 added to `ingestion/sleeper.clj`'s stat-key list, the preset table in
 `src/cljc/draft_day/scoring.cljc` (at 0.0, so preset behaviour stays byte-identical), and
-`db/scoring-catalog`, which have to move together. Kickers need more than a new key: the
-buckets must be summed into a synthetic `fgm`, or the buckets priced individually.
+`db/scoring-catalog`, which have to move together. The kicker half of that is done — the
+buckets are summed into a synthetic `fgm` — and what remains is pricing them individually,
+which is the only way to recover the sub-40 kicks Sleeper never publishes.

@@ -58,8 +58,13 @@
   and the envelope grew :through-week. The bump matters more than most: a cache
   written at schema 5 carries no in-season columns at all, which is
   indistinguishable from a preseason board — so a stale file deserializing
-  cleanly would put a November league on an August projection and say nothing."
-  6)
+  cleanly would put a November league on an August projection and say nothing.
+
+  7: kickers carry a :fgm again, summed from the distance buckets Sleeper does
+  publish (see `sleeper/scored-stats`). A schema-6 file scores every kicker on
+  extra points alone — roughly a third of his value — so it must not be read
+  back."
+  7)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
