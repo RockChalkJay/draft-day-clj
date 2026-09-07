@@ -919,3 +919,34 @@
   (rf/dispatch-sync [:set-active-league "sleeper:2"])
   (is (= [] (:compare @rdb/app-db)))
   (is (nil? (:waivers @rdb/app-db)) "and the board it belonged to"))
+
+(deftest a-rostered-player-can-be-picked-from-the-panel
+  ;; The panel is where a player you already hold is on screen, and a claim is
+  ;; usually weighed against exactly that man — so the roster rows select too.
+  (swap! rdb/app-db assoc
+         :waivers {:players [{:player-id "fa" :player-name "Free Agent"}]
+                   :my-roster [{:player-id "mine" :player-name "My Guy" :ros-points 90.0}]
+                   :my-roster-players [{:player-id "mine" :player-name "My Guy"
+                                        :ros-points 90.0}]})
+  (rf/dispatch-sync [:compare-toggle "mine"])
+  (rf/dispatch-sync [:compare-toggle "fa"])
+  (is (= ["My Guy" "Free Agent"] (mapv :player-name (sub [:compare-players])))
+      "a roster pick and a wire pick compare against each other"))
+
+(deftest an-unvalued-seat-is-not-selectable
+  ;; It has no row in :my-roster-players, so picking it would put an id in
+  ;; :compare that never resolves — a click that silently does nothing.
+  (swap! rdb/app-db assoc
+         :waivers {:players []
+                   :my-roster [{:player-id "ghost" :unvalued? true}
+                               {:player-id "mine" :player-name "My Guy"
+                                :ros-points 90.0}]
+                   :my-roster-players [{:player-id "mine" :player-name "My Guy"}]}
+         :leagues {"sleeper:1" {:sync {:teams [{:roster-id 1}]}}}
+         :active-league "sleeper:1")
+  (rf/clear-subscription-cache!)
+  (let [html (render waivers/my-roster-panel)]
+    (is (re-find #"My Guy" html))
+    (is (re-find #"ghost" html) "the unvalued seat keeps its place")
+    (is (= 1 (count (re-seq #"pickable" html)))
+        "and exactly one of the two seats is selectable")))

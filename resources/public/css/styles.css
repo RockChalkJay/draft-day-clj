@@ -628,8 +628,14 @@ tr.upgrade .p-name { font-weight: 600; }
 
 /* A compared row keeps its tier stripe: the accent is an inset shadow, not a
    background, for the reason the board's insertion line is (a border reflows
-   the table mid-interaction). */
-table.board tbody tr.comparing { box-shadow: inset 3px 0 0 var(--accent); }
+   the table mid-interaction). The roster panel marks its picks the same way —
+   half a comparison usually comes from there. */
+table.board tbody tr.comparing,
+table.roster tbody tr.comparing { box-shadow: inset 3px 0 0 var(--accent); }
+/* Only rows the board could value can be picked; an unvalued seat keeps its
+   place and says nothing about being clickable. */
+table.roster tbody tr.pickable { cursor: pointer; }
+table.roster tbody tr.pickable:hover { background: var(--panel2); }
 
 @media (max-width: 900px) {
   .cmp-float { top: 68px; }

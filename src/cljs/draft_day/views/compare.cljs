@@ -205,7 +205,9 @@
              [:div.cmp-band
               (for [r (rows-by-band :claim)]
                 ^{:key (:label r)} [metric-row r a b])
-              (when-let [drop (:drop-candidate a)]
+              ;; From whichever side is a free agent — with a rostered player on
+              ;; the left, only the right one carries a claim.
+              (when-let [drop (some :drop-candidate [a b])]
                 [:p.cmp-note
                  "A claim costs a roster spot. Yours would come from "
                  (:player-name drop) "."])]])]]))
