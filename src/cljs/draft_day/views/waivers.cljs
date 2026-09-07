@@ -93,7 +93,7 @@
     ;; One decimal, unlike the whole-number projections beside it: this is a
     ;; per-game rate and rounding 8.4 and 8.6 both to 8 hides the comparison the
     ;; column exists to make.
-    :form      [:td.num (board/format-one-decimal (:form-points p))]
+    :form      [:td.num.muted (board/format-one-decimal (:form-points p))]
     :gp        [:td.num.muted (or (get-in p [:nflverse/season-to-date :games]) "–")]
     :tgt       [:td.num.muted (board/format-whole
                                (get-in p [:nflverse/season-to-date :usage :targets]))]

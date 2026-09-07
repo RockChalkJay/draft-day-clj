@@ -233,8 +233,8 @@
       pos-rank/with-pos-rank))
 
 (defn without-projection-internals
-  "Drop the working state the projections leave behind, keeping the two scored
-  numbers `:ros-points` and `:week-points`.
+  "Drop the working state the projections leave behind, keeping the scored
+  numbers `:ros-points`, `:week-points` and `:form-points`.
 
   Same argument as `without-history`, on the same hot path: these are full stat
   maps per player, on a response re-POSTed on every refresh, and no client reads
@@ -242,9 +242,14 @@
   `:nflverse/season-to-date`. The game counts go with them rather than being
   kept for a column that might want them one day; that is the reasoning the
   removed PDM is the cautionary tale for. `:week/opponent`, `:week/home?` and
-  `:week/updated-at` stay: those are rendered."
+  `:week/updated-at` stay: those are rendered.
+
+  `:nflverse/recent` joins them now that `waiver/form-points` scores it here.
+  Its *sibling* `:nflverse/season-to-date` must not: GP, Tgt and Car all read
+  it, which is why the two are named separately rather than the prefix dropped."
   [players]
-  (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats)
+  (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
+                 :nflverse/recent)
         players))
 
 (defn waivers-handler
