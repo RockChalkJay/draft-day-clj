@@ -215,7 +215,7 @@
     (let [before (lineup/lineup-points roster slots :ros-points)]
       (mapv (fn [p]
               (assoc p :lineup-upgrade
-                     (lineup/upgrade-from before roster p drop slots :ros-points)))
+                     (lineup/upgrade before roster p drop slots :ros-points)))
             fas))))
 
 (defn with-bids
@@ -437,14 +437,16 @@
         ;; who synced without importing has never set to match this league — and
         ;; a wrong seat count decides the one question `drop-candidate` asks.
         seats    (or (:roster-size league) roster-size)
-        drop     (when my-team
-                   (drop-candidate (held-ids my-team xwalk :active-ids) by-id seats))
+        ;; One binding, read by the drop and by the lineup. `held-ids`' own
+        ;; docstring is about what happened the one time two readers of a roster
+        ;; disagreed, and two call sites that must stay in step is that shape.
+        active   (held-ids my-team xwalk :active-ids)
+        drop     (when my-team (drop-candidate active by-id seats))
         n        (claims-left ctx)]
     {:players            (-> (free-agents players rostered)
                              (with-upgrade drop)
                              (with-lineup-upgrade
-                               (keep #(get by-id %)
-                                     (held-ids my-team xwalk :active-ids))
+                               (vec (keep #(get by-id %) active))
                                drop starting-slots)
                              (with-bids waiver (:faab-left my-team) n)
                              with-trend)

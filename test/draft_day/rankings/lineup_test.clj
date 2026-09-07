@@ -65,7 +65,7 @@
   ;; The headline case. He clears the worst bench player by 150 points and adds
   ;; nothing, because he would never start.
   (let [qb2 (p "qb2" "QB" 180.0)]
-    (is (zero? (lineup/upgrade roster qb2 bench-drop slots :ros-points))
+    (is (zero? (lineup/upgrade (pts roster) roster qb2 bench-drop slots :ros-points))
         "180 points of quarterback behind a 260 starter changes nothing")
     (testing "while the bench delta calls him a massive add"
       (is (= 150.0 (- (:ros-points qb2) (:ros-points bench-drop)))))))
@@ -74,14 +74,14 @@
   ;; Not a guard case — `drop-candidate` names the lowest-scoring player holding
   ;; an active seat, and on a thin bench that man is in the lineup. Clamping
   ;; this at 0 would hide the one thing the manager most needs to know.
-  (is (= -50.0 (lineup/upgrade roster (p "qb2" "QB" 180.0)
+  (is (= -50.0 (lineup/upgrade (pts roster) roster (p "qb2" "QB" 180.0)
                                starting-drop slots :ros-points))
       "rb3 (90) held FLEX; losing him promotes wr3 (40), so the lineup drops 50"))
 
 (deftest a-better-starter-is-worth-the-difference
   ;; wr enters at WR1 (200) and pushes rb3 (90) out of FLEX, since wr2 (120) now
   ;; takes the second WR seat and 120 > 90.
-  (is (= 110.0 (lineup/upgrade roster (p "wrX" "WR" 200.0)
+  (is (= 110.0 (lineup/upgrade (pts roster) roster (p "wrX" "WR" 200.0)
                                bench-drop slots :ros-points))
       "1355 - 1245"))
 
@@ -90,12 +90,12 @@
   ;; because replacement prices neither, which is right there and wrong here.
   (let [without (remove #(#{"k1" "d1"} (:player-id %)) roster)]
     (is (= 180.0 (- (pts roster) (pts without))))
-    (is (= 100.0 (lineup/upgrade without (p "kX" "K" 100.0) nil slots :ros-points)))))
+    (is (= 100.0 (lineup/upgrade (pts without) without (p "kX" "K" 100.0) nil slots :ros-points)))))
 
 (deftest an-open-seat-means-the-whole-line
   ;; No drop, and a slot nobody fills — the claim is worth everything he brings.
   (let [thin [(p "qb1" "QB" 260.0)]]
-    (is (= 170.0 (lineup/upgrade thin (p "wrX" "WR" 170.0) nil slots :ros-points)))))
+    (is (= 170.0 (lineup/upgrade (pts thin) thin (p "wrX" "WR" 170.0) nil slots :ros-points)))))
 
 (deftest a-short-roster-yields-a-short-lineup-rather-than-throwing
   (is (= 260.0 (pts [(p "qb1" "QB" 260.0)])))
@@ -112,15 +112,5 @@
   ;; The common case, and the one `:upgrade` gets loudest-wrong: nobody who
   ;; cannot crack the lineup is an upgrade to it.
   (doseq [cand [(p "x" "WR" 1.0) (p "y" "QB" 5.0) (p "z" "DST" 0.0)]]
-    (is (zero? (lineup/upgrade roster cand bench-drop slots :ros-points))
+    (is (zero? (lineup/upgrade (pts roster) roster cand bench-drop slots :ros-points))
         (str (:player-id cand)))))
-
-(deftest upgrade-from-agrees-with-upgrade
-  ;; The hoisted-total variant is the one the board actually calls, so it must
-  ;; not be able to drift from the one the tests above pin.
-  (let [before (pts roster)]
-    (doseq [cand [(p "x" "WR" 200.0) (p "y" "QB" 180.0) (p "z" "K" 120.0)]
-            drp  [nil bench-drop starting-drop]]
-      (is (= (lineup/upgrade roster cand drp slots :ros-points)
-             (lineup/upgrade-from before roster cand drp slots :ros-points))
-          (str (:player-id cand) " / " (:player-id drp))))))
