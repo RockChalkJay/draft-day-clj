@@ -417,7 +417,13 @@
                    ;; leagues on the same format would blank for nothing, and a
                    ;; recompute that never lands would leave an empty table
                    ;; explaining itself no better than a wrong one.
-                   :waivers nil)
+                   :waivers nil
+                   ;; The comparison goes with the board it was asked about. It
+                   ;; would mostly re-resolve — the players are the same real
+                   ;; players — but a free agent in one league is rostered in
+                   ;; another, and that side would silently vanish out of a tile
+                   ;; still open around it.
+                   :compare [])
       ;; `:num-teams`, `:starting-bankroll` and the roster template all just
       ;; moved, and `:teams` is built from exactly those three. Without this the
       ;; rankings request carries a 12-team replacement level alongside ten

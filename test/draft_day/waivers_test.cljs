@@ -905,3 +905,17 @@
          :search "zzz"
          :compare ["qb" "rb"])
   (is (= 2 (count (sub [:compare-players])))))
+
+(deftest switching-league-clears-the-comparison
+  ;; Same reasoning that drops :waivers — the comparison was a question about
+  ;; the league you left. It would mostly re-resolve, but a free agent in one
+  ;; league is rostered in another, and that side would vanish out of a tile
+  ;; still open around it.
+  (swap! rdb/app-db assoc
+         :leagues {"sleeper:1" {:config {} :name "One"}
+                   "sleeper:2" {:config {} :name "Two"}}
+         :active-league "sleeper:1"
+         :compare ["a" "b"])
+  (rf/dispatch-sync [:set-active-league "sleeper:2"])
+  (is (= [] (:compare @rdb/app-db)))
+  (is (nil? (:waivers @rdb/app-db)) "and the board it belonged to"))

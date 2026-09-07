@@ -18,6 +18,7 @@
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.views.board :as board]
+            [draft-day.views.controls :as controls]
             [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
@@ -87,24 +88,37 @@
 
       :else nil)))
 
+(def bands
+  "The tile's three bands, in reading order: the question, the evidence for it,
+  and what the claim costs.
+
+  `:band` rather than slicing one flat list by index — the boundaries were
+  `subvec`s, so inserting a metric anywhere above the last one silently moved
+  a row into the wrong band and still rendered. This is the place a metric gets
+  added, so it must be the place that says where the metric goes."
+  [:horizon :evidence :claim])
+
 (def rows
-  "What the tile compares, in reading order. `:bar?` false where neither side is
-  better; `:big?` marks the two horizons, which are the question rather than the
-  evidence for it."
-  [{:label "This week"     :f :week-points :big? true :fmt board/format-whole}
-   {:label "Rest of season" :f :ros-points  :big? true :fmt board/format-whole}
-   {:label "Trend"          :f :trend       :fmt waivers/format-trend}
-   {:label "Opportunity / game" :f opportunity-per-game
+  "What the tile compares. `:bar?` false where neither side is better; `:big?`
+  marks the two horizons, which are the question rather than the evidence."
+  [{:band :horizon  :label "This week"      :f :week-points :big? true
+    :fmt board/format-whole}
+   {:band :horizon  :label "Rest of season" :f :ros-points  :big? true
+    :fmt board/format-whole}
+   {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend}
+   {:band :evidence :label "Opportunity / game" :f opportunity-per-game
     :fmt #(if (number? %) (.toFixed % 1) "–")}
-   {:label "Games played"   :bar? false
+   {:band :evidence :label "Games played"   :bar? false
     :f #(get-in % [:nflverse/season-to-date :games])
     :fmt #(if (number? %) % "–")}
-   {:label "Injury risk"    :f :injury-risk :better :lower
+   {:band :evidence :label "Injury risk"    :f :injury-risk :better :lower
     :fmt #(if (number? %) % "–")}
-   {:label "Upgrade"        :f :upgrade
+   {:band :claim    :label "Upgrade"        :f :upgrade
     :fmt #(if (number? %) (util/signed (js/Math.round %)) "–")}
-   {:label "Bid"            :f :bid :bar? false
+   {:band :claim    :label "Bid"            :f :bid :bar? false
     :fmt #(if (number? %) (str "$" %) "–")}])
+
+(def rows-by-band (group-by :band rows))
 
 ;; ---- rendering ----
 
@@ -130,15 +144,20 @@
                 :style {:width (str (* 50.0 (:frac lean)) "%")}}])])]
      [value-cell :r vb fmt (= :r (:side lean))]]))
 
-(defn face [p headshot]
+(defn face
+  "Silhouette underneath, headshot on top. Same arrangement as `controls/face`
+  and for its reason: a missing *or broken* image hides itself and falls through,
+  so there is no load state to track."
+  [headshot]
   [:div.cmp-face
-   (if headshot
-     [:img {:src headshot :alt "" :on-error #(set! (.. % -target -style -display) "none")}]
-     "—")])
+   [controls/silhouette 40]
+   (when headshot
+     [:img {:src headshot :alt ""
+            :on-error #(set! (.. % -target -style -display) "none")}])])
 
 (defn player-head [p side headshot week]
   [:div {:class (str "cmp-who " (name side))}
-   [face p headshot]
+   [face headshot]
    [:div
     [:div.cmp-name (:player-name p)]
     [:p.cmp-meta (util/pos-label p) " · " (or (:team p) "FA")
@@ -176,15 +195,15 @@
           (when b
             [:<>
              [:div.cmp-band
-              (for [r (subvec rows 0 2)]
+              (for [r (rows-by-band :horizon)]
                 ^{:key (:label r)} [metric-row r a b])
               (when-let [line (reading-line a b week)]
                 [:p.cmp-read line])]
              [:div.cmp-band
-              (for [r (subvec rows 2 6)]
+              (for [r (rows-by-band :evidence)]
                 ^{:key (:label r)} [metric-row r a b])]
              [:div.cmp-band
-              (for [r (subvec rows 6)]
+              (for [r (rows-by-band :claim)]
                 ^{:key (:label r)} [metric-row r a b])
               (when-let [drop (:drop-candidate a)]
                 [:p.cmp-note

@@ -420,10 +420,17 @@
 ;; A pick that no longer resolves is dropped rather than rendered blank. It means
 ;; the board was refreshed and somebody claimed him, so he is genuinely no longer
 ;; a thing to compare.
-(rf/reg-sub :compare-players
+;; Split from `:compare-players` on purpose: the index depends on the board and
+;; nothing else, so re-frame caches it across selections rather than re-indexing
+;; six hundred players every time a row is clicked.
+(rf/reg-sub :comparable-by-id
   :<- [:waivers]
+  (fn [w _]
+    (into {} (map (juxt :player-id identity))
+          (concat (:players w) (:my-roster-players w)))))
+
+(rf/reg-sub :compare-players
+  :<- [:comparable-by-id]
   :<- [:compare]
-  (fn [[w ids] _]
-    (let [by-id (into {} (map (juxt :player-id identity))
-                      (concat (:players w) (:my-roster-players w)))]
-      (vec (keep #(get by-id %) ids)))))
+  (fn [[by-id ids] _]
+    (vec (keep #(get by-id %) ids))))

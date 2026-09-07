@@ -6,11 +6,15 @@
             [draft-day.views.player-stats :as player-stats]
             [draft-day.views.util :as util]))
 
-(defn- silhouette []
-  [:svg {:width 64 :height 64 :view-box "0 0 24 24" :fill "none"
-         :stroke "currentColor" :stroke-width 1.4}
-   [:circle {:cx 12 :cy 8 :r 4}]
-   [:path {:d "M4 21c0-4 3.6-7 8-7s8 3 8 7"}]])
+(defn silhouette
+  "What a face falls back to. Public and sized because the compare tile needs
+  the same fallback at a smaller face."
+  ([] (silhouette 64))
+  ([px]
+   [:svg {:width px :height px :view-box "0 0 24 24" :fill "none"
+          :stroke "currentColor" :stroke-width 1.4}
+    [:circle {:cx 12 :cy 8 :r 4}]
+    [:path {:d "M4 21c0-4 3.6-7 8-7s8 3 8 7"}]]))
 
 (defn- face
   "Silhouette underneath, headshot on top — a missing image hides itself and
