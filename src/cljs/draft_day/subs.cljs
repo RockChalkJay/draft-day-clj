@@ -343,7 +343,8 @@
   (fn [w _] (:faab w)))
 
 (rf/reg-sub :waiver-meta :<- [:waivers]
-  (fn [w _] (select-keys w [:through-week :season-games :claims-left])))
+  (fn [w _] (select-keys w [:through-week :season-games :claims-left
+                            :week :week-fetched-at])))
 
 ;; The manager's own seats. nil and [] mean different things here and the panel
 ;; draws them differently — nil is "no team picked yet", [] is "this team holds

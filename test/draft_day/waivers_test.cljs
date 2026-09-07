@@ -280,7 +280,7 @@
   ;; Colouring the raw value and printing the rounded one put a green dash on
   ;; the board for an upgrade of 0.4: `sign-class` saw a positive number while
   ;; `signed` dashed out the zero.
-  (let [cell (fn [up] (waivers/cell :upgrade {:upgrade up}))
+  (let [cell (fn [up] (waivers/cell :upgrade {:upgrade up} nil))
         cls  (fn [up] (:class (second (cell up))))
         txt  (fn [up] (last (cell up)))]
     (is (= "good" (cls 12.0)))
@@ -783,3 +783,66 @@
     (is (some #{:accounts} db/persist-keys))
     (is (some #{:leagues} db/persist-keys))
     (is (some #{:active-league} db/persist-keys))))
+
+;; ---- this week's game ----
+
+(deftest matchup-names-the-side-and-the-bye
+  ;; Home/away is not on the weekly entry — both teams of a game share one
+  ;; game_id — so it rides in from the schedule, and "vs" vs "@" is the only
+  ;; thing that shows it landed.
+  (is (= "vs NE" (waivers/week-matchup {:week/opponent "NE" :week/home? true} 1)))
+  (is (= "@ SEA" (waivers/week-matchup {:week/opponent "SEA" :week/home? false} 1)))
+  ;; A bye is read off the week the board is showing, not inferred from a
+  ;; missing line — an unprojected starter also has no line.
+  (is (= "Bye" (waivers/week-matchup {:bye 6} 6)))
+  (is (= "–"   (waivers/week-matchup {:bye 6} 5)))
+  ;; No week at all (preseason, or a weekly file that has not landed): a bye
+  ;; cannot be claimed, so it is not.
+  (is (= "–"   (waivers/week-matchup {:bye 6} nil))))
+
+(deftest week-cell-dashes-rather-than-zeroes
+  ;; Not projected and projected to score nothing are different answers, and a
+  ;; 0 in this column would assert the second.
+  (let [txt (fn [p] (last (waivers/cell :week p 3)))]
+    (is (= 12 (txt {:week-points 11.6})))
+    (is (= [:span.muted "–"] (txt {})))
+    (is (= 0 (txt {:week-points 0.2})))))
+
+(deftest projection-timestamp-cannot-rot
+  ;; Absolute, not relative: this label exists to expose staleness and is
+  ;; rendered once, so an age computed at render would go stale in exactly the
+  ;; case it is for — a tab left open on a Sunday morning.
+  (let [ago #(.toISOString (js/Date. (- (js/Date.now) (* % 60000))))]
+    ;; Same instant, read twice an hour apart, reads the same both times.
+    (is (= (waivers/fetched-at-label (ago 5))
+           (waivers/fetched-at-label (ago 5))))
+    ;; Today is a bare clock time; older carries the date so it cannot be read
+    ;; as this morning.
+    (is (not (re-find #"," (waivers/fetched-at-label (ago 1)))))
+    (is (re-find #"," (waivers/fetched-at-label (ago (* 60 48)))))
+    (is (nil? (waivers/fetched-at-label nil)))))
+
+(deftest week-cell-names-the-bye-it-cannot-project
+  ;; A bye is the common reason this cell is empty, and Opp — the column that
+  ;; would say so — is off by default.
+  (let [txt (fn [p wk] (last (waivers/cell :week p wk)))]
+    (is (= [:span.muted "Bye"] (txt {:bye 6} 6)))
+    (is (= [:span.muted "–"]   (txt {:bye 6} 5)))
+    (is (= [:span.muted "–"]   (txt {} 5)))
+    ;; A projected number always wins, bye week or not.
+    (is (= 12 (txt {:week-points 11.6 :bye 6} 6)))))
+
+(deftest week-note-is-absent-without-a-week
+  ;; The weekly asset 404s until week 1 is played, so the board has to render
+  ;; with these columns entirely absent rather than claiming week 0.
+  (is (nil? (waivers/week-note {:through-week 0})))
+  (is (some? (waivers/week-note {:week 4 :week-fetched-at nil}))))
+
+(deftest matchup-prints-a-bare-opponent-when-the-side-is-unknown
+  ;; nil :week/home? is the schedule not arriving, not an away game. Printing
+  ;; "@ NE" for a home game would be confidently wrong; the opponent alone is
+  ;; the part actually known.
+  (is (= "NE" (waivers/week-matchup {:week/opponent "NE"} 1)))
+  (is (= "NE" (waivers/week-matchup {:week/opponent "NE" :week/home? nil} 1)))
+  ;; An explicit false still prints the away marker.
+  (is (= "@ NE" (waivers/week-matchup {:week/opponent "NE" :week/home? false} 1))))

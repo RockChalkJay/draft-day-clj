@@ -436,3 +436,115 @@
 
      :else
      (live-universe season cache-path))))
+
+;; ---- weekly projections: its own cache, deliberately ----
+;; Two reasons this does not ride the universe envelope, and the second is the
+;; one that bites. `cache-fresh?` is a single mtime over one file holding
+;; everything, so expiring it to refresh this one column would re-run all ~24
+;; ingestion tasks — the 37MB ESPN download and the rate-limited FantasyPros
+;; scrapes included. And `api.routes` holds the loaded universe in an atom with
+;; no expiry at all, so a column joined at load time would never refresh on a
+;; long-running server however short its TTL was. Hence: a small file of its
+;; own, read per request.
+;;
+;; It is the only column in the app that goes stale in under a day. Everything
+;; else — preseason lines, ECR, AAV, ADP, prior-season usage, last week's
+;; realized stats — has a genuine 24h+ cadence.
+;;
+;; A week rollover invalidates regardless of TTL: a fresh file for last week is
+;; not a fresh file. A failed fetch falls back to the stale copy for the *same*
+;; week and is retried on the next request — /api/waivers is user-triggered, not
+;; polled, so that is self-limiting.
+
+(def weekly-schema-version 1)
+
+(def default-weekly-cache-path
+  (str "data/weekly_projections.v" weekly-schema-version ".transit"))
+
+(defn- weekly-ttl-hours []
+  (Double/parseDouble (or (System/getenv "DRAFTDAY_WEEKLY_TTL_HOURS") "1")))
+
+(defn weekly-answers?
+  "Whether a cached envelope is an answer for exactly this season and week.
+
+  Deliberately not `(seq :lines)` — an empty map is a real answer, and treating
+  it as no answer is what made the offseason refetch on every request."
+  [env season week]
+  (boolean (and (map? env)
+                (= weekly-schema-version (:schema-version env))
+                (= season (:season env))
+                (= week (:week env)))))
+
+(defn- read-weekly [path]
+  (try (read-transit path)
+       (catch Exception e
+         (log/warn e "weekly cache unreadable; refetching")
+         nil)))
+
+(defn live-weekly [season week path]
+  (let [env {:schema-version weekly-schema-version
+             :season         season
+             :week           week
+             :fetched-at     (now-iso)
+             :lines          (sleeper/fetch-weekly season week)}]
+    (write-transit! path env)
+    env))
+
+(defonce ^:private weekly-memo
+  ;; The decoded envelope, so a fresh file is not re-read and re-decoded on every
+  ;; /api/waivers — the same reason `api.routes` holds the universe in an atom.
+  ;;
+  ;; It is safe here and was not there because it is not the whole cache, only a
+  ;; copy of it: `cache-fresh?` still gates on the file's own mtime and
+  ;; `weekly-answers?` on the season and week, so this expires exactly when the
+  ;; file does. Keyed by path so a test's temp cache cannot answer for another's.
+  (atom nil))
+
+(defn load-weekly
+  "The weekly envelope for one week, or nil when there is nothing to project.
+  See the section comment above for why this is cached apart from the universe."
+  ([season week] (load-weekly season week {}))
+  ([season week {:keys [refresh path] :or {path default-weekly-cache-path}}]
+   (when-not (offline?)
+     (let [fresh? (and (not refresh) (cache-fresh? path (weekly-ttl-hours)))
+           memo   (let [{:keys [memo-path env]} @weekly-memo]
+                    (when (and fresh? (= memo-path path)
+                               (weekly-answers? env season week))
+                      env))
+           env    (or memo
+                      (let [cached (read-weekly path)]
+                        (if (and fresh? (weekly-answers? cached season week))
+                          cached
+                          (try
+                            (live-weekly season week path)
+                            (catch Exception e
+                              (log/warn e "weekly projections fetch failed:" (ex-message e))
+                              (when (weekly-answers? cached season week) cached))))))]
+       (reset! weekly-memo {:memo-path path :env env})
+       ;; "Nobody is projected" is cached like any other answer, but it is not a
+       ;; week the board can show. Sleeper serves week 19 with a 200 and 750
+       ;; unprojected entries rather than a 404, so past the regular season this
+       ;; is the *normal* reply — returning the envelope would have the banner
+       ;; announce a week that does not exist.
+       (when (seq (:lines env)) env)))))
+
+(defn assoc-weekly
+  "Join weekly lines onto players. A player without one keeps no weekly keys at
+  all, so a consumer can tell 'not projected' from 'projected zero'."
+  [players lines]
+  ;; Keyed on the player's *Sleeper* id, not `:player-id` — that is the GSIS id
+  ;; wherever one resolves, and these lines arrive in Sleeper's space. Joining
+  ;; the two directly matches only the players who have no crosswalk entry (38
+  ;; of 628 on a live board), which looks like a thin vendor rather than a bug.
+  ;; Same trap, and the same fix, as `waiver/held-ids`. The fallback covers team
+  ;; defenses, whose id is the team abbrev in both spaces.
+  (mapv (fn [p]
+          (let [k (or (get-in p [:ids :sleeper]) (:player-id p))]
+            (if-let [{:keys [stats opponent home? updated-at]} (get lines k)]
+              (assoc p
+                     :week/stats stats
+                     :week/opponent opponent
+                     :week/home? home?
+                     :week/updated-at updated-at)
+              p)))
+        players))

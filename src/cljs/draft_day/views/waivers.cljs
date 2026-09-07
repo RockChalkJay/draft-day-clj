@@ -32,7 +32,20 @@
 (defn format-trend [t]
   (if (number? t) (str (.toFixed t 2) "×") "–"))
 
-(defn cell [k p]
+(defn week-matchup
+  "This week's game as `vs NE` / `@ SEA`, or `Bye` when the week the board is
+  showing is his. A nil `:week/home?` is the side being unknown rather than
+  away, and prints the opponent bare — see `sleeper/weekly-line`."
+  [p week]
+  (let [opp (:week/opponent p)
+        home (:week/home? p)]
+    (cond
+      (and opp (nil? home)) opp
+      opp                   (str (if home "vs " "@ ") opp)
+      (and week (= week (:bye p))) "Bye"
+      :else "–")))
+
+(defn cell [k p week]
   (case k
     :rank      [:td.num.muted (:rank p)]
     :name      [:td.player
@@ -44,6 +57,16 @@
     :position  [:td (util/pos-label p)]
     :bye       [:td.num (or (:bye p) "–")]
     :ros       [:td.num (board/format-whole (:ros-points p))]
+    ;; No weekly line is not a weekly zero: he is on bye, or nobody projects
+    ;; him. A 0 would claim he plays and does nothing. Which of the two it is
+    ;; is worth saying here rather than only in Opp, which is off by default —
+    ;; a bye is the common reason this cell is empty.
+    :week      (let [pts (:week-points p)]
+                 [:td.num (cond
+                            (number? pts) (board/format-whole pts)
+                            (and week (= week (:bye p))) [:span.muted "Bye"]
+                            :else [:span.muted "–"])])
+    :opp       [:td.muted (week-matchup p week)]
     ;; The headline. Signed, because a free agent worse than the man you would
     ;; drop is not an add — and flattening that to zero would make the whole
     ;; tail of the pool look equally plausible.
@@ -217,6 +240,37 @@
            (when (seq bench)
              [:<> [:tr.roster-group [:td {:col-span 3} "Bench"]] (map row bench)])]]))]))
 
+(defn fetched-at-label
+  "An ISO timestamp as a local wall-clock time, dated once it is not today.
+
+  Deliberately absolute rather than \"8 minutes ago\": this element is only here
+  to expose staleness, it is rendered once and not on a timer, and a relative age
+  computed at render silently rots in exactly the case it exists for — a tab left
+  open on a Sunday morning. A clock time cannot go stale, and it is also what the
+  question actually compares against, since inactives drop at a time of day."
+  [iso]
+  (when iso
+    (let [d     (js/Date. iso)
+          today (= (.toDateString d) (.toDateString (js/Date.)))
+          time  (.toLocaleTimeString d js/undefined
+                                     #js {:hour "numeric" :minute "2-digit"})]
+      (if today
+        time
+        (str (.toLocaleDateString d js/undefined #js {:month "short" :day "numeric"})
+             ", " time)))))
+
+(defn week-note
+  "How old this week's projection is.
+
+  It revises through the week as injury news and inactives land, so a board that
+  cannot date it implies it is current — and on a Sunday morning that is the
+  difference between a projection and a wrong answer."
+  [{:keys [week week-fetched-at]}]
+  (when week
+    (let [at (fetched-at-label week-fetched-at)]
+      [:span.week-age (str "Week " week " projection"
+                           (when at (str ", updated " at)))])))
+
 (defn week-banner
   "Which season this board is for — in three states, not two.
 
@@ -227,11 +281,14 @@
   failed refresh, states a fact about the season on no evidence at all, in week
   10 as readily as in August."
   []
-  (let [{:keys [through-week]} @(rf/subscribe [:waiver-meta])]
+  (let [{:keys [through-week] :as m} @(rf/subscribe [:waiver-meta])]
     (case @(rf/subscribe [:season-phase])
-      :in-season [:div.week-banner (str "Rest-of-season, through week " through-week)]
+      :in-season [:div.week-banner
+                  (str "Rest-of-season, through week " through-week)
+                  [week-note m]]
       :preseason [:div.week-banner.preseason
-                  "Preseason — no games played yet, so this is the full-season projection."]
+                  "Preseason — no games played yet, so this is the full-season projection."
+                  [week-note m]]
       [:div.week-banner "Loading the rest-of-season board…"])))
 
 ;; ---- the view ----
@@ -239,7 +296,8 @@
 (defn waivers-view []
   (let [players @(rf/subscribe [:waiver-players])
         cols    @(rf/subscribe [:visible-waiver-columns])
-        sort    @(rf/subscribe [:waiver-sort])]
+        sort    @(rf/subscribe [:waiver-sort])
+        week    (:week @(rf/subscribe [:waiver-meta]))]
     [:div.waivers-view
      [week-banner]
      [:div.waiver-panels [sync-panel] [faab-panel]]
@@ -257,7 +315,7 @@
                 ^{:key (:player-id p)}
                 [:tr {:class (when (and (:drop-candidate p) (pos? (or (:upgrade p) 0)))
                                "upgrade")}
-                 (map (fn [{k :key}] ^{:key k} [cell k p]) cols)])
+                 (map (fn [{k :key}] ^{:key k} [cell k p week]) cols)])
               players)]]]
       [:aside.waiver-roster-col [my-roster-panel]]]
      (when-let [rostered @(rf/subscribe [:rostered-matches])]

@@ -24,8 +24,11 @@
 
   2: leagues are keyed by provider and league id, with the account and the
   active league stored alongside; `:league-sync` and `:my-roster-id` are gone.
-  Archived drafts are under `drafts-key` and survive this."
-  2)
+  Archived drafts are under `drafts-key` and survive this.
+
+  3: the waiver board grew Wk and Opp columns — this week's projected points and
+  this week's opponent — so `db/waiver-column-catalog` changed shape."
+  3)
 
 (def drafts-key "draft-day-drafts")
 

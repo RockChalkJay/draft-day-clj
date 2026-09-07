@@ -2,12 +2,13 @@
   "The waiver board: who is free, how much better he is than what you would have
   to drop, and what share of your FAAB he is worth.
 
-  Everything here is measured in **rest-of-season points** (`:ros-points`, from
-  `rankings.ros`), never in auction dollars. The draft board's Value and Worth
-  price a whole roster out of a fixed bankroll at a preseason auction; a waiver
-  claim is one seat against a budget that is spent down over months. Reusing
-  those dollars here would be the same category error as reading an overall
-  expert tier as a positional one.
+  Everything here is measured in **points**, never in auction dollars:
+  rest-of-season (`:ros-points`, from `rankings.ros`) for every ranking and every
+  claim, with a single week (`:week-points`) as a display column beside it. The
+  draft board's Value and Worth price a whole roster out of a fixed bankroll at a
+  preseason auction; a waiver claim is one seat against a budget that is spent
+  down over months. Reusing those dollars here would be the same category error
+  as reading an overall expert tier as a positional one.
 
   So `value`, `inflation`, `tcm`, `worth`, `bargain` and `market` are all
   deliberately absent, and the reused pieces are the ones that are actually
@@ -44,7 +45,8 @@
   `rankings.injury` spells out: the repo has already shipped one signal that was
   computed on every pick and consumed by nothing."
   (:require [draft-day.db :as db]
-            [draft-day.rankings.replacement :as replacement]))
+            [draft-day.rankings.replacement :as replacement]
+            [draft-day.scoring :as scoring]))
 
 ;; ---- who is available ----
 
@@ -229,6 +231,24 @@
 
 (defn with-trend [fas]
   (mapv (fn [p] (assoc p :trend (trend p))) fas))
+
+;; ---- this week ----
+;; The other half of the question `:ros-points` answers. Rest-of-season says who
+;; helps you from here; this says who helps you on Sunday, and the two routinely
+;; disagree — which is the point of showing both rather than a blend of them.
+;; The line itself is joined at request time by `ingestion.pipeline/assoc-weekly`
+;; (see that section's comment for why it is cached apart from the universe).
+
+(defn with-week-points
+  "Score the joined weekly line under the league's own weights. A player Sleeper
+  did not project this week gets no key at all rather than a zero — not playing
+  and projected to do nothing are different answers."
+  [players scoring]
+  (mapv (fn [p]
+          (if-let [stats (:week/stats p)]
+            (assoc p :week-points (scoring/player-points {:stats stats} scoring))
+            p))
+        players))
 
 ;; ---- orchestration ----
 

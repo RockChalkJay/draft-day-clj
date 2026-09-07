@@ -321,7 +321,7 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 2 fx/storage-version)
+  (is (= 3 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
   (is (= [:rank :ecr :name :team :bye :position :worth :value :market :espn-value
@@ -330,8 +330,8 @@
          (mapv :key db/column-catalog))
       "a stored :columns vector is keyed off this list")
 
-  (is (= [:rank :name :team :position :bye :ros :upgrade :bid :trend :gp :risk
-          :inj :ros-vorp :tgt :car :preseason :ecr]
+  (is (= [:rank :name :team :position :bye :ros :week :opp :upgrade :bid :trend
+          :gp :risk :inj :ros-vorp :tgt :car :preseason :ecr]
          (mapv :key db/waiver-column-catalog))
       "and a stored :waiver-columns vector off this one")
 
