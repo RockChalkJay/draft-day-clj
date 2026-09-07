@@ -104,7 +104,6 @@
 (deftest weekly-keeps-only-projected-players
   (let [by-id (sleeper/weekly-by-id sample-weekly #{"ATL"})]
     (is (= #{"9509" "ARI"} (set (keys by-id))))            ; the bye entry drops out
-    (is (= 18.4 (get-in sample-weekly [0 :stats :pts_ppr])))
     ;; pts_ppr gates but is never carried — points come from :stats under the
     ;; league's own weights, exactly as the season line does.
     (is (nil? (get-in by-id ["9509" :stats :pts_ppr])))
@@ -139,3 +138,12 @@
     (is (= #{"ATL"} (sleeper/home-teams games 1)))
     (is (= #{"GB"}  (sleeper/home-teams games 2)))
     (is (= #{}      (sleeper/home-teams games 3)))))
+
+(deftest weekly-side-is-unknown-rather-than-away-without-a-schedule
+  ;; The schedule only supplies vs/@, and it degrades on its own so a failure
+  ;; there cannot cost the whole projection. An empty home set would read as
+  ;; "everyone is away"; nil says the side is not known.
+  (let [by-id (sleeper/weekly-by-id sample-weekly nil)]
+    (is (nil? (get-in by-id ["9509" :home?])))
+    (is (= "TB" (get-in by-id ["9509" :opponent])))        ; still known
+    (is (some? (get-in by-id ["9509" :stats])))))          ; still projected

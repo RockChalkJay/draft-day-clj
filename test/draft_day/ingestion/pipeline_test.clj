@@ -339,12 +339,29 @@
   ;; is not a fresh file.
   (let [env {:schema-version pipeline/weekly-schema-version
              :season 2026 :week 5 :lines weekly-lines}]
-    (is (true?  (pipeline/weekly-usable? env 2026 5)))
-    (is (false? (pipeline/weekly-usable? env 2026 6)))
-    (is (false? (pipeline/weekly-usable? env 2025 5)))
-    (is (false? (pipeline/weekly-usable? (assoc env :schema-version 0) 2026 5)))
-    (is (false? (pipeline/weekly-usable? (assoc env :lines {}) 2026 5)))
-    (is (false? (pipeline/weekly-usable? nil 2026 5)))))
+    (is (true?  (pipeline/weekly-answers? env 2026 5)))
+    (is (false? (pipeline/weekly-answers? env 2026 6)))
+    (is (false? (pipeline/weekly-answers? env 2025 5)))
+    (is (false? (pipeline/weekly-answers? (assoc env :schema-version 0) 2026 5)))
+    (is (false? (pipeline/weekly-answers? nil 2026 5)))
+    ;; "Nobody is projected" IS an answer. Treating it as no answer is what made
+    ;; the offseason refetch on every request.
+    (is (true?  (pipeline/weekly-answers? (assoc env :lines {}) 2026 5)))))
+
+(deftest weekly-past-the-regular-season-is-cached-and-reported-as-nothing
+  ;; Sleeper serves week 19 with a 200 and a full page of *unprojected* entries
+  ;; rather than a 404, so this is the normal offseason reply. Two things must
+  ;; hold: the board is told there is no week (or the banner announces one that
+  ;; does not exist), and the empty answer still caches (or every request
+  ;; refetches, forever).
+  (with-redefs [pipeline/offline? (constantly false)]
+    (let [path  (tmp "weekly-empty")
+          calls (atom 0)]
+      (pipeline/delete-cache! path)
+      (with-redefs [sleeper/fetch-weekly (fn [& _] (swap! calls inc) {})]
+        (is (nil? (pipeline/load-weekly 2026 19 {:path path})))
+        (is (nil? (pipeline/load-weekly 2026 19 {:path path})))
+        (is (= 1 @calls) "the empty answer was cached, not refetched")))))
 
 (deftest weekly-join-crosses-the-two-id-spaces
   ;; The lines arrive in Sleeper's id space; :player-id is the GSIS id wherever

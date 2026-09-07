@@ -34,13 +34,16 @@
 
 (defn week-matchup
   "This week's game as `vs NE` / `@ SEA`, or `Bye` when the week the board is
-  showing is his. Without the week a bye is indistinguishable from a player
-  nobody projects, so this reads it rather than inferring from a missing line."
+  showing is his. A nil `:week/home?` is the side being unknown rather than
+  away, and prints the opponent bare — see `sleeper/weekly-line`."
   [p week]
-  (cond
-    (:week/opponent p) (str (if (:week/home? p) "vs " "@ ") (:week/opponent p))
-    (and week (= week (:bye p))) "Bye"
-    :else "–"))
+  (let [opp (:week/opponent p)
+        home (:week/home? p)]
+    (cond
+      (and opp (nil? home)) opp
+      opp                   (str (if home "vs " "@ ") opp)
+      (and week (= week (:bye p))) "Bye"
+      :else "–")))
 
 (defn cell [k p week]
   (case k
@@ -268,14 +271,14 @@
   failed refresh, states a fact about the season on no evidence at all, in week
   10 as readily as in August."
   []
-  (let [{:keys [through-week] :as meta} @(rf/subscribe [:waiver-meta])]
+  (let [{:keys [through-week] :as m} @(rf/subscribe [:waiver-meta])]
     (case @(rf/subscribe [:season-phase])
       :in-season [:div.week-banner
                   (str "Rest-of-season, through week " through-week)
-                  [week-note meta]]
+                  [week-note m]]
       :preseason [:div.week-banner.preseason
                   "Preseason — no games played yet, so this is the full-season projection."
-                  [week-note meta]]
+                  [week-note m]]
       [:div.week-banner "Loading the rest-of-season board…"])))
 
 ;; ---- the view ----

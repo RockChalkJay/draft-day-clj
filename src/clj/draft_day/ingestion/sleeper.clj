@@ -5,6 +5,7 @@
   engine (`rush_yd`, `pass_td`, `rec`, ...). Team defenses use the team abbrev
   as their player_id (e.g. \"ARI\") and Sleeper's \"DEF\" maps to our \"DST\"."
   (:require [clojure.set :as set]
+            [clojure.tools.logging :as log]
             [org.httpkit.client :as http]
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]))
@@ -191,17 +192,31 @@
   (when (and stats (:pts_ppr stats))
     {:stats      (scored-stats stats)
      :opponent   opponent
-     :home?      (contains? homes team)
+     ;; nil, not false, when the schedule did not arrive: an empty home set
+     ;; would read as "everyone is away" and print `@ OPP` over every home
+     ;; game. Not knowing the side is a state the renderer can show.
+     :home?      (when homes (contains? homes team))
      :updated-at updated_at}))
 
-(defn weekly-by-id [entries homes]
+(defn weekly-by-id
+  "Pure: entries -> {sleeper-id line}. See `fetch-weekly` on the id space."
+  [entries homes]
   (into {} (keep (fn [{:keys [player_id] :as entry}]
                    (when-let [line (weekly-line entry homes)]
                      [player_id line])))
         entries))
 
 (defn fetch-weekly
-  "Network: {player-id weekly-line} for one week of a season."
+  "Network: {sleeper-id weekly-line} for one week of a season.
+
+  Keyed in *Sleeper's* id space, not the universe's — `:player-id` there is the
+  GSIS id wherever one resolves. `pipeline/assoc-weekly` crosses the two."
   [season week]
-  (weekly-by-id (fetch-weekly-entries season week)
-                (home-teams (fetch-schedule season) week)))
+  ;; The schedule only supplies vs/@. Letting it fail the whole fetch would
+  ;; trade the entire weekly projection for a two-character prefix, so it
+  ;; degrades on its own: nil homes means the side is unknown.
+  (let [homes (try (home-teams (fetch-schedule season) week)
+                   (catch Exception e
+                     (log/warn e "weekly schedule fetch failed; side unknown")
+                     nil))]
+    (weekly-by-id (fetch-weekly-entries season week) homes)))

@@ -464,14 +464,16 @@
 (defn- weekly-ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_WEEKLY_TTL_HOURS") "1")))
 
-(defn weekly-usable?
-  "Whether a cached envelope answers for exactly this season and week."
+(defn weekly-answers?
+  "Whether a cached envelope is an answer for exactly this season and week.
+
+  Deliberately not `(seq :lines)` — an empty map is a real answer, and treating
+  it as no answer is what made the offseason refetch on every request."
   [env season week]
   (boolean (and (map? env)
                 (= weekly-schema-version (:schema-version env))
                 (= season (:season env))
-                (= week (:week env))
-                (seq (:lines env)))))
+                (= week (:week env)))))
 
 (defn- read-weekly [path]
   (try (read-transit path)
@@ -494,16 +496,22 @@
   ([season week] (load-weekly season week {}))
   ([season week {:keys [refresh path] :or {path default-weekly-cache-path}}]
    (when-not (offline?)
-     (let [cached (read-weekly path)]
-       (if (and (not refresh)
-                (cache-fresh? path (weekly-ttl-hours))
-                (weekly-usable? cached season week))
-         cached
-         (try
-           (live-weekly season week path)
-           (catch Exception e
-             (log/warn e "weekly projections fetch failed:" (ex-message e))
-             (when (weekly-usable? cached season week) cached))))))))
+     (let [cached (read-weekly path)
+           env    (if (and (not refresh)
+                           (cache-fresh? path (weekly-ttl-hours))
+                           (weekly-answers? cached season week))
+                    cached
+                    (try
+                      (live-weekly season week path)
+                      (catch Exception e
+                        (log/warn e "weekly projections fetch failed:" (ex-message e))
+                        (when (weekly-answers? cached season week) cached))))]
+       ;; "Nobody is projected" is cached like any other answer, but it is not a
+       ;; week the board can show. Sleeper serves week 19 with a 200 and 750
+       ;; unprojected entries rather than a 404, so past the regular season this
+       ;; is the *normal* reply — returning the envelope would have the banner
+       ;; announce a week that does not exist.
+       (when (seq (:lines env)) env)))))
 
 (defn assoc-weekly
   "Join weekly lines onto players. A player without one keeps no weekly keys at

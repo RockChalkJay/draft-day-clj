@@ -824,3 +824,12 @@
   ;; with these columns entirely absent rather than claiming week 0.
   (is (nil? (waivers/week-note {:through-week 0})))
   (is (some? (waivers/week-note {:week 4 :week-fetched-at nil}))))
+
+(deftest matchup-prints-a-bare-opponent-when-the-side-is-unknown
+  ;; nil :week/home? is the schedule not arriving, not an away game. Printing
+  ;; "@ NE" for a home game would be confidently wrong; the opponent alone is
+  ;; the part actually known.
+  (is (= "NE" (waivers/week-matchup {:week/opponent "NE"} 1)))
+  (is (= "NE" (waivers/week-matchup {:week/opponent "NE" :week/home? nil} 1)))
+  ;; An explicit false still prints the away marker.
+  (is (= "@ NE" (waivers/week-matchup {:week/opponent "NE" :week/home? false} 1))))
