@@ -107,7 +107,12 @@
     ;; the confusion this report exists to remove.
     (when-let [d (:drop-candidate (first players))]
       (let [ros-of  #(double (or (:ros-points %) 0.0))
-            seated  (filterv :ros-points my-roster)
+            ;; `my-roster` is built off :player-ids and so includes IR and
+            ;; taxi, each flagged :parked?. The board chooses its drop over
+            ;; :active-ids, which excludes them — seating a parked player here
+            ;; would make a real starter look free to drop, and the report would
+            ;; be disagreeing with the thing it exists to explain.
+            seated  (filterv #(and (:ros-points %) (not (:parked? %))) my-roster)
             full    (lineup/lineup-points seated slots :ros-points)
             without (lineup/lineup-points
                      (remove #(= (:player-id %) (:player-id d)) seated)

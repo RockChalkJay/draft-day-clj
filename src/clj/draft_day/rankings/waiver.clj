@@ -136,7 +136,14 @@
                      (- full (lineup/lineup-points
                               (remove #(= (:player-id %) (:player-id p)) players)
                               slots :ros-points)))]
-          (first (sort-by (juxt cost points) players)))))))
+          ;; Keyed once per player and sorted on the pairs. `sort-by` calls its
+          ;; keyfn inside the comparator, so keying in the sort would run a full
+          ;; lineup fill O(n log n) times for a value that is fixed per player.
+          (->> players
+               (map (fn [p] [[(cost p) (points p)] p]))
+               (sort-by first)
+               first
+               second))))))
 
 (defn with-upgrade
   "Assoc `:upgrade` — rest-of-season points gained by making the claim — on every
