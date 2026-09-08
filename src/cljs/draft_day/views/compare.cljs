@@ -182,7 +182,7 @@
       (if (zero? r) "0" (util/signed r)))
     "–"))
 
-(defn plain
+(defn number-or-dash
   "A number as itself, for a rank or a count that neither rounds nor scales."
   [n]
   (if (number? n) n "–"))
@@ -250,17 +250,17 @@
     :tip "Targets plus carries per game this season"}
    {:band :evidence :label "Games played"   :bar? false
     :f #(get-in % [:nflverse/season-to-date :games])
-    :fmt plain}
+    :fmt number-or-dash}
    ;; Both preseason, so neither is evidence about now — they are what the
    ;; season so far is disagreeing with, which is the whole waiver-wire case.
    {:band :evidence :label "Preseason"      :f :points :fmt board/format-whole
     :tip (str "What he was projected for before the season — the number the"
               " rest-of-season line is correcting")}
    {:band :evidence :label "Expert rank"    :f :fantasypros/ecr :better :lower
-    :fmt plain
+    :fmt number-or-dash
     :tip "FantasyPros expert consensus rank, preseason. Lower is better"}
    {:band :evidence :label "Injury risk"    :f :injury-risk :better :lower
-    :fmt plain
+    :fmt number-or-dash
     :tip (str "Games missed per season over the last three, 1 (durable) to"
               " 5 (fragile)")}])
 
@@ -316,17 +316,26 @@
   (when-let [rs (seq (filter #(row-has-value? % a b) (rows-by-band k)))]
     (for [r rs] ^{:key (:label r)} [metric-row r a b sep])))
 
+(defn status-label
+  "The designation as it is drawn. Abbreviated past three characters, because
+  the head's column has room for \"IR\" and not for \"Questionable\"."
+  [st]
+  (if (> (count st) 3) (subs st 0 1) st))
+
 (defn status-chip
   "The current injury designation beside the name, or nil.
 
-  Abbreviated to fit the head's column — the full word is on the hover — and
-  only the serious set takes `--warn`, so a Questionable does not shout like an
-  IR. `db/serious-injury?` is the one copy of that set."
+  Only the serious set takes `--warn`, so a Questionable does not shout like an
+  IR — `db/serious-injury?` is the one copy of that set."
   [p]
   (when-let [st (:sleeper/injury-status p)]
     [:span {:class (str "cmp-status" (when (db/serious-injury? st) " serious"))
             :title st}
-     (if (> (count st) 3) (subs st 0 1) st)]))
+     ;; The abbreviation is for the eye only. A reader announcing \"Q\" has been
+     ;; told nothing, and it will not pick the word off a `title` on an element
+     ;; nobody can focus — which is the case `.sr-only` exists for.
+     [:span {:aria-hidden "true"} (status-label st)]
+     [:span.sr-only st]]))
 
 (defn face
   "Silhouette underneath, headshot on top. Same arrangement as `controls/face`

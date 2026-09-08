@@ -336,10 +336,19 @@
 ;; ---- the injury designation ----
 
 (deftest the-designation-is-abbreviated-to-fit
-  (is (= "Q" (last (cmp/status-chip {:sleeper/injury-status "Questionable"}))))
-  (is (= "IR" (last (cmp/status-chip {:sleeper/injury-status "IR"})))
-      "already short enough to stand")
+  (is (= "Q" (cmp/status-label "Questionable")))
+  (is (= "D" (cmp/status-label "Doubtful")))
+  (is (= "IR" (cmp/status-label "IR")) "already short enough to stand")
+  (is (= "Out" (cmp/status-label "Out")))
   (is (nil? (cmp/status-chip {}))))
+
+(deftest a-reader-gets-the-word-the-eye-gets-abbreviated
+  ;; "Q" announced aloud is nothing, and a `title` on an element nobody can
+  ;; focus is not guaranteed to be read — the case `.sr-only` exists for.
+  (let [chip (cmp/status-chip {:sleeper/injury-status "Questionable"})]
+    (is (= [:span.sr-only "Questionable"] (last chip)))
+    (is (= "true" (:aria-hidden (second (nth chip 2))))
+        "and the abbreviation is hidden from it, so the word is not said twice")))
 
 (deftest only-a-serious-designation-takes-the-warn-colour
   (let [class-of #(:class (second (cmp/status-chip {:sleeper/injury-status %})))]
