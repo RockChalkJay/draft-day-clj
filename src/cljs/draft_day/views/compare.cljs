@@ -33,7 +33,33 @@
 
   It floats without a backdrop. The interaction is holding one player and
   clicking down the board through challengers, and a scrim swallows exactly
-  those clicks — see `.cmp-float` in styles.css."
+  those clicks — see `.cmp-float` in styles.css.
+
+  WHY OVER REPLACEMENT SITS UNDER REST OF SEASON. It is the same horizon in the
+  only unit that survives a cross-position pair — a quarterback's 190 and a
+  tight end's 120 are not a comparison and their VORPs are. So it reads as that
+  row restated rather than as support for it, which is why it is not in the
+  evidence band. nil for K and DST, which have no replacement level.
+
+  WHY LINEUP GAIN AND UPGRADE ARE BOTH KEPT. Lineup leads the claim band because
+  it leads the board and prices the bid; Upgrade under it is the bench question,
+  which is a different one. See `db/waiver-rank-key`.
+
+  WHY FORM KEEPS A DIRECTIONAL BAR WHEN THE WEEKLY ROW DOES NOT. Form is
+  *realized* production, not a forecast: a player who scored more over the last
+  three weeks did outscore the other, and the bar says that happened rather
+  than predicting it will. `draft-day.confidence` deliberately does not reach
+  it — the calibration exists because a weekly projection is a claim about a
+  game nobody has played. What the role has been worth against what the
+  projection expects of it is the waiver-wire buy, so it sits beside the
+  horizons rather than folded into them.
+
+  THE READING LINE NAMES A DISAGREEMENT RATHER THAN COUNTING ONE. Its branches
+  are deliberately not merged. \"Both\" was written under two rows and there are
+  three now. And a weekly line that *does not discriminate* is a different
+  sentence from one that *does not exist* — `separation-line` states the first
+  underneath in the terms it was measured in, so saying it twice in two
+  vocabularies is what the split branches avoid."
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.confidence :as confidence]
@@ -83,6 +109,13 @@
 (defn on-bye? [p week]
   (and week (= week (:bye p)) (not (number? (:week-points p)))))
 
+(defn weekly-lead
+  "Who leads on `:week-points`, or nil when the measurement calls the pair a
+  coin flip. Reading it straight off the number printed \"X is ahead on both\"
+  above \"Too close to call\" — two sentences about one number."
+  [a b sep]
+  (when-not (confidence/coin-flip? sep) (ahead a b :week-points)))
+
 (defn reading-line
   "One sentence naming what the horizons show.
 
@@ -91,18 +124,12 @@
   year, and a tile that guessed would be confidently wrong half the time. It
   names the split and stops.
 
-  `sep` is `confidence/separation` for the pair, and it is required rather than
-  defaulted — see the coin-flip branch for what a `sep`-less call would print."
+  `sep` is required rather than defaulted — see `weekly-lead`, which is what a
+  `sep`-less call would get wrong."
   [a b week sep]
   (let [bye   (first (filter #(on-bye? % week) [a b]))
-        ;; A weekly lead the measurement calls a coin flip is not a lead. This
-        ;; sentence used to read it straight off `:week-points`, so on a close
-        ;; pair the tile printed "X is ahead on both" directly above "Too close
-        ;; to call" — two sentences disagreeing about the same number. Worse was
-        ;; the split, which framed a buy-Sunday-or-hold decision around a weekly
-        ;; difference that is not there.
         even? (confidence/coin-flip? sep)
-        wk    (when-not even? (ahead a b :week-points))
+        wk    (weekly-lead a b sep)
         ros   (ahead a b :ros-points)
         vorp  (ahead a b :ros-vorp)]
     (cond
@@ -112,26 +139,18 @@
       [:span [:b (:player-name wk)] " projects higher this week; "
        [:b (:player-name ros)] " is the better rest-of-season hold."]
 
-      ;; Raw points do not compare across positions, and Over replacement sits
-      ;; in this same band saying so whenever it leans the other way. A sentence
-      ;; asserting agreement above a bar that disagrees is the bug #52 shipped
-      ;; wearing a second costume — this is the pair the row was added for, so
-      ;; it is the pair the sentence has to be able to name.
+      ;; Raw points do not compare across positions; Over replacement leans the
+      ;; other way and the sentence has to be able to name that pair.
       (and ros vorp (not= ros vorp))
       [:span [:b (:player-name ros)] " projects more points; "
        [:b (:player-name vorp)] " is further above replacement at his position."]
 
-      ;; Named rather than counted. "Both" was written under two rows and there
-      ;; are three now, and the next row added here would break it again.
+      ;; Named rather than counted — see the ns docstring.
       (and wk ros)
       [:span [:b (:player-name wk)] " is ahead this week and rest-of-season."]
 
-      ;; Deliberately not merged with the branch below, though both end at
-      ;; rest-of-season. That one means *neither player has a weekly line* — a
-      ;; bye, or nobody projects him — and says so. This one means the line
-      ;; exists and does not discriminate, which `separation-line` states
-      ;; underneath in the terms it was measured in. Saying it twice, in two
-      ;; vocabularies, is what this branch exists to avoid.
+      ;; The weekly line exists and does not discriminate; the branch below
+      ;; means there is no weekly line at all. Not merged; see ns docstring.
       (and ros even?)
       [:span [:b (:player-name ros)] " is ahead rest-of-season."]
 
@@ -151,9 +170,8 @@
     (let [pos  (:position a)
           gap  (:gap sep)
           apart (str gap " " pos (when (> gap 1) "s") " apart")]
-      ;; Three sentences of one shape: the verdict, the gap, then what the gap
-      ;; was measured to be worth. Parallel because they appear in the same slot
-      ;; and a manager reads them as one another's alternatives.
+      ;; Three sentences of one shape, because they share a slot and a manager
+      ;; reads them as one another's alternatives.
       (case (:level sep)
         :coin-flip [:span "Too close to call — " apart
                     ", which the weekly projection calls right about half the time."]
@@ -226,18 +244,13 @@
     :fmt board/format-whole :sub week-rank-label :calibrated? true}
    {:band :horizon  :label "Rest of season" :f :ros-points  :big? true
     :fmt board/format-whole}
-   ;; The same horizon in the only unit that survives a cross-position pair: a
-   ;; quarterback's 190 and a tight end's 120 are not a comparison and their
-   ;; VORPs are. It sits under Rest of season rather than among the evidence
-   ;; because it is that row restated, not support for it. nil for K and DST,
-   ;; which have no replacement level — see `db/vorp-sort-key`.
+   ;; Rest of season restated in cross-position units — see the ns docstring
+   ;; and `db/vorp-sort-key`.
    {:band :horizon  :label "Over replacement" :f :ros-vorp :fmt board/format-whole
     :tip (str "Rest-of-season points above a replacement player at his position"
               " — the one number that compares a QB to a TE")}
-   ;; Lineup leads the claim band because it leads the board and prices the bid.
-   ;; Upgrade under it is the bench question, which is a different one — see
-   ;; `db/waiver-rank-key` for why both are kept rather than one replacing
-   ;; the other.
+   ;; Lineup leads; Upgrade under it is the bench question — see the ns
+   ;; docstring and `db/waiver-rank-key`.
    {:band :claim    :label "Lineup gain"    :f :lineup-upgrade :fmt claim-points
     :tip (str "Rest-of-season points this claim adds to your starting lineup,"
               " after the drop. 0 means he would never start")}
@@ -249,15 +262,8 @@
    {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend
     :tip (str "Recent opportunity per game against his season rate — above"
               " 1.0× means the role is growing")}
-   ;; What the role has been worth, against what the projection expects of it.
-   ;; The disagreement is the waiver-wire buy, so it belongs beside the horizons
-   ;; rather than folded into them.
-   ;;
-   ;; It keeps a directional bar, and `draft-day.confidence` deliberately does
-   ;; not reach it: form is *realized* production, not a forecast. A player who
-   ;; scored more over the last three weeks did outscore the other, and the bar
-   ;; says that happened rather than predicting it will. The calibration exists
-   ;; because a weekly projection is a claim about a game nobody has played.
+   ;; Realized production, so it keeps a directional bar the weekly row does
+   ;; not — see the ns docstring.
    {:band :evidence :label "Form / game"    :f :form-points
     :fmt board/format-one-decimal
     :tip "Points per game over the last three weeks, under your league's rules"}
@@ -289,26 +295,33 @@
    (fmt v)
    (when sub [:span.cmp-sub sub])])
 
+(defn drawable?
+  "Both sides are numbers, so an empty track can only mean \"even\". Drawing one
+  whenever the row *could* compare made a preseason board of missing data look
+  like four ties."
+  [bar? va vb]
+  (and bar? (number? va) (number? vb)))
+
+(defn measured-tie?
+  "A tie the calibration measured, which must not render like no data at all:
+  the needle rests at zero rather than the track being absent."
+  [calibrated? sep]
+  (and calibrated? (confidence/coin-flip? sep)))
+
 (defn metric-row
   "One row. `sep` is `confidence/separation` for the pair, and only a row marked
   `:calibrated?` consults it — the rest have no measurement behind them."
   [{:keys [label f fmt better bar? big? sub tip calibrated?] :or {bar? true}} a b sep]
-  (let [va (f a)
-        vb (f b)
-        ;; The track is drawn only when both sides are numbers, so an empty one
-        ;; means "even" and nothing else. Drawing it whenever the row *could*
-        ;; compare made a preseason board of missing data look like four ties.
-        track? (and bar? (number? va) (number? vb))
-        ;; A measured tie, which is not the same as no data and must not look
-        ;; like it. The needle rests at zero rather than the track being absent.
-        even?  (and calibrated? (confidence/coin-flip? sep))
+  (let [va     (f a)
+        vb     (f b)
+        track? (drawable? bar? va vb)
+        even?  (measured-tie? calibrated? sep)
         lean   (when (and track? (not even?)) (lean va vb better))]
     [:div {:class (str "cmp-row" (when big? " big"))}
      [value-cell :l va fmt (= :l (:side lean)) (when sub (sub a))]
      [:div.cmp-mid
-      ;; `title` rather than a second line of type: half these labels are
-      ;; self-evident, and a definition under each one would put more words on
-      ;; the tile than numbers. A nil leaves the attribute off entirely.
+      ;; `title` rather than a second line of type — a definition under each
+      ;; label would put more words on the tile than numbers.
       [:div.cmp-lbl {:title tip} label]
       (when track?
         [:div.cmp-bar
@@ -347,9 +360,8 @@
   (when-let [st (:sleeper/injury-status p)]
     [:span {:class (str "cmp-status" (when (db/serious-injury? st) " serious"))
             :title st}
-     ;; The abbreviation is for the eye only. A reader announcing \"Q\" has been
-     ;; told nothing, and it will not pick the word off a `title` on an element
-     ;; nobody can focus — which is the case `.sr-only` exists for.
+     ;; The abbreviation is for the eye only: a reader announcing "Q" has been
+     ;; told nothing, and cannot reach a `title` on an unfocusable element.
      [:span {:aria-hidden "true"} (status-label st)]
      [:span.sr-only st]]))
 
@@ -390,10 +402,8 @@
     (let [claim (band :claim a b sep)]
       [:div.cmp-band
        (or claim
-           ;; The band empties on exactly one pair: two players the manager
-           ;; already holds, neither of whom can be claimed. A free agent beside
-           ;; a rostered player keeps its rows and dashes the side with no claim
-           ;; to make, which is the asymmetry `row-has-value?` will not hide.
+           ;; Empties on exactly one pair: two players already held. One of
+           ;; each keeps its rows and dashes the side with no claim to make.
            [:p.cmp-note "You hold both of these players, so there is "
             "no claim to price."])
        ;; From whichever side is a free agent — with a rostered player on the
@@ -426,9 +436,8 @@
     (let [players @(rf/subscribe [:compare-players])
           week    (:week @(rf/subscribe [:waiver-meta]))
           by-id   @(rf/subscribe [:universe-by-id])
-          ;; A waiver row carries no `[:ids :sleeper]`, so the headshot comes off
-          ;; the universe the browser already holds — the same indirection
-          ;; `player-stats/nominated-stats` uses, and for the same reason.
+          ;; A waiver row carries no `[:ids :sleeper]`, so the headshot comes
+          ;; off the universe — as `player-stats/nominated-stats` does.
           shot    (fn [p] (util/headshot-url (get by-id (:player-id p))))
           [a b]   players
           sep     (when b (confidence/separation a b))]
@@ -440,9 +449,8 @@
            [:button.cmp-close {:on-click #(rf/dispatch [:compare-clear])
                                :title "Close (Esc)"
                                :aria-label "Close comparison"} "✕"]]
-          ;; Head outside the scrolling half deliberately: it carries the only
-          ;; thing that says which column is which player, and a comparison that
-          ;; scrolls its own legend away is two columns of unattributed numbers.
+          ;; Outside the scrolling half: it says which column is which player,
+          ;; and a comparison that scrolls its legend away is unattributed.
           [:div.cmp-head
            [player-head a :l (shot a) week]
            [:div.cmp-week (if week (str "Week " week) "Rest of season")]
