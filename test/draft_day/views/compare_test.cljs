@@ -5,6 +5,7 @@
   `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing]]
             [draft-day.confidence :as confidence]
+            [draft-day.db :as db]
             [draft-day.views.compare :as cmp]))
 
 ;; ---- which way a row leans ----
@@ -53,9 +54,39 @@
     (is (re-find #"Jauan Jennings is the better rest-of-season hold" s))))
 
 (deftest reading-line-says-so-when-they-agree
+  ;; Named rather than counted. It read "ahead on both" when the band held two
+  ;; rows; Over replacement made three, and the next one would have made four.
   (let [better (assoc jennings :week-points 18.0 :ros-points 140.0)
         s      (text (cmp/reading-line odunze better 5 nil))]
-    (is (= "Jauan Jennings is ahead on both." s))))
+    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
+
+(deftest a-cross-position-pair-gets-its-own-sentence
+  ;; The row that made this necessary. VORP subtracts a *per-position*
+  ;; replacement level, so more points and further above replacement are
+  ;; different players as soon as the two are not the same position — and Over
+  ;; replacement sits in the band this sentence summarises, leaning visibly the
+  ;; other way while it claimed they agreed.
+  (let [qb (assoc odunze  :player-name "A QB" :ros-points 285.0 :ros-vorp 5.0)
+        wr (assoc jennings :player-name "A WR" :ros-points 200.0 :ros-vorp 70.0
+                  :week-points 1.0)
+        s  (text (cmp/reading-line qb wr 5 nil))]
+    (is (re-find #"A QB projects more points" s))
+    (is (re-find #"A WR is further above replacement" s))
+    (is (not (re-find #"ahead this week and rest-of-season" s))
+        "the agreement sentence is exactly what must not print here")))
+
+(deftest agreeing-vorp-leaves-the-sentence-alone
+  ;; Same position, so replacement cancels and the third row cannot disagree.
+  ;; The branch must not fire on every pair that happens to carry a VORP.
+  (let [better (assoc jennings :week-points 18.0 :ros-points 140.0 :ros-vorp 40.0)
+        s      (text (cmp/reading-line (assoc odunze :ros-vorp -4.0) better 5 nil))]
+    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
+
+(deftest a-vorp-nobody-has-is-not-a-disagreement
+  ;; nil for K and DST, and for the whole board before a sync.
+  (let [better (assoc jennings :week-points 18.0 :ros-points 140.0)
+        s      (text (cmp/reading-line odunze (assoc better :ros-vorp 40.0) 5 nil))]
+    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
 
 (deftest reading-line-never-picks-for-you
   ;; When the horizons split there is no answer without knowing whether the
@@ -110,11 +141,11 @@
 
 (deftest a-coin-flip-week-is-not-a-weekly-lead
   ;; Nabers vs McConkey, the live reproduction: ahead on *both* raw numbers, so
-  ;; the tile said "ahead on both" directly above "Too close to call".
+  ;; the tile claimed the week directly above "Too close to call".
   (let [weaker (assoc jennings :ros-points 80.0)
         s      (text (cmp/reading-line odunze weaker 5 coin-flip))]
     (is (not (re-find #"this week" s)))
-    (is (not (re-find #"ahead on both" s)))
+    (is (not (re-find #"ahead this week and rest-of-season" s)))
     (is (re-find #"Rome Odunze is ahead rest-of-season" s))))
 
 (deftest a-coin-flip-does-not-manufacture-a-split
@@ -242,3 +273,160 @@
     (is (nil? (:bar? (by-label "This week"))) "defaults to drawn")
     (is (= :lower (:better (by-label "Injury risk"))))
     (is (= 2 (count (filter :big? cmp/rows))) "the two horizons are the question")))
+
+;; ---- the tile must not fall behind the board ----
+;; It did: `:lineup-upgrade` became the column `db/waiver-rank-key` sorts by and
+;; the tile never mentioned it, along with VORP, the preseason line and ECR. The
+;; two lists are written separately because tile rows carry comparison semantics
+;; (`:bar?`, `:better`, `:big?`) the board has no use for — so the guard is a
+;; test rather than a shared definition.
+
+(def ^:private board-metric->row
+  "Every `db/waiver-column-catalog` key that states a fact about the player,
+  against the row that shows it."
+  {:ros       "Rest of season"
+   :week      "This week"
+   :week-rank "This week"          ; the weekly row's `:sub`
+   :ros-vorp  "Over replacement"
+   :lineup    "Lineup gain"
+   :upgrade   "Upgrade"
+   :bid       "Bid"
+   :trend     "Trend"
+   :form      "Form / game"
+   :gp        "Games played"
+   :preseason "Preseason"
+   :ecr       "Expert rank"
+   :risk      "Injury risk"})
+
+(def ^:private not-a-row
+  "Board columns deliberately absent from the tile, each for a stated reason:
+  identity (the head says it), schedule (no winner, and Opp is in the head),
+  a raw count the tile shows as a rate, and the designation, which is a chip on
+  the name rather than a word among tabular numbers."
+  #{:rank :name :team :position :bye :opp :tgt :car :inj})
+
+(deftest every-board-metric-reaches-the-tile
+  (let [labels (set (map :label cmp/rows))]
+    (doseq [[k label] board-metric->row]
+      (is (contains? labels label)
+          (str "board column " k " has no row labelled " (pr-str label))))))
+
+(deftest a-new-board-column-must-decide-about-the-tile
+  ;; The half that actually catches drift: adding to `waiver-column-catalog`
+  ;; fails here until the column is either given a row or listed as absent.
+  (let [decided (into not-a-row (keys board-metric->row))]
+    (doseq [{k :key} db/waiver-column-catalog]
+      (is (contains? decided k)
+          (str k " is a board column with no decision recorded about the tile")))))
+
+(deftest the-tile-shows-nothing-the-board-cannot
+  ;; The other direction: a row reading a key no board column carries is a
+  ;; number the manager can only see here, which is drift of its own. One is
+  ;; allowed, because it is derived rather than shipped — the board has Tgt and
+  ;; Car, and the tile divides them by games played.
+  (is (= ["Opportunity / game"]
+         (let [from-board (set (vals board-metric->row))]
+           (remove from-board (map :label cmp/rows))))))
+
+;; ---- rows with nothing to compare ----
+
+(deftest a-row-survives-on-one-value
+  ;; The asymmetry is the answer: a free agent beside a man you already hold has
+  ;; an upgrade and a bid, and the rostered side has none. Hiding that row would
+  ;; hide the reason you are comparing them.
+  (let [upg (first (filter #(= "Upgrade" (:label %)) cmp/rows))]
+    (is (true? (cmp/row-has-value? upg {:upgrade 12.0} {})))
+    (is (true? (cmp/row-has-value? upg {} {:upgrade 12.0})))
+    (is (false? (cmp/row-has-value? upg {} {})))))
+
+(deftest an-empty-band-is-nil-rather-than-empty
+  ;; nil is what lets the caller say "you hold both of these players" instead of
+  ;; drawing three dashes under a border.
+  (is (nil? (cmp/band :claim {} {} nil)))
+  (is (some? (cmp/band :claim {:bid 4} {} nil))))
+
+(deftest a-band-drops-only-the-rows-with-nothing-in-them
+  (let [rows (cmp/band :claim {:upgrade 12.0 :bid 4} {:upgrade 3.0} nil)]
+    (is (= 2 (count rows)) "lineup gain is absent on both sides and goes")
+    (is (= #{"Upgrade" "Bid"}
+           (set (map #(-> % second :label) rows))))))
+
+;; ---- zero is an answer in the claim band ----
+
+(deftest a-claim-of-zero-prints-zero-not-a-dash
+  ;; `util/signed` dashes zero because a board column has no bar beside it to
+  ;; disagree with. This one does, and a dash next to a drawn bar reads as
+  ;; missing data — which is the state that must stay distinguishable.
+  (is (= "0" (cmp/claim-points 0)))
+  (is (= "0" (cmp/claim-points 0.4)) "rounded once, and the digits follow it")
+  (is (= "+8" (cmp/claim-points 8.2)))
+  (is (= "-8" (cmp/claim-points -8.2)))
+  (is (= "–" (cmp/claim-points nil)) "absent is still a dash"))
+
+;; ---- the injury designation ----
+
+(deftest the-designation-is-abbreviated-to-fit
+  (is (= "Q" (cmp/status-label "Questionable")))
+  (is (= "D" (cmp/status-label "Doubtful")))
+  (is (= "IR" (cmp/status-label "IR")) "already short enough to stand")
+  (is (= "Out" (cmp/status-label "Out")))
+  (is (nil? (cmp/status-chip {}))))
+
+(deftest a-reader-gets-the-word-the-eye-gets-abbreviated
+  ;; "Q" announced aloud is nothing, and a `title` on an element nobody can
+  ;; focus is not guaranteed to be read — the case `.sr-only` exists for.
+  (let [chip (cmp/status-chip {:sleeper/injury-status "Questionable"})]
+    (is (= [:span.sr-only "Questionable"] (last chip)))
+    (is (= "true" (:aria-hidden (second (nth chip 2))))
+        "and the abbreviation is hidden from it, so the word is not said twice")))
+
+(deftest only-a-serious-designation-takes-the-warn-colour
+  (let [class-of #(:class (second (cmp/status-chip {:sleeper/injury-status %})))]
+    (is (= "cmp-status serious" (class-of "IR")))
+    (is (= "cmp-status" (class-of "Questionable"))
+        "a Questionable that shouts like an IR trains you to stop reading it")))
+
+(deftest the-full-word-survives-on-the-hover
+  (is (= "Questionable"
+         (:title (second (cmp/status-chip {:sleeper/injury-status "Questionable"}))))))
+
+;; ---- band order ----
+
+(deftest the-answer-sits-above-the-evidence
+  ;; Question, then what the claim costs and gains, then why. At nine rows the
+  ;; claim band could sit last; at twelve it fell below the fold on a laptop,
+  ;; under the band it is a conclusion of.
+  ;;
+  ;; Asserted off what `tile-bands` draws, not off `cmp/bands`. The vector used
+  ;; to be a constant nothing read, and a test comparing it to itself would have
+  ;; passed just as happily with the three bands emitted in any order at all.
+  ;; One surviving row per band, so each band's position in the fragment is
+  ;; readable. The rows are `[metric-row row …]` component references — reagent
+  ;; expands them, a test reads the row map straight out of them.
+  (let [a (assoc odunze  :upgrade 12.0 :points 90.0)
+        b (assoc jennings :upgrade 3.0 :points 70.0)
+        labels (fn [b*] (keep #(:label (second %)) (nth b* 1)))
+        [_ horizon claim evidence] (cmp/tile-bands (dissoc a :week-points)
+                                                   (dissoc b :week-points)
+                                                   nil nil)]
+    (is (= ["Rest of season"] (labels horizon)))
+    (is (= ["Upgrade"] (labels claim)))
+    (is (= ["Preseason"] (labels evidence))))
+  (is (= #{"Lineup gain" "Upgrade" "Bid"}
+         (set (map :label (cmp/rows-by-band :claim))))))
+
+(deftest an-evidence-band-with-nothing-in-it-is-not-drawn
+  ;; The only band that can vanish. A bordered empty box below the claim reads
+  ;; as a section that failed to load.
+  (is (nil? (cmp/band-content :evidence {:ros-points 1.0} {:ros-points 2.0} nil nil)))
+  (is (some? (cmp/band-content :evidence {:points 90.0} {} nil nil))))
+
+(deftest every-band-in-bands-can-draw-itself
+  ;; `tile-bands` keeps over `bands`, so a keyword added there with no `case`
+  ;; branch would silently drop out instead of failing.
+  (doseq [k cmp/bands]
+    (is (some? (cmp/band-content k {:player-name "A" :ros-points 100.0
+                                    :upgrade 1.0 :points 9.0}
+                                 {:player-name "B" :ros-points 80.0
+                                  :upgrade 2.0 :points 8.0} nil nil))
+        (str k " draws nothing"))))
