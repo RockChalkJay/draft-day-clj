@@ -15,11 +15,11 @@
    - AAV (`parse-aav`): scrapes FantasyPros' auction-value calculator (the
      draftwizard `#OverallTable`) for a raw market price per player."
   (:require [clojure.string :as str]
-            [org.httpkit.client :as http]
-            [jsonista.core :as json]
             [draft-day.ingestion.match :as match]
             [draft-day.ingestion.parallel :as parallel]
-            [draft-day.json :refer [mapper]])
+            [draft-day.json :refer [mapper]]
+            [jsonista.core :as json]
+            [org.httpkit.client :as http])
   (:import [java.util.concurrent Semaphore]
            [org.jsoup Jsoup]))
 

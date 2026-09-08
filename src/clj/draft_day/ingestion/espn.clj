@@ -10,9 +10,9 @@
   projection is the one at `statSourceId 1, statSplitTypeId 0`. Reading it costs
   no extra request, which is the whole reason projected targets are affordable:
   Sleeper, the app's projection backbone, publishes no target column at all."
-  (:require [jsonista.core :as json]
-            [draft-day.ingestion.match :as match]
-            [draft-day.json :refer [mapper]])
+  (:require [draft-day.ingestion.match :as match]
+            [draft-day.json :refer [mapper]]
+            [jsonista.core :as json])
   (:import [java.net.http HttpClient HttpRequest HttpResponse$BodyHandlers]
            [java.net URI]))
 
