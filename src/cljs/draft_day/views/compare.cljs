@@ -20,12 +20,24 @@
   them, and a directional accent fill only when it can. Collapsing the first
   two is the bug #52 shipped once, where missing data rendered as a tie.
 
+  The bands run in the order a decision is made: the two horizons are the
+  question, what a claim costs and gains is the answer, and the evidence is why.
+  The answer used to sit last, which was fine at nine rows and is not at twelve
+  — it ended up below the fold on a laptop, under the band it is a conclusion of.
+
+  A row whose metric is missing on *both* sides is dropped rather than dashed,
+  and a band that empties out says why in a sentence. This is not the same
+  restraint as the bar's: a dash is already legible as \"the board cannot say\",
+  but a dozen of them stacked is punctuation rather than a comparison. One side
+  missing keeps the row, because that asymmetry is itself the answer.
+
   It floats without a backdrop. The interaction is holding one player and
   clicking down the board through challengers, and a scrim swallows exactly
   those clicks — see `.cmp-float` in styles.css."
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.confidence :as confidence]
+            [draft-day.db :as db]
             [draft-day.views.board :as board]
             [draft-day.views.controls :as controls]
             [draft-day.views.util :as util]
@@ -147,23 +159,80 @@
     (str (:position p) n)))
 
 (def bands
-  "The tile's three bands, in reading order: the question, the evidence for it,
-  and what the claim costs.
+  "The tile's three bands, in reading order: the question, what a claim would
+  cost and gain, then the evidence for both. See the ns docstring for why the
+  answer moved above the evidence.
 
   `:band` rather than slicing one flat list by index — the boundaries were
   `subvec`s, so inserting a metric anywhere above the last one silently moved
   a row into the wrong band and still rendered. This is the place a metric gets
   added, so it must be the place that says where the metric goes."
-  [:horizon :evidence :claim])
+  [:horizon :claim :evidence])
+
+(defn claim-points
+  "A signed points difference for the claim band, where 0 is a real answer.
+
+  Deliberately not `util/signed`, which dashes zero out because a board column
+  has no bar beside it to disagree with. Here there is one, and a dash sitting
+  next to a drawn bar reads as missing data. Zero means he would never crack the
+  lineup, which is the most common true thing this row has to say."
+  [n]
+  (if (number? n)
+    (let [r (js/Math.round n)]
+      (if (zero? r) "0" (util/signed r)))
+    "–"))
+
+(defn plain
+  "A number as itself, for a rank or a count that neither rounds nor scales."
+  [n]
+  (if (number? n) n "–"))
 
 (def rows
-  "What the tile compares. `:bar?` false where neither side is better; `:big?`
-  marks the two horizons, which are the question rather than the evidence."
+  "What the tile compares — everything the board can say about the two players.
+
+  This is the only place both sides are on screen at once, so a metric the row
+  carries and this list omits is a comparison the manager has to make by
+  scrolling between two lines of a table. `db/waiver-column-catalog` is the same
+  list for the board and the two drift apart silently: Lineup became the column
+  the board *sorts by* while the tile still did not mention it. `compare-test`
+  fails on a catalog key that has not been given a decision here.
+
+  Three deliberate omissions. Targets and carries, because
+  `opportunity-per-game` is both of them over games played and the raw counts
+  add a scale rather than a fact. Bye and Opp, because a schedule has no winner
+  and Opp is already in the head. And the injury designation, which is a word
+  among tabular numbers — it is a chip on the name, where the board puts it too.
+
+  `:bar?` false where neither side can be better, `:better :lower` where the
+  metric inverts, `:big?` on the two horizons, and `:tip` on a row whose label
+  cannot carry its own definition."
   [{:band :horizon  :label "This week"      :f :week-points :big? true
     :fmt board/format-whole :sub week-rank-label :calibrated? true}
    {:band :horizon  :label "Rest of season" :f :ros-points  :big? true
     :fmt board/format-whole}
-   {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend}
+   ;; The same horizon in the only unit that survives a cross-position pair: a
+   ;; quarterback's 190 and a tight end's 120 are not a comparison and their
+   ;; VORPs are. It sits under Rest of season rather than among the evidence
+   ;; because it is that row restated, not support for it. nil for K and DST,
+   ;; which have no replacement level — see `db/vorp-sort-key`.
+   {:band :horizon  :label "Over replacement" :f :ros-vorp :fmt board/format-whole
+    :tip (str "Rest-of-season points above a replacement player at his position"
+              " — the one number that compares a QB to a TE")}
+   ;; Lineup leads the claim band because it leads the board and prices the bid.
+   ;; Upgrade under it is the bench question, which is a different one — see
+   ;; `db/waiver-rank-key` for why both are kept rather than one replacing
+   ;; the other.
+   {:band :claim    :label "Lineup gain"    :f :lineup-upgrade :fmt claim-points
+    :tip (str "Rest-of-season points this claim adds to your starting lineup,"
+              " after the drop. 0 means he would never start")}
+   {:band :claim    :label "Upgrade"        :f :upgrade :fmt claim-points
+    :tip (str "Rest-of-season points over the player you would drop, whether or"
+              " not he would ever start")}
+   {:band :claim    :label "Bid"            :f :bid :bar? false
+    :fmt #(if (number? %) (str "$" %) "–")}
+   {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend
+    :tip (str "Recent opportunity per game against his season rate — above"
+              " 1.0× means the role is growing")}
    ;; What the role has been worth, against what the projection expects of it.
    ;; The disagreement is the waiver-wire buy, so it belongs beside the horizons
    ;; rather than folded into them.
@@ -174,18 +243,26 @@
    ;; says that happened rather than predicting it will. The calibration exists
    ;; because a weekly projection is a claim about a game nobody has played.
    {:band :evidence :label "Form / game"    :f :form-points
-    :fmt board/format-one-decimal}
+    :fmt board/format-one-decimal
+    :tip "Points per game over the last three weeks, under your league's rules"}
    {:band :evidence :label "Opportunity / game" :f opportunity-per-game
-    :fmt #(if (number? %) (.toFixed % 1) "–")}
+    :fmt #(if (number? %) (.toFixed % 1) "–")
+    :tip "Targets plus carries per game this season"}
    {:band :evidence :label "Games played"   :bar? false
     :f #(get-in % [:nflverse/season-to-date :games])
-    :fmt #(if (number? %) % "–")}
+    :fmt plain}
+   ;; Both preseason, so neither is evidence about now — they are what the
+   ;; season so far is disagreeing with, which is the whole waiver-wire case.
+   {:band :evidence :label "Preseason"      :f :points :fmt board/format-whole
+    :tip (str "What he was projected for before the season — the number the"
+              " rest-of-season line is correcting")}
+   {:band :evidence :label "Expert rank"    :f :fantasypros/ecr :better :lower
+    :fmt plain
+    :tip "FantasyPros expert consensus rank, preseason. Lower is better"}
    {:band :evidence :label "Injury risk"    :f :injury-risk :better :lower
-    :fmt #(if (number? %) % "–")}
-   {:band :claim    :label "Upgrade"        :f :upgrade
-    :fmt #(if (number? %) (util/signed (js/Math.round %)) "–")}
-   {:band :claim    :label "Bid"            :f :bid :bar? false
-    :fmt #(if (number? %) (str "$" %) "–")}])
+    :fmt plain
+    :tip (str "Games missed per season over the last three, 1 (durable) to"
+              " 5 (fragile)")}])
 
 (def rows-by-band (group-by :band rows))
 
@@ -199,7 +276,7 @@
 (defn metric-row
   "One row. `sep` is `confidence/separation` for the pair, and only a row marked
   `:calibrated?` consults it — the rest have no measurement behind them."
-  [{:keys [label f fmt better bar? big? sub calibrated?] :or {bar? true}} a b sep]
+  [{:keys [label f fmt better bar? big? sub tip calibrated?] :or {bar? true}} a b sep]
   (let [va (f a)
         vb (f b)
         ;; The track is drawn only when both sides are numbers, so an empty one
@@ -213,7 +290,10 @@
     [:div {:class (str "cmp-row" (when big? " big"))}
      [value-cell :l va fmt (= :l (:side lean)) (when sub (sub a))]
      [:div.cmp-mid
-      [:div.cmp-lbl label]
+      ;; `title` rather than a second line of type: half these labels are
+      ;; self-evident, and a definition under each one would put more words on
+      ;; the tile than numbers. A nil leaves the attribute off entirely.
+      [:div.cmp-lbl {:title tip} label]
       (when track?
         [:div.cmp-bar
          (cond
@@ -221,6 +301,32 @@
            lean  [:i {:class (name (:side lean))
                       :style {:width (str (* 50.0 (:frac lean)) "%")}}])])]
      [value-cell :r vb fmt (= :r (:side lean)) (when sub (sub b))]]))
+
+(defn row-has-value?
+  "Does either side carry this row's metric?"
+  [{:keys [f]} a b]
+  (or (some? (f a)) (some? (f b))))
+
+(defn band
+  "One band's rows with the empty ones dropped, or nil when none survive.
+
+  nil rather than an empty seq, because the caller says something different for
+  a band with nothing to show — see the claim band in `compare-tile`."
+  [k a b sep]
+  (when-let [rs (seq (filter #(row-has-value? % a b) (rows-by-band k)))]
+    (for [r rs] ^{:key (:label r)} [metric-row r a b sep])))
+
+(defn status-chip
+  "The current injury designation beside the name, or nil.
+
+  Abbreviated to fit the head's column — the full word is on the hover — and
+  only the serious set takes `--warn`, so a Questionable does not shout like an
+  IR. `db/serious-injury?` is the one copy of that set."
+  [p]
+  (when-let [st (:sleeper/injury-status p)]
+    [:span {:class (str "cmp-status" (when (db/serious-injury? st) " serious"))
+            :title st}
+     (if (> (count st) 3) (subs st 0 1) st)]))
 
 (defn face
   "Silhouette underneath, headshot on top. Same arrangement as `controls/face`
@@ -237,7 +343,7 @@
   [:div {:class (str "cmp-who " (name side))}
    [face headshot]
    [:div
-    [:div.cmp-name (:player-name p)]
+    [:div.cmp-name (:player-name p) [status-chip p]]
     [:p.cmp-meta (util/pos-label p) " · " (or (:team p) "FA")
      " · " (waivers/week-matchup p week)]]])
 
@@ -272,25 +378,30 @@
              [player-head b :r (shot b) week]
              [:div.cmp-empty "Pick another player to compare."])]
           (when b
-            [:<>
-             [:div.cmp-band
-              (for [r (rows-by-band :horizon)]
-                ^{:key (:label r)} [metric-row r a b sep])
-              (when-let [line (reading-line a b week sep)]
-                [:p.cmp-read line])
-              (when-let [line (separation-line a sep)]
-                [:p.cmp-cal line])]
-             [:div.cmp-band
-              (for [r (rows-by-band :evidence)]
-                ^{:key (:label r)} [metric-row r a b sep])]
-             [:div.cmp-band
-              (for [r (rows-by-band :claim)]
-                ^{:key (:label r)} [metric-row r a b sep])
-              ;; From whichever side is a free agent — with a rostered player on
-              ;; the left, only the right one carries a claim.
-              (when-let [drop (some :drop-candidate [a b])]
-                [:p.cmp-note
-                 "A claim costs a roster spot. Yours would come from "
-                 (:player-name drop) "."])]])]]))
+            (let [claim (band :claim a b sep)]
+              [:<>
+               [:div.cmp-band
+                (band :horizon a b sep)
+                (when-let [line (reading-line a b week sep)]
+                  [:p.cmp-read line])
+                (when-let [line (separation-line a sep)]
+                  [:p.cmp-cal line])]
+               [:div.cmp-band
+                (or claim
+                    ;; The band empties on exactly one pair: two players the
+                    ;; manager already holds, neither of whom can be claimed. A
+                    ;; free agent beside a rostered player keeps its rows and
+                    ;; dashes the side with no claim to make, which is the
+                    ;; asymmetry `row-has-value?` is careful not to hide.
+                    [:p.cmp-note "You hold both of these players, so there is "
+                     "no claim to price."])
+                ;; From whichever side is a free agent — with a rostered player
+                ;; on the left, only the right one carries a claim.
+                (when-let [drop (and claim (some :drop-candidate [a b]))]
+                  [:p.cmp-note
+                   "A claim costs a roster spot. Yours would come from "
+                   (:player-name drop) "."])]
+               (when-let [ev (band :evidence a b sep)]
+                 [:div.cmp-band ev])]))]]))
     (finally
       (.removeEventListener js/document "keydown" on-key))))

@@ -5,6 +5,7 @@
   `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing]]
             [draft-day.confidence :as confidence]
+            [draft-day.db :as db]
             [draft-day.views.compare :as cmp]))
 
 ;; ---- which way a row leans ----
@@ -242,3 +243,120 @@
     (is (nil? (:bar? (by-label "This week"))) "defaults to drawn")
     (is (= :lower (:better (by-label "Injury risk"))))
     (is (= 2 (count (filter :big? cmp/rows))) "the two horizons are the question")))
+
+;; ---- the tile must not fall behind the board ----
+;; It did: `:lineup-upgrade` became the column `db/waiver-rank-key` sorts by and
+;; the tile never mentioned it, along with VORP, the preseason line and ECR. The
+;; two lists are written separately because tile rows carry comparison semantics
+;; (`:bar?`, `:better`, `:big?`) the board has no use for — so the guard is a
+;; test rather than a shared definition.
+
+(def ^:private board-metric->row
+  "Every `db/waiver-column-catalog` key that states a fact about the player,
+  against the row that shows it."
+  {:ros       "Rest of season"
+   :week      "This week"
+   :week-rank "This week"          ; the weekly row's `:sub`
+   :ros-vorp  "Over replacement"
+   :lineup    "Lineup gain"
+   :upgrade   "Upgrade"
+   :bid       "Bid"
+   :trend     "Trend"
+   :form      "Form / game"
+   :gp        "Games played"
+   :preseason "Preseason"
+   :ecr       "Expert rank"
+   :risk      "Injury risk"})
+
+(def ^:private not-a-row
+  "Board columns deliberately absent from the tile, each for a stated reason:
+  identity (the head says it), schedule (no winner, and Opp is in the head),
+  a raw count the tile shows as a rate, and the designation, which is a chip on
+  the name rather than a word among tabular numbers."
+  #{:rank :name :team :position :bye :opp :tgt :car :inj})
+
+(deftest every-board-metric-reaches-the-tile
+  (let [labels (set (map :label cmp/rows))]
+    (doseq [[k label] board-metric->row]
+      (is (contains? labels label)
+          (str "board column " k " has no row labelled " (pr-str label))))))
+
+(deftest a-new-board-column-must-decide-about-the-tile
+  ;; The half that actually catches drift: adding to `waiver-column-catalog`
+  ;; fails here until the column is either given a row or listed as absent.
+  (let [decided (into not-a-row (keys board-metric->row))]
+    (doseq [{k :key} db/waiver-column-catalog]
+      (is (contains? decided k)
+          (str k " is a board column with no decision recorded about the tile")))))
+
+(deftest the-tile-shows-nothing-the-board-cannot
+  ;; The other direction: a row reading a key no board column carries is a
+  ;; number the manager can only see here, which is drift of its own. One is
+  ;; allowed, because it is derived rather than shipped — the board has Tgt and
+  ;; Car, and the tile divides them by games played.
+  (is (= ["Opportunity / game"]
+         (let [from-board (set (vals board-metric->row))]
+           (remove from-board (map :label cmp/rows))))))
+
+;; ---- rows with nothing to compare ----
+
+(deftest a-row-survives-on-one-value
+  ;; The asymmetry is the answer: a free agent beside a man you already hold has
+  ;; an upgrade and a bid, and the rostered side has none. Hiding that row would
+  ;; hide the reason you are comparing them.
+  (let [upg (first (filter #(= "Upgrade" (:label %)) cmp/rows))]
+    (is (true? (cmp/row-has-value? upg {:upgrade 12.0} {})))
+    (is (true? (cmp/row-has-value? upg {} {:upgrade 12.0})))
+    (is (false? (cmp/row-has-value? upg {} {})))))
+
+(deftest an-empty-band-is-nil-rather-than-empty
+  ;; nil is what lets the caller say "you hold both of these players" instead of
+  ;; drawing three dashes under a border.
+  (is (nil? (cmp/band :claim {} {} nil)))
+  (is (some? (cmp/band :claim {:bid 4} {} nil))))
+
+(deftest a-band-drops-only-the-rows-with-nothing-in-them
+  (let [rows (cmp/band :claim {:upgrade 12.0 :bid 4} {:upgrade 3.0} nil)]
+    (is (= 2 (count rows)) "lineup gain is absent on both sides and goes")
+    (is (= #{"Upgrade" "Bid"}
+           (set (map #(-> % second :label) rows))))))
+
+;; ---- zero is an answer in the claim band ----
+
+(deftest a-claim-of-zero-prints-zero-not-a-dash
+  ;; `util/signed` dashes zero because a board column has no bar beside it to
+  ;; disagree with. This one does, and a dash next to a drawn bar reads as
+  ;; missing data — which is the state that must stay distinguishable.
+  (is (= "0" (cmp/claim-points 0)))
+  (is (= "0" (cmp/claim-points 0.4)) "rounded once, and the digits follow it")
+  (is (= "+8" (cmp/claim-points 8.2)))
+  (is (= "-8" (cmp/claim-points -8.2)))
+  (is (= "–" (cmp/claim-points nil)) "absent is still a dash"))
+
+;; ---- the injury designation ----
+
+(deftest the-designation-is-abbreviated-to-fit
+  (is (= "Q" (last (cmp/status-chip {:sleeper/injury-status "Questionable"}))))
+  (is (= "IR" (last (cmp/status-chip {:sleeper/injury-status "IR"})))
+      "already short enough to stand")
+  (is (nil? (cmp/status-chip {}))))
+
+(deftest only-a-serious-designation-takes-the-warn-colour
+  (let [class-of #(:class (second (cmp/status-chip {:sleeper/injury-status %})))]
+    (is (= "cmp-status serious" (class-of "IR")))
+    (is (= "cmp-status" (class-of "Questionable"))
+        "a Questionable that shouts like an IR trains you to stop reading it")))
+
+(deftest the-full-word-survives-on-the-hover
+  (is (= "Questionable"
+         (:title (second (cmp/status-chip {:sleeper/injury-status "Questionable"}))))))
+
+;; ---- band order ----
+
+(deftest the-answer-sits-above-the-evidence
+  ;; Question, then what the claim costs and gains, then why. At nine rows the
+  ;; claim band could sit last; at twelve it fell below the fold on a laptop,
+  ;; under the band it is a conclusion of.
+  (is (= [:horizon :claim :evidence] cmp/bands))
+  (is (= #{"Lineup gain" "Upgrade" "Bid"}
+         (set (map :label (cmp/rows-by-band :claim))))))

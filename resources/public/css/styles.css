@@ -559,7 +559,11 @@ tr.upgrade .p-name { font-weight: 600; }
   /* The one drop shadow in the stylesheet. Everything else sits in the page;
      this sits above it, and with no scrim to say so the shadow is the only
      thing that does. */
-  box-shadow: 0 10px 30px rgba(0,0,0,.55); }
+  box-shadow: 0 10px 30px rgba(0,0,0,.55);
+  /* Twelve rows outgrow a laptop viewport. Capped and scrolled internally, so
+     what falls below the fold is the evidence band rather than the answer —
+     which is the other half of why the claim band sits second. */
+  max-height: calc(100vh - 96px); overflow-y: auto; }
 
 .cmp-top { display: flex; align-items: baseline; margin-bottom: 12px; }
 .cmp-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
@@ -582,6 +586,14 @@ tr.upgrade .p-name { font-weight: 600; }
 .cmp-face img { position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover; }
 .cmp-name { font-size: 16px; font-weight: 700; line-height: 1.15; }
+/* The current designation, on the name because that is where the board's ⚠ is.
+   Abbreviated in the markup so it fits beside a long name; --warn only for the
+   serious set, since a Questionable that shouts like an IR trains the manager
+   to stop reading it. */
+.cmp-status { margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  background: var(--panel2); color: var(--muted); font-size: 10px;
+  font-weight: 600; vertical-align: 2px; white-space: nowrap; cursor: help; }
+.cmp-status.serious { color: var(--warn); }
 .cmp-meta { color: var(--muted); font-size: 11px; margin: 3px 0 0; }
 .cmp-week { align-self: center; text-align: center; font-size: 10px;
   text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
@@ -638,6 +650,9 @@ tr.upgrade .p-name { font-weight: 600; }
   line-height: 1.45; text-align: center; }
 .cmp-note { color: var(--muted); font-size: 11px; text-align: center;
   margin-top: 10px; }
+/* A band whose rows all dropped out is this sentence and nothing else, so it
+   sits on the band's own padding rather than adding to it. */
+.cmp-band > .cmp-note:first-child { margin-top: 0; }
 /* Under the reading line, and quieter than it: the reading line says what the
    two horizons show, this says how much of it to believe. */
 .cmp-cal { margin-top: 6px; color: var(--muted); font-size: 11px;
