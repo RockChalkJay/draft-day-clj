@@ -84,7 +84,7 @@
   (and week (= week (:bye p)) (not (number? (:week-points p)))))
 
 (defn reading-line
-  "One sentence naming what the two horizons show.
+  "One sentence naming what the horizons show.
 
   It never says which player to take: when they disagree there is no answer
   without knowing whether the manager is buying this Sunday or the rest of the
@@ -103,7 +103,8 @@
         ;; difference that is not there.
         even? (confidence/coin-flip? sep)
         wk    (when-not even? (ahead a b :week-points))
-        ros   (ahead a b :ros-points)]
+        ros   (ahead a b :ros-points)
+        vorp  (ahead a b :ros-vorp)]
     (cond
       bye [:span [:b (:player-name bye)] " is on bye this week."]
 
@@ -111,8 +112,19 @@
       [:span [:b (:player-name wk)] " projects higher this week; "
        [:b (:player-name ros)] " is the better rest-of-season hold."]
 
+      ;; Raw points do not compare across positions, and Over replacement sits
+      ;; in this same band saying so whenever it leans the other way. A sentence
+      ;; asserting agreement above a bar that disagrees is the bug #52 shipped
+      ;; wearing a second costume — this is the pair the row was added for, so
+      ;; it is the pair the sentence has to be able to name.
+      (and ros vorp (not= ros vorp))
+      [:span [:b (:player-name ros)] " projects more points; "
+       [:b (:player-name vorp)] " is further above replacement at his position."]
+
+      ;; Named rather than counted. "Both" was written under two rows and there
+      ;; are three now, and the next row added here would break it again.
       (and wk ros)
-      [:span [:b (:player-name wk)] " is ahead on both."]
+      [:span [:b (:player-name wk)] " is ahead this week and rest-of-season."]
 
       ;; Deliberately not merged with the branch below, though both end at
       ;; rest-of-season. That one means *neither player has a weekly line* — a
@@ -163,10 +175,14 @@
   cost and gain, then the evidence for both. See the ns docstring for why the
   answer moved above the evidence.
 
-  `:band` rather than slicing one flat list by index — the boundaries were
-  `subvec`s, so inserting a metric anywhere above the last one silently moved
-  a row into the wrong band and still rendered. This is the place a metric gets
-  added, so it must be the place that says where the metric goes."
+  `tile-bands` draws them in this order, so the vector is the order rather than
+  a note about it. It used to be neither: the three bands were emitted by hand
+  and this was a constant nothing read, which a test asserting its value could
+  not tell apart from a guarantee.
+
+  `:band` on a row rather than slicing one flat list by index — the boundaries
+  were `subvec`s, so inserting a metric anywhere above the last one silently
+  moved a row into the wrong band and still rendered."
   [:horizon :claim :evidence])
 
 (defn claim-points
@@ -356,6 +372,50 @@
     [:p.cmp-meta (util/pos-label p) " · " (or (:team p) "FA")
      " · " (waivers/week-matchup p week)]]])
 
+(defn band-content
+  "One band as it is drawn — its surviving rows, then the prose that belongs
+  under them. nil for a band with nothing to say, which only the evidence band
+  can be."
+  [k a b week sep]
+  (case k
+    :horizon
+    [:div.cmp-band
+     (band :horizon a b sep)
+     (when-let [line (reading-line a b week sep)]
+       [:p.cmp-read line])
+     (when-let [line (separation-line a sep)]
+       [:p.cmp-cal line])]
+
+    :claim
+    (let [claim (band :claim a b sep)]
+      [:div.cmp-band
+       (or claim
+           ;; The band empties on exactly one pair: two players the manager
+           ;; already holds, neither of whom can be claimed. A free agent beside
+           ;; a rostered player keeps its rows and dashes the side with no claim
+           ;; to make, which is the asymmetry `row-has-value?` will not hide.
+           [:p.cmp-note "You hold both of these players, so there is "
+            "no claim to price."])
+       ;; From whichever side is a free agent — with a rostered player on the
+       ;; left, only the right one carries a claim.
+       (when-let [drop (and claim (some :drop-candidate [a b]))]
+         [:p.cmp-note
+          "A claim costs a roster spot. Yours would come from "
+          (:player-name drop) "."])])
+
+    :evidence
+    (when-let [ev (band :evidence a b sep)]
+      [:div.cmp-band ev])))
+
+(defn tile-bands
+  "The whole comparison below the head, in `bands` order.
+
+  Split out of `compare-tile` so the order is reachable from a test: the tile
+  itself is subscriptions and a keydown listener, and the one thing that had
+  gone wrong there was invisible to every test in the file."
+  [a b week sep]
+  (into [:<>] (keep #(band-content % a b week sep)) bands))
+
 (defn compare-tile []
   ;; Escape closes. `modal.cljs` has no key handling to borrow — this tile is the
   ;; first thing here that opens over the page without a scrim to click away.
@@ -380,6 +440,9 @@
            [:button.cmp-close {:on-click #(rf/dispatch [:compare-clear])
                                :title "Close (Esc)"
                                :aria-label "Close comparison"} "✕"]]
+          ;; Head outside the scrolling half deliberately: it carries the only
+          ;; thing that says which column is which player, and a comparison that
+          ;; scrolls its own legend away is two columns of unattributed numbers.
           [:div.cmp-head
            [player-head a :l (shot a) week]
            [:div.cmp-week (if week (str "Week " week) "Rest of season")]
@@ -387,30 +450,6 @@
              [player-head b :r (shot b) week]
              [:div.cmp-empty "Pick another player to compare."])]
           (when b
-            (let [claim (band :claim a b sep)]
-              [:<>
-               [:div.cmp-band
-                (band :horizon a b sep)
-                (when-let [line (reading-line a b week sep)]
-                  [:p.cmp-read line])
-                (when-let [line (separation-line a sep)]
-                  [:p.cmp-cal line])]
-               [:div.cmp-band
-                (or claim
-                    ;; The band empties on exactly one pair: two players the
-                    ;; manager already holds, neither of whom can be claimed. A
-                    ;; free agent beside a rostered player keeps its rows and
-                    ;; dashes the side with no claim to make, which is the
-                    ;; asymmetry `row-has-value?` is careful not to hide.
-                    [:p.cmp-note "You hold both of these players, so there is "
-                     "no claim to price."])
-                ;; From whichever side is a free agent — with a rostered player
-                ;; on the left, only the right one carries a claim.
-                (when-let [drop (and claim (some :drop-candidate [a b]))]
-                  [:p.cmp-note
-                   "A claim costs a roster spot. Yours would come from "
-                   (:player-name drop) "."])]
-               (when-let [ev (band :evidence a b sep)]
-                 [:div.cmp-band ev])]))]]))
+            [:div.cmp-scroll (tile-bands a b week sep)])]]))
     (finally
       (.removeEventListener js/document "keydown" on-key))))

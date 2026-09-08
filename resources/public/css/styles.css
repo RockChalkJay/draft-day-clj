@@ -560,10 +560,16 @@ tr.upgrade .p-name { font-weight: 600; }
      this sits above it, and with no scrim to say so the shadow is the only
      thing that does. */
   box-shadow: 0 10px 30px rgba(0,0,0,.55);
-  /* Twelve rows outgrow a laptop viewport. Capped and scrolled internally, so
-     what falls below the fold is the evidence band rather than the answer —
-     which is the other half of why the claim band sits second. */
-  max-height: calc(100vh - 96px); overflow-y: auto; }
+  /* Twelve rows outgrow a laptop viewport. Capped, with only the bands below
+     the head scrolling, so what falls below the fold is the evidence band
+     rather than the answer — the other half of why the claim band sits second.
+     A column here means one player the whole way down, and the head is the only
+     thing that says which, so it stays out of the scrolled half. */
+  max-height: calc(100vh - 96px);
+  display: flex; flex-direction: column; }
+/* min-height:0 or the flex item refuses to shrink below its content and the
+   cap above does nothing. */
+.cmp-scroll { overflow-y: auto; min-height: 0; }
 
 .cmp-top { display: flex; align-items: baseline; margin-bottom: 12px; }
 .cmp-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
@@ -619,6 +625,10 @@ tr.upgrade .p-name { font-weight: 600; }
 .cmp-mid { min-width: 0; }
 .cmp-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--muted); text-align: center; margin-bottom: 3px; }
+/* Attribute selector, not the class: only the rows whose label cannot carry its
+   own definition get a `title`, and a help cursor over the rest promises one
+   that is not there. Same pairing as .badge, .sleeper-z, .inj-flag, .nt-tier. */
+.cmp-lbl[title] { cursor: help; }
 
 /* The lean bar, and the only place this tile spends any boldness. Anchored at
    the centre and filling toward whoever leads, so a column of rows shows

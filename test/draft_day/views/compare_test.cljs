@@ -54,9 +54,39 @@
     (is (re-find #"Jauan Jennings is the better rest-of-season hold" s))))
 
 (deftest reading-line-says-so-when-they-agree
+  ;; Named rather than counted. It read "ahead on both" when the band held two
+  ;; rows; Over replacement made three, and the next one would have made four.
   (let [better (assoc jennings :week-points 18.0 :ros-points 140.0)
         s      (text (cmp/reading-line odunze better 5 nil))]
-    (is (= "Jauan Jennings is ahead on both." s))))
+    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
+
+(deftest a-cross-position-pair-gets-its-own-sentence
+  ;; The row that made this necessary. VORP subtracts a *per-position*
+  ;; replacement level, so more points and further above replacement are
+  ;; different players as soon as the two are not the same position — and Over
+  ;; replacement sits in the band this sentence summarises, leaning visibly the
+  ;; other way while it claimed they agreed.
+  (let [qb (assoc odunze  :player-name "A QB" :ros-points 285.0 :ros-vorp 5.0)
+        wr (assoc jennings :player-name "A WR" :ros-points 200.0 :ros-vorp 70.0
+                  :week-points 1.0)
+        s  (text (cmp/reading-line qb wr 5 nil))]
+    (is (re-find #"A QB projects more points" s))
+    (is (re-find #"A WR is further above replacement" s))
+    (is (not (re-find #"ahead this week and rest-of-season" s))
+        "the agreement sentence is exactly what must not print here")))
+
+(deftest agreeing-vorp-leaves-the-sentence-alone
+  ;; Same position, so replacement cancels and the third row cannot disagree.
+  ;; The branch must not fire on every pair that happens to carry a VORP.
+  (let [better (assoc jennings :week-points 18.0 :ros-points 140.0 :ros-vorp 40.0)
+        s      (text (cmp/reading-line (assoc odunze :ros-vorp -4.0) better 5 nil))]
+    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
+
+(deftest a-vorp-nobody-has-is-not-a-disagreement
+  ;; nil for K and DST, and for the whole board before a sync.
+  (let [better (assoc jennings :week-points 18.0 :ros-points 140.0)
+        s      (text (cmp/reading-line odunze (assoc better :ros-vorp 40.0) 5 nil))]
+    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
 
 (deftest reading-line-never-picks-for-you
   ;; When the horizons split there is no answer without knowing whether the
@@ -111,11 +141,11 @@
 
 (deftest a-coin-flip-week-is-not-a-weekly-lead
   ;; Nabers vs McConkey, the live reproduction: ahead on *both* raw numbers, so
-  ;; the tile said "ahead on both" directly above "Too close to call".
+  ;; the tile claimed the week directly above "Too close to call".
   (let [weaker (assoc jennings :ros-points 80.0)
         s      (text (cmp/reading-line odunze weaker 5 coin-flip))]
     (is (not (re-find #"this week" s)))
-    (is (not (re-find #"ahead on both" s)))
+    (is (not (re-find #"ahead this week and rest-of-season" s)))
     (is (re-find #"Rome Odunze is ahead rest-of-season" s))))
 
 (deftest a-coin-flip-does-not-manufacture-a-split
@@ -366,6 +396,37 @@
   ;; Question, then what the claim costs and gains, then why. At nine rows the
   ;; claim band could sit last; at twelve it fell below the fold on a laptop,
   ;; under the band it is a conclusion of.
-  (is (= [:horizon :claim :evidence] cmp/bands))
+  ;;
+  ;; Asserted off what `tile-bands` draws, not off `cmp/bands`. The vector used
+  ;; to be a constant nothing read, and a test comparing it to itself would have
+  ;; passed just as happily with the three bands emitted in any order at all.
+  ;; One surviving row per band, so each band's position in the fragment is
+  ;; readable. The rows are `[metric-row row …]` component references — reagent
+  ;; expands them, a test reads the row map straight out of them.
+  (let [a (assoc odunze  :upgrade 12.0 :points 90.0)
+        b (assoc jennings :upgrade 3.0 :points 70.0)
+        labels (fn [b*] (keep #(:label (second %)) (nth b* 1)))
+        [_ horizon claim evidence] (cmp/tile-bands (dissoc a :week-points)
+                                                   (dissoc b :week-points)
+                                                   nil nil)]
+    (is (= ["Rest of season"] (labels horizon)))
+    (is (= ["Upgrade"] (labels claim)))
+    (is (= ["Preseason"] (labels evidence))))
   (is (= #{"Lineup gain" "Upgrade" "Bid"}
          (set (map :label (cmp/rows-by-band :claim))))))
+
+(deftest an-evidence-band-with-nothing-in-it-is-not-drawn
+  ;; The only band that can vanish. A bordered empty box below the claim reads
+  ;; as a section that failed to load.
+  (is (nil? (cmp/band-content :evidence {:ros-points 1.0} {:ros-points 2.0} nil nil)))
+  (is (some? (cmp/band-content :evidence {:points 90.0} {} nil nil))))
+
+(deftest every-band-in-bands-can-draw-itself
+  ;; `tile-bands` keeps over `bands`, so a keyword added there with no `case`
+  ;; branch would silently drop out instead of failing.
+  (doseq [k cmp/bands]
+    (is (some? (cmp/band-content k {:player-name "A" :ros-points 100.0
+                                    :upgrade 1.0 :points 9.0}
+                                 {:player-name "B" :ros-points 80.0
+                                  :upgrade 2.0 :points 8.0} nil nil))
+        (str k " draws nothing"))))
