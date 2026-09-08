@@ -110,11 +110,11 @@
   (and week (= week (:bye p)) (not (number? (:week-points p)))))
 
 (defn weekly-lead
-  "Who leads on `:week-points`, or nil when the measurement calls the pair a
-  coin flip. Reading it straight off the number printed \"X is ahead on both\"
-  above \"Too close to call\" — two sentences about one number."
-  [a b sep]
-  (when-not (confidence/coin-flip? sep) (ahead a b :week-points)))
+  "Who leads on `:week-points`, or nil when `even?` says the measurement calls
+  the pair a coin flip. Reading it straight off the number printed \"X is ahead
+  on both\" above \"Too close to call\" — two sentences about one number."
+  [a b even?]
+  (when-not even? (ahead a b :week-points)))
 
 (defn reading-line
   "One sentence naming what the horizons show.
@@ -124,12 +124,12 @@
   year, and a tile that guessed would be confidently wrong half the time. It
   names the split and stops.
 
-  `sep` is required rather than defaulted — see `weekly-lead`, which is what a
-  `sep`-less call would get wrong."
+  `sep` is required rather than defaulted: a nil one reads as no coin flip, so
+  the weekly lead comes back and contradicts `separation-line` underneath."
   [a b week sep]
   (let [bye   (first (filter #(on-bye? % week) [a b]))
         even? (confidence/coin-flip? sep)
-        wk    (weekly-lead a b sep)
+        wk    (weekly-lead a b even?)
         ros   (ahead a b :ros-points)
         vorp  (ahead a b :ros-vorp)]
     (cond
@@ -403,7 +403,7 @@
       [:div.cmp-band
        (or claim
            ;; Empties on exactly one pair: two players already held. One of
-           ;; each keeps its rows and dashes the side with no claim to make.
+           ;; each keeps its rows — an asymmetry `row-has-value?` will not hide.
            [:p.cmp-note "You hold both of these players, so there is "
             "no claim to price."])
        ;; From whichever side is a free agent — with a rostered player on the

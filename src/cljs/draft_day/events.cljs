@@ -164,8 +164,8 @@
   (fn [db [_ from-id to-id]]
     (update db :watchlist db/move-watch-onto from-id to-id)))
 
-;; A one-shot rewrite of the stored order, not a sort mode: nothing re-sorts
-;; the list afterwards — which is what lets `:watchlist-players` promise one.
+;; A one-shot rewrite, not a sort mode — there is no `:watch-sort` key in db to
+;; consult afterwards, which is what lets `:watchlist-players` promise an order.
 (rf/reg-event-db :watch-sort [persist]
   (fn [db [_ k]]
     ;; The one place a stale read would *write*: sorting between a switch and
@@ -391,8 +391,8 @@
                    ;; Goes with the board it was asked about: a free agent in
                    ;; one league is rostered in another.
                    :compare [])
-      ;; `:teams` is built from the three values that just moved, so it is
-      ;; rebuilt or every dollar is wrong. Picks keep their teams; docs/TODO.md.
+      ;; `:teams` is built from `:num-teams`, `:starting-bankroll` and the
+      ;; roster template, all of which just moved. Picks keep theirs — TODO.md.
       (empty? (:picks db))
       (assoc :teams (db/make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))))))
 
