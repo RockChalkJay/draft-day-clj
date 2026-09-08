@@ -76,10 +76,9 @@
        (map :player-id)))
 
 (defn min-bid-ids
-  "Ids of every player who fills a roster slot without earning a share of the
-  discretionary money — see this namespace's docstring for the two groups.
-  `streamed-slots` is `{\"K\" n \"DST\" m}`; omit it and no streamed seat is
-  priced."
+  "Ids of everyone who fills a roster slot without earning discretionary money —
+  the ns docstring has the two groups. `streamed-slots` is `{\"K\" n \"DST\" m}`
+  from `league-state/streamed-slots`; omit it and no streamed seat is priced."
   ([board total-slots] (min-bid-ids board total-slots {}))
   ([board total-slots streamed-slots]
    (let [{priced true tail false} (group-by priced-vorp? board)
@@ -98,7 +97,7 @@
              taken  (into #{}
                           (mapcat (fn [[pos q]] (map :player-id (take q (get by-pos pos)))))
                           quota)
-             ;; a position whose tail ran dry leaves the count short; top it up in
+             ;; a position whose tail ran dry leaves the count short; top up in
              ;; VORP order so the board still prices exactly `n` skill slots
              fill   (->> cand
                          (remove #(contains? taken (:player-id %)))
@@ -107,14 +106,14 @@
          (into streamed (into taken fill)))))))
 
 (defn calculate-value
-  "Assocs :value — reserve $1 per rostered slot, spread `budget - total-slots`
-  across positive-VORP players by VORP share, `min-bid-ids` at $1, past the last
-  slot $0. Sums to the budget only to within per-player `to-dollars` rounding."
+  "Assocs :value — $1 per slot reserved, `budget - total-slots` spread over
+  positive-VORP players by VORP share, `min-bid-ids` at $1, past the last slot
+  $0. Sums to budget only within rounding; see `engine/live-valuation`."
   ([board budget total-slots] (calculate-value board budget total-slots {}))
   ([board budget total-slots streamed-slots]
    (let [disc     (max 0.0 (- (double budget) total-slots))
          streamed-total (reduce + 0 (vals streamed-slots))
-         ;; No seat to fill and no dollar to fill it with means no price: editing
+         ;; No seat and no dollar to fill it with means no price: editing
          ;; roster or team count mid-draft can outrun the seats that exist.
          payable  (min (- (long total-slots) streamed-total)
                        (max 0 (- (long budget) streamed-total)))

@@ -39,8 +39,7 @@
 (defn static-rankings
   "Returns {:players [...] :replacement-levels {...}}; never mutated by the live
   layer. Opts :model (default :points) and :weights pick which `rankings.model`
-  produces :points. Step order is load-bearing — see this namespace's docstring.
-  "
+  produces :points. Step order is load-bearing — see the ns docstring."
   ([board scoring num-teams] (static-rankings board scoring num-teams {}))
   ([board scoring num-teams {:keys [replacement-config model weights]
                              :or   {model :points}}]
@@ -72,7 +71,7 @@
          ;; `infl` for positions with no picks.
          pos-infl    (idx/per-position-inflation valued league-state infl)
          ;; position tilt x phase decay, held inside one band at the end — see
-         ;; `inflation/clamp-to-band` for why the band lives here and nowhere else
+         ;; `inflation/clamp-to-band` for why the band lives here alone
          infl-fn     (fn [p] (inflation/clamp-to-band
                               (* (get pos-infl (:position p) infl) heat)))
          ;; Shipped banded rather than left for the client to recompose — the

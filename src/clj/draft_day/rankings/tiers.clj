@@ -46,8 +46,7 @@
 (def MAX-TIERS
   "Ceiling on the tiers a scale renders — the board's hue budget runs out past a
   dozen. Bounds the *rendered* count, tail included: `tiers-by-cliffs` spends
-  one on the below-replacement tail, so counting only cuts here would render 13.
-  "
+  one on the tail, so counting only the cuts here would render 13."
   12)
 
 (def MIN-TIER-SIZE
@@ -70,9 +69,8 @@
 
 (defn relative-drop
   "Fall from `from` to `to` as a share of `from`; 0.0 when `from` is not
-  positive. `tcm` is now its only caller — tiering ranks absolute gaps — but it
-  stays here because a second copy is how two definitions of a cliff start to
-  drift."
+  positive. `tcm` is now the only caller — tiering ranks absolute gaps — but a
+  second copy is how two definitions of a cliff start to drift."
   [from to]
   (let [f (double from)]
     (if (pos? f) (/ (- f (double to)) f) 0.0)))
@@ -80,8 +78,7 @@
 (defn cut-points
   "Indices of `scores` (descending) where a tier boundary falls: the biggest
   `(dec tier-count)` *absolute* gaps leaving no segment shorter than `min-size`
-  — see the namespace docstring. Zero gaps are never cut on; ties break earlier.
-  "
+  — see the ns docstring. Zero gaps are never cut on; ties break earlier."
   [scores tier-count min-size]
   (let [n        (count scores)
         max-cuts (dec tier-count)
@@ -124,7 +121,7 @@
                   n
                   (count (take-while #(> (score %) (double replacement-level)) sorted)))
          ;; The tail spends one of MAX-TIERS, so a capped pool that has one may
-         ;; only cut MAX-TIERS - 1, or the ceiling is off by one where it matters.
+         ;; only cut MAX-TIERS - 1, or the ceiling is off by one where it tells.
          ceiling (if (< cutoff n) (dec MAX-TIERS) MAX-TIERS)
          cuts   (cut-points (mapv score (subvec sorted 0 cutoff))
                             (min (tier-count cutoff target-size) ceiling)
@@ -139,8 +136,7 @@
 (defn tier-floor
   "Valuation's replacement level where there is one. K and DST are absent from
   that map so they price at $0, but still need a floor or tiering spends every
-  tier on 44 kickers. `sorted` is the group already in descending :points order.
-  "
+  tier on 44 kickers. `sorted` is already in descending :points order."
   [sorted level num-teams]
   (or level
       (when (seq sorted)

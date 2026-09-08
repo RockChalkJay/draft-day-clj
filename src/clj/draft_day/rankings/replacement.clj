@@ -27,8 +27,9 @@
   stretch reads one player per position in a sensible order. Negative VORP is
   not merely display: `value/priced-vorp?` gates the discretionary pool on VORP
   being positive, and `value/min-bid-ids` then draws the $1 minimum bids
-  exclusively from the players it rejects. Read `value/calculate-value` before
-  rescaling or re-flooring this.
+  exclusively from the players it rejects — 96 of the 97 $1 rows on the sample
+  board are priced *because* their VORP is non-positive. Read
+  `value/calculate-value` before rescaling or re-flooring this.
 
   WHY K/DST GET nil AND NOT 0.0. They take no replacement level of their own —
   at one starter each, the best defense on the sample board would carry +20 real
@@ -46,9 +47,11 @@
 
 (def flex-starter-keys
   "Positions a FLEX slot accepts -> the config key holding their dedicated
-  starter count. Named for the mapping, not the membership: `pdm` and
-  `benchmark.simulate` each carry a `flex-positions` **set** of the same
-  strings."
+  starter count. Matches the roster's own rule — see `events/eligible?`. Named
+  for the mapping, not the membership: `pdm` and `benchmark.simulate` carry a
+  `flex-positions` **set** of the same strings, and `(flex-positions pos)`
+  reading as a predicate there and a lookup here is how the `priced-positions`
+  drift started."
   {"RB" :rb "WR" :wr "TE" :te})
 
 (defn- sorted-pools
@@ -71,10 +74,9 @@
         (frequencies (map :position (take spots (sort-by score-key > leftovers))))))))
 
 (defn flex-claims
-  "`{\"RB\" n \"WR\" m \"TE\" k}`, summing to `num-teams * flex-spots` — see
-  this namespace's docstring for the rule. `config` is merged with
-  `default-config` rather than assumed complete: a missing key would read as
-  zero starters."
+  "`{\"RB\" n \"WR\" m \"TE\" k}` summing to `num-teams * flex-spots`; the rule
+  is in the ns docstring. `config` is merged with `default-config` rather than
+  assumed complete — a missing key would read as zero starters."
   [board num-teams config score-key]
   (claims-from-pools (sorted-pools board score-key) num-teams
                      (merge default-config config) score-key))

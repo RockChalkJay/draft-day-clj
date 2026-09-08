@@ -126,10 +126,9 @@
 ;; ---- what a claim actually costs ----
 
 (defn drop-candidate
-  "The player a claim would cost me, or nil when a seat is already open. `held`
-  is already in the board's id space and already excludes IR and taxi. Absent
-  `roster-size` the roster is treated as full. See the ns docstring for the
-  rule."
+  "The player a claim would cost me, or nil when a seat is open; absent
+  `roster-size` the roster is full. `held` is board-spaced and IR/taxi-free — see
+  `held-ids`, `league-sync.sleeper/normalize-roster`, and the ns docstring."
   [held by-id roster-size slots]
   (when-not (and roster-size (< (count held) roster-size))
     (let [players (vec (keep #(get by-id %) held))
@@ -152,9 +151,8 @@
 
 (defn with-upgrade
   "Assoc `:upgrade` — rest-of-season points gained by the claim — plus
-  `:drop-candidate` naming the seat it costs. The floor is the drop's own
-  points, not his replacement level: what leaves this roster is a specific
-  player."
+  `:drop-candidate` naming the seat it costs. The floor is the drop's own points,
+  not his replacement level: what leaves this roster is a specific player."
   [fas drop]
   (let [floor (double (or (:ros-points drop) 0.0))]
     (mapv (fn [p]
@@ -200,18 +198,16 @@
   (->> ws (sort >) (take n) (reduce + 0.0)))
 
 (defn faab?
-  "True for `:faab` and for its JSON spelling. The league arrives as a keyword
-  from `league-sync` and as a string through the browser (`read-json-body`
-  keywordizes keys, not values) — testing only the keyword nil'd every real bid.
-  "
+  "True for `:faab` and its JSON spelling: the league arrives as a keyword from
+  `league-sync` and as a string through the browser, so testing only the keyword
+  nil'd every real bid. Same family as `scoring/resolve-config`."
   [type]
   (= :faab (when type (keyword type))))
 
 (defn with-lineup-upgrade
-  "Assoc `:lineup-upgrade` — what the claim adds to the *starting* lineup,
-  against `:upgrade`'s bench delta (see `rankings.lineup`, and the ns docstring
-  for why it is the headline and why it is absent rather than 0 when there is no
-  lineup)."
+  "Assoc `:lineup-upgrade` — what the claim adds to the *starting* lineup, as
+  against `:upgrade`'s bench delta. See `rankings.lineup`, and the ns docstring
+  for why it is the headline and why it is absent rather than 0 with no lineup."
   [fas roster drop slots]
   (if-not (and (seq slots) (seq roster))
     fas
@@ -296,7 +292,7 @@
 ;; The other half of the question `:ros-points` answers. Rest-of-season says who
 ;; helps you from here; this says who helps you on Sunday, and the two routinely
 ;; disagree — which is the point of showing both rather than a blend of them.
-;; The line itself is joined at request time by `ingestion.pipeline/assoc-weekly`
+;; The line itself is joined at request time by `pipeline/assoc-weekly`
 ;; (see that section's comment for why it is cached apart from the universe).
 
 (defn with-week-points
@@ -324,10 +320,9 @@
                     (replacement/with-vorp board levels :ros-points))}))
 
 (defn roster-sort-key
-  "Starters in the league's own lineup order — `slot-idx` is `{id slot}` off
-  `:starter-ids` — so a WR starting at FLEX keeps that seat rather than sorting
-  up beside the other receivers. Everyone else follows by position, then points.
-  "
+  "Starters in the league's own lineup order (`slot-idx` is `{id slot}` off
+  `:starter-ids`), so a WR starting at FLEX keeps that seat rather than sorting up
+  beside the other receivers. Everyone else follows by position, then points."
   [slot-idx {:keys [starter? player-id position ros-points]}]
   [(if starter? 0 1)
    (get slot-idx player-id (count slot-idx))
@@ -337,8 +332,7 @@
 (defn my-roster
   "The manager's own roster for the panel beside the board, ordered; nil when no
   team is picked, since the panel says something different for 'pick your team'
-  than for an empty roster. Rows the board cannot value are kept as
-  placeholders."
+  than for an empty one. Rows the board cannot value are kept as placeholders."
   [my-team xwalk by-id drop]
   (when my-team
     (let [lineup   (held-ids my-team xwalk :starter-ids)
@@ -351,7 +345,7 @@
       (->> (held-ids my-team xwalk :player-ids)
            (map (fn [id]
                   (let [flags {:starter? (contains? starters id)
-                               ;; IR and taxi: rostered, holding no claimable seat.
+                               ;; IR and taxi: rostered, holding no seat.
                                :parked?  (not (contains? active id))
                                :drop?    (= id drop-id)}]
                     (if-let [p (get by-id id)]
