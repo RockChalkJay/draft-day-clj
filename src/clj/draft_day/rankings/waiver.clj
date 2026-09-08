@@ -3,12 +3,12 @@
   to drop, and what share of your FAAB he is worth.
 
   Everything here is measured in **points**, never in auction dollars:
-  rest-of-season (`:ros-points`, from `rankings.ros`) for every ranking and every
-  claim, with a single week (`:week-points`) as a display column beside it. The
-  draft board's Value and Worth price a whole roster out of a fixed bankroll at a
-  preseason auction; a waiver claim is one seat against a budget that is spent
-  down over months. Reusing those dollars here would be the same category error
-  as reading an overall expert tier as a positional one.
+  rest-of-season (`:ros-points`, from `rankings.ros`) for every ranking and
+  every claim, with a single week (`:week-points`) as a display column beside
+  it. The draft board's Value and Worth price a whole roster out of a fixed
+  bankroll at a preseason auction; a waiver claim is one seat against a budget
+  that is spent down over months. Reusing those dollars here would be the same
+  category error as reading an overall expert tier as a positional one.
 
   So `value`, `inflation`, `tcm`, `worth`, `bargain` and `market` are all
   deliberately absent, and the reused pieces are the ones that are actually
@@ -46,7 +46,56 @@
   `rankings.injury` spells out: the repo has already shipped one signal that was
   computed on every pick and consumed by nothing. `:week-pos-rank` is the one
   in-season signal that is *not* on that shelf, and it is added elsewhere — see
-  `rankings.pos-rank`."
+  `rankings.pos-rank`.
+
+  ROSTER IDS GO THROUGH `held-ids`, ALWAYS. Roster ids arrive as the provider's
+  (see `league-sync.sleeper`); the board is keyed by GSIS wherever one resolved,
+  and `db/sleeper->player-id` bridges them. An id the crosswalk has no entry for
+  maps to itself — team defenses carry their abbreviation in both spaces, and an
+  unmapped id is not evidence of a bug: the universe may be a stale cache or the
+  offline sample. It is a named function rather than inline because the *second*
+  reader is what went wrong. The availability filter translated its ids and the
+  drop candidate did not, so `by-id` resolved almost nothing, every roster
+  looked empty of droppable players, and every upgrade on the board was measured
+  against a floor of zero. Tests missed it because a fixture where player-id
+  equals the Sleeper id makes the crosswalk a no-op — which no real league is.
+
+  WHICH PLAYER A CLAIM COSTS (`drop-candidate`), AND WHY IT IS NOT SIMPLY THE
+  LOWEST SCORER. With `slots` the drop is whoever costs the *starting lineup*
+  least to lose, ties broken by lowest `:ros-points`. On a deep bench every
+  bench player costs nothing, so the tiebreak decides and the answer is the one
+  the old points-only rule gave. It diverges exactly where that rule was wrong:
+  measured on a real 12-team league, the lowest-scoring active player was the
+  manager's *only kicker* — a starter — so every claim was priced as costing his
+  whole line and 442 of 457 free agents came out negative. That was not the
+  board finding bad claims; it was the board charging every claim for a seat it
+  did not have to empty. Without `slots` it keeps the points rule exactly, there
+  being no lineup to cost anything against. Rostered ids the board cannot value
+  are skipped rather than treated as worthless — 'we have no projection for him'
+  and 'he is projected to score nothing' are different claims, and only one is
+  evidence.
+
+  IR AND TAXI ARE EXCLUDED, IN OPPOSITE DIRECTIONS. A player parked on IR
+  occupies no active seat, so counting him fills a roster that is not full,
+  while dropping him frees no seat for the claim being priced. Hence
+  `:active-ids` for seats and drops, `:player-ids` for availability.
+
+  `:lineup-upgrade` IS THE HEADLINE. `db/waiver-rank-key` leads with it and
+  `with-bids` prices most of the budget on it, so it is no longer the
+  display-only signal it shipped as. It earned that: the bench delta it replaces
+  put ten quarterbacks on top of a real league's board, none of whom would ever
+  start, each carrying an $8 bid. `:upgrade` stays alongside because most of a
+  free-agent pool has no lineup effect at all, so it is what keeps that majority
+  ordered. Both are left *off* — not set to 0 — when there is no lineup to
+  measure against, which is the default state; a zero there is meaningless and
+  numerically identical to `:upgrade` beside it, so nothing on screen would say
+  it is not answering.
+
+  BIDS COME FROM TWO POOLS (`with-bids`). A player who improves the starting
+  lineup is worth real money; a bench stash is worth keeping ordered and cheap.
+  `stash-share` splits the budget, each pool conserves its own share, and an
+  empty pool hands its share to the other — without that a manager with a single
+  lineup upgrade available would leave `stash-share` of his budget unallocated."
   (:require [draft-day.db :as db]
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.replacement :as replacement]
@@ -55,24 +104,9 @@
 ;; ---- who is available ----
 
 (defn held-ids
-  "One team's roster ids in the *board's* id space.
-
-  Roster ids arrive as the provider's (see `league-sync.sleeper`); the board is
-  keyed by GSIS wherever one resolved. `xwalk` is `db/sleeper->player-id`, and an
-  id it has no entry for maps to itself — team defenses carry their abbreviation
-  in both id spaces, and an unmapped id is not evidence that it is wrong: the
-  universe may be a stale cache or the offline sample.
-
-  Every reader of a roster goes through this. It exists as a named function
-  rather than inline in `rostered-index` because the *second* reader is what
-  went wrong: the availability filter translated its ids and the drop candidate
-  did not, so `by-id` resolved almost nothing, every roster looked empty of
-  droppable players, and every upgrade on the board was measured against a floor
-  of zero. The tests missed it because a fixture where player-id equals the
-  Sleeper id makes the crosswalk a no-op — which no real league is.
-
-  `k` selects which of the team's id lists to read: `:player-ids` for who is
-  unavailable, `:active-ids` for who occupies a seat a claim would need."
+  "One team's roster ids in the *board's* id space — see the ns docstring, which
+  every roster reader is required to come through. `k` selects the list:
+  `:player-ids` for who is unavailable, `:active-ids` for who occupies a seat."
   ([team xwalk] (held-ids team xwalk :player-ids))
   ([team xwalk k] (mapv (fn [id] (get xwalk id id)) (get team k))))
 
@@ -92,39 +126,10 @@
 ;; ---- what a claim actually costs ----
 
 (defn drop-candidate
-  "The player a claim would cost me: the lowest `:ros-points` player holding one
-  of my active seats, or nil when a seat is already open.
-
-  `held` is already in the board's id space and already excludes IR and taxi —
-  see `held-ids` and `league-sync.sleeper/normalize-roster`. Both exclusions
-  matter and in opposite directions: a player parked on IR occupies no active
-  seat, so counting him fills a roster that is not full, while dropping him
-  frees no seat for the claim being priced.
-
-  Rostered ids the board cannot value are skipped rather than treated as
-  worthless. A missing row usually *does* mean a player who has fallen off the
-  board — genuinely the man to drop — but 'we have no projection for him' and
-  'he is projected to score nothing' are different claims, and only one of them
-  is evidence. Skipping keeps the named drop a player the manager can check.
-
-  `roster-size` is how many seats the league gives each team. Absent, the roster
-  is treated as full: naming a drop that was not needed costs a suggestion,
-  while missing one that was needed costs a roster spot the manager did not
-  know he was spending.
-
-  WHICH PLAYER, AND WHY IT IS NOT SIMPLY THE LOWEST SCORER. With `slots` the
-  drop is whoever costs the **starting lineup** least to lose, ties broken by
-  lowest `:ros-points`. On a deep bench every bench player costs nothing, so the
-  tiebreak decides and the answer is the one the old rule gave.
-
-  It diverges exactly where the old rule was wrong. Measured on a real 12-team
-  league, the lowest-scoring active player was the manager's *only kicker* — a
-  starter — so every claim was priced as costing his whole line and 442 of 457
-  free agents came out negative. That was not the board finding bad claims; it
-  was the board charging every claim for a seat it did not have to empty.
-
-  Without `slots` — a request that carried no roster config — it keeps the
-  points rule exactly, because there is no lineup to cost anything against."
+  "The player a claim would cost me, or nil when a seat is already open. `held`
+  is already in the board's id space and already excludes IR and taxi. Absent
+  `roster-size` the roster is treated as full. See the ns docstring for the
+  rule."
   [held by-id roster-size slots]
   (when-not (and roster-size (< (count held) roster-size))
     (let [players (vec (keep #(get by-id %) held))
@@ -146,14 +151,10 @@
                second))))))
 
 (defn with-upgrade
-  "Assoc `:upgrade` — rest-of-season points gained by making the claim — on every
-  free agent, plus `:drop-candidate` naming the seat it costs.
-
-  The floor is the drop's own rest-of-season points, or 0 when nothing has to be
-  dropped. It is deliberately *not* his replacement level: replacement is the
-  right baseline for a draft, where every team fills the same slots from the same
-  pool, but the question here is what leaves this manager's roster, and that is a
-  specific player."
+  "Assoc `:upgrade` — rest-of-season points gained by the claim — plus
+  `:drop-candidate` naming the seat it costs. The floor is the drop's own
+  points, not his replacement level: what leaves this roster is a specific
+  player."
   [fas drop]
   (let [floor (double (or (:ros-points drop) 0.0))]
     (mapv (fn [p]
@@ -167,16 +168,9 @@
 ;; ---- what to bid ----
 
 (defn claims-left
-  "How many waiver runs the season has left — one a week.
-
-  The bound the bid conserves against, and it is read off the calendar rather
-  than chosen. `playoff-week-start` is the honest end when the league reports it:
-  claims made once the fantasy playoffs are under way buy at most a game or two.
-  Without it the NFL regular season is the fallback, which errs long and so errs
-  toward bidding conservatively.
-
-  At least 1 whenever any week remains, because a budget with one run left is
-  still a budget; 0 once there is nothing left to claim for."
+  "Waiver runs the season has left, one a week — the bound `with-bids` conserves
+  against, read off the calendar rather than chosen. `playoff-week-start` is the
+  honest end; without it the NFL regular season errs long, and so errs cheap."
   [{:keys [through-week season-games playoff-week-start]}]
   (let [end  (or playoff-week-start (+ 2 (long season-games)))
         left (- (long end) 1 (long (or through-week 0)))]
@@ -184,29 +178,14 @@
 
 (def stash-share
   "The slice of a FAAB budget reserved for players who would not crack the
-  starting lineup.
-
-  CHOSEN, NOT MEASURED — the same standing as `ros/PRIOR-GAMES`, and `dev/` is
-  where it would earn a number. Measured on a real 12-team league, only 0.2-4.8%
-  of free agents have a positive lineup delta, so pricing purely on that would
-  bid $0 for about 95% of the board and lose every distinction between bench
-  stashes — which do have real bye-week and injury value. Reserving a slice
-  keeps them ordered and cheap without pretending a backup quarterback improves
-  the lineup."
+  starting lineup. CHOSEN, NOT MEASURED — same standing as `ros/PRIOR-GAMES`.
+  Only 0.2-4.8% of a real league's free agents have a positive lineup delta."
   0.15)
 
 (defn weights
-  "`[lineup-weight stash-weight]` for one free agent.
-
-  A player is in exactly one pool: anyone who would improve the starting lineup
-  is priced on that and carries no stash weight, and everyone else is priced on
-  the bench delta `:upgrade` measures.
-
-  This is also what keeps the old behaviour reachable without a special case.
-  With no `:lineup-upgrade` anywhere — a request that sent no roster config, or
-  a manager who has not picked his team — every lineup weight is 0, every stash
-  weight is the old `:upgrade`, and the stash pool takes the whole budget. That
-  is the pre-lineup rule exactly."
+  "`[lineup-weight stash-weight]`; a player is in exactly one pool. With no
+  `:lineup-upgrade` anywhere every lineup weight is 0 and the stash pool takes
+  the whole budget, which is the pre-lineup rule exactly — no special case."
   [p]
   (let [lu (max 0.0 (double (or (:lineup-upgrade p) 0.0)))]
     (if (pos? lu)
@@ -214,57 +193,25 @@
       [0.0 (max 0.0 (double (or (:upgrade p) 0.0)))])))
 
 (defn bid-pool
-  "The total weight the bids are a share of: the best `n` of them.
-
-  Summing over *every* free agent instead would divide the budget among
-  hundreds of players a manager will never claim, and every real target would
-  round to nothing. `n` is the number of claims the season still allows, so the
-  pool is the set of players he could actually still add."
+  "The total weight the bids are a share of: the best `n` of them. Summing over
+  every free agent would divide the budget among hundreds a manager will never
+  claim, and every real target would round to nothing."
   [ws n]
   (->> ws (sort >) (take n) (reduce + 0.0)))
 
 (defn faab?
-  "Does this league run FAAB? True for `:faab` and for its JSON spelling.
-
-  The league reaches this namespace two ways: straight from `league-sync`, where
-  the type is a keyword, and round-tripped through the browser, where it is a
-  plain string — `read-json-body` keywordizes *keys*, not values. Testing the
-  keyword alone therefore passed every server-side test and produced a nil bid
-  for every real request. Same family as the drift `scoring/resolve-config`
-  exists to stop, and handled the same way: one predicate that accepts both
-  spellings, rather than a coercion repeated at each caller."
+  "True for `:faab` and for its JSON spelling. The league arrives as a keyword
+  from `league-sync` and as a string through the browser (`read-json-body`
+  keywordizes keys, not values) — testing only the keyword nil'd every real bid.
+  "
   [type]
   (= :faab (when type (keyword type))))
 
 (defn with-lineup-upgrade
-  "Assoc `:lineup-upgrade` — what the claim adds to the manager's *starting*
-  lineup, against `:upgrade`'s bench delta. See `rankings.lineup`.
-
-  THE BOARD'S HEADLINE. `db/waiver-rank-key` leads with this and `with-bids`
-  prices most of the FAAB budget on it, so it is no longer the display-only
-  signal it shipped as. It earned that: measured on a real league the bench
-  delta it replaces put ten quarterbacks on top, none of whom would ever start,
-  each carrying an $8 bid.
-
-  `:upgrade` stays alongside rather than being removed. Most of a free-agent
-  pool has no lineup effect at all, so it is what keeps that majority ordered —
-  as the first sort tiebreak, and as the stash pool's weight in `with-bids`.
-
-  The lineup is drawn from active seats, not `:player-ids`: a player on IR or
-  taxi cannot be started, so counting him would credit the roster with a starter
-  it does not have.
-
-  The key is left off entirely — not set to 0 — in the two cases where there is
-  no lineup to measure against: a request that carried no roster config, and a
-  manager who has not picked his team. The second is the default state, and
-  without the guard every free agent's delta is his *entire* line, which is both
-  meaningless and numerically identical to `:upgrade` beside it, so nothing on
-  screen says it is not answering. `:my-roster` keeps nil rather than `[]` for
-  the same reason.
-
-  `before` is passed in rather than recomputed: it is the same value for every
-  candidate, and this runs once per free agent on a response re-POSTed with
-  every refresh."
+  "Assoc `:lineup-upgrade` — what the claim adds to the *starting* lineup,
+  against `:upgrade`'s bench delta (see `rankings.lineup`, and the ns docstring
+  for why it is the headline and why it is absent rather than 0 when there is no
+  lineup)."
   [fas roster drop slots]
   (if-not (and (seq slots) (seq roster))
     fas
@@ -275,23 +222,9 @@
             fas))))
 
 (defn with-bids
-  "Assoc `:bid` on every free agent: his share of the remaining budget.
-
-  TWO POOLS, because the two questions are different. A player who improves the
-  starting lineup is worth real money; a bench stash is worth keeping ordered
-  and cheap. `stash-share` splits the budget between them, and each pool
-  conserves its own share, so the two together still spend the budget — the
-  property `waiver-test` pins.
-
-  An empty pool hands its share to the other. Without that, a manager with a
-  single lineup upgrade available would leave `stash-share` of his budget
-  unallocated and every stash bid would round to nothing.
-
-  nil rather than a number in the two cases where there is no bid to make — a
-  league that does not run FAAB, and a manager with nothing left to spend. A
-  zero would read as 'worth nothing' when the truth is 'there is nothing to
-  bid', which is the same distinction `league-sync` keeps by reporting
-  `:faab-left` nil outside FAAB."
+  "Assoc `:bid` — his share of the remaining budget, from the two pools the ns
+  docstring describes. **nil**, not 0, for a league that does not run FAAB or a
+  manager with nothing left to spend: 'worth nothing' is a different answer."
   [fas {:keys [type]} budget-left n]
   (let [ws    (mapv weights fas)
         lin   (bid-pool (map first ws) n)
@@ -321,13 +254,9 @@
 ;; ---- display ----
 
 (defn trend
-  "Recent opportunity per game over the season's, or nil.
-
-  Volume, not points: a back who has taken over the carries is a buy before the
-  touchdowns arrive, and a receiver whose targets have dried up is a sell while
-  his season line still looks fine. Above 1.0 means the role is growing.
-
-  DISPLAY ONLY — nothing reads this. See the ns docstring."
+  "Recent opportunity per game over the season's, or nil; above 1.0 means the
+  role is growing. Volume, not points — a back who has taken over the carries is
+  a buy before the touchdowns arrive. DISPLAY ONLY, see the ns docstring."
   [{:nflverse/keys [season-to-date recent]}]
   (let [per-game (fn [{:keys [games usage]}]
                    (when (and games (pos? games))
@@ -350,12 +279,9 @@
 ;; than being blended into it. Blending was measured and bought +0.37%.
 
 (defn form-points
-  "Points per game over `nflverse-weekly/recent-window`, under the league's own
-  weights, or nil before he has played inside the window.
-
-  Scored from the window's own stat map rather than from a vendor's points, the
-  same rule `ros.clj` follows, and put on a per-game basis for the same reason
-  it does: a three-week total and a two-week total are not comparable numbers."
+  "Points per game over `nflverse-weekly/recent-window` under the league's own
+  weights, or nil before he has played inside it. Scored from the window's own
+  stats and per-game for the same reasons `ros.clj` is."
   [{:nflverse/keys [recent]} scoring]
   (let [{:keys [games stats]} recent]
     (when (and games (pos? games) (seq stats))
@@ -387,16 +313,9 @@
 ;; ---- orchestration ----
 
 (defn with-ros-vorp
-  "Replacement level and VORP computed on `:ros-points`, landing on `:ros-vorp`.
-
-  Over the **whole** board, not just the free agents: replacement level is a
-  property of what the league's starting lineups demand, not of who happens to
-  be unclaimed this week. Scoped to the free agents it would drift down every
-  time a good player was added and make the remaining scraps look like starters.
-
-  Renamed off `:vorp` because the client already reads that key as the draft
-  board's preseason, full-season number, and two different scales under one name
-  is the mistake `engine/static-rankings` documents about expert tiers."
+  "Replacement and VORP on `:ros-points`, landing on `:ros-vorp`. Over the
+  **whole** board — scoped to free agents it drifts down with every add. Renamed
+  off `:vorp`, which the client already reads as the draft board's number."
   [board num-teams replacement-config]
   (let [levels (replacement/replacement-levels board num-teams
                                                (or replacement-config {}) :ros-points)]
@@ -407,7 +326,8 @@
 (defn roster-sort-key
   "Starters in the league's own lineup order — `slot-idx` is `{id slot}` off
   `:starter-ids` — so a WR starting at FLEX keeps that seat rather than sorting
-  up beside the other receivers. Everyone else follows by position, then points."
+  up beside the other receivers. Everyone else follows by position, then points.
+  "
   [slot-idx {:keys [starter? player-id position ros-points]}]
   [(if starter? 0 1)
    (get slot-idx player-id (count slot-idx))
@@ -415,32 +335,15 @@
    (- (or ros-points 0.0))])
 
 (defn my-roster
-  "The manager's own roster, for the panel beside the board — or nil.
-
-  `:players` is free agents only and `:rostered` carries names, not numbers, so
-  without this nothing in the reply can answer 'what do I already have'. The
-  browser cannot work it out either: it holds the universe, but `:ros-points` is
-  computed here.
-
-  Rows the board cannot value are kept as **placeholders**, not dropped.
-  `drop-candidate` skips them deliberately — 'we have no projection for him' and
-  'he is projected to score nothing' are different claims, and only one is
-  evidence for naming a drop — but a *roster* that quietly omits them shows 13 of
-  15 seats with nothing saying why, which is how a missing crosswalk hides.
-
-  nil rather than `[]` when no team is picked, because the panel says something
-  different for 'pick your team' than for 'this roster is empty'.
-
-  Ordered here, not in the view: `:player-ids` arrives in Sleeper's order, which
-  is by id string. See `roster-sort-key`.
-
-  Ids go through `held-ids` like every other roster reader; see its docstring for
-  what happened the one time they did not."
+  "The manager's own roster for the panel beside the board, ordered; nil when no
+  team is picked, since the panel says something different for 'pick your team'
+  than for an empty roster. Rows the board cannot value are kept as
+  placeholders."
   [my-team xwalk by-id drop]
   (when my-team
     (let [lineup   (held-ids my-team xwalk :starter-ids)
-          ;; An unfilled slot is "0": it takes an index and matches nobody,
-          ;; which is what keeps the seats below it in their real places.
+          ;; An unfilled slot is "0" — an index matching nobody, which keeps
+          ;; the seats below it in their real places.
           slot-idx (zipmap lineup (range))
           starters (set lineup)
           active   (set (held-ids my-team xwalk :active-ids))
@@ -448,15 +351,12 @@
       (->> (held-ids my-team xwalk :player-ids)
            (map (fn [id]
                   (let [flags {:starter? (contains? starters id)
-                               ;; IR and taxi: rostered, but holding no seat a
-                               ;; claim could take. Same distinction `held-ids`
-                               ;; draws.
+                               ;; IR and taxi: rostered, holding no claimable seat.
                                :parked?  (not (contains? active id))
                                :drop?    (= id drop-id)}]
                     (if-let [p (get by-id id)]
-                      ;; Exactly what the panel draws. A key nobody reads is a
-                      ;; claim that something uses it — the PDM is the standing
-                      ;; example.
+                      ;; Exactly what the panel draws — a key nobody reads is a
+                      ;; claim that something uses it (see the PDM).
                       (merge (select-keys p [:player-id :player-name
                                              :position :ros-points])
                              flags)
@@ -465,35 +365,17 @@
            vec))))
 
 (defn my-roster-players
-  "The manager's own roster as full board rows, so a player he already holds can
-  be compared against a free agent on the same columns.
-
-  Deliberately not a widening of `my-roster`, whose trimmed shape the panel
-  depends on, and deliberately full rows rather than a second trimmed shape: the
-  comparison reads the same keys on both sides, so one shape means one renderer.
-  It is a roster, so the cost is bounded at a dozen or so rows.
-
-  `:upgrade` and `:bid` are absent rather than zero — you cannot claim a man you
-  already hold, and a 0 there would read as a claim worth nothing."
+  "The manager's roster as full board rows, so a held player compares against a
+  free agent on the same columns and one renderer serves both. `:upgrade` and
+  `:bid` are absent rather than zero — you cannot claim a man you already hold."
   [my-team xwalk by-id]
   (when my-team
     (with-trend (keep #(get by-id %) (held-ids my-team xwalk :player-ids)))))
 
 (defn waiver-board
-  "The whole answer:
-  `{:players :my-roster :my-roster-players :rostered :faab :claims-left
-    :replacement-levels}`.
-
-  `:players` is the free agents only. Shipping every rostered player too would be
-  most of the universe re-sent on every refresh for rows the board does not
-  render; `:rostered` is the compact `{player-id team-name}` index that answers
-  'who has him' instead. `:my-roster` is the bounded exception — one team's
-  seats, trimmed to what the panel draws.
-
-  A league with no synced rosters is not an error — it is a manager who has not
-  connected one yet. Everyone is free, there is nothing to drop and no budget to
-  bid, and the board is a rest-of-season ranking, which is a useful thing on its
-  own."
+  "`:players` is the free agents only — `:rostered` is the compact `{player-id
+  team-name}` index that answers 'who has him' without re-sending the universe.
+  No synced rosters is not an error: everyone is free."
   [board {:keys [league my-roster-id roster-size num-teams replacement-config
                  starting-slots] :as ctx}]
   (let [{:keys [teams waiver]} league
