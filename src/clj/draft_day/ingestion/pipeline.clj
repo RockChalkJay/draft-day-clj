@@ -17,22 +17,22 @@
   `:source` alone could not distinguish a twenty-minute-old cache from a
   fourteen-month-old one served because the network died; `:season` and
   `:fetched-at` can."
-  (:require [draft-day.ingestion.sleeper :as sleeper]
-            [draft-day.ingestion.fantasypros :as fantasypros]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.tools.logging :as log]
+            [cognitect.transit :as transit]
             [draft-day.ingestion.espn :as espn]
+            [draft-day.ingestion.fantasypros :as fantasypros]
+            [draft-day.ingestion.match :as match]
             [draft-day.ingestion.merge :as merge]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
-            [draft-day.ingestion.match :as match]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.player-ids :as player-ids]
+            [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.validate :as validate]
-            [draft-day.scoring :as scoring]
-            [clojure.tools.logging :as log]
-            [cognitect.transit :as transit]
-            [clojure.edn :as edn]
-            [clojure.string :as str]
-            [clojure.java.io :as io])
+            [draft-day.scoring :as scoring])
   (:import [java.time Instant]))
 
 (def schema-version
