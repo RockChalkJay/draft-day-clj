@@ -624,8 +624,8 @@
    {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false}
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true}
-   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start \u2014 unlike Upg, which measures him against your worst bench player" :default? false}
-   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid — your share of the budget across the claims the season still allows. Blank when the league does not run FAAB" :default? true}
+   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start — unlike Upg, which measures him against your worst bench player. This is what the board sorts by" :default? true}
+   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid. Most of the budget goes to players who would actually crack your starting lineup, with a slice held back so bench stashes stay ordered and cheap — which is why a big Upg with no Lineup gain bids little. Blank when the league does not run FAAB" :default? true}
    {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true}
    {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules — what his current role has been worth, against what the projection expects of it" :default? false}
    {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true}
@@ -640,8 +640,8 @@
 (def waiver-columns-by-key (into {} (map (juxt :key identity)) waiver-column-catalog))
 
 (defn waiver-rank-key
-  "Descending sort key for the waiver board: Upgrade, then rest-of-season points,
-  then name.
+  "Descending sort key for the waiver board: what the claim adds to the starting
+  lineup, then the bench delta, then rest-of-season points, then name.
 
   Upgrade alone is not a total order, for the same reason Worth was not on the
   draft board: the whole tail of the pool is worse than the man you would drop,
@@ -649,10 +649,20 @@
   leave in server order. Rest-of-season points separate them where the upgrade
   cannot, and the name settles the rest so the order is the same on every render.
 
+  Lineup leads because the bench delta answered the wrong question. Measured on
+  a real league it put ten quarterbacks on top, each of whom would never start
+  and each carrying a real FAAB bid. `:upgrade` stays as the first tiebreak
+  rather than being dropped: most of a free-agent pool has no lineup effect at
+  all, and without it that whole majority would collapse into one undifferentiated
+  block in server order.
+
   Missing values read as 0 rather than nil — a nil inside a vector sort key
-  throws rather than sorting last, exactly as `rank-key` documents."
+  throws rather than sorting last, exactly as `rank-key` documents. That also
+  makes a board with no lineup delta at all — no roster config, or no team
+  picked — fall straight through to the order it had before."
   [p]
-  [(- (double (or (:upgrade p) 0)))
+  [(- (double (or (:lineup-upgrade p) 0)))
+   (- (double (or (:upgrade p) 0)))
    (- (double (or (:ros-points p) 0)))
    (str (:player-name p))])
 

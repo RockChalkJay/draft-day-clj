@@ -33,8 +33,12 @@
   and points per game over the last three weeks.
 
   5: and Lineup — what a claim adds to the starting lineup rather than to the
-  bench."
-  5)
+  bench.
+
+  6: Lineup is on by default, because the board now sorts by it. Without the
+  bump an existing manager keeps his stored columns and his rows reorder on a
+  number he cannot see."
+  6)
 
 (def drafts-key "draft-day-drafts")
 

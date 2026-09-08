@@ -537,3 +537,27 @@
     (let [entry (db/archive-entry {:picks [{:player-id "a"}]} "2026-09-06T00:00:00Z")]
       (is (nil? (:league entry)))
       (is (= 1 (count (:picks entry)))))))
+
+(deftest the-lineup-delta-leads-the-waiver-order
+  ;; The whole point of the swap. A backup quarterback can clear the worst
+  ;; bench player by 150 points and still be worth nothing, so the bench delta
+  ;; must not decide first — measured on a real league it put ten
+  ;; quarterbacks on top, none of whom would ever start.
+  (let [qb2   {:player-name "backup qb" :lineup-upgrade 0.0 :upgrade 150.0}
+        wr    {:player-name "starter"   :lineup-upgrade 18.0 :upgrade 49.0}
+        order (mapv :player-name (sort-by db/waiver-rank-key [qb2 wr]))]
+    (is (= ["starter" "backup qb"] order))))
+
+(deftest the-bench-delta-still-orders-everyone-with-no-lineup-effect
+  ;; Most of a free-agent pool has none, so dropping :upgrade from the key
+  ;; would collapse that whole majority into server order.
+  (let [ps [{:player-name "c" :lineup-upgrade 0.0 :upgrade 5.0}
+            {:player-name "a" :lineup-upgrade 0.0 :upgrade 120.0}
+            {:player-name "b" :lineup-upgrade 0.0 :upgrade 31.0}]]
+    (is (= ["a" "b" "c"] (mapv :player-name (sort-by db/waiver-rank-key ps))))))
+
+(deftest a-board-with-no-lineup-delta-keeps-the-order-it-had
+  ;; No roster config, or no team picked. A missing delta reads as 0 for
+  ;; everyone, so the key falls straight through to the old one.
+  (let [ps [{:player-name "b" :upgrade 1.0} {:player-name "a" :upgrade 9.0}]]
+    (is (= ["a" "b"] (mapv :player-name (sort-by db/waiver-rank-key ps))))))
