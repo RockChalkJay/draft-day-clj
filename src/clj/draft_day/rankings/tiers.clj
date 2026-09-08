@@ -1,54 +1,58 @@
 (ns draft-day.rankings.tiers
   "Piece 1: tiering (static). Cuts a board into groups the manager can treat as
-  interchangeable, at two scales — within a position, and across the whole board.
+  interchangeable, at two scales — within a position, and across the whole
+  board.
 
   There is exactly one tiering technique here, deliberately. Comparing several
   providers' tiers side by side is worth doing eventually, and this namespace is
-  where that seam would go (a strategy keyword dispatching to a pure
-  board -> {player-id tier} function, shaped like `rankings.model`); until there
-  is a second technique worth shipping, a multimethod with one implementation is
+  where that seam would go (a strategy keyword dispatching to a pure board ->
+  {player-id tier} function, shaped like `rankings.model`); until there is a
+  second technique worth shipping, a multimethod with one implementation is
   machinery, not a seam. FantasyPros' published tiers ride along as display
-  columns rather than as a rival technique.")
+  columns rather than as a rival technique.
+
+  WHY GAPS ARE RANKED ABSOLUTELY (`cut-points`). This reverses the relative-drop
+  threshold it replaced. A relative drop is measured against the falling player,
+  so it grows without bound as the metric decays toward zero and drags nearly
+  every cut into the tail — on the sample board that came out as one 13-player
+  top tier above four 2-player tiers, exactly backwards. Absolute gaps give
+  tiers the shape they are supposed to have: small, sharply separated groups at
+  the top where the money is, wide undifferentiated ones at the bottom. The old
+  objection to absolute gaps (a fat gap deep in the tail outranking a real one
+  up top) is answered by *where* it is called rather than by the metric — the
+  caller has already truncated the pool at replacement, so there is no tail left
+  to fool it.
+
+  WHY TIERS ARE SIZED, NOT COUNTED (`TARGET-TIER-SIZE`). The pools differ. On
+  the sample at 12 teams, in every scoring format, RB and WR have 30 players
+  above replacement while QB, TE, K and DST have 12. One tier count across that
+  spread means either fat tiers at WR or tiers of one at QB, where a *size* says
+  the same thing about both — and 'about four interchangeable players' is a
+  claim that can be checked against a board.
+
+  WHY BOTH SCALES SHIP (`with-tiers`). The positional scale answers 'who else is
+  as good as this at his position'; the overall scale answers 'is this RB the
+  same buy as that WR', a different question needing a different score.
+  Computing both every time is what lets the board switch on a position filter
+  with no refetch.")
 
 (def TARGET-TIER-SIZE
-  "How many players a tier should hold, per scale. The count follows from this
-  and the pool's depth (`tier-count`); it is not itself configured.
-
-  Sizing beats counting because the pools differ. Measured on the sample at
-  12 teams, in every scoring format: RB and WR have 30 players above replacement,
-  QB, TE, K and DST have 12. One tier count across that spread means either fat
-  tiers at WR or tiers of one at QB — where a *size* says the same thing about
-  both, and 'about four interchangeable players' is a claim that can be checked
-  against a board.
-
-  The overall pool is one pool, ~84 deep at 12 teams, so 12 is roughly a round's
-  worth of the board. It is deliberately a constant rather than `num-teams`: a
-  tier count that moved with league size would stop tier 3 meaning the same thing
-  between the leagues one manager runs."
+  "How many players a tier should hold, per scale; the count follows from this
+  and the pool's depth (`tier-count`). Deliberately a constant rather than
+  `num-teams` — a count that moved with league size would stop tier 3 meaning
+  one thing."
   {:overall 12 :position 4})
 
 (def MAX-TIERS
-  "Ceiling on the tiers a scale renders, whatever the pool's depth asks for.
-
-  The board spends a fixed hue budget on tiers (see `views/board.cljs`), so past
-  a dozen the stripes stop being tellable apart and the tier number stops being
-  a thing you can hold in your head. Nothing on a 12-team board comes close;
-  this is here for the deep-league case.
-
-  It bounds the *rendered* count, tail included — `tiers-by-cliffs` spends one of
-  these on the below-replacement tail when there is one, so a capped pool with a
-  tail gets `MAX-TIERS - 1` cut tiers plus it. Counting only the cuts here is how
-  a ceiling of 12 would quietly render 13."
+  "Ceiling on the tiers a scale renders — the board's hue budget runs out past a
+  dozen. Bounds the *rendered* count, tail included: `tiers-by-cliffs` spends
+  one on the tail, so counting only the cuts here would render 13."
   12)
 
 (def MIN-TIER-SIZE
-  "No tier may hold fewer than this many players.
-
-  A one-player tier is not a tier, it is a rank with extra styling: the whole
-  claim a tier makes is 'these are interchangeable, do not pay up for the top of
-  the group', and a group of one cannot make it. Same idea as `TARGET-TIER-SIZE`
-  from the other end — the target sets the count, this is the floor `cut-points`
-  refuses to breach when the target's count does not fit."
+  "A one-player tier is a rank with extra styling, not a tier: the claim a tier
+  makes is 'these are interchangeable', and a group of one cannot make it. The
+  floor `cut-points` refuses to breach when the target's count does not fit."
   2)
 
 (defn tier-count
@@ -64,48 +68,22 @@
   (fn [player] (double (or (k player) 0))))
 
 (defn relative-drop
-  "Fall from `from` to `to` as a share of `from`; 0.0 when `from` is not positive.
-
-  Used by `tcm`, now its only caller: tiering itself ranks absolute gaps (see
-  `cut-points`). Kept here rather than moved into `tcm` because 'a fall of x%' is
-  a board-wide notion, and a second copy of it is how two definitions of a cliff
-  start to drift."
+  "Fall from `from` to `to` as a share of `from`; 0.0 when `from` is not
+  positive. `tcm` is now the only caller — tiering ranks absolute gaps — but a
+  second copy is how two definitions of a cliff start to drift."
   [from to]
   (let [f (double from)]
     (if (pos? f) (/ (- f (double to)) f) 0.0)))
 
 (defn cut-points
   "Indices of `scores` (descending) where a tier boundary falls: the biggest
-  `(dec tier-count)` gaps that leave no segment shorter than `min-size`. Returns
-  a sorted set; index i means i starts a new tier.
-
-  Gaps are ranked *absolutely*, which reverses the relative-drop threshold this
-  replaced. A relative drop is measured against the falling player, so it grows
-  without bound as the metric decays toward zero and drags nearly every cut into
-  the tail — on the sample board that came out as one 13-player top tier above
-  four 2-player tiers, exactly backwards. Absolute gaps give tiers the shape they
-  are supposed to have: small, sharply separated groups at the top where the
-  money is, wide undifferentiated ones at the bottom.
-
-  The old objection to absolute gaps (a fat gap deep in the tail outranking a
-  real one up top) is answered by *where* this is called rather than by the
-  metric: the caller has already truncated the pool at replacement, so there is
-  no tail left to be fooled by.
-
-  Zero gaps are never cut on, so players with identical scores cannot be split.
-  Ties in gap size break toward the earlier index, so the result is a pure
-  function of the scores.
-
-  Greedy, and it has to be: whether a cut is legal depends on which cuts were
-  already taken, so this is a fold over the gaps in descending order rather than
-  a filter. `reduced` stops it as soon as the count is met."
+  `(dec tier-count)` *absolute* gaps leaving no segment shorter than `min-size`
+  — see the ns docstring. Zero gaps are never cut on; ties break earlier."
   [scores tier-count min-size]
   (let [n        (count scores)
         max-cuts (dec tier-count)
-        ;; A cut at i is legal when both segments it creates — back to the
-        ;; nearest cut already taken (or the top) and on to the next (or the
-        ;; bottom) — are big enough. This is also what keeps a pool too small to
-        ;; hold two full tiers from being cut at all.
+        ;; A cut at i is legal when both segments it creates reach `min-size`.
+        ;; Also what keeps a pool too small for two full tiers from being cut.
         room?    (fn [cuts i]
                    (let [lo (or (first (rsubseq cuts <= i)) 0)
                          hi (or (first (subseq cuts > i)) n)]
@@ -128,17 +106,9 @@
               by-gap))))
 
 (defn tiers-by-cliffs
-  "Return `players` sorted descending by the score key, each with a 1-indexed
-  :tier.
-
-  The pool above `replacement-level` is cut at its biggest gaps (`cut-points`)
-  into as many tiers as its depth asks for (`tier-count`); everything at or below
-  replacement shares the final tier, because 'worse than the player you can have
-  for $1' is the only distinction that tail supports. A nil level tiers the whole
-  pool — see `tier-floor`, which is how K and DST get one anyway.
-
-  Opts: `:score-key` (default :points; the overall scale cuts on :vorp) and
-  `:target-size` (default the positional target)."
+  "Sorted descending by the score key, each player with a 1-indexed :tier. The
+  pool above `replacement-level` is cut at its biggest gaps; everything at or
+  below it shares the final tier. A nil level tiers the whole pool."
   ([players] (tiers-by-cliffs players nil {}))
   ([players replacement-level] (tiers-by-cliffs players replacement-level {}))
   ([players replacement-level {:keys [score-key target-size]
@@ -150,9 +120,8 @@
          cutoff (if (nil? replacement-level)
                   n
                   (count (take-while #(> (score %) (double replacement-level)) sorted)))
-         ;; The tail below spends one of MAX-TIERS, so a capped pool that has one
-         ;; may only cut MAX-TIERS - 1. Without this the ceiling is off by one
-         ;; exactly where it matters — the deep pool that actually reaches it.
+         ;; The tail spends one of MAX-TIERS, so a capped pool that has one may
+         ;; only cut MAX-TIERS - 1, or the ceiling is off by one where it tells.
          ceiling (if (< cutoff n) (dec MAX-TIERS) MAX-TIERS)
          cuts   (cut-points (mapv score (subvec sorted 0 cutoff))
                             (min (tier-count cutoff target-size) ceiling)
@@ -165,18 +134,9 @@
      (mapv #(assoc %1 :tier %2) sorted (concat tiers tail)))))
 
 (defn tier-floor
-  "Points below which a position's tail collapses into one tier.
-
-  Valuation's replacement level where there is one. K and DST are deliberately
-  absent from that map so they price at $0, but they still need a floor: without
-  one, tiering the whole pool spends every tier on 44 kickers nobody drafts.
-  Exactly one of each starts, so the num-teams-th best is the same boundary the
-  priced positions get.
-
-  `sorted` is the position group already in descending :points order. It used to
-  sort a second copy of the group for itself; handing the same vector to
-  `tiers-by-cliffs` leaves one real sort per position, since the defensive sort
-  there costs a linear pass on input that is already ordered."
+  "Valuation's replacement level where there is one. K and DST are absent from
+  that map so they price at $0, but still need a floor or tiering spends every
+  tier on 44 kickers. `sorted` is already in descending :points order."
   [sorted level num-teams]
   (or level
       (when (seq sorted)
@@ -186,16 +146,9 @@
   (into {} (map (juxt :player-id :tier)) tiered))
 
 (defn with-tiers
-  "Assoc :tiers {:overall n :position n} on every player, plus :tier — the flat
-  alias for the positional tier that this pipeline has always written.
-
-  Both scales are always computed and shipped side by side, so the board picks
-  the one that matches its current filter without a round trip. The positional
-  scale answers 'who else is as good as this at his position'; the overall scale
-  answers 'is this RB the same buy as that WR', which is a different question and
-  needs a different score to answer.
-
-  `ctx` carries :replacement-levels and :num-teams."
+  "Assoc :tiers {:overall n :position n}, plus :tier as the flat alias for the
+  positional one. Both scales always ship — see the namespace docstring. `ctx`
+  carries :replacement-levels and :num-teams."
   [board {:keys [replacement-levels num-teams]}]
   (let [positional (into {}
                          (mapcat (fn [[pos grp]]
@@ -206,11 +159,8 @@
                                        (tier-floor sorted (get replacement-levels pos)
                                                    num-teams))))))
                          (group-by :position board))
-        ;; Cut on VORP, the only score that compares a QB to an RB — points are
-        ;; on a different scale at every position. Replacement level is 0.0
-        ;; because VORP is zero at replacement by construction, so the tail rule
-        ;; above collapses every below-replacement player (K and DST included)
-        ;; into one final tier.
+        ;; VORP is the only score comparing a QB to an RB, and it is 0.0 at
+        ;; replacement by construction, so the tail rule needs no special case.
         overall    (id->tier (tiers-by-cliffs board 0.0
                                               {:score-key   :vorp
                                                :target-size (:overall TARGET-TIER-SIZE)}))]
