@@ -265,10 +265,18 @@
   ;; listeners are order-dependent: whichever ran second would see `:modal`
   ;; already nil and clear `:compare` anyway. The precedence has to be a rule in
   ;; one place, which is also what makes it testable.
+  ;;
+  ;; The comparison is cleared only from the tab it is on. The listener lives in
+  ;; `core/app` now and so is attached for the life of the app, where it used to
+  ;; unmount with the tile — without this the manager could hold a pair, switch
+  ;; to the draft board, press Escape for some unrelated reason and come back to
+  ;; find it gone, which is the same silent loss the paragraph above is about.
+  ;; The modal is not view-scoped: it opens over whatever is on screen.
   (fn [db _]
     (cond
       (:modal db)         (assoc db :modal nil)
-      (seq (:compare db)) (assoc db :compare [])
+      (and (= :waivers (:view db))
+           (seq (:compare db))) (assoc db :compare [])
       :else               db)))
 
 (rf/reg-event-fx :archive-draft

@@ -115,11 +115,16 @@
 (defn head
   "Name, position, team, and the one line of context a claim is decided on.
 
-  `universe` may be nil — the face falls back to the silhouette and the rest of
-  the head is unaffected, because every field here is on the board row."
+  `universe` may be nil while `/api/players` is still in flight — the face is
+  then the bare silhouette and the rest of the head is unaffected, because every
+  other field here is on the board row."
   [p universe week]
   [:div.pd-head
-   [face (or universe p)]
+   ;; `universe` alone, never the board row as a fallback: a waiver row carries
+   ;; no `:ids`, so `headshot-url` would build a URL from the GSIS id and ask the
+   ;; CDN for a player it has never heard of. Both paths end at the silhouette;
+   ;; only one of them makes a request first.
+   [face universe]
    [:div.pd-who
     [:h2#pd-title.pd-name (:player-name p) [compare/status-chip p]]
     [:p.pd-meta (str/join " · " (meta-segments p week))]]])
@@ -141,7 +146,13 @@
        {:on-click #(when (= (.-target %) (.-currentTarget %))
                      (rf/dispatch [:close-modal]))}
        [:div.modal.modal-wide.pd-modal
-        {:role "dialog" :aria-modal "true" :aria-labelledby "pd-title"}
+        ;; `role`, but deliberately not `aria-modal`. Nothing here traps focus —
+        ;; Tab walks out of the dialog and into the board behind the scrim — and
+        ;; an attribute telling a screen reader the rest of the page is inert
+        ;; while it is not is the same kind of half-answer the board refuses to
+        ;; give elsewhere. `docs/TODO.md` owns the keyboard story for both
+        ;; boards; this describes what the thing actually does until then.
+        {:role "dialog" :aria-labelledby "pd-title"}
         [:button.pd-close {:on-click #(rf/dispatch [:close-modal])
                            :title "Close (Esc)"
                            :aria-label "Close"} "✕"]

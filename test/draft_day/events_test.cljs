@@ -441,6 +441,7 @@
 
 (deftest escape-closes-the-modal-and-leaves-the-comparison-alone
   (reset! rdb/app-db (assoc (loaded-db)
+                            :view :waivers
                             :modal {:kind :player-detail :player-id "p1"}
                             :compare ["p1" "p2"]))
   (rf/dispatch-sync [:escape-pressed])
@@ -449,9 +450,28 @@
       "the pair he was holding survives the modal closing over it"))
 
 (deftest escape-clears-the-comparison-once-no-modal-is-open
-  (reset! rdb/app-db (assoc (loaded-db) :compare ["p1" "p2"]))
+  (reset! rdb/app-db (assoc (loaded-db) :view :waivers :compare ["p1" "p2"]))
   (rf/dispatch-sync [:escape-pressed])
   (is (= [] (:compare @rdb/app-db))))
+
+(deftest escape-on-another-tab-leaves-the-comparison-alone
+  ;; The listener lives in `core/app` and is attached for the life of the app,
+  ;; where it used to unmount with the tile. Without the view guard, holding a
+  ;; pair and pressing Escape anywhere else would lose it with nothing on screen
+  ;; acknowledging that anything happened.
+  (doseq [v [:board :league :settings]]
+    (reset! rdb/app-db (assoc (loaded-db) :view v :compare ["p1" "p2"]))
+    (rf/dispatch-sync [:escape-pressed])
+    (is (= ["p1" "p2"] (:compare @rdb/app-db))
+        (str "Escape on " v " cleared a comparison held on the waivers tab"))))
+
+(deftest a-modal-closes-from-any-tab
+  ;; The modal is not view-scoped the way the tile is: it opens over whatever is
+  ;; on screen, so Escape has to reach it from anywhere.
+  (reset! rdb/app-db (assoc (loaded-db) :view :board
+                            :modal {:kind :player-detail :player-id "p1"}))
+  (rf/dispatch-sync [:escape-pressed])
+  (is (nil? (:modal @rdb/app-db))))
 
 (deftest escape-with-nothing-open-changes-nothing
   (let [before (loaded-db)]
