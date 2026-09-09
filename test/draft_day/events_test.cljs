@@ -431,3 +431,48 @@
     (fn [_]
       (rf/dispatch-sync [:start-draft {:num-teams 10 :starting-bankroll 100 :team-names []}])
       (is (= [] (fx/read-drafts))))))
+
+;; ---- one Escape, one effect ----
+;; The tile and the modal both close on Escape and both used to want their own
+;; document listener. Two listeners are order-dependent: whichever ran second
+;; would see `:modal` already nil and clear `:compare` anyway, so shutting the
+;; modal would silently take away the pair underneath it. The precedence is a
+;; rule in one event instead, which is what makes it assertable at all.
+
+(deftest escape-closes-the-modal-and-leaves-the-comparison-alone
+  (reset! rdb/app-db (assoc (loaded-db)
+                            :modal {:kind :player-detail :player-id "p1"}
+                            :compare ["p1" "p2"]))
+  (rf/dispatch-sync [:escape-pressed])
+  (is (nil? (:modal @rdb/app-db)))
+  (is (= ["p1" "p2"] (:compare @rdb/app-db))
+      "the pair he was holding survives the modal closing over it"))
+
+(deftest escape-clears-the-comparison-once-no-modal-is-open
+  (reset! rdb/app-db (assoc (loaded-db) :compare ["p1" "p2"]))
+  (rf/dispatch-sync [:escape-pressed])
+  (is (= [] (:compare @rdb/app-db))))
+
+(deftest escape-with-nothing-open-changes-nothing
+  (let [before (loaded-db)]
+    (reset! rdb/app-db before)
+    (rf/dispatch-sync [:escape-pressed])
+    (is (= before @rdb/app-db))))
+
+;; ---- a modal that carries an argument ----
+
+(deftest a-modal-is-named-the-same-way-whether-or-not-it-carries-an-argument
+  ;; `:modal` held a bare keyword until one of them needed a player id. Both
+  ;; shapes are read through `db/modal-kind`, so the two argument-less modals
+  ;; keep working and the next one to need an argument costs a map rather than a
+  ;; fourth spelling of the comparison.
+  (is (= :start-draft (db/modal-kind {:kind :start-draft})))
+  (is (= :player-detail (db/modal-kind {:kind :player-detail :player-id "p1"})))
+  (is (= :reset-cache (db/modal-kind :reset-cache)) "the bare keyword still reads")
+  (is (nil? (db/modal-kind nil)) "nothing open"))
+
+(deftest showing-a-player-detail-modal-carries-the-id
+  (rf/dispatch-sync [:show-modal {:kind :player-detail :player-id "p1"}])
+  (is (= {:kind :player-detail :player-id "p1"} (:modal @rdb/app-db)))
+  (rf/dispatch-sync [:close-modal])
+  (is (nil? (:modal @rdb/app-db))))

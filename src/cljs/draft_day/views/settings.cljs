@@ -339,7 +339,7 @@
   [:section.settings-card.danger-zone
    [:h3 "Danger Zone"]
    [:p.muted "Force the server to drop its cached player data and re-fetch live prices from Sleeper, FantasyPros and ESPN. Does not affect your draft or league settings."]
-   [:button.danger {:on-click #(rf/dispatch [:show-modal :reset-cache])} "Reset Player Cache"]])
+   [:button.danger {:on-click #(rf/dispatch [:show-modal {:kind :reset-cache}])} "Reset Player Cache"]])
 
 (defn settings []
   [:div.settings

@@ -126,6 +126,19 @@
   [cfg]
   (select-keys cfg [:scoring :num-teams :starting-bankroll :roster]))
 
+(defn modal-kind
+  "Which modal is open, whether it was named by a bare keyword or by a map
+  carrying its argument.
+
+  One place that knows both shapes, so the next modal needing an argument costs
+  a map rather than a fourth spelling of the comparison. Same move as
+  `scoring/resolve-config` and `waiver/faab?`, and for the same reason: two
+  hand-written copies of a `cond` over two spellings had already drifted once.
+
+  nil when nothing is open."
+  [m]
+  (if (map? m) (:kind m) m))
+
 (defn drafted-anything?
   [db]
   (boolean (seq (:picks db))))

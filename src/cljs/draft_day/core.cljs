@@ -1,7 +1,9 @@
 (ns draft-day.core
   "re-frame entry point: wires events/subs, mounts the app, boots data load."
-  (:require [reagent.dom.client :as rdomc]
+  (:require [reagent.core :as r]
+            [reagent.dom.client :as rdomc]
             [re-frame.core :as rf]
+            [draft-day.db :as db]
             [draft-day.events]
             [draft-day.subs]
             [draft-day.views.board :as board]
@@ -12,7 +14,8 @@
             [draft-day.views.settings :as settings]
             [draft-day.views.waivers :as waivers]
             [draft-day.views.compare :as compare]
-            [draft-day.views.modal :as modal]))
+            [draft-day.views.modal :as modal]
+            [draft-day.views.player-detail :as player-detail]))
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
 
@@ -73,7 +76,7 @@
         (str "$" (js/Math.round (or (:inflation-index market) 0)))]]
       [:div.stat [:span.stat-label "Bankroll"] [:span.stat-val.good (str "$" (:bankroll my-team))]]
       [:div.stat [:span.stat-label "Max Bid"] [:span.stat-val.good (str "$" max-bid)]]]
-     [:button.start-draft {:on-click #(rf/dispatch [:show-modal :start-draft])} "Start Draft"]]))
+     [:button.start-draft {:on-click #(rf/dispatch [:show-modal {:kind :start-draft}])} "Start Draft"]]))
 
 (defn- board-view []
   [:div.board-view
@@ -87,26 +90,45 @@
    [board/board]])
 
 (defn app []
-  (let [view  @(rf/subscribe [:view])
-        modal @(rf/subscribe [:modal])]
-    [:div.app
-     [header]
-     [:main
-      (case view
-        :league   [roster/league-view]
-        :settings [settings/settings]
-        :waivers  [waivers/waivers-view]
-        [board-view])]
-     ;; Mounted here rather than inside the waivers view because it is
-     ;; `position: fixed` and needs no place in that DOM — and because putting
-     ;; it there would make `views.waivers` and `views.compare` require each
-     ;; other, which ClojureScript will not load.
-     (when (= view :waivers)
-       [compare/compare-tile])
-     (when (= modal :start-draft)
-       [modal/start-draft-modal])
-     (when (= modal :reset-cache)
-       [modal/reset-cache-modal])]))
+  ;; The one document-level key handler in the app, and it is here because this
+  ;; is the only component that knows what is on screen at once. The compare
+  ;; tile used to own its own; a second one for the modal would have meant
+  ;; Escape closing the modal and clearing the comparison behind it in one
+  ;; keystroke, with the order deciding which. `:escape-pressed` holds the
+  ;; precedence instead.
+  (r/with-let [on-key (fn [e]
+                        (when (= "Escape" (.-key e))
+                          (rf/dispatch [:escape-pressed])))
+               _      (.addEventListener js/document "keydown" on-key)]
+    (let [view  @(rf/subscribe [:view])
+          modal @(rf/subscribe [:modal])
+          kind  (db/modal-kind modal)]
+      [:div.app
+       [header]
+       [:main
+        (case view
+          :league   [roster/league-view]
+          :settings [settings/settings]
+          :waivers  [waivers/waivers-view]
+          [board-view])]
+       ;; Mounted here rather than inside the waivers view because it is
+       ;; `position: fixed` and needs no place in that DOM — and because putting
+       ;; it there would make `views.waivers` and `views.compare` require each
+       ;; other, which ClojureScript will not load.
+       (when (= view :waivers)
+         [compare/compare-tile])
+       ;; The detail modal is mounted for the same reason, one step further out:
+       ;; it requires `views.compare`, which requires `views.waivers`, so the two
+       ;; board surfaces reach it by dispatching `:show-modal` and never by
+       ;; requiring it. Do not "tidy" this into the waivers view.
+       (when (= :player-detail kind)
+         [player-detail/player-detail-modal (:player-id modal)])
+       (when (= :start-draft kind)
+         [modal/start-draft-modal])
+       (when (= :reset-cache kind)
+         [modal/reset-cache-modal])])
+    (finally
+      (.removeEventListener js/document "keydown" on-key))))
 
 (defonce root (rdomc/create-root (.getElementById js/document "app")))
 

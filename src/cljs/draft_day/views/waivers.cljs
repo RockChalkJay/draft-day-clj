@@ -45,11 +45,33 @@
       (and week (= week (:bye p))) "Bye"
       :else "–")))
 
+(defn open-detail!
+  "Open the detail modal for `p` without also toggling him into the comparison.
+
+  The whole row carries `:compare-toggle`, so the name has to stop the bubble —
+  the arrangement `board/star-toggle` uses, and for its reason.
+
+  `tabIndex -1` deliberately. A `<button>` is a tab stop by default, and six
+  hundred of them means tabbing off the search box walks the entire table, which
+  is precisely the objection `docs/TODO.md` raises against the cheap fix for
+  keyboard access. The element keeps its button semantics — a pointer, a role, a
+  name a screen reader can read — and the roving-tabindex grid pattern that TODO
+  calls for is what will hand it a stop back, for both boards at once. This is
+  the not-making-it-worse answer, recorded as a choice rather than left as an
+  oversight."
+  [e p]
+  (.stopPropagation e)
+  (rf/dispatch [:show-modal {:kind :player-detail :player-id (:player-id p)}]))
+
 (defn cell [k p week]
   (case k
     :rank      [:td.num.muted (:rank p)]
     :name      [:td.player
-                [:span.p-name (:player-name p)]
+                [:button.name-btn.p-name
+                 {:on-click #(open-detail! % p)
+                  :tab-index -1
+                  :title "Player detail"}
+                 (:player-name p)]
                 (when-let [st (:sleeper/injury-status p)]
                   (when (db/serious-injury? st)
                     [:span.inj-flag {:title st} " ⚠"]))]
@@ -259,7 +281,12 @@
                        (if (:unvalued? p)
                          [:span.muted {:title (str "No projection for id " (:player-id p))}
                           (:player-id p)]
-                         (:player-name p))
+                         ;; A real tab stop here, unlike the board's six hundred:
+                         ;; a roster is a dozen rows and walking them is useful.
+                         [:button.name-btn
+                          {:on-click #(open-detail! % p)
+                           :title "Player detail"}
+                          (:player-name p)])
                       (when (:parked? p) [:span.parked-tag {:title "IR or taxi"} " IR"])
                       (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
                       [:td.num (board/format-whole (:ros-points p))]]))
