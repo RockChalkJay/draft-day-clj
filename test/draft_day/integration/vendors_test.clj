@@ -39,8 +39,8 @@
     (is (string? (:opponent e)))))
 
 (deftest ^:integration a-bye-week-is-short-of-thirty-two
-  ;; If this ever returns 32 the fetch has stopped being per-week, and every
-  ;; kickoff would be for the wrong game.
+  ;; Week 9 is a bye week in 2025 specifically; the league has moved the bye
+  ;; range between seasons. If this returns 32 the fetch is no longer per-week.
   (is (< (count (sched/fetch season 9)) 32)))
 
 ;; ---- nflverse weekly ----

@@ -58,7 +58,10 @@
 
 (defn unit-vars
   "The test vars `lein test` would run: every deftest except `^:integration`.
-  Filtered here rather than by namespace, so the predicate is the selector's."
+
+  This restates `:test-selectors :default` in project.clj, which Leiningen owns
+  and does not expose to a running JVM. If the two ever disagree this tool
+  checks a different set than `lein test` runs and still says OFFLINE."
   [nss]
   (->> nss
        (mapcat #(vals (ns-interns %)))
@@ -67,6 +70,8 @@
 
 (defn -main [& _]
   (let [nss (test-namespaces)]
+    ;; Reset, so a second run in a REPL does not report the first run's calls.
+    (reset! calls 0)
     (run! require nss)
     ;; Two clients cover every reachable fetch — see the ns docstring.
     (with-redefs [http/get                 boom
