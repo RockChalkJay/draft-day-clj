@@ -74,18 +74,15 @@
 ;; ---- kickoff times ----
 
 (deftest a-kickoff-renders-in-the-viewers-own-zone
-  ;; The server ships the ISO stamp with its Z; the browser decides what that
-  ;; means where the manager is sitting. Asserted loosely on purpose — the node
-  ;; runner's zone is whatever the machine's is, so pinning "12:00 PM" would
-  ;; make this a test of the test machine.
+  ;; Asserted loosely: the node runner's zone is the machine's, so pinning
+  ;; "12:00 PM" would make this a test of the test machine.
   (let [s (util/kickoff-label "2026-09-13T17:00Z")]
     (is (string? s))
     (is (re-find #"\d:\d\d" s) "a wall-clock time")
     (is (re-find #"(?i)sun|mon" s) "with the day attached")))
 
 (deftest a-missing-or-broken-stamp-is-nil-not-a-dash
-  ;; The caller drops the segment. A dash here would assert there is no game,
-  ;; which a failed scoreboard fetch is not evidence of.
+  ;; A dash asserts there is no game, which a failed fetch is not evidence of.
   (is (nil? (util/kickoff-label nil)))
   (is (nil? (util/kickoff-label "not a date"))))
 
@@ -98,9 +95,7 @@
   (is (nil? (util/kickoff-status-label nil "Final/OT")) "no status, no claim"))
 
 (deftest a-word-of-our-own-is-never-invented-for-a-status
-  ;; The status set includes IN_PROGRESS, HALFTIME, POSTPONED and DELAYED as
-  ;; well as FINAL, so a fallback like "Final" is eventually printed over a game
-  ;; still being played — and a manager who reads Final stops considering the
-  ;; claim. Saying nothing leaves the kickoff time, which is still true.
+  ;; A fallback like "Final" is eventually printed over a game still being
+  ;; played, and a manager who reads Final stops considering the claim.
   (is (nil? (util/kickoff-status-label "STATUS_FINAL" nil)))
   (is (nil? (util/kickoff-status-label "STATUS_IN_PROGRESS" nil))))

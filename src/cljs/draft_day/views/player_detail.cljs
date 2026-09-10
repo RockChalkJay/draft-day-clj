@@ -95,38 +95,30 @@
      [:img {:src src :alt ""
             :on-error #(set! (.. % -target -style -display) "none")}])])
 
+;; The head's context line is built from the parts that have something to say.
+;; The matchup is routinely absent — in preseason there is no week and no
+;; opponent — and a dash between the team and the bye reads as a value that
+;; failed to load rather than as a schedule that does not exist yet. The board's
+;; Opp column can print that dash because a header names it; a run-on line
+;; cannot. The kickoff, its status and the venue drop out the same way.
+;;
+;; The venue only on a neutral site: "vs SF" says nothing about a game in
+;; Melbourne, which is what the flag is for, and on the other 270 games a
+;; stadium name is the longest string on the line and the least useful.
+
 (defn meta-segments
-  "The head's one line of context, as the parts that have something to say.
-
-  Joined rather than concatenated because the matchup is routinely absent — in
-  preseason `waivers/week-matchup` has no week and no opponent and answers with
-  a dash, and a dash sitting between the team and the bye reads as a value that
-  failed to load rather than as a schedule that does not exist yet. The board's
-  Opp column can print that dash because it sits under a header naming it; a
-  run-on line has no such excuse. The kickoff and its status drop out the same
-  way — a scoreboard that could not be fetched is not evidence of no game.
-
-  Position and team always survive: a player the board could rank has both."
+  "Position and team always survive: a player the board could rank has both."
   [p week]
   (let [matchup (waivers/week-matchup p week)
         at      (util/kickoff-label (:kickoff/at p))
         done    (util/kickoff-status-label (:kickoff/status p) (:kickoff/detail p))]
     (cond-> [(util/pos-label p) (or (:team p) "FA")]
-      (not= "–" matchup) (conj matchup)
-      ;; The time is the thing this modal exists to answer that the board
-      ;; cannot: whether a claim has to be in before Sunday noon. It sits next
-      ;; to the matchup because the two are one thought.
-      at                 (conj at)
-      ;; The venue only where it answers something. "vs SF" says nothing about a
-      ;; game in Melbourne, which is the whole reason `:kickoff/neutral?` is
-      ;; carried — and on the other 270 games a stadium name is the row's
-      ;; longest string and its least useful.
+      (not= "–" matchup)   (conj matchup)
+      at                   (conj at)
+      done                 (conj done)
       (and (:kickoff/neutral? p)
            (:kickoff/venue p)) (conj (:kickoff/venue p))
-      ;; And it is a lie on its own once the game has been played, so ESPN's
-      ;; own word for that follows it — see `util/kickoff-status-label`.
-      done               (conj done)
-      (:bye p)           (conj (str "Bye " (:bye p))))))
+      (:bye p)             (conj (str "Bye " (:bye p))))))
 
 (defn head
   "Name, position, team, and the one line of context a claim is decided on.

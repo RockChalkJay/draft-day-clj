@@ -138,22 +138,20 @@
               (when (= size :thumb) "thumb/")
               sleeper-id ".jpg"))))))
 
+;; ---- kickoff times ----
+;; Rendered here and not on the server, which has no idea what timezone the
+;; manager is in — `fetched-at-label` settles that convention above. The weekday
+;; is load-bearing rather than decoration: Thursday, Sunday early, Sunday late
+;; and Monday night are the whole decision content of a claim.
+;;
+;; `kickoff-status-label` prints ESPN's words and never one of ours. Its status
+;; set includes IN_PROGRESS, HALFTIME, POSTPONED and DELAYED as well as FINAL,
+;; so a fallback like "Final" is eventually printed over a game still being
+;; played — and a manager who reads Final stops considering the claim.
+
 (defn kickoff-label
-  "An ISO kickoff stamp as the manager's own wall clock: \"Sun 1:00 PM\".
-
-  Rendered here rather than on the server for the reason `fetched-at-label`
-  states: the server has no idea what timezone the manager is in, and a string
-  formatted there reads in whatever zone the host happens to be set to. The
-  2026 season opens at the Melbourne Cricket Ground, so assuming Eastern is
-  wrong for more than the pedantic reason.
-
-  The weekday is load-bearing and not decoration. Thursday, Sunday early,
-  Sunday late and Monday night are the whole decision content of a waiver
-  claim — a time with no day attached cannot answer \"is my claim in before he
-  plays\".
-
-  nil for a missing or unparseable stamp, so a caller can drop the segment
-  rather than print a dash where there may simply be no game."
+  "An ISO kickoff stamp as the manager's own wall clock: \"Sun 1:00 PM\". nil
+  for a missing or unparseable stamp, so a caller can drop the segment."
   [iso]
   (when iso
     (let [d (js/Date. iso)]
@@ -162,20 +160,7 @@
                          #js {:weekday "short" :hour "numeric" :minute "2-digit"})))))
 
 (defn kickoff-status-label
-  "What to say beside the time when the game is not still ahead of us.
-
-  nil while a game is scheduled, because the kickoff time already says that. A
-  Sunday-evening modal reading \"Sun 1:00 PM\" over a game that finished two
-  hours ago is the same class of lie `fetched-at-label` exists to prevent, so
-  anything other than SCHEDULED prints ESPN's own words for it.
-
-  ESPN's own words, and never a word of ours. The status set includes
-  IN_PROGRESS, HALFTIME, POSTPONED and DELAYED as well as FINAL, so a fallback
-  like \"Final\" would eventually be printed over a game still being played —
-  and a manager who reads Final stops considering the claim. `shortDetail`
-  carries the readable form (\"Q3 5:22\", \"Final/OT\"); with none this says
-  nothing and the caller drops the segment, leaving the kickoff time, which is
-  still true."
+  "ESPN's own word for a game that is not still ahead of us, or nil."
   [status detail]
   (when (and status (not= "STATUS_SCHEDULED" status))
     detail))

@@ -79,8 +79,6 @@
 ;; ---- the kickoff ----
 
 (deftest the-kickoff-sits-beside-the-matchup
-  ;; The one question this modal answers that the board cannot: whether a claim
-  ;; has to be in before he plays.
   (let [segs (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR" :bye 8
                                 :week/opponent "SEA" :week/home? false
                                 :kickoff/at "2026-09-13T17:00Z"
@@ -93,13 +91,13 @@
 (deftest a-game-already-played-says-so
   ;; "Sun 1:00 PM" over a game that finished two hours ago is the lie
   ;; `fetched-at-label` exists to prevent.
-  (let [segs (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
-                                :week/opponent "SEA" :week/home? false
-                                :kickoff/at "2026-09-13T17:00Z"
-                                :kickoff/status "STATUS_FINAL"
-                                :kickoff/detail "Final/OT"}
-                               3)]
-    (is (= "Final/OT" (last segs)))))
+  (is (= "Final/OT"
+         (last (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
+                                  :week/opponent "SEA" :week/home? false
+                                  :kickoff/at "2026-09-13T17:00Z"
+                                  :kickoff/status "STATUS_FINAL"
+                                  :kickoff/detail "Final/OT"}
+                                 3)))))
 
 (deftest no-scoreboard-drops-the-segment-rather-than-dashing-it
   ;; A fetch that failed is not evidence that there is no game.
@@ -111,8 +109,7 @@
 ;; ---- the venue ----
 
 (deftest a-neutral-site-names-the-ground
-  ;; "vs SF" says nothing about a game in Melbourne, which is the whole reason
-  ;; the neutral flag is carried at all.
+  ;; "vs SF" says nothing about a game in Melbourne.
   (is (= ["WR7" "LAR" "vs SF" "Melbourne Cricket Ground"]
          (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
                             :kickoff/opponent "SF" :kickoff/home? true
@@ -121,8 +118,6 @@
                            1))))
 
 (deftest an-ordinary-game-does-not-name-its-stadium
-  ;; On the other 270 games a stadium name is the row's longest string and its
-  ;; least useful.
   (is (= ["WR7" "LAR" "@ SEA"]
          (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
                             :kickoff/opponent "SEA" :kickoff/home? false

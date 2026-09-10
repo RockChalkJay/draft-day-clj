@@ -32,19 +32,18 @@
 (defn format-trend [t]
   (if (number? t) (str (.toFixed t 2) "×") "–"))
 
+;; ---- this week's game ----
+;; Two sources answer "who does he play". Sleeper's opponent rides in the same
+;; document as its weekly projection, so it wins where it has an opinion — a
+;; tile showing a projection against an opponent from elsewhere can disagree
+;; with itself. ESPN's scoreboard fills the rest, which is most of the board.
+;;
+;; They are never mixed: pairing one source's opponent with the other's home
+;; flag would agree almost always and occasionally invent a matchup neither
+;; published. `db/waiver-sort-accessors` sorts Opp on the same pair.
+
 (defn matchup-source
-  "Which source answers \"who does he play\", with both fields read off the same
-  one, or nil when neither does.
-
-  Sleeper first, because its opponent rides in the same document as the weekly
-  projection — a tile showing a projection against an opponent from somewhere
-  else can disagree with itself. ESPN's scoreboard fills the gap, which is most
-  of the board: Sleeper projects only ~14% of it and publishes no opponent for
-  the rest, so this column used to be a dash for players a manager was actively
-  deciding about.
-
-  Never mixed. Pairing one source's opponent with the other's home flag would
-  agree almost always and occasionally invent a matchup neither published."
+  "Which source answers, with both fields read off that one, or nil."
   [p]
   (cond
     (:week/opponent p)
@@ -55,14 +54,9 @@
      :neutral? (:kickoff/neutral? p)}))
 
 (defn week-matchup
-  "This week's game as `vs NE` / `@ SEA`, or `Bye` when the week the board is
-  showing is his. A nil `:week/home?` is the side being unknown rather than
-  away, and prints the opponent bare — see `sleeper/weekly-line`.
-
-  A neutral-site game prints `vs`, because neither team is home: the 2026 opener
-  lists LAR as home at the Melbourne Cricket Ground, and `@ LAR` would say a
-  false thing about where it is played. ESPN writes that matchup `SF VS LAR`
-  for the same reason."
+  "`vs NE` / `@ SEA` / `Bye` / `–`. A nil `:home?` is an unknown side rather
+  than an away one and prints the opponent bare; a neutral site prints `vs`
+  from both sides, since neither team is at home."
   [p week]
   (let [{:keys [opponent home? neutral?]} (matchup-source p)]
     (cond
@@ -73,12 +67,8 @@
       :else "–")))
 
 (defn kickoff-title
-  "The Opp cell's tooltip: when the game starts, in the manager's own clock.
-
-  A tooltip rather than a column. A column is a `db/waiver-column-catalog`
-  entry, which is persisted shape and would force an `fx/storage-version` bump
-  — costing every manager his column layout, and mid-draft his picks, to show a
-  time. nil when there is no kickoff, so the cell simply carries no tooltip."
+  "The Opp cell's tooltip, or nil. A tooltip rather than a column: a catalog
+  entry is persisted shape and would cost every manager his layout."
   [p]
   (when-let [at (util/kickoff-label (:kickoff/at p))]
     (let [done (util/kickoff-status-label (:kickoff/status p) (:kickoff/detail p))]

@@ -443,9 +443,7 @@
           :opponent "KC" :home? false :neutral? false}})
 
 (deftest a-kickoff-reaches-a-player-with-no-weekly-projection
-  ;; The whole reason this join is separate from `assoc-weekly`. Sleeper
-  ;; projects ~14% of the board; the other 86% are most of the free-agent pool,
-  ;; and keying the kickoff off a projection would leave them with no game time.
+  ;; The whole reason this join is separate from `assoc-weekly`.
   (let [[p] (pipeline/assoc-kickoffs [{:player-id "x" :team "KC"}] kickoffs)]
     (is (= "2026-09-13T17:00Z" (:kickoff/at p)))
     (is (= "LV" (:kickoff/opponent p)))
@@ -453,8 +451,7 @@
     (is (nil? (:week-points p)) "and it did not invent a projection")))
 
 (deftest a-team-on-bye-gets-no-kickoff-keys-at-all
-  ;; Absent, not nil-valued: a consumer has to be able to tell "no game" from
-  ;; "no kickoff data", which is the same rule `assoc-weekly` follows.
+  ;; Absent, not nil-valued: "no game" and "no kickoff data" are different.
   (let [[p] (pipeline/assoc-kickoffs [{:player-id "x" :team "BUF"}] kickoffs)]
     (is (= {:player-id "x" :team "BUF"} p))))
 
@@ -463,15 +460,12 @@
     (is (= {:player-id "x"} p))))
 
 (deftest no-kickoffs-at-all-is-a-no-op
-  ;; A failed scoreboard must cost the clock and nothing else.
   (let [players [{:player-id "x" :team "KC"}]]
     (is (= players (pipeline/assoc-kickoffs players {})))
     (is (= players (pipeline/assoc-kickoffs players nil)))))
 
 (deftest a-scoreboard-that-is-down-does-not-cost-the-weekly-projection
-  ;; `espn-schedule/fetch` collapses every failure to nil on its own, exactly as
-  ;; `sleeper/fetch-weekly` does for the schedule it needs for home/away. The
-  ;; envelope is still written and the board still prices the week.
+  ;; The envelope is still written and the board still prices the week.
   (with-redefs [pipeline/offline?       (constantly false)
                 sleeper/fetch-weekly    (fn [& _] weekly-lines)
                 espn-schedule/fetch     (fn [& _] nil)]
@@ -480,8 +474,6 @@
       (is (= {} (:kickoffs env)) "empty, not nil, so the shape is stable"))))
 
 (deftest a-schema-1-weekly-file-is-never-read-back
-  ;; It carries no kickoffs at all, which is indistinguishable from a scoreboard
-  ;; that failed — the board would show a Sunday with no times and nothing
-  ;; saying why. Same argument as the universe's schema bumps.
+  ;; It carries no kickoffs, which is indistinguishable from a failed fetch.
   (let [env {:schema-version 1 :season 2026 :week 5 :lines weekly-lines}]
     (is (false? (pipeline/weekly-answers? env 2026 5)))))

@@ -11,9 +11,7 @@
   (is (= "LAR" (teams/normalize :nflverse "LA"))))
 
 (deftest an-alias-belongs-to-one-vendor-only
-  ;; The maps are per vendor because the vendors disagree about different teams.
-  ;; Applying nflverse's rule to an ESPN payload would translate a spelling ESPN
-  ;; has never used, which is an alias map inventing a join.
+  ;; Translating a spelling the source has never used invents a join.
   (is (= "LA"  (teams/normalize :espn "LA"))     "ESPN has no LA to translate")
   (is (= "WSH" (teams/normalize :nflverse "WSH")) "nflverse has no WSH"))
 
@@ -57,10 +55,8 @@
   (is (teams/covers-vocabulary? :nflverse nflverse-teams)))
 
 (deftest a-new-deviation-fails-rather-than-emptying-a-column
-  ;; The point of the two tests above: they are assertions over the whole
-  ;; vocabulary, not spot-checks of the deviations we already know about. A
-  ;; vendor that renames a team next season fails here — which is the only
-  ;; reason the 31-of-32 join is survivable, since a hit rate cannot see it.
+  ;; The two tests above assert the whole vocabulary rather than spot-checking
+  ;; the known deviations, which is the only reason a 31-of-32 join is safe.
   (is (false? (teams/covers-vocabulary?
                :espn (conj (disj espn-teams "KC") "KAN")))
       "a renamed team must fail")

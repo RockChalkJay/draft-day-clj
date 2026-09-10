@@ -970,9 +970,8 @@
         "and exactly one of the two seats is selectable")))
 
 ;; ---- the matchup has two possible sources ----
-;; Sleeper publishes an opponent only on the ~14% of the board it projects. The
-;; ESPN scoreboard covers every team playing, which is why the Opp column used
-;; to be a dash for most of the pool a claim is actually decided from.
+;; Sleeper publishes an opponent only for the players it projects; the ESPN
+;; scoreboard covers every team playing. See `waivers/matchup-source`.
 
 (deftest espn-answers-the-matchup-sleeper-does-not-project
   (is (= "@ SEA" (waivers/week-matchup
@@ -981,25 +980,19 @@
                    {:kickoff/opponent "SEA" :kickoff/home? true} 3))))
 
 (deftest sleeper-still-wins-where-it-has-an-opinion
-  ;; Its opponent rides in the same document as the weekly projection, so the
-  ;; tile cannot show a projection against an opponent from somewhere else.
   (is (= "@ NE" (waivers/week-matchup
                  {:week/opponent "NE" :week/home? false
                   :kickoff/opponent "SEA" :kickoff/home? true} 3))))
 
 (deftest the-two-sources-are-never-mixed
-  ;; Pairing Sleeper's opponent with ESPN's home flag would agree almost always
-  ;; and occasionally invent a matchup neither published. Sleeper here has an
-  ;; opponent and an unknown side, so the bare opponent is the honest answer —
-  ;; ESPN's `:home? true` must not supply the missing half.
+  ;; Sleeper has an opponent and an unknown side, so the bare opponent is the
+  ;; honest answer — ESPN's `:home? true` must not supply the missing half.
   (is (= "NE" (waivers/week-matchup
                {:week/opponent "NE" :week/home? nil
                 :kickoff/opponent "NE" :kickoff/home? true} 3))))
 
 (deftest a-neutral-site-is-not-a-home-game
-  ;; The 2026 opener lists LAR as home at the Melbourne Cricket Ground. "@ LAR"
-  ;; says a false thing about where it is played, and so does "vs" from the
-  ;; other side — ESPN writes it "SF VS LAR" for the same reason.
+  ;; ESPN writes the Melbourne opener "SF VS LAR" for the same reason.
   (is (= "vs SF" (waivers/week-matchup
                   {:kickoff/opponent "SF" :kickoff/home? true :kickoff/neutral? true} 1)))
   (is (= "vs LAR" (waivers/week-matchup
@@ -1007,13 +1000,11 @@
 
 (deftest a-bye-still-outranks-an-absent-scoreboard
   (is (= "Bye" (waivers/week-matchup {:bye 6} 6)))
-  (is (= "–"   (waivers/week-matchup {} 6))))
+  (is (= "\u2013"   (waivers/week-matchup {} 6))))
 
 ;; ---- the Opp tooltip ----
 
 (deftest the-opp-cell-carries-the-kickoff-as-a-tooltip
-  ;; A tooltip and not a column: a catalog entry is persisted shape and would
-  ;; force an `fx/storage-version` bump, costing every manager his layout.
   (let [t (waivers/kickoff-title {:kickoff/at "2026-09-13T17:00Z"
                                   :kickoff/status "STATUS_SCHEDULED"})]
     (is (re-find #"\d:\d\d" t)))

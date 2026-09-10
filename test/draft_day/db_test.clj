@@ -563,12 +563,10 @@
     (is (= ["a" "b"] (mapv :player-name (sort-by db/waiver-rank-key ps))))))
 
 ;; ---- the Opp column sorts on what it shows ----
+;; Sorting on `:week/opponent` alone clumped every ESPN-answered row at one end
+;; of the column while the cell visibly showed an opponent.
 
 (deftest opp-sorts-on-whichever-source-answered
-  ;; Two sources answer "who does he play" now: Sleeper for the players it
-  ;; projects, the ESPN scoreboard for the rest. Sorting on `:week/opponent`
-  ;; alone clumped every ESPN-answered row at one end of the column while the
-  ;; cell visibly showed an opponent.
   (let [opp (get db/waiver-sort-accessors :opp)]
     (is (= "NE" (opp {:week/opponent "NE"})))
     (is (= "SEA" (opp {:kickoff/opponent "SEA"})) "ESPN answers where Sleeper does not")
