@@ -149,3 +149,39 @@
       (is (= 2 through-week) "the POST row does not advance the season")
       (is (= 10.0 (get-in by-key ["00-1" :nflverse/season-to-date :stats :rec])))
       (is (= {"00-1" "WR"} positions)))))
+
+;; ---- the game log ----
+
+(def ^:private log-row
+  {"player_id" "00-0038589" "position" "WR" "season_type" "REG" "week" "3"
+   "opponent_team" "LA" "receptions" "5" "receiving_yards" "62"
+   "passing_yards" "0" "rushing_yards" "0" "fg_made" "0"})
+
+(deftest the-log-keeps-a-row-per-week-in-order
+  (let [log (weekly/game-log [[3 log-row] [1 (assoc log-row "week" "1")]])]
+    (is (= [1 3] (mapv :week log)))))
+
+(deftest nflverses-rams-arrive-as-the-boards-rams
+  ;; The file spells them `LA` and carries no `LAR`; the board says `LAR`.
+  (is (= "LAR" (:opponent (first (weekly/game-log [[3 log-row]]))))))
+
+(deftest a-week-with-no-opponent-column-still-yields-an-entry
+  ;; `opponent_team` is deliberately not in `required-columns`: a miss there
+  ;; reads as week zero and degrades the whole in-season board.
+  (let [e (first (weekly/game-log [[3 (dissoc log-row "opponent_team")]]))]
+    (is (= 3 (:week e)))
+    (is (nil? (:opponent e)))
+    (is (= 5.0 (get-in e [:stats :rec])))))
+
+(deftest a-zero-is-not-written-down
+  ;; The file publishes an explicit 0 in all fourteen columns, which is 1.4MB of
+  ;; mostly zeros on a response fetched once per session.
+  (let [stats (:stats (first (weekly/game-log [[3 log-row]])))]
+    (is (= {:rec 5.0 :rec_yd 62.0} stats))
+    (is (not (contains? stats :pass_yd)))))
+
+(deftest accumulate-emits-the-log-beside-the-aggregates
+  (let [m (get (weekly/accumulate [["00-0038589" 3 log-row]]) "00-0038589")]
+    (is (= [3] (mapv :week (:nflverse/game-log m))))
+    (is (= 1 (:games (:nflverse/season-to-date m)))
+        "the aggregates are untouched")))
