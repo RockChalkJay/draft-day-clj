@@ -68,8 +68,12 @@
 
   8: :nflverse/game-log was added, the weekly rows uncollapsed. A schema-7 file
   carries none, which the modal cannot tell from a player who has not played —
-  and in November that reads as a season nobody appeared in."
-  8)
+  and in November that reads as a season nobody appeared in.
+
+  9: :bio was added — draft capital and a birth year, off the pinned snapshot.
+  A schema-8 file carries none, and `attach-ids` passes an anchored player
+  through, so the cache has to be dropped rather than re-anchored."
+  9)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")

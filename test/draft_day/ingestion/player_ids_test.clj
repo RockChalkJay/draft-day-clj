@@ -261,3 +261,50 @@
   (let [bad (remove ids/gsis-id? (vals (ids/snapshot-crosswalk
                                         (:rows (ids/load-snapshot)))))]
     (is (empty? bad) (str "malformed gsis ids: " (pr-str (take 5 bad))))))
+
+;; ---- the biography that rides on the same row ----
+
+(def ^:private bio-index
+  {"4881" {:gsis "00-0038543" :espn "4426515" :birth-year 2001
+           :draft-year 2023 :draft-round 5 :draft-overall 177}})
+
+(deftest attach-ids-carries-the-bio-off-the-same-row
+  (let [[p] (ids/attach-ids [{:player-id "4881" :position "WR"}] bio-index)]
+    (is (= {:birth-year 2001 :draft-year 2023 :draft-round 5 :draft-overall 177}
+           (:bio p)))
+    (is (= "00-0038543" (:player-id p)) "and the anchor still happens")))
+
+(deftest an-already-anchored-player-still-gets-a-bio
+  ;; Why `:bio` sits outside the guard: the bundled sample is captured after
+  ;; anchoring, so inside it `DRAFTDAY_OFFLINE=1` would see no bio at all.
+  (let [anchored {:player-id "00-0038543" :position "WR"
+                  :ids {:sleeper "4881" :gsis "00-0038543"}}
+        [p] (ids/attach-ids [anchored] bio-index)]
+    (is (= 2001 (get-in p [:bio :birth-year])))
+    (is (= {:sleeper "4881" :gsis "00-0038543"} (:ids p))
+        "and the anchor it already had is untouched")))
+
+(deftest a-player-the-snapshot-has-no-row-for-gets-no-bio-key
+  ;; Absent rather than an empty map: `{}` reads as "we looked and there is
+  ;; nothing", which is a different claim from "no row".
+  (let [[p] (ids/attach-ids [{:player-id "9999" :position "WR"}] bio-index)]
+    (is (not (contains? p :bio)))))
+
+(deftest a-row-with-ids-but-no-personal-facts-yields-no-bio
+  (let [[p] (ids/attach-ids [{:player-id "1" :position "WR"}]
+                            {"1" {:gsis "00-0000001"}})]
+    (is (not (contains? p :bio)))))
+
+(deftest a-defense-has-no-birthday
+  (let [[p] (ids/attach-ids [{:player-id "ARI" :position "DST"}] bio-index)]
+    (is (not (contains? p :bio)))
+    (is (= {:sleeper "ARI" :team "ARI"} (:ids p)))))
+
+(deftest the-committed-snapshot-actually-carries-bios
+  ;; The unit tests above run on a fixture; this one asserts the real pinned
+  ;; file has the columns, so a regenerated snapshot that dropped them fails.
+  (let [rows (vals (ids/pinned-index))
+        with (filter ids/biography rows)]
+    (is (> (count with) 1000))
+    (is (some :birth-year with))
+    (is (some :draft-overall with))))
