@@ -14,6 +14,17 @@
     :nflverse/recent         {:games n :stats {stat-key window-total}}
     :nflverse/game-log       [{:week n :opponent CIN :stats {stat-key total}}]
 
+  `:games` COUNTS THE PLAYER'S OWN ROWS, not weeks elapsed, and that distinction
+  is the whole point of carrying it. A player who has missed four games has four
+  fewer rows; dividing his totals by weeks elapsed instead would charge him for
+  the absence twice — once in the total, again in a per-game rate depressed by
+  games he was never on the field for.
+
+  `recent` spans the last `recent-window` weeks *of the season*, not the
+  player's own last three appearances. A back who has been inactive for a month
+  should read as a back who has been inactive for a month, not as whoever he was
+  the last time he played.
+
   `season-to-date` is the evidence `rankings.ros` blends against the preseason
   projection. `recent` is the last `recent-window` weeks only — the breakout
   signal, which is a *display* column and feeds no score (same shelf as
@@ -219,19 +230,9 @@
         (sort-by first pairs)))
 
 (defn accumulate
-  "Pure: `season-rows` triples -> {gsis {:nflverse/season-to-date {...}
-                                        :nflverse/recent {...}}}.
-
-  `:games` is a count of the player's own regular-season rows, not of weeks
-  elapsed, and that distinction is the whole point of carrying it. A player who
-  has missed four games has four fewer rows; dividing his totals by weeks
-  elapsed instead would charge him for the absence twice — once in the total,
-  again in a per-game rate depressed by games he was never on the field for.
-
-  The recent window is the last `recent-window` weeks *of the season*, not the
-  player's own last three appearances. A back who has been inactive for a month
-  should read as a back who has been inactive for a month, not as whoever he was
-  the last time he played."
+  "Pure: `season-rows` triples -> the three per-player columns above, keyed by
+  GSIS id. See the ns docstring for what `:games` counts and what window
+  `:nflverse/recent` spans."
   [triples]
   (let [latest (through-week triples)
         floor  (- latest (dec recent-window))]

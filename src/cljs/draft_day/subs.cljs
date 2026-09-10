@@ -20,13 +20,15 @@
 ;; The format whose vendor columns this league actually reads. Resolution is
 ;; shared with the server (`routes/resolve-scoring`) so the format warned about
 ;; here is always the one `rankings.vendor` flattened.
-(rf/reg-sub :scoring-format :<- [:config]
-  (fn [cfg _] (scoring/format-of (scoring/resolve-config (:scoring cfg)))))
-
-;; The weight map itself, for the one consumer that scores a stat line in the
-;; browser rather than reading a number the server scored.
+;; The league's weights, for the one consumer that scores a stat line in the
+;; browser rather than reading a number the server scored. The format is a fact
+;; about the weights, so it chains off them — `resolve-config` exists because
+;; hand-written copies of its `cond` had already drifted once.
 (rf/reg-sub :scoring-weights :<- [:config]
   (fn [cfg _] (scoring/resolve-config (:scoring cfg))))
+
+(rf/reg-sub :scoring-format :<- [:scoring-weights]
+  (fn [weights _] (scoring/format-of weights)))
 
 (defn source-gap?
   "Did this `:sources` report actually deliver anything usable?
