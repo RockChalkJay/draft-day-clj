@@ -301,7 +301,10 @@
                                         (if (= :standard fmt)
                                           (throw (ex-info "scrape blew up" {}))
                                           [{:key "player0_rb" :fantasypros/ecr 1}]))
-                fantasypros/fetch-aav (fn [_] [{:key "player0_rb" :fantasypros/aav 3.0}])]
+                fantasypros/fetch-aav (fn [_] [{:key "player0_rb" :fantasypros/aav 3.0}])
+                ;; `pos-tier-tasks` is a dozen more scrapes; unstubbed they go to
+                ;; the wire and `best-effort` swallows the evidence.
+                fantasypros/fetch-pos-ecr (fn [_ _] nil)]
     (let [{:keys [sources]} (pipeline/enrich-universe 2026 (universe-fixture 5))]
       (is (false? (:ok? (get sources :espn))))
       (is (false? (:ok? (get sources (pipeline/format-label :fantasypros/ecr :standard)))))
@@ -359,7 +362,8 @@
     (let [path  (tmp "weekly-empty")
           calls (atom 0)]
       (pipeline/delete-cache! path)
-      (with-redefs [sleeper/fetch-weekly (fn [& _] (swap! calls inc) {})]
+      (with-redefs [sleeper/fetch-weekly (fn [& _] (swap! calls inc) {})
+                    espn-schedule/fetch (constantly nil)]
         (is (nil? (pipeline/load-weekly 2026 19 {:path path})))
         (is (nil? (pipeline/load-weekly 2026 19 {:path path})))
         (is (= 1 @calls) "the empty answer was cached, not refetched")))))
@@ -404,10 +408,12 @@
   (with-redefs [pipeline/offline? (constantly false)]
     (let [path (tmp "weekly-stale")]
       (pipeline/delete-cache! path)
-      (with-redefs [sleeper/fetch-weekly (fn [& _] weekly-lines)]
+      (with-redefs [sleeper/fetch-weekly (fn [& _] weekly-lines)
+                    espn-schedule/fetch (constantly nil)]
         (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:refresh true :path path})))))
       ;; Sleeper down: the cached week still answers …
-      (with-redefs [sleeper/fetch-weekly (fn [& _] (throw (ex-info "down" {})))]
+      (with-redefs [sleeper/fetch-weekly (fn [& _] (throw (ex-info "down" {})))
+                    espn-schedule/fetch (constantly nil)]
         (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:refresh true :path path}))))
         ;; … but not for a different week, where it would be simply wrong.
         (is (nil? (pipeline/load-weekly 2026 6 {:refresh true :path path})))))))
@@ -421,14 +427,16 @@
     (let [path  (tmp "weekly-memo")
           reads (atom 0)]
       (pipeline/delete-cache! path)
-      (with-redefs [sleeper/fetch-weekly (fn [& _] weekly-lines)]
+      (with-redefs [sleeper/fetch-weekly (fn [& _] weekly-lines)
+                    espn-schedule/fetch (constantly nil)]
         (pipeline/load-weekly 2026 5 {:refresh true :path path}))
       (with-redefs [pipeline/read-transit (fn [p] (swap! reads inc) nil)]
         (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:path path}))))
         (is (= weekly-lines (:lines (pipeline/load-weekly 2026 5 {:path path}))))
         (is (zero? @reads) "a fresh, already-decoded week was served from memory")
         ;; A different week is a different answer, memo or not.
-        (with-redefs [sleeper/fetch-weekly (fn [& _] {})]
+        (with-redefs [sleeper/fetch-weekly (fn [& _] {})
+                      espn-schedule/fetch (constantly nil)]
           (is (nil? (pipeline/load-weekly 2026 6 {:path path})))
           (is (pos? @reads) "a week the memo cannot answer for still reads disk"))))))
 

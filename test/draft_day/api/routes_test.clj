@@ -340,9 +340,18 @@
    :roster-size 2
    :playoff-week-start 15})
 
+;; A week with no projections and no kickoffs, shaped like the real envelope so
+;; `assoc-weekly` and `assoc-kickoffs` still run. Stubbed because `load-weekly`
+;; is the one call in these tests that reaches the wire — see `no-weekly`.
+(defn- stub-weekly [_season week]
+  {:schema-version pipeline/weekly-schema-version
+   :season 2026 :week week :fetched-at "2026-09-01T00:00:00Z"
+   :lines {} :kickoffs {}})
+
 (defn- waivers [body]
   (routes/reset-universe!)
-  (with-redefs [pipeline/load-universe (fn [& _] in-season)]
+  (with-redefs [pipeline/load-universe (fn [& _] in-season)
+                pipeline/load-weekly   stub-weekly]
     (routes/waivers-handler {:body (input-stream (json/write-value-as-string body))})))
 
 (deftest waivers-endpoint-ranks-only-the-free-agents
@@ -456,7 +465,8 @@
   ;; through-week 0 and no realized line anywhere: rest-of-season is the whole
   ;; season, so this is the draft board asked a different question.
   (routes/reset-universe!)
-  (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :through-week 0))]
+  (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :through-week 0))
+                pipeline/load-weekly   stub-weekly]
     (let [b (parse (routes/waivers-handler
                     {:body (input-stream (json/write-value-as-string
                                           {:scoring "ppr" :num-teams 12}))}))]

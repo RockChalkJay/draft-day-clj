@@ -32,5 +32,17 @@
   ;; `dev/` holds research harnesses (auction replay, rankings benchmark) that are
   ;; not part of the shipped app. Leiningen activates :dev by default for
   ;; run/test/repl, so they are available without `with-profile`; :uberjar stays clean.
+  ;; `lein test` reaches no third-party service. Tests that deliberately do live
+  ;; under test/draft_day/integration, tagged ^:integration, and run only when
+  ;; asked: `lein test :integration`. See draft-day.tools.offline-check for the
+  ;; proof that the default suite stays clean.
+  ;;
+  ;; A selector rather than a :test profile with a JVM flag — `lein help
+  ;; profiles` advises against the latter because it produces tests that behave
+  ;; differently from the REPL, and a network rule that only holds under `lein
+  ;; test` is worse than none.
+  :test-selectors {:default     (complement :integration)
+                   :integration :integration
+                   :all         (constantly true)}
   :profiles {:dev     {:source-paths ["dev"]}
              :uberjar {:aot :all}})
