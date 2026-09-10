@@ -70,3 +70,32 @@
              {:position "RB" :pos-rank 1}]]
       (is (= [["RB" 1] ["RB" nil] ["WR" 1]]
              (mapv (juxt :position :pos-rank) (sort-by db/pos-sort-key b)))))))
+
+;; ---- kickoff times ----
+
+(deftest a-kickoff-renders-in-the-viewers-own-zone
+  ;; Asserted loosely: the node runner's zone is the machine's, so pinning
+  ;; "12:00 PM" would make this a test of the test machine.
+  (let [s (util/kickoff-label "2026-09-13T17:00Z")]
+    (is (string? s))
+    (is (re-find #"\d:\d\d" s) "a wall-clock time")
+    (is (re-find #"(?i)sun|mon" s) "with the day attached")))
+
+(deftest a-missing-or-broken-stamp-is-nil-not-a-dash
+  ;; A dash asserts there is no game, which a failed fetch is not evidence of.
+  (is (nil? (util/kickoff-label nil)))
+  (is (nil? (util/kickoff-label "not a date"))))
+
+(deftest a-scheduled-game-needs-no-status-word
+  (is (nil? (util/kickoff-status-label "STATUS_SCHEDULED" "9/13 - 1:00 PM EDT"))))
+
+(deftest a-game-that-is-over-says-so-in-espns-words
+  (is (= "Final/OT" (util/kickoff-status-label "STATUS_FINAL" "Final/OT")))
+  (is (= "Q3 5:22" (util/kickoff-status-label "STATUS_IN_PROGRESS" "Q3 5:22")))
+  (is (nil? (util/kickoff-status-label nil "Final/OT")) "no status, no claim"))
+
+(deftest a-word-of-our-own-is-never-invented-for-a-status
+  ;; A fallback like "Final" is eventually printed over a game still being
+  ;; played, and a manager who reads Final stops considering the claim.
+  (is (nil? (util/kickoff-status-label "STATUS_FINAL" nil)))
+  (is (nil? (util/kickoff-status-label "STATUS_IN_PROGRESS" nil))))

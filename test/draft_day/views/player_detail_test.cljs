@@ -75,3 +75,52 @@
 (deftest a-player-with-no-team-still-reads
   ;; A free agent has no NFL team; the line must not collapse to one segment.
   (is (= ["TE11" "FA"] (pd/meta-segments {:position "TE" :pos-rank 11} nil))))
+
+;; ---- the kickoff ----
+
+(deftest the-kickoff-sits-beside-the-matchup
+  (let [segs (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR" :bye 8
+                                :week/opponent "SEA" :week/home? false
+                                :kickoff/at "2026-09-13T17:00Z"
+                                :kickoff/status "STATUS_SCHEDULED"}
+                               3)]
+    (is (= ["WR7" "LAR" "@ SEA"] (take 3 segs)))
+    (is (re-find #"\d:\d\d" (nth segs 3)) "a wall-clock time follows the matchup")
+    (is (= "Bye 8" (last segs)))))
+
+(deftest a-game-already-played-says-so
+  ;; "Sun 1:00 PM" over a game that finished two hours ago is the lie
+  ;; `fetched-at-label` exists to prevent.
+  (is (= "Final/OT"
+         (last (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
+                                  :week/opponent "SEA" :week/home? false
+                                  :kickoff/at "2026-09-13T17:00Z"
+                                  :kickoff/status "STATUS_FINAL"
+                                  :kickoff/detail "Final/OT"}
+                                 3)))))
+
+(deftest no-scoreboard-drops-the-segment-rather-than-dashing-it
+  ;; A fetch that failed is not evidence that there is no game.
+  (is (= ["WR7" "LAR" "@ SEA" "Bye 8"]
+         (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR" :bye 8
+                            :week/opponent "SEA" :week/home? false}
+                           3))))
+
+;; ---- the venue ----
+
+(deftest a-neutral-site-names-the-ground
+  ;; "vs SF" says nothing about a game in Melbourne.
+  (is (= ["WR7" "LAR" "vs SF" "Melbourne Cricket Ground"]
+         (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
+                            :kickoff/opponent "SF" :kickoff/home? true
+                            :kickoff/neutral? true
+                            :kickoff/venue "Melbourne Cricket Ground"}
+                           1))))
+
+(deftest an-ordinary-game-does-not-name-its-stadium
+  (is (= ["WR7" "LAR" "@ SEA"]
+         (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
+                            :kickoff/opponent "SEA" :kickoff/home? false
+                            :kickoff/neutral? false
+                            :kickoff/venue "Lumen Field"}
+                           1))))

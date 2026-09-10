@@ -137,3 +137,30 @@
          (str "https://sleepercdn.com/content/nfl/players/"
               (when (= size :thumb) "thumb/")
               sleeper-id ".jpg"))))))
+
+;; ---- kickoff times ----
+;; Rendered here and not on the server, which has no idea what timezone the
+;; manager is in — `fetched-at-label` settles that convention above. The weekday
+;; is load-bearing rather than decoration: Thursday, Sunday early, Sunday late
+;; and Monday night are the whole decision content of a claim.
+;;
+;; `kickoff-status-label` prints ESPN's words and never one of ours. Its status
+;; set includes IN_PROGRESS, HALFTIME, POSTPONED and DELAYED as well as FINAL,
+;; so a fallback like "Final" is eventually printed over a game still being
+;; played — and a manager who reads Final stops considering the claim.
+
+(defn kickoff-label
+  "An ISO kickoff stamp as the manager's own wall clock: \"Sun 1:00 PM\". nil
+  for a missing or unparseable stamp, so a caller can drop the segment."
+  [iso]
+  (when iso
+    (let [d (js/Date. iso)]
+      (when-not (js/isNaN (.getTime d))
+        (.toLocaleString d js/undefined
+                         #js {:weekday "short" :hour "numeric" :minute "2-digit"})))))
+
+(defn kickoff-status-label
+  "ESPN's own word for a game that is not still ahead of us, or nil."
+  [status detail]
+  (when (and status (not= "STATUS_SCHEDULED" status))
+    detail))

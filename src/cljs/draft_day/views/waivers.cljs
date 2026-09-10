@@ -32,18 +32,47 @@
 (defn format-trend [t]
   (if (number? t) (str (.toFixed t 2) "×") "–"))
 
+;; ---- this week's game ----
+;; Two sources answer "who does he play". Sleeper's opponent rides in the same
+;; document as its weekly projection, so it wins where it has an opinion — a
+;; tile showing a projection against an opponent from elsewhere can disagree
+;; with itself. ESPN's scoreboard fills the rest, which is most of the board.
+;;
+;; They are never mixed: pairing one source's opponent with the other's home
+;; flag would agree almost always and occasionally invent a matchup neither
+;; published. `db/waiver-sort-accessors` sorts Opp on the same pair.
+
+(defn matchup-source
+  "Which source answers, with both fields read off that one, or nil."
+  [p]
+  (cond
+    (:week/opponent p)
+    {:opponent (:week/opponent p) :home? (:week/home? p)}
+
+    (:kickoff/opponent p)
+    {:opponent (:kickoff/opponent p) :home? (:kickoff/home? p)
+     :neutral? (:kickoff/neutral? p)}))
+
 (defn week-matchup
-  "This week's game as `vs NE` / `@ SEA`, or `Bye` when the week the board is
-  showing is his. A nil `:week/home?` is the side being unknown rather than
-  away, and prints the opponent bare — see `sleeper/weekly-line`."
+  "`vs NE` / `@ SEA` / `Bye` / `–`. A nil `:home?` is an unknown side rather
+  than an away one and prints the opponent bare; a neutral site prints `vs`
+  from both sides, since neither team is at home."
   [p week]
-  (let [opp (:week/opponent p)
-        home (:week/home? p)]
+  (let [{:keys [opponent home? neutral?]} (matchup-source p)]
     (cond
-      (and opp (nil? home)) opp
-      opp                   (str (if home "vs " "@ ") opp)
+      (and opponent neutral?)     (str "vs " opponent)
+      (and opponent (nil? home?)) opponent
+      opponent                    (str (if home? "vs " "@ ") opponent)
       (and week (= week (:bye p))) "Bye"
       :else "–")))
+
+(defn kickoff-title
+  "The Opp cell's tooltip, or nil. A tooltip rather than a column: a catalog
+  entry is persisted shape and would cost every manager his layout."
+  [p]
+  (when-let [at (util/kickoff-label (:kickoff/at p))]
+    (let [done (util/kickoff-status-label (:kickoff/status p) (:kickoff/detail p))]
+      (str at (when done (str " — " done))))))
 
 (defn open-detail!
   "Open the detail modal for `p` without also toggling him into the comparison.
@@ -92,7 +121,7 @@
     ;; column is that "WR19" means something where "4.2" does not.
     :week-rank (let [n (:week-pos-rank p)]
                  [:td.num.muted (if n (str (:position p) n) "–")])
-    :opp       [:td.muted (week-matchup p week)]
+    :opp       [:td.muted {:title (kickoff-title p)} (week-matchup p week)]
     ;; The headline. Signed, because a free agent worse than the man you would
     ;; drop is not an add — and flattening that to zero would make the whole
     ;; tail of the pool look equally plausible.
