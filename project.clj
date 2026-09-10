@@ -36,7 +36,7 @@
   ;; `lein test` reaches no third-party service; the tests that deliberately do
   ;; are tagged ^:integration and run by `lein test :integration`. A selector,
   ;; not a :test profile jvm-opt, which `lein help profiles` warns makes tests
-  ;; behave differently from the REPL. See draft-day.tools.offline-check.
+  ;; behave differently from the REPL.
   :test-selectors {:default     (complement :integration)
                    :integration :integration
                    :all         (constantly true)}
