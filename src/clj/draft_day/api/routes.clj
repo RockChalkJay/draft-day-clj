@@ -247,7 +247,10 @@
 
   `:nflverse/recent` joins them now that `waiver/form-points` scores it here.
   Its *sibling* `:nflverse/season-to-date` must not: GP, Tgt and Car all read
-  it, which is why the two are named separately rather than the prefix dropped."
+  it, which is why the two are named separately rather than the prefix dropped.
+
+  The `:kickoff/*` keys stay for the same reason `:week/opponent` does — they
+  are rendered. Five scalars on a row is not what made this function necessary."
   [players]
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
                  :nflverse/recent)
@@ -313,7 +316,11 @@
                            ;; `waiver-board-inputs`: that runs before the weekly
                            ;; line is joined, so there would be nothing to rank.
                            (pos-rank/with-pos-rank :week-points :week-pos-rank)
-                           (waiver/with-form-points scoring*))
+                           (waiver/with-form-points scoring*)
+                           ;; After the weekly line and independent of it: only
+                           ;; ~14% of the board carries a projection, and every
+                           ;; player whose team plays this week has a kickoff.
+                           (pipeline/assoc-kickoffs (:kickoffs weekly)))
               out      (waiver/waiver-board board ctx)]
           (json-response 200 (assoc out
                                     :players      (without-projection-internals (:players out))

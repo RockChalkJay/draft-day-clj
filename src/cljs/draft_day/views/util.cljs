@@ -137,3 +137,37 @@
          (str "https://sleepercdn.com/content/nfl/players/"
               (when (= size :thumb) "thumb/")
               sleeper-id ".jpg"))))))
+
+(defn kickoff-label
+  "An ISO kickoff stamp as the manager's own wall clock: \"Sun 1:00 PM\".
+
+  Rendered here rather than on the server for the reason `fetched-at-label`
+  states: the server has no idea what timezone the manager is in, and a string
+  formatted there reads in whatever zone the host happens to be set to. The
+  2026 season opens at the Melbourne Cricket Ground, so assuming Eastern is
+  wrong for more than the pedantic reason.
+
+  The weekday is load-bearing and not decoration. Thursday, Sunday early,
+  Sunday late and Monday night are the whole decision content of a waiver
+  claim — a time with no day attached cannot answer \"is my claim in before he
+  plays\".
+
+  nil for a missing or unparseable stamp, so a caller can drop the segment
+  rather than print a dash where there may simply be no game."
+  [iso]
+  (when iso
+    (let [d (js/Date. iso)]
+      (when-not (js/isNaN (.getTime d))
+        (.toLocaleString d js/undefined
+                         #js {:weekday "short" :hour "numeric" :minute "2-digit"})))))
+
+(defn kickoff-status-label
+  "What to say beside the time when the game is not still ahead of us.
+
+  nil while a game is scheduled, because the kickoff time already says that. A
+  Sunday-evening modal reading \"Sun 1:00 PM\" over a game that finished two
+  hours ago is the same class of lie `fetched-at-label` exists to prevent, so
+  anything other than SCHEDULED prints ESPN's own words for it."
+  [status detail]
+  (when (and status (not= "STATUS_SCHEDULED" status))
+    (or detail "Final")))

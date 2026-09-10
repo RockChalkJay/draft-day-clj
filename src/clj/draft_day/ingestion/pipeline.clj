@@ -23,6 +23,7 @@
             [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
             [draft-day.ingestion.espn :as espn]
+            [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.match :as match]
             [draft-day.ingestion.merge :as merge]
@@ -461,7 +462,16 @@
 ;; week and is retried on the next request — /api/waivers is user-triggered, not
 ;; polled, so that is self-limiting.
 
-(def weekly-schema-version 1)
+(def weekly-schema-version
+  "Bumped whenever the weekly envelope's shape changes, for the same reason
+  `schema-version` is bumped for the universe: `weekly-answers?` gates on it, so
+  an old file is never found rather than deserializing cleanly into missing
+  columns.
+
+  2: `:kickoffs` was added. A schema-1 file carries none at all, which is
+  indistinguishable from a scoreboard fetch that failed — and the board would
+  then show a Sunday with no times on it and nothing saying why."
+  2)
 
 (def default-weekly-cache-path
   (str "data/weekly_projections.v" weekly-schema-version ".transit"))
@@ -486,12 +496,24 @@
          (log/warn e "weekly cache unreadable; refetching")
          nil)))
 
-(defn live-weekly [season week path]
+(defn live-weekly
+  "Fetch one week: the projection lines, and the kickoff times beside them.
+
+  The scoreboard degrades on its own rather than through `best-effort`, exactly
+  as `sleeper/fetch-weekly` handles the schedule it needs for home/away: losing
+  the whole weekly projection because ESPN was down would trade the board for a
+  clock. `espn-schedule/fetch` already collapses every failure to nil, so this
+  reads as the empty map and the board renders without times.
+
+  Both come from one week and are written as one envelope, so a kickoff cannot
+  disagree with the projection sitting next to it about which week it is."
+  [season week path]
   (let [env {:schema-version weekly-schema-version
              :season         season
              :week           week
              :fetched-at     (now-iso)
-             :lines          (sleeper/fetch-weekly season week)}]
+             :lines          (sleeper/fetch-weekly season week)
+             :kickoffs       (or (espn-schedule/fetch season week) {})}]
     (write-transit! path env)
     env))
 
@@ -532,6 +554,35 @@
        ;; is the *normal* reply — returning the envelope would have the banner
        ;; announce a week that does not exist.
        (when (seq (:lines env)) env)))))
+
+(defn assoc-kickoffs
+  "Join this week's kickoff onto players by TEAM.
+
+  Deliberately separate from `assoc-weekly`, and deliberately not keyed on
+  `[:ids :sleeper]`. A kickoff is a fact about a team's game, not about a
+  player's projection — and Sleeper projects only ~14% of the board, so keying
+  it the same way would take his game time away from the other 86%, who are most
+  of the free-agent pool and precisely the players a claim is decided about.
+
+  A player whose team is on bye, or who has no team, gets no keys at all — the
+  same rule `assoc-weekly` follows, so a consumer can tell 'no game' from 'no
+  kickoff data'."
+  [players kickoffs]
+  (if (empty? kickoffs)
+    players
+    (mapv (fn [p]
+            (if-let [{:keys [kickoff status detail venue opponent home? neutral?]}
+                     (get kickoffs (:team p))]
+              (assoc p
+                     :kickoff/at       kickoff
+                     :kickoff/status   status
+                     :kickoff/detail   detail
+                     :kickoff/venue    venue
+                     :kickoff/opponent opponent
+                     :kickoff/home?    home?
+                     :kickoff/neutral? neutral?)
+              p))
+          players)))
 
 (defn assoc-weekly
   "Join weekly lines onto players. A player without one keeps no weekly keys at

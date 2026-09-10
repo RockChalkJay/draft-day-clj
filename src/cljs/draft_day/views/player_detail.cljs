@@ -103,13 +103,23 @@
   a dash, and a dash sitting between the team and the bye reads as a value that
   failed to load rather than as a schedule that does not exist yet. The board's
   Opp column can print that dash because it sits under a header naming it; a
-  run-on line has no such excuse.
+  run-on line has no such excuse. The kickoff and its status drop out the same
+  way — a scoreboard that could not be fetched is not evidence of no game.
 
   Position and team always survive: a player the board could rank has both."
   [p week]
-  (let [matchup (waivers/week-matchup p week)]
+  (let [matchup (waivers/week-matchup p week)
+        at      (util/kickoff-label (:kickoff/at p))
+        done    (util/kickoff-status-label (:kickoff/status p) (:kickoff/detail p))]
     (cond-> [(util/pos-label p) (or (:team p) "FA")]
       (not= "–" matchup) (conj matchup)
+      ;; The time is the thing this modal exists to answer that the board
+      ;; cannot: whether a claim has to be in before Sunday noon. It sits next
+      ;; to the matchup because the two are one thought.
+      at                 (conj at)
+      ;; And it is a lie on its own once the game has been played, so ESPN's
+      ;; own word for that follows it — see `util/kickoff-status-label`.
+      done               (conj done)
       (:bye p)           (conj (str "Bye " (:bye p))))))
 
 (defn head

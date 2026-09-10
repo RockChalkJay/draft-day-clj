@@ -70,3 +70,29 @@
              {:position "RB" :pos-rank 1}]]
       (is (= [["RB" 1] ["RB" nil] ["WR" 1]]
              (mapv (juxt :position :pos-rank) (sort-by db/pos-sort-key b)))))))
+
+;; ---- kickoff times ----
+
+(deftest a-kickoff-renders-in-the-viewers-own-zone
+  ;; The server ships the ISO stamp with its Z; the browser decides what that
+  ;; means where the manager is sitting. Asserted loosely on purpose — the node
+  ;; runner's zone is whatever the machine's is, so pinning "12:00 PM" would
+  ;; make this a test of the test machine.
+  (let [s (util/kickoff-label "2026-09-13T17:00Z")]
+    (is (string? s))
+    (is (re-find #"\d:\d\d" s) "a wall-clock time")
+    (is (re-find #"(?i)sun|mon" s) "with the day attached")))
+
+(deftest a-missing-or-broken-stamp-is-nil-not-a-dash
+  ;; The caller drops the segment. A dash here would assert there is no game,
+  ;; which a failed scoreboard fetch is not evidence of.
+  (is (nil? (util/kickoff-label nil)))
+  (is (nil? (util/kickoff-label "not a date"))))
+
+(deftest a-scheduled-game-needs-no-status-word
+  (is (nil? (util/kickoff-status-label "STATUS_SCHEDULED" "9/13 - 1:00 PM EDT"))))
+
+(deftest a-game-that-is-over-says-so-in-espns-words
+  (is (= "Final/OT" (util/kickoff-status-label "STATUS_FINAL" "Final/OT")))
+  (is (= "Final" (util/kickoff-status-label "STATUS_FINAL" nil)) "a fallback word")
+  (is (nil? (util/kickoff-status-label nil "Final/OT")) "no status, no claim"))
