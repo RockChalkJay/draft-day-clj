@@ -120,11 +120,20 @@
   "Sleeper's CDN keys headshots by Sleeper id; `:player-id` is GSIS for most
   players, so read `[:ids :sleeper]` and fall back to `:player-id` for legacy
   rows. Team defenses have no headshot — their id is the team abbreviation, so
-  they get the team logo instead."
-  [{:keys [player-id position ids]}]
-  (let [sleeper-id (or (:sleeper ids) player-id)
-        team-id    (or (:team ids) player-id)]
-    (when sleeper-id
-      (if (#{"DEF" "DST"} position)
-        (str "https://sleepercdn.com/images/team_logos/nfl/" (.toLowerCase team-id) ".png")
-        (str "https://sleepercdn.com/content/nfl/players/thumb/" sleeper-id ".jpg")))))
+  they get the team logo instead.
+
+  `size` is `:thumb` (the default, what every board surface wants) or `:full`.
+  The CDN serves both off the same id and the same path, so this is one arity
+  rather than a sibling function — a second copy would be a second place the
+  DST branch has to be remembered. The detail modal is the only surface with
+  room for the large one; a logo has no sizes and ignores the argument."
+  ([p] (headshot-url p :thumb))
+  ([{:keys [player-id position ids]} size]
+   (let [sleeper-id (or (:sleeper ids) player-id)
+         team-id    (or (:team ids) player-id)]
+     (when sleeper-id
+       (if (#{"DEF" "DST"} position)
+         (str "https://sleepercdn.com/images/team_logos/nfl/" (.toLowerCase team-id) ".png")
+         (str "https://sleepercdn.com/content/nfl/players/"
+              (when (= size :thumb) "thumb/")
+              sleeper-id ".jpg"))))))

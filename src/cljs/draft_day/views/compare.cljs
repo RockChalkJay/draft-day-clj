@@ -59,25 +59,21 @@
   three now. And a weekly line that *does not discriminate* is a different
   sentence from one that *does not exist* — `separation-line` states the first
   underneath in the terms it was measured in, so saying it twice in two
-  vocabularies is what the split branches avoid."
-  (:require [reagent.core :as r]
-            [re-frame.core :as rf]
+  vocabularies is what the split branches avoid.
+
+  WHICH METRICS ARE SHOWN IS NOT DECIDED HERE. `views.metrics` owns that list,
+  because the player-detail modal draws the same one without a second player to
+  lean toward. What stays here is everything that only means something with two
+  players in hand: the lean, the calibrated tie, and the sentence."
+  (:require [re-frame.core :as rf]
             [draft-day.confidence :as confidence]
             [draft-day.db :as db]
-            [draft-day.views.board :as board]
             [draft-day.views.controls :as controls]
+            [draft-day.views.metrics :as metrics]
             [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
 ;; ---- the comparison itself ----
-
-(defn opportunity-per-game
-  "Targets plus carries per game, or nil. Volume rather than points, and the
-  same measure `waiver/trend` is a ratio of — a role is what a claim is buying."
-  [{:nflverse/keys [season-to-date]}]
-  (let [{:keys [games usage]} season-to-date]
-    (when (and games (pos? games))
-      (/ (+ (or (:targets usage) 0) (or (:carries usage) 0)) games))))
 
 (defn lean
   "How far a row leans and which way: `{:side :l|:r :frac 0..1}`, or nil.
@@ -180,114 +176,6 @@
         :clear     [:span "A clear gap — " apart
                     ", which the weekly projection has usually called right."]))))
 
-(defn week-rank-label
-  "\"WR8\" under a weekly number, or nil. The ordinal carries its own scale for
-  the reason the board's Wk# column does — and it is what keeps the row legible
-  on exactly the comparisons where the bar deliberately says nothing."
-  [p]
-  (when-let [n (:week-pos-rank p)]
-    (str (:position p) n)))
-
-(def bands
-  "The tile's three bands, in reading order: the question, what a claim would
-  cost and gain, then the evidence for both. See the ns docstring for why the
-  answer moved above the evidence.
-
-  `tile-bands` draws them in this order, so the vector is the order rather than
-  a note about it. It used to be neither: the three bands were emitted by hand
-  and this was a constant nothing read, which a test asserting its value could
-  not tell apart from a guarantee.
-
-  `:band` on a row rather than slicing one flat list by index — the boundaries
-  were `subvec`s, so inserting a metric anywhere above the last one silently
-  moved a row into the wrong band and still rendered."
-  [:horizon :claim :evidence])
-
-(defn claim-points
-  "A signed points difference for the claim band, where 0 is a real answer.
-
-  Deliberately not `util/signed`, which dashes zero out because a board column
-  has no bar beside it to disagree with. Here there is one, and a dash sitting
-  next to a drawn bar reads as missing data. Zero means he would never crack the
-  lineup, which is the most common true thing this row has to say."
-  [n]
-  (if (number? n)
-    (let [r (js/Math.round n)]
-      (if (zero? r) "0" (util/signed r)))
-    "–"))
-
-(defn number-or-dash
-  "A number as itself, for a rank or a count that neither rounds nor scales."
-  [n]
-  (if (number? n) n "–"))
-
-(def rows
-  "What the tile compares — everything the board can say about the two players.
-
-  This is the only place both sides are on screen at once, so a metric the row
-  carries and this list omits is a comparison the manager has to make by
-  scrolling between two lines of a table. `db/waiver-column-catalog` is the same
-  list for the board and the two drift apart silently: Lineup became the column
-  the board *sorts by* while the tile still did not mention it. `compare-test`
-  fails on a catalog key that has not been given a decision here.
-
-  Three deliberate omissions. Targets and carries, because
-  `opportunity-per-game` is both of them over games played and the raw counts
-  add a scale rather than a fact. Bye and Opp, because a schedule has no winner
-  and Opp is already in the head. And the injury designation, which is a word
-  among tabular numbers — it is a chip on the name, where the board puts it too.
-
-  `:bar?` false where neither side can be better, `:better :lower` where the
-  metric inverts, `:big?` on the two horizons, and `:tip` on a row whose label
-  cannot carry its own definition."
-  [{:band :horizon  :label "This week"      :f :week-points :big? true
-    :fmt board/format-whole :sub week-rank-label :calibrated? true}
-   {:band :horizon  :label "Rest of season" :f :ros-points  :big? true
-    :fmt board/format-whole}
-   ;; Rest of season restated in cross-position units — see the ns docstring
-   ;; and `db/vorp-sort-key`.
-   {:band :horizon  :label "Over replacement" :f :ros-vorp :fmt board/format-whole
-    :tip (str "Rest-of-season points above a replacement player at his position"
-              " — the one number that compares a QB to a TE")}
-   ;; Lineup leads; Upgrade under it is the bench question — see the ns
-   ;; docstring and `db/waiver-rank-key`.
-   {:band :claim    :label "Lineup gain"    :f :lineup-upgrade :fmt claim-points
-    :tip (str "Rest-of-season points this claim adds to your starting lineup,"
-              " after the drop. 0 means he would never start")}
-   {:band :claim    :label "Upgrade"        :f :upgrade :fmt claim-points
-    :tip (str "Rest-of-season points over the player you would drop, whether or"
-              " not he would ever start")}
-   {:band :claim    :label "Bid"            :f :bid :bar? false
-    :fmt #(if (number? %) (str "$" %) "–")}
-   {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend
-    :tip (str "Recent opportunity per game against his season rate — above"
-              " 1.0× means the role is growing")}
-   ;; Realized production, so it keeps a directional bar the weekly row does
-   ;; not — see the ns docstring.
-   {:band :evidence :label "Form / game"    :f :form-points
-    :fmt board/format-one-decimal
-    :tip "Points per game over the last three weeks, under your league's rules"}
-   {:band :evidence :label "Opportunity / game" :f opportunity-per-game
-    :fmt #(if (number? %) (.toFixed % 1) "–")
-    :tip "Targets plus carries per game this season"}
-   {:band :evidence :label "Games played"   :bar? false
-    :f #(get-in % [:nflverse/season-to-date :games])
-    :fmt number-or-dash}
-   ;; Both preseason, so neither is evidence about now — they are what the
-   ;; season so far is disagreeing with, which is the whole waiver-wire case.
-   {:band :evidence :label "Preseason"      :f :points :fmt board/format-whole
-    :tip (str "What he was projected for before the season — the number the"
-              " rest-of-season line is correcting")}
-   {:band :evidence :label "Expert rank"    :f :fantasypros/ecr :better :lower
-    :fmt number-or-dash
-    :tip "FantasyPros expert consensus rank, preseason. Lower is better"}
-   {:band :evidence :label "Injury risk"    :f :injury-risk :better :lower
-    :fmt number-or-dash
-    :tip (str "Games missed per season over the last three, 1 (durable) to"
-              " 5 (fragile)")}])
-
-(def rows-by-band (group-by :band rows))
-
 ;; ---- rendering ----
 
 (defn value-cell [side v fmt winner? sub]
@@ -342,7 +230,7 @@
   nil rather than an empty seq, because the caller says something different for
   a band with nothing to show — see the claim band in `compare-tile`."
   [k a b sep]
-  (when-let [rs (seq (filter #(row-has-value? % a b) (rows-by-band k)))]
+  (when-let [rs (seq (filter #(row-has-value? % a b) (metrics/rows-by-band k)))]
     (for [r rs] ^{:key (:label r)} [metric-row r a b sep])))
 
 (defn status-label
@@ -376,11 +264,24 @@
      [:img {:src headshot :alt ""
             :on-error #(set! (.. % -target -style -display) "none")}])])
 
-(defn player-head [p side headshot week]
+(defn player-head
+  "One side's name, face and one-line context.
+
+  The name is a button rather than text: it opens the detail modal, and this is
+  one of only three places a player's name is on screen. No `stopPropagation`
+  here, unlike the two board surfaces — nothing is listening above it, since the
+  tile deliberately has no scrim to click through (see the ns docstring)."
+  [p side headshot week]
   [:div {:class (str "cmp-who " (name side))}
    [face headshot]
    [:div
-    [:div.cmp-name (:player-name p) [status-chip p]]
+    [:div.cmp-name
+     [:button.name-btn
+      {:on-click #(rf/dispatch [:show-modal {:kind :player-detail
+                                             :player-id (:player-id p)}])
+       :title "Player detail"}
+      (:player-name p)]
+     [status-chip p]]
     [:p.cmp-meta (util/pos-label p) " · " (or (:team p) "FA")
      " · " (waivers/week-matchup p week)]]])
 
@@ -418,46 +319,43 @@
       [:div.cmp-band ev])))
 
 (defn tile-bands
-  "The whole comparison below the head, in `bands` order.
+  "The whole comparison below the head, in `metrics/bands` order.
 
   Split out of `compare-tile` so the order is reachable from a test: the tile
   itself is subscriptions and a keydown listener, and the one thing that had
   gone wrong there was invisible to every test in the file."
   [a b week sep]
-  (into [:<>] (keep #(band-content % a b week sep)) bands))
+  (into [:<>] (keep #(band-content % a b week sep)) metrics/bands))
 
 (defn compare-tile []
-  ;; Escape closes. `modal.cljs` has no key handling to borrow — this tile is the
-  ;; first thing here that opens over the page without a scrim to click away.
-  (r/with-let [on-key (fn [e]
-                        (when (= "Escape" (.-key e))
-                          (rf/dispatch [:compare-clear])))
-               _      (.addEventListener js/document "keydown" on-key)]
-    (let [players @(rf/subscribe [:compare-players])
-          week    (:week @(rf/subscribe [:waiver-meta]))
-          by-id   @(rf/subscribe [:universe-by-id])
-          ;; A waiver row carries no `[:ids :sleeper]`, so the headshot comes
-          ;; off the universe — as `player-stats/nominated-stats` does.
-          shot    (fn [p] (util/headshot-url (get by-id (:player-id p))))
-          [a b]   players
-          sep     (when b (confidence/separation a b))]
-      (when a
-        [:div.cmp-float
-         [:div.cmp-tile
-          [:div.cmp-top
-           [:span.cmp-label "Compare"]
-           [:button.cmp-close {:on-click #(rf/dispatch [:compare-clear])
-                               :title "Close (Esc)"
-                               :aria-label "Close comparison"} "✕"]]
-          ;; Outside the scrolling half: it says which column is which player,
-          ;; and a comparison that scrolls its legend away is unattributed.
-          [:div.cmp-head
-           [player-head a :l (shot a) week]
-           [:div.cmp-week (if week (str "Week " week) "Rest of season")]
-           (if b
-             [player-head b :r (shot b) week]
-             [:div.cmp-empty "Pick another player to compare."])]
-          (when b
-            [:div.cmp-scroll (tile-bands a b week sep)])]]))
-    (finally
-      (.removeEventListener js/document "keydown" on-key))))
+  ;; Escape closes, but the listener is not here. It lives in `core/app`, which
+  ;; is the only component that knows whether a modal is open over this tile —
+  ;; and two document-level handlers dispatching separately would close the
+  ;; modal AND clear the pair underneath it, invisibly, in one keystroke.
+  ;; See `:escape-pressed`.
+  (let [players @(rf/subscribe [:compare-players])
+        week    (:week @(rf/subscribe [:waiver-meta]))
+        by-id   @(rf/subscribe [:universe-by-id])
+        ;; A waiver row carries no `[:ids :sleeper]`, so the headshot comes
+        ;; off the universe — as `player-stats/nominated-stats` does.
+        shot    (fn [p] (util/headshot-url (get by-id (:player-id p))))
+        [a b]   players
+        sep     (when b (confidence/separation a b))]
+    (when a
+      [:div.cmp-float
+       [:div.cmp-tile
+        [:div.cmp-top
+         [:span.cmp-label "Compare"]
+         [:button.cmp-close {:on-click #(rf/dispatch [:compare-clear])
+                             :title "Close (Esc)"
+                             :aria-label "Close comparison"} "✕"]]
+        ;; Outside the scrolling half: it says which column is which player,
+        ;; and a comparison that scrolls its legend away is unattributed.
+        [:div.cmp-head
+         [player-head a :l (shot a) week]
+         [:div.cmp-week (if week (str "Week " week) "Rest of season")]
+         (if b
+           [player-head b :r (shot b) week]
+           [:div.cmp-empty "Pick another player to compare."])]
+        (when b
+          [:div.cmp-scroll (tile-bands a b week sep)])]])))

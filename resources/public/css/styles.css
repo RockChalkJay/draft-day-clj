@@ -683,3 +683,65 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
   .cmp-float { top: 68px; }
   .cmp-head, .cmp-row { grid-template-columns: 1fr 96px 1fr; }
 }
+
+/* ---- player detail modal ----
+
+   A scrim, unlike the compare tile. The interaction here is reading one player
+   and dismissing him, not holding one while clicking down the board through
+   challengers — which is the whole reason `.cmp-float` deliberately has none.
+
+   `.modal-wide` is a variant on the chrome rather than an override from a
+   `.pd-*` selector: width is a property of the box, and Start Draft must not
+   inherit a width chosen for a stat readout. */
+.modal.modal-wide { width: min(620px, 94vw); }
+/* `.modal` scrolls its whole self at `max-height: 88vh`, which would carry the
+   head and the close button off the top. Same arrangement `.cmp-tile` uses
+   instead: the box is a flex column that does not scroll, and only the body
+   does — so the name of the player you are reading, and the way out, stay put.
+   `min-height: 0` because a flex child will not shrink below its content
+   without it, and the body would push the modal past 88vh instead of scrolling. */
+.pd-modal { position: relative; padding-top: 22px;
+  display: flex; flex-direction: column; overflow: hidden; }
+
+.pd-close { position: absolute; top: 12px; right: 14px; background: none;
+  border: none; color: var(--muted); font-size: 15px; line-height: 1;
+  padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.pd-close:hover { color: var(--text); background: var(--panel2); }
+
+/* The border is the scroll boundary made deliberate: the body slides under this
+   edge, and without a line the first row of it reads as a clipped glyph rather
+   than as content continuing above the fold. */
+.pd-head { display: flex; gap: 14px; align-items: center; padding-right: 32px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--border); flex: none; }
+.pd-face { flex: 0 0 88px; width: 88px; height: 88px; border-radius: 12px;
+  background: var(--panel2); position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; color: var(--border); }
+.pd-face img { position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: top center; }
+.pd-who { min-width: 0; }
+.pd-name { font-size: 20px; font-weight: 700; line-height: 1.15; margin: 0; }
+.pd-meta { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+
+.pd-body { padding-top: 16px; overflow-y: auto; min-height: 0; }
+.pd-band + .pd-band { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.pd-band:first-child .pd-band-label { margin-top: 0; }
+.pd-band-label { margin: 0 0 8px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.pd-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; }
+.pd-label { color: var(--muted); font-size: 12px; }
+.pd-label[title] { cursor: help; }
+.pd-value { margin-left: auto; font-variant-numeric: tabular-nums;
+  font-weight: 600; font-size: 13px; }
+.pd-sub { color: var(--muted); font-weight: 400; font-size: 10px; margin-left: 5px; }
+
+/* ---- a player's name as a button ----
+
+   Three surfaces render a name that opens the detail modal, and a `<button>`
+   arrives carrying the browser's own chrome. Stripped back to text so the
+   boards look exactly as they did, but it stays a button underneath: focusable
+   where it has a tab stop, Enter-activatable, and named to a screen reader. */
+.name-btn { background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.name-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
+.name-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px;
+  border-radius: 3px; }

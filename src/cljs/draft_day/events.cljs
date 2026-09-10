@@ -247,10 +247,37 @@
 
 ;; ---- config / Sleeper import ----
 
-;; ---- start-draft modal ----
+;; ---- modals ----
+;; `:modal` names what is open. A modal with no argument is a bare keyword; one
+;; that needs an argument is `{:kind ... :player-id ...}`. `db/modal-kind` is
+;; the one reader that knows both shapes, so nothing here has to.
 
 (rf/reg-event-db :show-modal  (fn [db [_ m]] (assoc db :modal m)))
 (rf/reg-event-db :close-modal (fn [db _] (assoc db :modal nil)))
+
+(rf/reg-event-db :escape-pressed
+  ;; One Escape, one effect, and the modal wins because it is on top of the
+  ;; tile. Closing the modal AND clearing the comparison underneath it would
+  ;; take away the pair the manager was holding, invisibly, behind the thing he
+  ;; just shut.
+  ;;
+  ;; It is one event rather than a handler per surface because two document-level
+  ;; listeners are order-dependent: whichever ran second would see `:modal`
+  ;; already nil and clear `:compare` anyway. The precedence has to be a rule in
+  ;; one place, which is also what makes it testable.
+  ;;
+  ;; The comparison is cleared only from the tab it is on. The listener lives in
+  ;; `core/app` now and so is attached for the life of the app, where it used to
+  ;; unmount with the tile — without this the manager could hold a pair, switch
+  ;; to the draft board, press Escape for some unrelated reason and come back to
+  ;; find it gone, which is the same silent loss the paragraph above is about.
+  ;; The modal is not view-scoped: it opens over whatever is on screen.
+  (fn [db _]
+    (cond
+      (:modal db)         (assoc db :modal nil)
+      (and (= :waivers (:view db))
+           (seq (:compare db))) (assoc db :compare [])
+      :else               db)))
 
 (rf/reg-event-fx :archive-draft
   (fn [{:keys [db]} _]
