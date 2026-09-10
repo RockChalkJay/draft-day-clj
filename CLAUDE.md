@@ -15,7 +15,22 @@ Backend (Leiningen, `project.clj`):
 - `lein test` — run all Clojure tests
 - `lein test draft-day.rankings.value-test` — run one test namespace
 - `lein test :only draft-day.rankings.value-test/value-conserves-to-budget` — run one test
+- `lein test :integration` — the live vendor contracts, which `lein test` excludes
 - `lein run` — start the http-kit server (`draft-day.server/-main`), reads `PORT` (default 8080)
+
+**Tests reach no third-party service.** `lein test` stays offline by stubbing the fetch
+function *nearest the wire* at its own namespace's boundary — the suite's existing
+convention (`nflverse/http-get-string`, `league-sync/fetch-raw-rosters`,
+`pipeline/load-weekly`). Watch `enrich-universe`, which fans out to more fetchers than is
+obvious: `pos-tier-tasks` alone is a dozen FantasyPros scrapes, so a test reaching it has
+to stub `fetch-pos-ecr` as well as the seven named fetchers. Nothing enforces this, and
+`best-effort` swallows what a fetch throws, so a test that reaches a vendor passes exactly
+like one that does not.
+
+Tests that *should* hit a vendor live in `test/draft_day/integration/`, tagged
+`^:integration`, and assert against a completed season so they do not fail every August.
+They exist for the failure a fixture cannot see — a vendor changing shape — which is the
+class behind the injury-badge, `WSH`/`WAS` and `LA`/`LAR` traps described below.
 
 Frontend (shadow-cljs, `:lein true` so it shells to `lein` for the JVM/classpath):
 - `npx shadow-cljs watch app` (or `npm run watch`) — dev build with hot reload, served alongside `resources/public` on port 8280
