@@ -271,7 +271,8 @@
 (deftest attach-ids-carries-the-bio-off-the-same-row
   (let [[p] (ids/attach-ids [{:player-id "4881" :position "WR"}] bio-index)]
     (is (= {:birth-year 2001 :draft-year 2023 :draft-round 5 :draft-overall 177}
-           (:bio p)))
+           (:bio p))
+        "and not :draft-pick, which nothing renders")
     (is (= "00-0038543" (:player-id p)) "and the anchor still happens")))
 
 (deftest an-already-anchored-player-still-gets-a-bio
@@ -304,7 +305,7 @@
   ;; The unit tests above run on a fixture; this one asserts the real pinned
   ;; file has the columns, so a regenerated snapshot that dropped them fails.
   (let [rows (vals (ids/pinned-index))
-        with (filter ids/biography rows)]
+        with (filter ids/row-bio rows)]
     (is (> (count with) 1000))
     (is (some :birth-year with))
     (is (some :draft-overall with))))

@@ -4,8 +4,7 @@
 
 (def ^:private nacua
   {:sleeper/years-exp 3
-   :bio {:birth-year 2001 :draft-year 2023 :draft-round 5
-         :draft-pick 42 :draft-overall 177}})
+   :bio {:birth-year 2001 :draft-year 2023 :draft-round 5 :draft-overall 177}})
 
 ;; ---- age ----
 

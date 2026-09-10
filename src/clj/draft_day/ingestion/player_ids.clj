@@ -351,11 +351,17 @@
       (re-matches #"\d+" s)        :sleeper)))
 
 (def bio-keys
-  "What a pinned row says about the person rather than about his ids."
-  [:birth-year :draft-year :draft-round :draft-pick :draft-overall])
+  "What a pinned row says about the person rather than about his ids.
 
-(defn biography
-  "A pinned row's `bio-keys`, or nil when it has none of them."
+  `:draft-pick` is deliberately absent: it is the pick within the round, which
+  nothing renders and which the overall pick already implies."
+  [:birth-year :draft-year :draft-round :draft-overall])
+
+(defn row-bio
+  "One pinned row's `bio-keys`, or nil when it has none of them.
+
+  Not `biography` — that name is taken above by a function over raw vendor rows
+  that returns a map keyed by GSIS id, which is a different shape entirely."
   [row]
   (let [m (select-keys row bio-keys)]
     (when (seq m) m)))
@@ -392,7 +398,7 @@
           ;; GSIS id, and the index is keyed by Sleeper's.
           (let [sid  (or (get-in p [:ids :sleeper]) (:player-id p))
                 row  (get index sid)
-                p    (if-let [b (biography row)] (assoc p :bio b) p)]
+                p    (if-let [b (row-bio row)] (assoc p :bio b) p)]
             (cond
               (:ids p) p
 
