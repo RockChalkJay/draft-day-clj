@@ -107,3 +107,25 @@
          (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR" :bye 8
                             :week/opponent "SEA" :week/home? false}
                            3))))
+
+;; ---- the venue ----
+
+(deftest a-neutral-site-names-the-ground
+  ;; "vs SF" says nothing about a game in Melbourne, which is the whole reason
+  ;; the neutral flag is carried at all.
+  (is (= ["WR7" "LAR" "vs SF" "Melbourne Cricket Ground"]
+         (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
+                            :kickoff/opponent "SF" :kickoff/home? true
+                            :kickoff/neutral? true
+                            :kickoff/venue "Melbourne Cricket Ground"}
+                           1))))
+
+(deftest an-ordinary-game-does-not-name-its-stadium
+  ;; On the other 270 games a stadium name is the row's longest string and its
+  ;; least useful.
+  (is (= ["WR7" "LAR" "@ SEA"]
+         (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
+                            :kickoff/opponent "SEA" :kickoff/home? false
+                            :kickoff/neutral? false
+                            :kickoff/venue "Lumen Field"}
+                           1))))

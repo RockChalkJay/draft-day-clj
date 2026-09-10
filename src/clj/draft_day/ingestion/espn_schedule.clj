@@ -58,11 +58,15 @@
   [{:keys [date status competitions]}]
   (let [competition (first competitions)
         {home "home" away "away"} (competitors competition)
-        {:keys [name shortDetail]} (:type status)]
+        ;; Not `{:keys [name ...]}` — that shadows `clojure.core/name` for the
+        ;; rest of the body, in a function whose whole job is picking apart
+        ;; vendor JSON and where reaching for it is a natural next edit.
+        status-name (get-in status [:type :name])
+        detail      (get-in status [:type :shortDetail])]
     (when (and date home away)
       (let [entry {:kickoff  date
-                   :status   name
-                   :detail   shortDetail
+                   :status   status-name
+                   :detail   detail
                    :venue    (get-in competition [:venue :fullName])
                    :neutral? (boolean (:neutralSite competition))}]
         [[home (assoc entry :opponent away :home? true)]

@@ -94,5 +94,13 @@
 
 (deftest a-game-that-is-over-says-so-in-espns-words
   (is (= "Final/OT" (util/kickoff-status-label "STATUS_FINAL" "Final/OT")))
-  (is (= "Final" (util/kickoff-status-label "STATUS_FINAL" nil)) "a fallback word")
+  (is (= "Q3 5:22" (util/kickoff-status-label "STATUS_IN_PROGRESS" "Q3 5:22")))
   (is (nil? (util/kickoff-status-label nil "Final/OT")) "no status, no claim"))
+
+(deftest a-word-of-our-own-is-never-invented-for-a-status
+  ;; The status set includes IN_PROGRESS, HALFTIME, POSTPONED and DELAYED as
+  ;; well as FINAL, so a fallback like "Final" is eventually printed over a game
+  ;; still being played — and a manager who reads Final stops considering the
+  ;; claim. Saying nothing leaves the kickoff time, which is still true.
+  (is (nil? (util/kickoff-status-label "STATUS_FINAL" nil)))
+  (is (nil? (util/kickoff-status-label "STATUS_IN_PROGRESS" nil))))

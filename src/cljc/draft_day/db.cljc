@@ -689,7 +689,13 @@
    :ros       :ros-points
    :week      :week-points
    :week-rank :week-pos-rank
-   :opp       :week/opponent
+   ;; Not `:week/opponent`. Two sources answer this now and the cell shows
+   ;; whichever did (`waivers/opponent`); sorting on the narrower one would
+   ;; clump every ESPN-answered row at one end while it visibly carries a value.
+   ;; Spelled out here rather than calling `views.waivers` — this is cljc and
+   ;; that is not, and the rule is small enough to state twice than to invert
+   ;; the dependency for.
+   :opp       #(or (:week/opponent %) (:kickoff/opponent %))
    :upgrade   :upgrade
    :lineup    :lineup-upgrade
    :bid       :bid

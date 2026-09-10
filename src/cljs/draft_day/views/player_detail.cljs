@@ -117,6 +117,12 @@
       ;; cannot: whether a claim has to be in before Sunday noon. It sits next
       ;; to the matchup because the two are one thought.
       at                 (conj at)
+      ;; The venue only where it answers something. "vs SF" says nothing about a
+      ;; game in Melbourne, which is the whole reason `:kickoff/neutral?` is
+      ;; carried — and on the other 270 games a stadium name is the row's
+      ;; longest string and its least useful.
+      (and (:kickoff/neutral? p)
+           (:kickoff/venue p)) (conj (:kickoff/venue p))
       ;; And it is a lie on its own once the game has been played, so ESPN's
       ;; own word for that follows it — see `util/kickoff-status-label`.
       done               (conj done)

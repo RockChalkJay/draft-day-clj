@@ -167,7 +167,15 @@
   nil while a game is scheduled, because the kickoff time already says that. A
   Sunday-evening modal reading \"Sun 1:00 PM\" over a game that finished two
   hours ago is the same class of lie `fetched-at-label` exists to prevent, so
-  anything other than SCHEDULED prints ESPN's own words for it."
+  anything other than SCHEDULED prints ESPN's own words for it.
+
+  ESPN's own words, and never a word of ours. The status set includes
+  IN_PROGRESS, HALFTIME, POSTPONED and DELAYED as well as FINAL, so a fallback
+  like \"Final\" would eventually be printed over a game still being played —
+  and a manager who reads Final stops considering the claim. `shortDetail`
+  carries the readable form (\"Q3 5:22\", \"Final/OT\"); with none this says
+  nothing and the caller drops the segment, leaving the kickoff time, which is
+  still true."
   [status detail]
   (when (and status (not= "STATUS_SCHEDULED" status))
-    (or detail "Final")))
+    detail))
