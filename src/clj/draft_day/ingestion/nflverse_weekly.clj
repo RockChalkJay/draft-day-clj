@@ -12,11 +12,32 @@
 
     :nflverse/season-to-date {:games n :stats {stat-key season-total}}
     :nflverse/recent         {:games n :stats {stat-key window-total}}
+    :nflverse/game-log       [{:week n :opponent CIN :stats {stat-key total}}]
 
   `season-to-date` is the evidence `rankings.ros` blends against the preseason
   projection. `recent` is the last `recent-window` weeks only — the breakout
   signal, which is a *display* column and feeds no score (same shelf as
-  `:injury-risk` and `:tcm`).
+  `:injury-risk` and `:tcm`). `game-log` is the same rows uncollapsed, for the
+  player detail modal, and is on that shelf too.
+
+  THE GAME LOG IS A VECTOR, oldest first, and never a map keyed by week. The
+  rule and its reason are `nflverse/history`'s: jsonista writes an integer key
+  as a string and `fx.cljs` keywordizes, so a week-keyed map reaches the browser
+  as `{:1 ...}` and every lookup by week silently misses.
+
+  It carries only weeks the player has a row for, so a consumer can tell a week
+  he missed from one he played badly. It carries no usage columns and no scored
+  points: the first has no reader, and the second cannot be computed here at all
+  — the universe is shared across leagues, and a reception is worth a point in
+  one and nothing in the next.
+
+  EACH WEEK'S LINE IS SPARSE, and that is transport rather than meaning. The
+  file publishes an explicit 0 in all fourteen columns for every player, so a
+  receiver carries a passing line and a kicking line; kept, the log is 1.4MB of
+  mostly zeros on a response fetched once per session. A key absent from a week
+  the player *appeared in* means he did none of it, and `game-log/table` reads
+  it back as the zero it is — the week's own presence is what distinguishes
+  that from a week he missed, so nothing is lost by not writing it down.
 
   THE STAT MAP IS WIDER THAN `nflverse/line-columns`, DELIBERATELY. That one
   carries seven columns because it exists to *show* three seasons in a tile.
@@ -44,7 +65,8 @@
   construct, not an nflverse player. Deciding what that *means* for a projection
   is `rankings.ros`'s job, not this namespace's."
   (:require [clojure.tools.logging :as log]
-            [draft-day.ingestion.nflverse :as nflverse]))
+            [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.teams :as teams]))
 
 (defn week-url [season]
   (str nflverse/base "/stats_player_week_" season ".csv"))
@@ -184,6 +206,18 @@
   {:games (count pairs)
    :stats (reduce (fn [acc [_ row]] (add-stats acc cols row)) {} pairs)})
 
+(defn game-log
+  "A player's `[week row]` pairs as ordered per-week entries, opponent
+  normalized — nflverse spells the Rams `LA`. See the ns docstring."
+  [pairs]
+  (mapv (fn [[w row]]
+          (let [opp   (teams/normalize :nflverse (get row "opponent_team"))
+                stats (into {} (remove (comp zero? val))
+                            (add-stats {} stat-columns row))]
+            (cond-> {:week w :stats stats}
+              opp (assoc :opponent opp))))
+        (sort-by first pairs)))
+
 (defn accumulate
   "Pure: `season-rows` triples -> {gsis {:nflverse/season-to-date {...}
                                         :nflverse/recent {...}}}.
@@ -209,7 +243,8 @@
               (assoc acc gsis
                      (cond-> {:nflverse/season-to-date
                               (merge (totals pairs stat-columns)
-                                     {:usage (:stats (totals pairs usage-columns))})}
+                                     {:usage (:stats (totals pairs usage-columns))})
+                              :nflverse/game-log (game-log pairs)}
                        (seq recent)
                        (assoc :nflverse/recent
                               (merge (totals recent stat-columns)
@@ -236,6 +271,18 @@
                 (.getSimpleName (class e)) (ex-message e))
       nil)))
 
+;; `opponent_team` is deliberately NOT in `required-columns`. That set decides
+;; whether the body counts as this file at all, and a miss there reads as week
+;; zero — the whole in-season board would degrade to the preseason board to
+;; protect a display column. Its absence is reported instead.
+
+(defn- log-opponent-coverage! [triples]
+  (let [named? (fn [[_ _ r]] (seq (str (get r "opponent_team"))))
+        n      (count triples)
+        with   (count (filter named? triples))]
+    (when (and (pos? n) (< with n))
+      (log/warn "nflverse-weekly: opponent on" with "of" n "rows"))))
+
 (defn fetch
   "Network: this season's per-player in-season columns, plus how far the season
   has got and the position index the join reports with.
@@ -246,6 +293,7 @@
   [season]
   (when-let [rows (fetch-rows season)]
     (let [triples (season-rows rows)]
+      (log-opponent-coverage! triples)
       {:by-key       (accumulate triples)
        :through-week (through-week triples)
        :positions    (nflverse/row-positions (map (fn [[_ _ r]] r) triples))})))

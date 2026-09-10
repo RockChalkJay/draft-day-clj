@@ -160,7 +160,7 @@
   (update ls :drafted-player-ids set))
 
 (defn without-history
-  "Drop `:nflverse/history` before ranking.
+  "Drop the realized history — season lines and game log — before ranking.
 
   Nothing in the valuation pipeline reads it, and this response is the whole
   board — re-POSTed after every pick and after every debounced settings edit —
@@ -172,7 +172,7 @@
   (`players-handler`), and the board's static facts are read from there while
   live valuation is read from here."
   [players]
-  (mapv #(dissoc % :nflverse/history) players))
+  (mapv #(dissoc % :nflverse/history :nflverse/game-log) players))
 
 (defn rankings-handler [req]
   (try

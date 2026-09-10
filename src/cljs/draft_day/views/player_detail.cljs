@@ -34,6 +34,8 @@
   reach it by dispatching `:show-modal` — an event, not a require."
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
+            [draft-day.game-log :as game-log]
+            [draft-day.views.board :as board]
             [draft-day.views.compare :as compare]
             [draft-day.views.controls :as controls]
             [draft-day.views.metrics :as metrics]
@@ -137,6 +139,33 @@
     [:h2#pd-title.pd-name (:player-name p) [compare/status-chip p]]
     [:p.pd-meta (str/join " · " (meta-segments p week))]]])
 
+;; A week he did not play is a struck row rather than a line of dashes: four
+;; dashes and a blank Pts cell read as data that failed to load, where "Out" is
+;; the fact. `game-log/table` is what decides which weeks those are.
+
+(defn game-log-table
+  "The week-by-week table, or nil when there is nothing to draw."
+  [player through-week scoring]
+  (when-let [{:keys [columns rows]}
+             (game-log/table player through-week scoring)]
+    [:table.pd-log
+     [:thead
+      [:tr [:th.lbl "Wk"] [:th.lbl "Opp"]
+       (for [[label _] columns] ^{:key label} [:th.num label])
+       [:th.num.pts "Pts"]]]
+     [:tbody
+      (for [{:keys [week opponent played? values points]} rows]
+        ^{:key week}
+        [:tr {:class (when-not played? "out")}
+         [:th.lbl week]
+         [:td.opp (or opponent "–")]
+         (if played?
+           [:<>
+            (for [[i v] (map-indexed vector values)]
+              ^{:key i} [:td.num (player-stats/cell v)])
+            [:td.num.pts (board/format-one-decimal points)]]
+           [:td.num.out-note {:col-span (inc (count columns))} "Out"])])]]))
+
 (defn player-detail-modal
   "The modal for `id`, or nothing when the board has no row for him.
 
@@ -148,7 +177,8 @@
   (let [p        (get @(rf/subscribe [:comparable-by-id]) id)
         universe (get @(rf/subscribe [:universe-by-id]) id)
         week     (:week @(rf/subscribe [:waiver-meta]))
-        season   (:season @(rf/subscribe [:universe]))]
+        {:keys [season through-week]} @(rf/subscribe [:universe])
+        scoring  @(rf/subscribe [:scoring-weights])]
     (when p
       [:div.modal-overlay
        {:on-click #(when (= (.-target %) (.-currentTarget %))
@@ -171,6 +201,11 @@
          ;; a defense, or a player with no numbers, so there is no second guard
          ;; here — only the one for the universe not having arrived yet.
          (when universe
-           [:div.pd-band
-            [:h4.pd-band-label "Season trend"]
-            [player-stats/stat-table universe season]])]]])))
+           [:<>
+            (when-let [log (game-log-table universe through-week scoring)]
+              [:div.pd-band
+               [:h4.pd-band-label "Week by week"]
+               log])
+            [:div.pd-band
+             [:h4.pd-band-label "Season trend"]
+             [player-stats/stat-table universe season]]])]]])))

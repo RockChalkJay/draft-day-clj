@@ -23,6 +23,11 @@
 (rf/reg-sub :scoring-format :<- [:config]
   (fn [cfg _] (scoring/format-of (scoring/resolve-config (:scoring cfg)))))
 
+;; The weight map itself, for the one consumer that scores a stat line in the
+;; browser rather than reading a number the server scored.
+(rf/reg-sub :scoring-weights :<- [:config]
+  (fn [cfg _] (scoring/resolve-config (:scoring cfg))))
+
 (defn source-gap?
   "Did this `:sources` report actually deliver anything usable?
 
