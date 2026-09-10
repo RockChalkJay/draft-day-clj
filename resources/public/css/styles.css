@@ -745,3 +745,25 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
 .name-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 .name-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px;
   border-radius: 3px; }
+
+/* ---- the week-by-week log ----
+
+   Borrows `.nt-stats`' proportions so the two tables in the modal read as one
+   family; its own class because the columns differ — a week carries an
+   opponent and a points total the season table has no room for. */
+.pd-log { width: 100%; border-collapse: collapse; margin-top: 2px; }
+.pd-log th, .pd-log td { padding: 3px 6px; font-size: 12px; white-space: nowrap; }
+.pd-log thead th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); font-weight: 600; text-align: right; }
+.pd-log thead th.lbl { text-align: left; }
+.pd-log th.lbl { color: var(--muted); font-size: 11px; font-weight: 500;
+  text-align: left; width: 1%; }
+.pd-log td { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.pd-log td.opp { text-align: left; color: var(--muted); }
+.pd-log tbody tr + tr th, .pd-log tbody tr + tr td { border-top: 1px solid var(--border); }
+.pd-log .pts { color: var(--text); font-weight: 600; border-left: 1px solid var(--border); }
+
+/* A week he was out is stated, not dashed: four dashes and an empty Pts cell
+   read as data that failed to load, where "Out" is the fact. */
+.pd-log tr.out th.lbl { color: var(--border); }
+.pd-log td.out-note { text-align: left; color: var(--border); font-style: italic; }

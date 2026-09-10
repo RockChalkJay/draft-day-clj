@@ -271,9 +271,12 @@
   ;; would ride the hottest path in the app for data the engine never reads.
   (routes/reset-universe!)
   (let [with-history (update fixture :players
-                             (fn [ps] (mapv #(assoc % :nflverse/history
+                             (fn [ps] (mapv #(assoc %
+                                                    :nflverse/history
                                                     [{:season 2024 :stats {:rush_yd 1200.0 :rush_td 9.0}}
-                                                     {:season 2025 :stats {:rush_yd 1400.0 :rush_td 11.0}}])
+                                                     {:season 2025 :stats {:rush_yd 1400.0 :rush_td 11.0}}]
+                                                    :nflverse/game-log
+                                                    [{:week 1 :opponent "SEA" :stats {:rush_yd 80.0}}])
                                             ps)))]
     (with-redefs [pipeline/load-universe (fn [& _] with-history)]
       (let [ls   {:teams (vec (for [i (range 12)]
@@ -289,7 +292,10 @@
         (is (= 200 (:status resp)))
         (is (= 40 (count (:players b))) "every row is still there")
         (is (every? #(nil? (:nflverse/history %)) (:players b)))
+        (is (every? #(nil? (:nflverse/game-log %)) (:players b))
+            "and the week-by-week log, which is larger than the seasons are")
         (is (not (re-find #"history" (:body (routes/rankings-handler (req))))))
+        (is (not (re-find #"game-log" (:body (routes/rankings-handler (req))))))
         (is (some #(pos? (:worth %)) (:players b))
             "and the board is still valued")))))
 
@@ -299,7 +305,8 @@
   (is (= [{:player-id "rb0" :worth 40} {:player-id "rb1" :worth 30}]
          (routes/without-history
           [{:player-id "rb0" :worth 40
-            :nflverse/history [{:season 2025 :stats {:rush_yd 1.0}}]}
+            :nflverse/history [{:season 2025 :stats {:rush_yd 1.0}}]
+            :nflverse/game-log [{:week 1 :stats {:rush_yd 1.0}}]}
            {:player-id "rb1" :worth 30}]))))
 
 ;; ---- waivers ----
@@ -319,7 +326,10 @@
       ;; correctly returns nil for a player it has no evidence about.
       (assoc-in [:players 0 :sleeper/years-exp] 3)
       (assoc-in [:players 0 :nflverse/games-seasons] {2023 17 2024 17 2025 17})
-      (assoc-in [:players 0 :nflverse/games-by-season] {2023 17 2024 10 2025 17})))
+      (assoc-in [:players 0 :nflverse/games-by-season] {2023 17 2024 10 2025 17})
+      ;; A week-by-week log, so the strip below has something to strip.
+      (assoc-in [:players 0 :nflverse/game-log]
+                [{:week 1 :opponent "SEA" :stats {:rush_yd 90.0}}])))
 
 (def ^:private synced
   {:teams [{:roster-id 1 :name "Mine"   :player-ids ["rb2" "rb3"]
@@ -330,9 +340,18 @@
    :roster-size 2
    :playoff-week-start 15})
 
+;; A week with no projections and no kickoffs, shaped like the real envelope so
+;; `assoc-weekly` and `assoc-kickoffs` still run. Stubbed because `load-weekly`
+;; is the one call in these tests that reaches the wire — see `no-weekly`.
+(defn- stub-weekly [season week]
+  {:schema-version pipeline/weekly-schema-version
+   :season season :week week :fetched-at "2026-09-01T00:00:00Z"
+   :lines {} :kickoffs {}})
+
 (defn- waivers [body]
   (routes/reset-universe!)
-  (with-redefs [pipeline/load-universe (fn [& _] in-season)]
+  (with-redefs [pipeline/load-universe (fn [& _] in-season)
+                pipeline/load-weekly   stub-weekly]
     (routes/waivers-handler {:body (input-stream (json/write-value-as-string body))})))
 
 (deftest waivers-endpoint-ranks-only-the-free-agents
@@ -369,7 +388,12 @@
     (is (every? #(number? (:ros-points %)) (:players b)) "the score survives")
     (is (not-any? #(contains? % :ros/stats) (:players b)))
     (is (not-any? #(contains? % :ros/games-remaining) (:players b)))
-    (is (not-any? #(contains? % :ros/games-played) (:players b)))))
+    (is (not-any? #(contains? % :ros/games-played) (:players b)))
+    ;; The log is bigger than any of them and rides the same path — it belongs
+    ;; on `/api/players`, which is fetched once, not on this one.
+    (is (not-any? #(contains? % :nflverse/game-log) (:players b)))
+    (is (not-any? #(contains? % :nflverse/game-log)
+                  (:my-roster-players b)))))
 
 (deftest the-strip-keeps-the-nflverse-half-the-board-renders
   ;; Tested on the function rather than through the endpoint, because the
@@ -441,7 +465,8 @@
   ;; through-week 0 and no realized line anywhere: rest-of-season is the whole
   ;; season, so this is the draft board asked a different question.
   (routes/reset-universe!)
-  (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :through-week 0))]
+  (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :through-week 0))
+                pipeline/load-weekly  stub-weekly]
     (let [b (parse (routes/waivers-handler
                     {:body (input-stream (json/write-value-as-string
                                           {:scoring "ppr" :num-teams 12}))}))]

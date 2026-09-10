@@ -64,8 +64,12 @@
   7: kickers carry a :fgm again, summed from the distance buckets Sleeper does
   publish (see `sleeper/scored-stats`). A schema-6 file scores every kicker on
   extra points alone — roughly a third of his value — so it must not be read
-  back."
-  7)
+  back.
+
+  8: :nflverse/game-log was added, the weekly rows uncollapsed. A schema-7 file
+  carries none, which the modal cannot tell from a player who has not played —
+  and in November that reads as a season nobody appeared in."
+  8)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
