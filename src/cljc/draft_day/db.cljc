@@ -689,7 +689,9 @@
    :ros       :ros-points
    :week      :week-points
    :week-rank :week-pos-rank
-   :opp       :week/opponent
+   ;; Both sources, as `waivers/matchup-source` resolves them — sorting on the
+   ;; narrower one clumps every ESPN-answered row at one end of its own column.
+   :opp       #(or (:week/opponent %) (:kickoff/opponent %))
    :upgrade   :upgrade
    :lineup    :lineup-upgrade
    :bid       :bid

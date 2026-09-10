@@ -561,3 +561,15 @@
   ;; everyone, so the key falls straight through to the old one.
   (let [ps [{:player-name "b" :upgrade 1.0} {:player-name "a" :upgrade 9.0}]]
     (is (= ["a" "b"] (mapv :player-name (sort-by db/waiver-rank-key ps))))))
+
+;; ---- the Opp column sorts on what it shows ----
+;; Sorting on `:week/opponent` alone clumped every ESPN-answered row at one end
+;; of the column while the cell visibly showed an opponent.
+
+(deftest opp-sorts-on-whichever-source-answered
+  (let [opp (get db/waiver-sort-accessors :opp)]
+    (is (= "NE" (opp {:week/opponent "NE"})))
+    (is (= "SEA" (opp {:kickoff/opponent "SEA"})) "ESPN answers where Sleeper does not")
+    (is (= "NE" (opp {:week/opponent "NE" :kickoff/opponent "SEA"}))
+        "Sleeper wins, as it does in the cell")
+    (is (nil? (opp {})) "a bye still sorts as nothing")))

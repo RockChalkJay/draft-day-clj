@@ -9,7 +9,12 @@
   `stats` array carries one entry per (season, source, split), and the season
   projection is the one at `statSourceId 1, statSplitTypeId 0`. Reading it costs
   no extra request, which is the whole reason projected targets are affordable:
-  Sleeper, the app's projection backbone, publishes no target column at all."
+  Sleeper, the app's projection backbone, publishes no target column at all.
+
+  Its in-season sibling is `espn-schedule`, which reads this week's kickoff
+  times off ESPN's public scoreboard. Same vendor, nothing else in common — a
+  40KB body on a different endpoint and an hourly cadence, so it uses http-kit
+  like everything else and does not want the JDK client this namespace needs."
   (:require [draft-day.ingestion.match :as match]
             [draft-day.json :refer [mapper]]
             [jsonista.core :as json])

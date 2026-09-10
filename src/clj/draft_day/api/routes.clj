@@ -313,7 +313,10 @@
                            ;; `waiver-board-inputs`: that runs before the weekly
                            ;; line is joined, so there would be nothing to rank.
                            (pos-rank/with-pos-rank :week-points :week-pos-rank)
-                           (waiver/with-form-points scoring*))
+                           (waiver/with-form-points scoring*)
+                           ;; Independent of the weekly line — see
+                           ;; `pipeline/assoc-kickoffs`.
+                           (pipeline/assoc-kickoffs (:kickoffs weekly)))
               out      (waiver/waiver-board board ctx)]
           (json-response 200 (assoc out
                                     :players      (without-projection-internals (:players out))

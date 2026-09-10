@@ -23,6 +23,7 @@
             [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
             [draft-day.ingestion.espn :as espn]
+            [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.match :as match]
             [draft-day.ingestion.merge :as merge]
@@ -461,7 +462,10 @@
 ;; week and is retried on the next request — /api/waivers is user-triggered, not
 ;; polled, so that is self-limiting.
 
-(def weekly-schema-version 1)
+(def weekly-schema-version
+  "2: `:kickoffs` was added. A schema-1 file carries none, which is
+  indistinguishable from a scoreboard that failed — see `weekly-answers?`."
+  2)
 
 (def default-weekly-cache-path
   (str "data/weekly_projections.v" weekly-schema-version ".transit"))
@@ -486,12 +490,18 @@
          (log/warn e "weekly cache unreadable; refetching")
          nil)))
 
-(defn live-weekly [season week path]
+(defn live-weekly
+  "One week's projection lines and the kickoff times beside them, written as one
+  envelope so the two cannot disagree about which week they describe."
+  [season week path]
+  ;; The scoreboard degrades on its own, as `sleeper/fetch-weekly` does for the
+  ;; schedule it needs: ESPN being down must not cost a week's prices.
   (let [env {:schema-version weekly-schema-version
              :season         season
              :week           week
              :fetched-at     (now-iso)
-             :lines          (sleeper/fetch-weekly season week)}]
+             :lines          (sleeper/fetch-weekly season week)
+             :kickoffs       (or (espn-schedule/fetch season week) {})}]
     (write-transit! path env)
     env))
 
@@ -532,6 +542,26 @@
        ;; is the *normal* reply — returning the envelope would have the banner
        ;; announce a week that does not exist.
        (when (seq (:lines env)) env)))))
+
+(defn assoc-kickoffs
+  "Join this week's kickoff onto players by TEAM — not by weekly line; see
+  `espn-schedule`. A player on bye, or with no team, gets no keys at all."
+  [players kickoffs]
+  (if (empty? kickoffs)
+    players
+    (mapv (fn [p]
+            (if-let [{:keys [kickoff status detail venue opponent home? neutral?]}
+                     (get kickoffs (:team p))]
+              (assoc p
+                     :kickoff/at       kickoff
+                     :kickoff/status   status
+                     :kickoff/detail   detail
+                     :kickoff/venue    venue
+                     :kickoff/opponent opponent
+                     :kickoff/home?    home?
+                     :kickoff/neutral? neutral?)
+              p))
+          players)))
 
 (defn assoc-weekly
   "Join weekly lines onto players. A player without one keeps no weekly keys at

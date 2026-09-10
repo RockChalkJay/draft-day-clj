@@ -968,3 +968,51 @@
     (is (re-find #"ghost" html) "the unvalued seat keeps its place")
     (is (= 1 (count (re-seq #"pickable" html)))
         "and exactly one of the two seats is selectable")))
+
+;; ---- the matchup has two possible sources ----
+;; Sleeper publishes an opponent only for the players it projects; the ESPN
+;; scoreboard covers every team playing. See `waivers/matchup-source`.
+
+(deftest espn-answers-the-matchup-sleeper-does-not-project
+  (is (= "@ SEA" (waivers/week-matchup
+                  {:kickoff/opponent "SEA" :kickoff/home? false} 3)))
+  (is (= "vs SEA" (waivers/week-matchup
+                   {:kickoff/opponent "SEA" :kickoff/home? true} 3))))
+
+(deftest sleeper-still-wins-where-it-has-an-opinion
+  (is (= "@ NE" (waivers/week-matchup
+                 {:week/opponent "NE" :week/home? false
+                  :kickoff/opponent "SEA" :kickoff/home? true} 3))))
+
+(deftest the-two-sources-are-never-mixed
+  ;; Sleeper has an opponent and an unknown side, so the bare opponent is the
+  ;; honest answer — ESPN's `:home? true` must not supply the missing half.
+  (is (= "NE" (waivers/week-matchup
+               {:week/opponent "NE" :week/home? nil
+                :kickoff/opponent "NE" :kickoff/home? true} 3))))
+
+(deftest a-neutral-site-is-not-a-home-game
+  ;; ESPN writes the Melbourne opener "SF VS LAR" for the same reason.
+  (is (= "vs SF" (waivers/week-matchup
+                  {:kickoff/opponent "SF" :kickoff/home? true :kickoff/neutral? true} 1)))
+  (is (= "vs LAR" (waivers/week-matchup
+                   {:kickoff/opponent "LAR" :kickoff/home? false :kickoff/neutral? true} 1))))
+
+(deftest a-bye-still-outranks-an-absent-scoreboard
+  (is (= "Bye" (waivers/week-matchup {:bye 6} 6)))
+  (is (= "\u2013"   (waivers/week-matchup {} 6))))
+
+;; ---- the Opp tooltip ----
+
+(deftest the-opp-cell-carries-the-kickoff-as-a-tooltip
+  (let [t (waivers/kickoff-title {:kickoff/at "2026-09-13T17:00Z"
+                                  :kickoff/status "STATUS_SCHEDULED"})]
+    (is (re-find #"\d:\d\d" t)))
+  (is (re-find #"Final/OT"
+               (waivers/kickoff-title {:kickoff/at "2026-09-13T17:00Z"
+                                       :kickoff/status "STATUS_FINAL"
+                                       :kickoff/detail "Final/OT"}))))
+
+(deftest no-kickoff-means-no-tooltip
+  (is (nil? (waivers/kickoff-title {})))
+  (is (nil? (waivers/kickoff-title {:kickoff/at nil}))))
