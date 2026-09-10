@@ -34,6 +34,7 @@
   reach it by dispatching `:show-modal` — an event, not a require."
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
+            [draft-day.bio :as bio]
             [draft-day.game-log :as game-log]
             [draft-day.views.board :as board]
             [draft-day.views.compare :as compare]
@@ -123,12 +124,10 @@
       (:bye p)             (conj (str "Bye " (:bye p))))))
 
 (defn head
-  "Name, position, team, and the one line of context a claim is decided on.
-
-  `universe` may be nil while `/api/players` is still in flight — the face is
-  then the bare silhouette and the rest of the head is unaffected, because every
+  "Name, position, team, and the context a claim is decided on. A nil `universe`
+  — `/api/players` still in flight — drops the face and the bio line; every
   other field here is on the board row."
-  [p universe week]
+  [p universe week season]
   [:div.pd-head
    ;; `universe` alone, never the board row as a fallback: a waiver row carries
    ;; no `:ids`, so `headshot-url` would build a URL from the GSIS id and ask the
@@ -137,7 +136,11 @@
    [face universe]
    [:div.pd-who
     [:h2#pd-title.pd-name (:player-name p) [compare/status-chip p]]
-    [:p.pd-meta (str/join " · " (meta-segments p week))]]])
+    [:p.pd-meta (str/join " · " (meta-segments p week))]
+    ;; From the universe, like the face: `:bio` is a static fact and this is the
+    ;; document that carries them. nil for a player nobody knows anything about.
+    (when-let [l (bio/line universe season)]
+      [:p.pd-bio l])]])
 
 ;; A week he did not play is a struck row rather than a line of dashes: four
 ;; dashes and a blank Pts cell read as data that failed to load, where "Out" is
@@ -194,7 +197,7 @@
         [:button.pd-close {:on-click #(rf/dispatch [:close-modal])
                            :title "Close (Esc)"
                            :aria-label "Close"} "✕"]
-        [head p universe week]
+        [head p universe week season]
         [:div.pd-body
          (into [:<>] (keep #(band % p)) metrics/bands)
          ;; The universe half. `stat-table` returns nil on its own for a kicker,
