@@ -301,9 +301,10 @@
                                         (if (= :standard fmt)
                                           (throw (ex-info "scrape blew up" {}))
                                           [{:key "player0_rb" :fantasypros/ecr 1}]))
-                fantasypros/fetch-aav (fn [_] [{:key "player0_rb" :fantasypros/aav 3.0}])
-                ;; `pos-tier-tasks` is a dozen more scrapes; unstubbed they go to
-                ;; the wire and `best-effort` swallows the evidence.
+                fantasypros/fetch-aav (fn [_] [{:key "player0_rb"
+                                                :fantasypros/aav 3.0}])
+                ;; A dozen more scrapes; unstubbed they reach the wire and
+                ;; `best-effort` swallows the evidence.
                 fantasypros/fetch-pos-ecr (fn [_ _] nil)]
     (let [{:keys [sources]} (pipeline/enrich-universe 2026 (universe-fixture 5))]
       (is (false? (:ok? (get sources :espn))))

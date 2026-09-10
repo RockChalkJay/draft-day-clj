@@ -7,15 +7,21 @@
 
   IT EXISTS BECAUSE THE SYMPTOM IS INVISIBLE. `pipeline/best-effort` catches
   everything a fetch throws and returns nil, so a test that hammers FantasyPros
-  passes identically whether the scrape succeeds, fails, or is never made — the
-  only trace is a `WARN ... unavailable, columns omitted` that reads exactly like
-  a deliberately stubbed source. Reading test output cannot find these; this can.
+  passes identically whether the scrape succeeded, failed, or was never made —
+  the only trace is a `WARN ... unavailable` that reads exactly like a
+  deliberately stubbed source. Reading test output cannot find these; this can.
   It found twenty-four on the run that prompted it, twelve of them scrapes of a
   vendor that answers a 429 to exactly this kind of traffic.
 
   Grepping for `http/get` cannot replace it either: what matters is not which
   namespaces *can* fetch but which ones a test actually reaches, through however
   many layers of `best-effort` and `parallel/all`.
+
+  TWO CLIENTS COVER EVERY REACHABLE FETCH. http-kit is Sleeper, FantasyPros,
+  ESPN's scoreboard and both league providers; `nflverse/http-get-string` is the
+  JDK client the two nflverse namespaces share. ESPN's 37MB auction endpoint has
+  a private client of its own and is reached only through `espn/fetch`, which
+  every test that gets near it already stubs.
 
   Usage:
     lein run -m draft-day.tools.offline-check
@@ -62,10 +68,7 @@
 (defn -main [& _]
   (let [nss (test-namespaces)]
     (run! require nss)
-    ;; http-kit covers Sleeper, FantasyPros, ESPN's scoreboard and both league
-    ;; providers; `nflverse/http-get-string` is the JDK client the two nflverse
-    ;; namespaces share. ESPN's 37MB auction fetch has its own private client and
-    ;; is reached only through `espn/fetch`, which every caller here stubs.
+    ;; Two clients cover every reachable fetch — see the ns docstring.
     (with-redefs [http/get                 boom
                   nflverse/http-get-string boom]
       (let [vars (unit-vars nss)

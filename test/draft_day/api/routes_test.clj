@@ -466,7 +466,7 @@
   ;; season, so this is the draft board asked a different question.
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :through-week 0))
-                pipeline/load-weekly   stub-weekly]
+                pipeline/load-weekly  stub-weekly]
     (let [b (parse (routes/waivers-handler
                     {:body (input-stream (json/write-value-as-string
                                           {:scoring "ppr" :num-teams 12}))}))]
