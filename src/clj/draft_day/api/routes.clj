@@ -14,9 +14,12 @@
             [draft-day.ingestion.league-import.sleeper]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-sync.sleeper]
+            [draft-day.ingestion.matchups :as matchups]
+            [draft-day.ingestion.matchups.sleeper]
             [draft-day.rankings.engine :as engine]
             [draft-day.rankings.model :as model]
             [draft-day.rankings.injury :as injury]
+            [draft-day.rankings.matchup :as matchup]
             [draft-day.rankings.pos-rank :as pos-rank]
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.waiver :as waiver]
@@ -247,10 +250,15 @@
 
   `:nflverse/recent` joins them now that `waiver/form-points` scores it here.
   Its *sibling* `:nflverse/season-to-date` must not: GP, Tgt and Car all read
-  it, which is why the two are named separately rather than the prefix dropped."
+  it, which is why the two are named separately rather than the prefix dropped.
+
+  `:kickoff/started?` goes for the same reason one step further on: it is not
+  merely unread here, it is a function of `:kickoff/status`, which ships beside
+  it and is what `waivers/kickoff-title` actually renders. `assoc-kickoffs` is
+  shared with the matchup board, which is the one that reads the boolean."
   [players]
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
-                 :nflverse/recent)
+                 :nflverse/recent :kickoff/started?)
         players))
 
 (defn waivers-handler
@@ -338,6 +346,73 @@
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
+(defn matchup-slots
+  "The seats this league actually plays, for the lineup and the optimizer.
+
+  The synced league's own `:roster-positions` wins, because it is the only thing
+  that knows this league's shape *and its order* — Sleeper's `starters` array is
+  positional against that list. The draft config is the fallback and is only a
+  guess: a manager who synced without importing has never set it to match the
+  league he is looking at, and it cannot express a SUPER_FLEX seat at all.
+
+  The fallback also covers a persisted sync written before `:roster-positions`
+  existed, which costs a stale layout rather than an empty board — and resolves
+  itself on his next re-sync."
+  [league roster]
+  (or (some-> (seq (:roster-positions league)) vec db/scoring-slots)
+      (some-> roster db/starting-slots)))
+
+(defn matchup-handler
+  "This week's head-to-head, every roster in the league valued.
+
+  Stateless on the same terms as the other two boards — the browser owns the
+  synced league and re-POSTs it — but unlike them it takes a *live* fetch on
+  every request. A scoreboard changes while you are looking at it, which is the
+  whole reason `ingestion.matchups` is a separate pair from the sync.
+
+  The week is the provider's, never `(inc through-week)`. See
+  `ingestion.matchups` for why that distinction is the difference between a
+  stale price and the wrong game."
+  [req]
+  (try
+    (let [{:keys [provider league-id scoring league roster my-roster-id]}
+          (read-json-body req)
+          scoring* (resolve-scoring scoring)]
+      (if-not (scoring/scores-anything? scoring*)
+        ;; Same guard and the same reason as the other two boards: an all-zero
+        ;; config projects every player 0.0, and a lineup nobody is projected to
+        ;; win is a lie rather than a matchup.
+        (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
+        (let [{:keys [ok week matchups scores status error]}
+              (matchups/fetch-matchups {:provider provider :league-id league-id})]
+          (if-not ok
+            (json-response (or status 502) {:error error})
+            (let [{:keys [players season]} (universe false)
+                  season* (or season (sleeper/current-season))
+                  weekly  (pipeline/load-weekly season* week)
+                  ;; Deliberately leaner than the waiver board's pipeline: no
+                  ;; VBD, no rest-of-season blend and no vendor columns, because
+                  ;; a matchup asks one week's question and every one of those
+                  ;; would be payload nobody reads.
+                  board   (-> players
+                              without-history
+                              (pipeline/assoc-weekly (:lines weekly))
+                              (waiver/with-week-points scoring*)
+                              (pipeline/assoc-kickoffs (:kickoffs weekly)))
+                  out     (matchup/matchup-board
+                           board
+                           {:league   league
+                            :matchups matchups
+                            :scores   scores
+                            :provider provider
+                            :slots    (matchup-slots league roster)})]
+              (json-response 200 (assoc out
+                                        :week            week
+                                        :week-fetched-at (:fetched-at weekly)
+                                        :my-roster-id    my-roster-id)))))))
+    (catch Exception e
+      (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
+
 (def app
   (ring/ring-handler
    (ring/router
@@ -346,6 +421,7 @@
      ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
      ["/api/waivers"  {:post waivers-handler}]
+     ["/api/matchup"  {:post matchup-handler}]
      ["/api/league/import"   {:post league-import-handler}]
      ["/api/league/sync"     {:post league-sync-handler}]
      ["/api/league/user"     {:get  league-user-handler}]]
