@@ -829,6 +829,21 @@
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}
      :waiver-status nil         ; what the sync/refresh is doing, or why it failed
+     ;; The matchup board. No column catalog and so nothing persisted: it is a
+     ;; fixed two-sided layout like the roster panel, not a board of toggleable
+     ;; columns. `:matchup-id` nil means "the one I am in", resolved against
+     ;; `:my-roster-id` rather than stored, so it survives a league switch.
+     :matchup      nil          ; last /api/matchup reply
+     :matchup-seq  0            ; newest /api/matchup request; older replies are dropped
+     :matchup-status nil
+     ;; Which game is on screen, named by ONE OF ITS ROSTER IDS rather than by
+     ;; its matchup id. A roster with no opponent has a nil matchup id, which
+     ;; collides exactly with "nothing picked" — so that model made a byed
+     ;; manager's own week the one game he could not select. nil = mine.
+     :matchup-pick nil
+     ;; Which basis the optimal lineup is measured on. Projected is the default
+     ;; because it is the only one that answers a question you can still act on.
+     :optimal-basis :projected
      ;; At most two player-ids, in the order they were picked. Transient like
      ;; `:nominated-id` and deliberately outside `persist-keys`: a comparison is
      ;; a question being asked right now, not a layout worth restoring.

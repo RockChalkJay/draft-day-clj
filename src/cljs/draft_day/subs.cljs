@@ -9,7 +9,8 @@
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
            :watchlist :import-report :universe
            :accounts :leagues :waivers :waiver-sort :waiver-status
-           :waiver-columns :compare]]
+           :waiver-columns :compare
+           :matchup :matchup-status :matchup-pick :optimal-basis]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
@@ -442,3 +443,64 @@
   :<- [:compare]
   (fn [[by-id ids] _]
     (vec (keep #(get by-id %) ids))))
+
+;; ---- matchup ----
+
+(rf/reg-sub :matchup-teams
+  ;; `{roster-id team}`. The server ships a vector, since an integer map key
+  ;; round-trips through JSON as a string — see `rankings.matchup/matchup-board`.
+  :<- [:matchup]
+  (fn [m _] (into {} (map (juxt :roster-id identity)) (:teams m))))
+
+
+;; Every game this week as `{:matchup-id :roster-ids :names :mine?}`, in the
+;; provider's own order, for the picker. A roster with no opponent keeps its
+;; entry with one id — see `ingestion.matchups` — and the picker labels it as
+;; such rather than hiding a manager's own week from him.
+;;
+;; A comment rather than a docstring, and that is not a style choice:
+;; `rf/reg-sub` takes no docstring, so a string in that position is read as an
+;; input spec and registers a handler that cannot be derefed.
+(rf/reg-sub :matchup-games
+  :<- [:matchup]
+  :<- [:matchup-teams]
+  (fn [[m by-id] _]
+    (let [mine (:my-roster-id m)]
+      (mapv (fn [{:keys [roster-ids] :as g}]
+              (assoc g
+                     :names (mapv #(:name (get by-id %) (str "Roster " %)) roster-ids)
+                     :mine? (boolean (some #{mine} roster-ids))))
+            (:matchups m)))))
+
+
+;; The game on screen: the one picked, else mine, else the first. Falling
+;; through rather than defaulting in db, so `:matchup-pick` can stay nil across
+;; a league switch and still resolve to *that* league's own game.
+;;
+;; The pick names a ROSTER id, not a matchup id, and the guard on nil is what
+;; that is for: a roster with no opponent carries a nil matchup id, so matching
+;; on it made "nothing picked" select the bye — taking a byed manager's own week
+;; off his screen and leaving him unable to pick it back.
+(rf/reg-sub :selected-matchup
+  :<- [:matchup-games]
+  :<- [:matchup-pick]
+  (fn [[games pick] _]
+    (or (when pick (first (filter #(some #{pick} (:roster-ids %)) games)))
+        (first (filter :mine? games))
+        (first games))))
+
+
+;; `[left right]` for the selected game, with the manager's own team on the
+;; left. A nil right side is kept rather than collapsed: a roster with no
+;; opponent has one side, and the view says so rather than drawing half a table
+;; with no explanation.
+(rf/reg-sub :matchup-sides
+  :<- [:selected-matchup]
+  :<- [:matchup-teams]
+  :<- [:matchup]
+  (fn [[game by-id m] _]
+    (when game
+      (let [mine  (:my-roster-id m)
+            ids   (:roster-ids game)
+            ids   (if (= mine (second ids)) (reverse ids) ids)]
+        [(get by-id (first ids)) (get by-id (second ids))]))))
