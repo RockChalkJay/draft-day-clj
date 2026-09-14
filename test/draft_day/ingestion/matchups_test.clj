@@ -76,6 +76,19 @@
   (is (= 96.1 (get-in (normalized) [:scores 1 :official])))
   (is (= 104.4 (get-in (normalized) [:scores 2 :official]))))
 
+(deftest a-commissioners-correction-is-the-score-of-record
+  ;; `custom_points` is null on every ordinary matchup and set when somebody
+  ;; rules on a scoring dispute or applies a stat correction. Reading `points`
+  ;; alone would put the board in visible disagreement with Sleeper on exactly
+  ;; the week a manager goes looking for an explanation.
+  (let [corrected (assoc-in raw [0 :custom_points] 101.5)]
+    (is (= 101.5 (get-in (matchups/normalize-matchups :sleeper corrected)
+                         [:scores 1 :official]))))
+  (testing "and an uncorrected score still reads off :points"
+    (is (= 96.1 (get-in (matchups/normalize-matchups
+                         :sleeper (assoc-in raw [0 :custom_points] nil))
+                        [:scores 1 :official])))))
+
 (deftest points-cover-the-whole-roster-not-only-the-starters
   ;; The optimal-lineup half of the board exists to say what a bench player
   ;; would have scored, and it cannot say it from the starters alone.
@@ -124,6 +137,17 @@
       (is (not ok))
       (is (= 404 status))
       (is (= "not found" error) "the cause's message, not the wrapper's"))))
+
+(deftest the-envelopes-own-keys-are-not-a-providers-to-set
+  ;; `:ok` and `:week` are the dispatcher's guarantee. A provider contracted for
+  ;; `{:matchups :scores}` that returns a stray one of them must not win.
+  (with-redefs [matchups/current-week (fn [_] 3)
+                matchups/fetch-raw-matchups (fn [_ _ _] raw)
+                matchups/normalize-matchups (fn [_ _] {:matchups [] :scores {}
+                                                       :ok false :week 99})]
+    (let [{:keys [ok week]} (matchups/fetch-matchups {:provider :sleeper :league-id "1"})]
+      (is (true? ok))
+      (is (= 3 week)))))
 
 (deftest a-bare-failure-is-a-502
   (with-redefs [matchups/current-week (fn [_] 3)

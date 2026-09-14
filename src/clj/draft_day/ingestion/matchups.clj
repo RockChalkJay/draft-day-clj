@@ -102,9 +102,14 @@
       (let [wk (or week (current-week provider))]
         (if-not wk
           {:ok false :status 404 :error "No current week for this provider"}
-          (merge {:ok true :week wk}
-                 (normalize-matchups provider
-                                     (fetch-raw-matchups provider league-id wk)))))
+          ;; The envelope's own keys go on LAST. `:ok` and `:week` are this
+          ;; dispatcher's guarantee, not a provider's to set, and
+          ;; `normalize-matchups` is contracted for `{:matchups :scores}` —
+          ;; merging it over the top would let the first provider to return a
+          ;; stray `:ok` be the one that discovers this.
+          (merge (normalize-matchups provider
+                                     (fetch-raw-matchups provider league-id wk))
+                 {:ok true :week wk})))
       (catch Exception e
         (let [cause (league-sync/unwrap-execution e)]
           {:ok false

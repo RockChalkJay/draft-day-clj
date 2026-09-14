@@ -655,10 +655,13 @@
   every id falls through to itself — which is why adding ESPN needs
   `[:ids :espn]` in `ingestion.player-ids` before it needs anything here."
   [players provider]
-  (into {}
-        (keep (fn [p] (when-let [s (get-in p [:ids (keyword provider)])]
-                        [s (:player-id p)])))
-        players))
+  ;; Keyed once, not once per player: the universe is ~600 rows and this runs on
+  ;; every in-season request.
+  (let [k (keyword provider)]
+    (into {}
+          (keep (fn [p] (when-let [s (get-in p [:ids k])]
+                          [s (:player-id p)])))
+          players)))
 
 (defn sleeper->player-id
   "`provider->player-id` for the one provider that has shipped."

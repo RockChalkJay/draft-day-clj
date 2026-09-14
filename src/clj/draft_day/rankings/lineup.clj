@@ -38,9 +38,14 @@
   "How many positions a seat accepts; 1 for a dedicated one.
 
   The sort key `best-lineup` fills by, and the reason `db/flex-slots` is a map
-  of sets rather than a list of names."
+  of sets rather than a list of names.
+
+  Branching rather than defaulting to `#{slot}`, because `sort-by` calls its
+  keyfn inside the comparator and `best-lineup` runs once per free agent — a
+  default would allocate a single-element set per comparison, a few hundred
+  times a request, to learn a number that is always 1."
   [slot]
-  (count (get db/flex-slots slot #{slot})))
+  (if-let [accepts (get db/flex-slots slot)] (count accepts) 1))
 
 (defn best-lineup
   "`[[slot player] ...]` for the best legal lineup, in fill order.

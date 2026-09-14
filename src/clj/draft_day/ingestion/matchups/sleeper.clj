@@ -68,10 +68,18 @@
   because they answer different questions: the roster's `starters` is the lineup
   as it stands now, and this is the lineup that actually counted for this week.
   They agree right up until somebody edits his lineup after the games lock,
-  which is precisely when a matchup board must not follow him."
+  which is precisely when a matchup board must not follow him.
+
+  `custom_points` WINS OVER `points` WHERE IT IS SET, and it is null on every
+  ordinary matchup. A commissioner who corrects a score — a stat correction, a
+  ruling on a scoring dispute — writes it there and leaves `points` holding the
+  computed figure. The corrected one is the league's score of record, which is
+  the whole meaning of `:official`; reading `points` alone would put the board
+  in visible disagreement with Sleeper on exactly the weeks a manager goes
+  looking for an explanation."
   [entry]
   [(:roster_id entry)
-   {:official      (:points entry)
+   {:official      (or (:custom_points entry) (:points entry))
     :starter-ids   (vec (:starters entry))
     :player-points (player-points entry)}])
 
