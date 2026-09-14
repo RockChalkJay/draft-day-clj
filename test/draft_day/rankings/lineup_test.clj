@@ -114,3 +114,55 @@
   (doseq [cand [(p "x" "WR" 1.0) (p "y" "QB" 5.0) (p "z" "DST" 0.0)]]
     (is (zero? (lineup/upgrade (pts roster) roster cand bench-drop slots :ros-points))
         (str (:player-id cand)))))
+
+;; ---- seats wider than FLEX ----
+;; `league-import` folds SUPER_FLEX into the bench for the draft board, so these
+;; only bite once a lineup is built from a synced league's own seats.
+
+(deftest slot-breadth-orders-the-seats-narrowest-first
+  (is (= 1 (lineup/slot-breadth "RB")))
+  (is (= 1 (lineup/slot-breadth "K")))
+  (is (= 2 (lineup/slot-breadth "WRRB_FLEX")))
+  (is (= 3 (lineup/slot-breadth "FLEX")))
+  (is (= 4 (lineup/slot-breadth "SUPER_FLEX")))
+  (is (= 1 (lineup/slot-breadth "DL"))
+      "an IDP seat nobody has named accepts exactly its own position"))
+
+(deftest superflex-is-filled-after-flex
+  ;; The generalization, and the case the old hardcoded "FLEX last" got wrong
+  ;; one seat over: SUPER_FLEX accepts everything FLEX does plus a quarterback,
+  ;; so filling it first takes the back FLEX needed.
+  ;;
+  ;; One back and one quarterback, seats SUPER_FLEX and RB. Filled SF-first the
+  ;; SF takes rb1 (180) and the RB seat strands, since no QB can fill it — 180.
+  ;; Narrowest-first seats the back and leaves the QB for SF — 440. The ordering
+  ;; is worth 260 points here, so it is not a tidiness rule.
+  (let [players  [(p "rb1" "RB" 180.0) (p "qb1" "QB" 260.0)]
+        sf-first ["SUPER_FLEX" "RB"]]
+    (is (= 440.0 (lineup/lineup-points players sf-first :ros-points)))
+    (let [seated (into {} (map (juxt first (comp :player-id second)))
+                       (lineup/best-lineup players sf-first :ros-points))]
+      (is (= "rb1" (seated "RB")) "the dedicated seat gets the only man who fits")
+      (is (= "qb1" (seated "SUPER_FLEX"))))))
+
+(deftest flex-is-filled-before-superflex-when-both-are-present
+  ;; Both wide seats at once. FLEX (3 positions) must fill before SUPER_FLEX
+  ;; (4), or SF takes the best back and FLEX is left a worse one.
+  (let [players [(p "rb1" "RB" 180.0) (p "qb1" "QB" 260.0) (p "wr1" "WR" 170.0)]
+        slots   ["SUPER_FLEX" "FLEX"]
+        seated  (into {} (map (juxt first (comp :player-id second)))
+                      (lineup/best-lineup players slots :ros-points))]
+    (is (= "rb1" (seated "FLEX")) "FLEX takes the best it can seat")
+    (is (= "qb1" (seated "SUPER_FLEX")) "SUPER_FLEX takes the quarterback only it can seat")
+    (is (= 440.0 (lineup/lineup-points players slots :ros-points)))))
+
+(deftest a-superflex-league-starts-its-second-quarterback
+  ;; The whole point of the seat, and what folding SUPER_FLEX into the bench
+  ;; hid: a QB2 worth nothing in a one-QB league is a starter here.
+  (let [sf-slots ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "SUPER_FLEX" "K" "DST"]
+        qb2      (p "qb2" "QB" 180.0)]
+    (is (= 140.0 (- (lineup/lineup-points (conj roster qb2) sf-slots :ros-points)
+                    (lineup/lineup-points roster sf-slots :ros-points)))
+        "he takes the SUPER_FLEX seat wr3 (40) held, so 180 - 40")
+    (testing "and the one-QB league it was measured against still wants none of him"
+      (is (zero? (lineup/upgrade (pts roster) roster qb2 bench-drop slots :ros-points))))))
