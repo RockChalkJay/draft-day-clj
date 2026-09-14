@@ -485,7 +485,7 @@
   :<- [:matchup-games]
   :<- [:matchup-pick]
   (fn [[games pick] _]
-    (or (when pick (first (filter #(some #{pick} (:roster-ids %)) games)))
+    (or (when pick (first (filter #(some #{(str pick)} (map str (:roster-ids %))) games)))
         (first (filter :mine? games))
         (first games))))
 

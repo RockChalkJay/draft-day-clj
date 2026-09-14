@@ -154,7 +154,7 @@
   (connect!)
   (rf/dispatch-sync [:matchup-loaded 0 reply])
   (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
-  (rf/dispatch-sync [:set-matchup-pick 3])
+  (rf/dispatch-sync [:set-matchup-pick "3"])
   (is (nil? (last-http))))
 
 ;; ---- which game, and which side ----
@@ -181,6 +181,20 @@
   (let [byed (first (filter #(= [5] (:roster-ids %)) (sub [:matchup-games])))]
     (is (some? byed))
     (is (= ["Byed"] (:names byed)))))
+
+(deftest a-pick-is-matched-without-assuming-an-integer-id
+  ;; Roster ids belong to the provider — the seam underneath exists for that —
+  ;; and the picker hands back a raw string. Parsing it would give NaN for a
+  ;; provider whose ids are not base-10, match no game, and snap silently back.
+  (connect!)
+  (rf/dispatch-sync [:matchup-loaded 0 reply])
+  (rf/dispatch-sync [:set-matchup-pick "3"])
+  (rf/clear-subscription-cache!)
+  (is (= 7 (:matchup-id (sub [:selected-matchup]))) "the string form finds the game")
+  (testing "and so does the number, since the reply's ids are numbers"
+    (rf/dispatch-sync [:set-matchup-pick 5])
+    (rf/clear-subscription-cache!)
+    (is (= [5] (:roster-ids (sub [:selected-matchup]))))))
 
 (deftest a-game-with-no-opponent-can-still-be-picked
   ;; It carries a nil matchup id, which is exactly what "nothing picked" looks

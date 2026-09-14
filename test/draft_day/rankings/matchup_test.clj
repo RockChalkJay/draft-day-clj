@@ -139,7 +139,7 @@
   (let [pending (mapv #(assoc % :kickoff/started? false) board)
         t       (side :board pending)]
     (is (every? nil? (map :actual (:starters t))) "no seat claims a score")
-    (is (zero? (:actual t)) "and the team total has nothing to add")
+    (is (nil? (:actual t)) "and the team total has nothing to report either")
     (testing "while the projection is unaffected — it never needed a kickoff"
       (is (= 106.0 (:projected t))))))
 
@@ -266,11 +266,34 @@
   (is (vector? (:teams (run))))
   (is (= 1 (:roster-id (first (:teams (run)))))))
 
+(deftest a-team-that-has-not-kicked-off-reports-no-score-at-all
+  ;; `total` is 0.0 for an empty sum, which is right for arithmetic and wrong as
+  ;; a score. Before kickoff the header would have announced a bold 0.0 over
+  ;; nine rows each correctly showing a dash — and two teams both at 0.0 read as
+  ;; a tie rather than as a week that has not started.
+  (let [pending (mapv #(assoc % :kickoff/started? false) board)
+        t       (side :board pending)]
+    (is (nil? (:actual t)) "no starter carries a number, so there is no score")
+    (is (nil? (:official t))
+        "and the provider's own 0.0 goes with it — that is the figure most read as a result")
+    (is (= 106.0 (:projected t)) "the projection never needed a kickoff"))
+  (testing "one player having played is enough to report a score"
+    (let [one (mapv #(if (= "qb1" (:player-id %)) % (assoc % :kickoff/started? false)) board)
+          t   (side :board one)]
+      (is (= 20.0 (:actual t))))))
+
+(deftest a-team-with-nothing-projected-reports-no-projection
+  ;; The same rule on the other column, so a board with no weekly lines at all
+  ;; does not claim every team is projected to score nothing.
+  (let [blank (mapv #(dissoc % :week-points) board)]
+    (is (nil? (:projected (side :board blank))))))
+
 (deftest the-teams-record-and-the-providers-own-total-ride-along
   (let [t (side)]
     (is (= 5 (:wins t)))
     (is (= 3 (:losses t)))
-    (is (= 96.0 (:official t)) "the league's score of record, beside the sum")))
+    (is (= 96.0 (:official t))
+        "the league's score of record, beside the sum — the fixture has kicked off")))
 
 (deftest the-pairing-is-passed-through
   (is (= [{:matchup-id 1 :roster-ids [1 2]}] (:matchups (run)))))
@@ -279,5 +302,5 @@
   ;; No synced positions and no roster config — the fallback of the fallback.
   (let [t (side :slots nil)]
     (is (= [] (:starters t)))
-    (is (zero? (:projected t)))
+    (is (nil? (:projected t)) "no seats means no projection, not a projection of nothing")
     (is (= 11 (count (:bench t))) "everybody is on the bench")))

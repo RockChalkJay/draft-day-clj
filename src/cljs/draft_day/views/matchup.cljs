@@ -152,13 +152,16 @@
         selected @(rf/subscribe [:selected-matchup])]
     (when (seq games)
       [:select.mu-pick
-       ;; Valued by a roster id. A game with no opponent has a nil matchup id,
-       ;; so keying the options on that would make it unselectable — see
-       ;; `subs/:selected-matchup`.
+       ;; Valued by a roster id, as a STRING. A game with no opponent has a nil
+       ;; matchup id, so keying the options on that would make it unselectable
+       ;; — see `subs/:selected-matchup`. And the id stays a string rather than
+       ;; being parsed: roster ids belong to the provider, which is the whole
+       ;; point of the seam underneath, and one whose ids are not base-10
+       ;; integers would parse to NaN, match no game, and snap silently back to
+       ;; the default.
        {:value (str (first (:roster-ids selected)))
         :title "Which game to show"
-        :on-change #(rf/dispatch [:set-matchup-pick
-                                  (js/parseInt (.. % -target -value))])}
+        :on-change #(rf/dispatch [:set-matchup-pick (.. % -target -value)])}
        (for [g (sort-by (complement :mine?) games)]
          ^{:key (first (:roster-ids g))}
          [:option {:value (str (first (:roster-ids g)))}
@@ -197,7 +200,12 @@
                     (map-indexed
                      (fn [i _]
                        (let [a (nth ls i nil) b (nth rs i nil)]
-                         (seat-row (or (:slot a) (:slot b) (:position a) (:position b) "–")
+                         ;; Bench rows carry no centre label. Two benches pair by
+                         ;; index because the grid is one row wide, but a slot
+                         ;; label between them would assert a shared seat neither
+                         ;; player is in — and would read it off whichever side
+                         ;; happened to have a player at that index.
+                         (seat-row (when seat? (or (:slot a) (:slot b) "–"))
                                    a b week seat? (str tag i))))
                      (range (max (count ls) (count rs)))))]
     [:<>
