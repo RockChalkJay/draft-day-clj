@@ -7,20 +7,40 @@
   starter projected 260 never plays, and his contribution to points scored is
   zero however far he clears the last man on the bench.
 
-  GREEDY IS OPTIMAL HERE, and the reason is worth stating so nobody replaces
-  this with a matching algorithm. Dedicated seats accept exactly one position;
-  FLEX accepts a superset of three of them; QB, K and DST are disjoint from
-  FLEX. Filling dedicated seats with the best available at each position and
-  FLEX with the best remaining eligible therefore selects the same *set* an
-  optimal assignment would, and only the set determines the total — which of two
-  interchangeable seats a player sits in cannot change the sum. The one thing
-  that does matter is order: FLEX must be filled last, or it takes a running
-  back the RB seat needed.
+  GREEDY IS OPTIMAL FOR NESTED SEATS, and the reason is worth stating so nobody
+  replaces this with a matching algorithm. Dedicated seats accept exactly one
+  position; FLEX accepts a superset of three of them; SUPER_FLEX a superset of
+  FLEX plus the quarterback. Each seat's eligible set therefore contains every
+  narrower seat's, and filling them narrowest-first selects the same *set* an
+  optimal assignment would. Only the set determines the total — which of two
+  interchangeable seats a player sits in cannot change the sum — so that order
+  is the whole of the correctness argument.
+
+  THE ORDER IS READ OFF `db/flex-slots` RATHER THAN HARDCODED. It used to be the
+  single rule `FLEX last`, which is the same thing in a league whose only wide
+  seat is FLEX and silently wrong in a superflex one: SUPER_FLEX filled first
+  takes the back FLEX needed, which is precisely the mistake the rule exists to
+  prevent, one seat over.
+
+  WHERE IT IS ONLY NEAR-OPTIMAL. `WRRB_FLEX` (RB/WR) and `REC_FLEX` (WR/TE)
+  accept the same number of positions and neither contains the other, so a
+  league running both breaks the nesting this argument depends on and greedy can
+  leave a point or two behind. That is a deliberate trade rather than an
+  oversight: the exact answer is a weighted matching, and it buys nothing until
+  a real league runs that pair.
 
   Scored on whatever `score-key` the caller passes, the way
   `replacement/replacement-levels` and `with-vorp` already are, so the same code
   answers the rest-of-season question and a weekly one."
   (:require [draft-day.db :as db]))
+
+(defn slot-breadth
+  "How many positions a seat accepts; 1 for a dedicated one.
+
+  The sort key `best-lineup` fills by, and the reason `db/flex-slots` is a map
+  of sets rather than a list of names."
+  [slot]
+  (count (get db/flex-slots slot #{slot})))
 
 (defn best-lineup
   "`[[slot player] ...]` for the best legal lineup, in fill order.
@@ -32,9 +52,10 @@
   of throwing."
   [players slots score-key]
   (let [scored  (filterv #(number? (score-key %)) players)
-        ;; FLEX last. See the ns docstring — this is the whole correctness
-        ;; argument, not a cosmetic ordering.
-        ordered (concat (remove #{"FLEX"} slots) (filter #{"FLEX"} slots))]
+        ;; Narrowest seat first. See the ns docstring — this is the whole
+        ;; correctness argument, not a cosmetic ordering. `sort-by` is stable,
+        ;; so seats of equal breadth keep the league's own order.
+        ordered (sort-by slot-breadth slots)]
     (first
      (reduce (fn [[acc used] slot]
                (if-let [p (->> scored

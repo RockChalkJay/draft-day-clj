@@ -164,6 +164,26 @@
      :wins            (:wins s)
      :losses          (:losses s)}))
 
+(def position-spellings
+  "Sleeper's seat names in the app's vocabulary.
+
+  Anything absent passes through: FLEX, SUPER_FLEX, WRRB_FLEX, REC_FLEX, IR and
+  TAXI are already spelled the way `db/flex-slots` and `db/held-slots` expect,
+  and an IDP league's DL/LB/DB seats are better carried verbatim than dropped —
+  `db/slot-accepts?` matches those on the position name, which is exactly right."
+  {"DEF" "DST"
+   "BN"  "BENCH"})
+
+(defn normalize-positions
+  "Pure: a league's `roster_positions` in the app's seat vocabulary, IN ORDER.
+
+  The order is the entire point. Sleeper's `starters` array is positional — its
+  nth entry is the player in the nth non-bench seat — so this list is the only
+  thing that can say which seat a given starter occupies. `roster-size` has
+  always been its count; the count was never enough to name a seat."
+  [positions]
+  (mapv #(get position-spellings % %) positions))
+
 (defmethod league-sync/normalize-rosters :sleeper
   [_ {:keys [rosters users league]}]
   (let [waiver (import-sleeper/waiver-settings league)
@@ -174,6 +194,10 @@
      ;; drop turns on this number, and a manager who syncs without importing
      ;; has never told the app what his real league looks like.
      :roster-size (count (:roster_positions league))
+     ;; The seats themselves, not just how many. See `normalize-positions` —
+     ;; without the order, a starter cannot be told which slot he is filling,
+     ;; and the draft config's template is only a guess at this league's shape.
+     :roster-positions (normalize-positions (:roster_positions league))
      ;; Carried so a re-sync is one click. It is the only thing the sync needs
      ;; and the only thing the reply did not have: without it the id lives in a
      ;; component-local atom that empties on reload, and a manager comes back to
