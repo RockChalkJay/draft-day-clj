@@ -767,3 +767,7 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
    read as data that failed to load, where "Out" is the fact. */
 .pd-log tr.out th.lbl { color: var(--border); }
 .pd-log td.out-note { text-align: left; color: var(--border); font-style: italic; }
+
+/* Under the matchup line: who he is, rather than what he is worth. Quieter than
+   `.pd-meta` because it is context for the numbers, not one of them. */
+.pd-bio { color: var(--muted); font-size: 11px; margin: 2px 0 0; opacity: .75; }

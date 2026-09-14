@@ -6,6 +6,17 @@
   e.g. \"00-0034857\"). It is what nflverse and most public football data anchor
   on, so carrying it turns a name-key guess into an exact join.
 
+  `:bio` RIDES ON THE SAME PINNED ROW — draft capital and a birth year — and
+  is a SIBLING of `:ids`, never a member. `:ids` is a crosswalk between vendor
+  id spaces and travels into saved drafts; a birthday is a fact about a person,
+  and merging the two would make a future change of anchor a data question
+  instead of an id question. A team defense gets none: it has no birthday.
+
+  It is attached OUTSIDE `attach-ids`' idempotence guard, which exists to stop
+  an anchor being recomputed from the wrong id space. Bio has no such hazard,
+  and the bundled sample is captured *after* anchoring — so inside the guard,
+  `DRAFTDAY_OFFLINE=1` and every sample-backed test would see no bio at all.
+
   Two things make a naive Sleeper->GSIS join fail badly, and both are
   load-bearing:
 
@@ -339,6 +350,22 @@
       (re-matches #"[A-Z]{2,4}" s) :team
       (re-matches #"\d+" s)        :sleeper)))
 
+(def bio-keys
+  "What a pinned row says about the person rather than about his ids.
+
+  `:draft-pick` is deliberately absent: it is the pick within the round, which
+  nothing renders and which the overall pick already implies."
+  [:birth-year :draft-year :draft-round :draft-overall])
+
+(defn row-bio
+  "One pinned row's `bio-keys`, or nil when it has none of them.
+
+  Not `biography` — that name is taken above by a function over raw vendor rows
+  that returns a map keyed by GSIS id, which is a different shape entirely."
+  [row]
+  (let [m (select-keys row bio-keys)]
+    (when (seq m) m)))
+
 (defn attach-ids
   "Set the canonical `:player-id` and attach the `:ids` crosswalk envelope.
 
@@ -361,13 +388,17 @@
   `:ids` travels into saved drafts, which is what makes a future change of
   anchor a local upgrade over data already held rather than a data-loss event.
 
-  Idempotent: a player already carrying `:ids` has been anchored and is passed
+  Idempotent about the ANCHOR: a player already carrying `:ids` is passed
   through untouched. Without that, re-anchoring a cached universe would look up
   a GSIS id in a Sleeper-keyed index, miss, and overwrite a correct envelope
   with `{:sleeper <the gsis id>}`."
   [universe index]
   (mapv (fn [p]
-          (let [sid (:player-id p)]
+          ;; Read through `:ids` first: an anchored player's `:player-id` is his
+          ;; GSIS id, and the index is keyed by Sleeper's.
+          (let [sid  (or (get-in p [:ids :sleeper]) (:player-id p))
+                row  (get index sid)
+                p    (if-let [b (row-bio row)] (assoc p :bio b) p)]
             (cond
               (:ids p) p
 
@@ -375,7 +406,7 @@
               (assoc p :ids {:sleeper sid :team sid})
 
               :else
-              (let [{:keys [gsis fantasypros espn pfr]} (get index sid)]
+              (let [{:keys [gsis fantasypros espn pfr]} row]
                 (assoc p
                        :player-id (or gsis sid)
                        :ids (cond-> {:sleeper sid}

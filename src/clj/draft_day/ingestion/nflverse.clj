@@ -121,8 +121,7 @@
 (defn num-or-nil
   "Parse a cell as a double, or nil when the source has no value for it."
   [s]
-  (when-not (or (nil? s) (= "" s) (= "NA" s))
-    (try (Double/parseDouble s) (catch Exception _ nil))))
+  (try (Double/parseDouble s) (catch Exception _ nil)))
 
 (defn gsis-id
   "The row's GSIS id, or nil when it has none or is not a position we join.
@@ -132,7 +131,7 @@
   file skips would report games for players the board has no row for."
   [row]
   (when (fantasy-positions (get row "position"))
-    (not-empty (str/trim (str (get row "player_id"))))))
+    (some-> (get row "player_id") str/trim not-empty)))
 
 (defn row->usage
   "Pure: one nflverse row -> the prior-season usage columns, or nil for a row
