@@ -227,6 +227,29 @@
     (is (not-any? #{"ir1"} (map :player-id (get-in (side) [:optimal basis :in])))
         (name basis))))
 
+(deftest an-unvalued-starter-is-not-judged-by-an-optimizer-that-cannot-place-him
+  ;; He carries no position, so `best-lineup` can never seat him — but he does
+  ;; carry an `:actual`. Counted as current and necessarily absent from optimal,
+  ;; he came out in `:out` as a man to bench out of a lineup that was in fact
+  ;; perfect, with the gain understated by his whole line.
+  (let [thin (remove #(= "wr1" (:player-id %)) board)
+        o    (get-in (side :board thin) [:optimal :actual])]
+    (is (not-any? #{"wr1"} (map :player-id (:out o)))
+        "the board cannot place him, so it does not judge him")
+    (is (= [] (:out o)) "and nobody else was wrong either")
+    (is (= ["wr3"] (mapv :player-id (:in o))))
+    (is (= 25.0 (:gain o))
+        "measured over the eight seats it can place, on both sides")))
+
+(deftest an-unvalued-starter-still-shows-his-seat-and-his-score
+  ;; Excluded from the optimizer is not excluded from the board — the row a
+  ;; manager most wants explained is still drawn.
+  (let [thin (remove #(= "wr1" (:player-id %)) board)
+        wr   (nth (:starters (side :board thin)) 3)]
+    (is (:unvalued? wr))
+    (is (= "WR" (:slot wr)))
+    (is (= 18.0 (:actual wr)))))
+
 (deftest an-empty-seat-is-not-a-player-the-optimizer-can-drop
   ;; `:out` is drawn from the current lineup, and an unfilled seat has nobody in
   ;; it to name.

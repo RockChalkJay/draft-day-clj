@@ -169,9 +169,10 @@
         seated  (mapv second best)
         ids     (set (map :player-id seated))
         current (filterv #(number? (score-key %)) current-rows)
-        now     (set (map :player-id current))]
-    {:total (total seated score-key)
-     :gain  (- (total seated score-key) (total current score-key))
+        now     (set (map :player-id current))
+        best'   (total seated score-key)]
+    {:total best'
+     :gain  (- best' (total current score-key))
      :in    (mapv #(brief score-key %) (remove #(now (:player-id %)) seated))
      :out   (mapv #(brief score-key %) (remove #(ids (:player-id %)) current))}))
 
@@ -186,10 +187,21 @@
         ;; Off the seats rather than off `lineup` — see `bench-rows`.
         seated   (set (keep :player-id starters))
         bench    (bench-rows held seated active by-id points)
+        ;; A row with no position cannot be *reasoned about* positionally, so it
+        ;; is out of BOTH halves of the optimizer rather than one. `best-lineup`
+        ;; can never seat it — `db/slot-accepts?` matches a nil position against
+        ;; nothing but BENCH — but it does carry an `:actual`, so counting it as
+        ;; current put a man who had scored well into `:out`, reported as
+        ;; somebody to bench out of a lineup that was in fact perfect, and
+        ;; understated the gain by his whole line. That is not a rare shape: the
+        ;; provider scores everyone on the roster, including players missing
+        ;; from a stale universe cache or the offline sample.
+        placeable (fn [rows] (filterv :position rows))
+        current   (placeable (remove :empty? starters))
         ;; Only players who could legally start. A man on IR seated in an
         ;; optimal lineup would report a gain nobody could have taken.
-        startable (filterv #(contains? active (:player-id %))
-                           (concat (remove :empty? starters) bench))]
+        startable (placeable (filter #(contains? active (:player-id %))
+                                     (concat (remove :empty? starters) bench)))]
     {:roster-id (:roster-id team)
      :name      (:name team)
      :wins      (:wins team)
@@ -202,10 +214,8 @@
      ;; `:actual` beside it is the same figure summed, and the two are what the
      ;; optimal gain is measured between — see `optimal`.
      :official  (:official score)
-     :optimal   {:projected (optimal startable slots :week-points
-                                     (remove :empty? starters))
-                 :actual    (optimal startable slots :actual
-                                     (remove :empty? starters))}}))
+     :optimal   {:projected (optimal startable slots :week-points current)
+                 :actual    (optimal startable slots :actual current)}}))
 
 ;; ---- the league ----
 
