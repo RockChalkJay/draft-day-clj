@@ -250,10 +250,15 @@
 
   `:nflverse/recent` joins them now that `waiver/form-points` scores it here.
   Its *sibling* `:nflverse/season-to-date` must not: GP, Tgt and Car all read
-  it, which is why the two are named separately rather than the prefix dropped."
+  it, which is why the two are named separately rather than the prefix dropped.
+
+  `:kickoff/started?` goes for the same reason one step further on: it is not
+  merely unread here, it is a function of `:kickoff/status`, which ships beside
+  it and is what `waivers/kickoff-title` actually renders. `assoc-kickoffs` is
+  shared with the matchup board, which is the one that reads the boolean."
   [players]
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
-                 :nflverse/recent)
+                 :nflverse/recent :kickoff/started?)
         players))
 
 (defn waivers-handler
