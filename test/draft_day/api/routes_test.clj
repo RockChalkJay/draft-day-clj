@@ -554,11 +554,8 @@
         (is (= 400 (:status resp)))
         (is (false? @called) "nothing reaches the provider")))))
 
-;; ---- matchup ----
-;; The synced league above holds board-spaced ids already, which is fine here:
-;; the crosswalk itself is pinned in `rankings.matchup-test`, whose fixture
-;; deliberately makes the two id spaces disagree. What these cover is the
-;; handler — which week it asks for, what it ships, and how it fails.
+;; The crosswalk itself is pinned in `rankings.matchup-test`, whose fixture
+;; makes the two id spaces disagree; these cover the handler.
 
 (def ^:private raw-matchups
   [{:matchup_id 1 :roster_id 1 :points 31.0
@@ -581,17 +578,15 @@
    :league synced :my-roster-id 1 :roster {:rb 2 :bench 3}})
 
 (deftest matchup-endpoint-values-every-team-not-just-mine
-  ;; Twelve rosters is a few hundred rows against the waiver board's six
-  ;; hundred, so switching matchups costs no round trip.
+  ;; So switching matchups costs no round trip.
   (let [b (parse (matchup matchup-req))]
     (is (= 2 (count (:teams b))))
     (is (= [1 2] (mapv :roster-id (:teams b))))
     (is (= [{:matchup-id 1 :roster-ids [1 2]}] (:matchups b)))))
 
 (deftest matchup-endpoint-takes-the-week-from-the-provider
-  ;; Not `(inc through-week)`. The fixture's `:through-week` is 8, so a handler
-  ;; deriving the week would ask for 9 — here the provider says 12, and the
-  ;; board has to follow it or it shows the wrong game every Sunday afternoon.
+  ;; The fixture's `:through-week` is 8, so a handler deriving the week would
+  ;; ask for 9; the provider says 12 and the board has to follow it.
   (let [b (parse (matchup matchup-req :week 12))]
     (is (= 12 (:week b)))
     (is (= 8 (:through-week in-season)) "which is deliberately not what was used")))
@@ -604,8 +599,7 @@
     (is (= ["RB" "FLEX"] (mapv :slot (:starters mine))))))
 
 (deftest matchup-endpoint-falls-back-to-the-roster-config
-  ;; A sync written before `:roster-positions` existed. It costs a slot template
-  ;; that is only a guess at this league's shape, not an empty board.
+  ;; A sync written before `:roster-positions` existed.
   (let [mine (first (:teams (parse (matchup matchup-req))))]
     (is (= ["RB" "RB"] (mapv :slot (:starters mine)))
         "from {:rb 2 :bench 3}, with the bench dropped")))
@@ -618,16 +612,12 @@
     (is (= 31.0 (:official mine)) "and the provider's own total beside it")))
 
 (deftest matchup-endpoint-refuses-a-board-it-cannot-score
-  ;; Same guard and the same reason as the other two boards: an all-zero config
-  ;; projects every player 0.0, and a lineup nobody is projected to win is a lie
-  ;; rather than a matchup.
   (let [resp (matchup (assoc matchup-req :scoring (zipmap scoring/stat-keys (repeat 0))))]
     (is (= 400 (:status resp)))
     (is (re-find #"non-zero" (:error (parse resp))))))
 
 (deftest matchup-endpoint-passes-a-providers-status-through
-  ;; A 404 from the provider is the answer, not a missing column, and flattening
-  ;; it to 502 would report an unknown league as an upstream outage.
+  ;; Flattening it to 502 would report an unknown league as an outage.
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe      (fn [& _] in-season)
                 matchups/current-week       (fn [_] 9)
@@ -638,9 +628,7 @@
       (is (= "no league" (:error (parse resp)))))))
 
 (deftest matchup-endpoint-does-not-ship-the-history-it-loaded
-  ;; `without-history` on the same hot path and for the same reason as the other
-  ;; boards — the game log is a full stat map per player and nothing here reads
-  ;; it.
+  ;; A full stat map per player, and nothing here reads it.
   (let [rows (mapcat (juxt :starters :bench) (:teams (parse (matchup matchup-req))))]
     (is (not-any? #(contains? % :nflverse/game-log) (apply concat rows)))
     (is (not-any? #(contains? % :week/stats) (apply concat rows)))))
