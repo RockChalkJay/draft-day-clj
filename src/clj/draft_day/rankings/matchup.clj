@@ -115,9 +115,21 @@
   "Sum of `k` over rows, skipping the ones that carry no number.
 
   A seat nobody has projected and a seat projected at nothing are different
-  claims, and only one of them belongs in a total."
+  claims, and only one of them belongs in a total. Always a number, including
+  0.0 for an empty sum — the optimal arithmetic subtracts these and cannot take
+  a nil. `reported` is what a score goes through."
   [rows k]
   (reduce (fn [t r] (if (number? (k r)) (+ t (double (k r))) t)) 0.0 rows))
+
+(defn reported
+  "A total as a score to put on screen: nil when nothing contributed to it.
+
+  `total` is 0.0 for an empty sum, right for arithmetic and wrong as a score:
+  before kickoff a team would announce a bold 0.0 over nine rows each correctly
+  showing a dash, and two such teams would read as a tie."
+  [rows k]
+  (when (some #(number? (k %)) rows)
+    (total rows k)))
 
 (defn brief
   "A player as the swap lists name him — enough to recognise him, no more."
@@ -168,11 +180,11 @@
      :losses    (:losses team)
      :starters  starters
      :bench     bench
-     :projected (total starters :week-points)
-     :actual    (total starters :actual)
-     ;; The league's score of record; `:actual` beside it is the same figure
-     ;; summed from the rows.
-     :official  (:official score)
+     :projected (reported starters :week-points)
+     :actual    (reported starters :actual)
+     ;; The league's score of record, nil'd alongside `:actual` when nothing has
+     ;; kicked off: a provider publishes 0.0 for a team that has not played.
+     :official  (when (some #(number? (:actual %)) starters) (:official score))
      :optimal   {:projected (optimal startable slots :week-points current)
                  :actual    (optimal startable slots :actual current)}}))
 

@@ -37,8 +37,13 @@
 
   6: Lineup is on by default, because the board now sorts by it. Without the
   bump an existing manager keeps his stored columns and his rows reorder on a
-  number he cannot see."
-  6)
+  number he cannot see.
+
+  7: a synced league carries `:roster-positions` — its own seats, in order. A
+  stored sync written before that key has no way to name which seat a starter
+  occupies, and the matchup board falls back to the draft config's slot
+  template, which is only a guess at that league's shape."
+  7)
 
 (def drafts-key "draft-day-drafts")
 

@@ -135,7 +135,10 @@
     ;; after that a refresh is a button, not a side effect of navigation.
     (cond-> {:db (assoc db :view v)}
       (and (= v :waivers) (nil? (:waivers db)))
-      (assoc :fx [[:dispatch [:fetch-waivers]]]))))
+      (assoc :fx [[:dispatch [:fetch-waivers]]])
+      ;; Mutually exclusive with the branch above, so this cannot clobber it.
+      (and (= v :matchup) (nil? (:matchup db)))
+      (assoc :fx [[:dispatch [:fetch-matchup]]]))))
 (rf/reg-event-db :set-search    (fn [db [_ q]] (assoc db :search q)))
 (rf/reg-event-db :set-pos-filter (fn [db [_ p]] (assoc db :pos-filter (if (= p (:pos-filter db)) nil p))))
 (rf/reg-event-db :set-nominated (fn [db [_ id]] (assoc db :nominated-id id)))
@@ -415,6 +418,10 @@
                    :config cfg
                    ;; Dropped, while `:ranked` is only stamped — ns docstring.
                    :waivers nil
+                   ;; Who you are playing and what he scored: under another
+                   ;; league's name those are false, not stale.
+                   :matchup nil
+                   :matchup-pick nil
                    ;; Goes with the board it was asked about: a free agent in
                    ;; one league is rostered in another.
                    :compare [])
@@ -429,8 +436,12 @@
     ;; switch that moved one would leave Worth priced under the league you left.
     (if (contains? (:leagues db) k)
       {:db (activate db k)
-       :fx [[:dispatch [:recompute]]
-            [:dispatch [:fetch-waivers]]]}
+       :fx (cond-> [[:dispatch [:recompute]]
+                    [:dispatch [:fetch-waivers]]]
+             ;; Only when it is the tab on screen; every other tab picks it up
+             ;; from `:set-view`'s first-open fetch, and this one is live.
+             (= :matchup (:view db))
+             (conj [:dispatch [:fetch-matchup]]))}
       {})))
 
 (rf/reg-event-fx :sync-league
@@ -579,6 +590,56 @@
     ;; Leave :waivers alone — the previous board is stale but readable, which
     ;; beats blanking it. Same call as :recompute-failed makes.
     (assoc db :waiver-status (str "Waiver board failed: " err))))
+
+
+(defn- matchup-request
+  "The body of an /api/matchup call.
+
+  `:provider` and `:league-id` ride along because unlike the other two boards
+  this one takes a *live* fetch server-side, so it needs to know whose
+  scoreboard to read. Everything else is the same active-league copy the waiver
+  request uses."
+  [db]
+  (let [lg (db/active-league db)]
+    {:provider  (:provider lg)
+     :league-id (:league-id lg)
+     :scoring   (get-in db [:config :scoring])
+     :league    (:sync lg)
+     :roster    (get-in db [:config :roster])
+     :my-roster-id (:my-roster-id lg)}))
+
+(rf/reg-event-fx :fetch-matchup
+  (fn [{:keys [db]} _]
+    (let [lg (db/active-league db)]
+      (if-not (and (:provider lg) (:league-id lg))
+        {:db (assoc db :matchup-status "No league connected — nothing to look up.")}
+        ;; Stamped like the other two boards, and the worst race of the three
+        ;; to lose: a stale scoreboard nothing on screen contradicts.
+        (let [n (inc (:matchup-seq db 0))]
+          {:db   (assoc db :matchup-seq n :matchup-status "Loading this week's matchup…")
+           :http {:method :post :url "/api/matchup"
+                  :body (matchup-request db)
+                  :on-success [:matchup-loaded n]
+                  :on-failure [:matchup-failed]}})))))
+
+(rf/reg-event-db :matchup-loaded
+  (fn [db [_ n resp]]
+    (if-not (= n (:matchup-seq db))
+      db
+      (assoc db :matchup resp :matchup-status nil))))
+
+(rf/reg-event-db :matchup-failed
+  (fn [db [_ err]]
+    ;; The previous board stays, as `:waivers-failed` does: a scoreboard a few
+    ;; minutes old still answers who is winning.
+    (assoc db :matchup-status (str "Matchup failed: " err))))
+
+(rf/reg-event-db :set-optimal-basis
+  (fn [db [_ basis]] (assoc db :optimal-basis basis)))
+
+(rf/reg-event-db :set-matchup-pick
+  ;; No refetch: every team came back in one reply. See `matchup-board`.
+  (fn [db [_ roster-id]] (assoc db :matchup-pick roster-id)))
 
 (rf/reg-event-db :set-waiver-sort
   (fn [db [_ k]]
