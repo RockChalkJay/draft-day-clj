@@ -252,10 +252,8 @@
   Its *sibling* `:nflverse/season-to-date` must not: GP, Tgt and Car all read
   it, which is why the two are named separately rather than the prefix dropped.
 
-  `:kickoff/started?` goes for the same reason one step further on: it is not
-  merely unread here, it is a function of `:kickoff/status`, which ships beside
-  it and is what `waivers/kickoff-title` actually renders. `assoc-kickoffs` is
-  shared with the matchup board, which is the one that reads the boolean."
+  `:kickoff/started?` goes too: it is a function of `:kickoff/status`, which
+  ships beside it, and only the matchup board reads the boolean."
   [players]
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
                  :nflverse/recent :kickoff/started?)
@@ -349,15 +347,10 @@
 (defn matchup-slots
   "The seats this league actually plays, for the lineup and the optimizer.
 
-  The synced league's own `:roster-positions` wins, because it is the only thing
-  that knows this league's shape *and its order* — Sleeper's `starters` array is
-  positional against that list. The draft config is the fallback and is only a
-  guess: a manager who synced without importing has never set it to match the
-  league he is looking at, and it cannot express a SUPER_FLEX seat at all.
-
-  The fallback also covers a persisted sync written before `:roster-positions`
-  existed, which costs a stale layout rather than an empty board — and resolves
-  itself on his next re-sync."
+  The synced league's `:roster-positions` wins: it is the only thing that knows
+  this league's shape *and its order*. The draft config is a fallback for a sync
+  persisted before that key existed, and only a guess — it cannot even express a
+  SUPER_FLEX seat."
   [league roster]
   (or (some-> (seq (:roster-positions league)) vec db/scoring-slots)
       (some-> roster db/starting-slots)))
@@ -365,23 +358,17 @@
 (defn matchup-handler
   "This week's head-to-head, every roster in the league valued.
 
-  Stateless on the same terms as the other two boards — the browser owns the
-  synced league and re-POSTs it — but unlike them it takes a *live* fetch on
-  every request. A scoreboard changes while you are looking at it, which is the
-  whole reason `ingestion.matchups` is a separate pair from the sync.
-
-  The week is the provider's, never `(inc through-week)`. See
-  `ingestion.matchups` for why that distinction is the difference between a
-  stale price and the wrong game."
+  Stateless on the same terms as the other two boards, but unlike them it takes
+  a live fetch every request: a scoreboard changes while you are looking at it.
+  The week is the provider's, never `(inc through-week)`."
   [req]
   (try
     (let [{:keys [provider league-id scoring league roster my-roster-id]}
           (read-json-body req)
           scoring* (resolve-scoring scoring)]
       (if-not (scoring/scores-anything? scoring*)
-        ;; Same guard and the same reason as the other two boards: an all-zero
-        ;; config projects every player 0.0, and a lineup nobody is projected to
-        ;; win is a lie rather than a matchup.
+        ;; The other two boards' guard: an all-zero config projects every
+        ;; player 0.0, and that is a lie rather than a matchup.
         (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
         (let [{:keys [ok week matchups scores status error]}
               (matchups/fetch-matchups {:provider provider :league-id league-id})]
@@ -390,10 +377,9 @@
             (let [{:keys [players season]} (universe false)
                   season* (or season (sleeper/current-season))
                   weekly  (pipeline/load-weekly season* week)
-                  ;; Deliberately leaner than the waiver board's pipeline: no
-                  ;; VBD, no rest-of-season blend and no vendor columns, because
-                  ;; a matchup asks one week's question and every one of those
-                  ;; would be payload nobody reads.
+                  ;; Leaner than the waiver board's pipeline — no VBD, no
+                  ;; rest-of-season blend, no vendor columns: one week's
+                  ;; question does not need them.
                   board   (-> players
                               without-history
                               (pipeline/assoc-weekly (:lines weekly))

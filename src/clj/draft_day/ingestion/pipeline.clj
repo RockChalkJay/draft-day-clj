@@ -563,13 +563,9 @@
               (assoc p
                      :kickoff/at       kickoff
                      :kickoff/status   status
-                     ;; Decided here rather than by a reader, so the ESPN status
-                     ;; vocabulary stays in the namespace that owns it — no
-                     ;; `rankings` ns requires `ingestion`, and the matchup board
-                     ;; only needs the boolean. **Absent means unknown**: a
-                     ;; player with no scoreboard entry gets no key at all, and
-                     ;; `rankings.matchup` shows what the provider said rather
-                     ;; than blanking a week it cannot date.
+                     ;; Decided here so the ESPN status vocabulary stays in the
+                     ;; namespace that owns it. A player with no scoreboard
+                     ;; entry gets no key at all: absent means unknown.
                      :kickoff/started? (not (espn-schedule/not-started? status))
                      :kickoff/detail   detail
                      :kickoff/venue    venue

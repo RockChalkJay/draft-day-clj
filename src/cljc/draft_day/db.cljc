@@ -802,6 +802,17 @@
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}
      :waiver-status nil         ; what the sync/refresh is doing, or why it failed
+     ;; The matchup board. A fixed two-sided layout, not a board of toggleable
+     ;; columns, so it has no column catalog and nothing persisted.
+     :matchup      nil          ; last /api/matchup reply
+     :matchup-seq  0            ; newest /api/matchup request; older replies are dropped
+     :matchup-status nil
+     ;; Which game is on screen, named by one of its roster ids: a nil matchup
+     ;; id collides exactly with "nothing picked". nil means mine.
+     :matchup-pick nil
+     ;; The basis the optimal lineup is measured on. Projected is the default:
+     ;; it is the only one that answers a question you can still act on.
+     :optimal-basis :projected
      ;; At most two player-ids, in the order they were picked. Transient like
      ;; `:nominated-id` and deliberately outside `persist-keys`: a comparison is
      ;; a question being asked right now, not a layout worth restoring.
