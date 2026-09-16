@@ -747,9 +747,16 @@
   reaches `waiver/rostered-index` as a team holding nobody, and every player on
   it silently becomes a free agent. `:active-ids` is repaired alongside it
   because it decides the *other* question — whether a claim needs a drop at
-  all."
+  all.
+
+  A sync with teams but no `:provider` is dropped for the same reason: it names
+  no id space, so `waiver/waiver-board` can resolve nobody and the whole league
+  comes back available. It is the shape a sync stored before providers were
+  named has, and one click re-fetches it."
   [stored]
-  (when (and (map? stored) (sequential? (:teams stored)))
+  (when (and (map? stored)
+             (sequential? (:teams stored))
+             (or (empty? (:teams stored)) (some? (:provider stored))))
     (-> stored
         (update :teams (fn [ts]
                          (into [] (comp (filter map?)

@@ -23,7 +23,6 @@
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.parallel :as parallel]
-            [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.sleeper :as import-sleeper]))
@@ -69,11 +68,11 @@
 ;; `parallel/all` wrapped in an ExecutionException. `league-sync/unwrap-execution`
 ;; peels it where the status is read, so no provider has to remember to.
 (defmethod league-sync/fetch-raw-rosters :sleeper
-  [_ league-id]
+  [_ {:keys [league-id] :as req}]
   (parallel/all
    {:rosters (fn [] (fetch-json league-id "rosters"))
     :users   (fn [] (fetch-json league-id "users"))
-    :league  (fn [] (league-import/fetch-raw-league :sleeper league-id))}))
+    :league  (fn [] (league-import/fetch-raw-league :sleeper req))}))
 
 (defn normalize-user
   "Pure: Sleeper's user document -> `{:user-id :display-name :avatar}`.
@@ -88,9 +87,9 @@
    :avatar       (:avatar raw)})
 
 (defmethod league-sync/find-user :sleeper
-  [_ username]
+  [_ {:keys [credentials]}]
   (normalize-user
-   (get-json (str "user/" username)
+   (get-json (str "user/" (:username credentials))
              {:empty-is-missing? true :not-found-msg "Sleeper user not found"})))
 
 (defn normalize-league-entry
@@ -107,13 +106,12 @@
    :avatar    (:avatar raw)})
 
 (defmethod league-sync/list-leagues :sleeper
-  [_ user-id season]
-  (let [season (or season (sleeper/current-season))]
-    ;; empty-is-missing? false: a manager with no leagues this season gets `[]`
-    ;; with status 200, and that is an answer, not a missing account.
-    (mapv normalize-league-entry
-          (get-json (str "user/" user-id "/leagues/nfl/" season)
-                    {:empty-is-missing? false}))))
+  [_ {:keys [user-id season]}]
+  ;; empty-is-missing? false: a manager with no leagues this season gets `[]`
+  ;; with status 200, and that is an answer, not a missing account.
+  (mapv normalize-league-entry
+        (get-json (str "user/" user-id "/leagues/nfl/" season)
+                  {:empty-is-missing? false})))
 
 (defn team-names
   "Pure: raw users -> `{user-id display-name}`.

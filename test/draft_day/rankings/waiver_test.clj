@@ -7,7 +7,7 @@
   "The Sleeper spelling of a board id.
 
   Deliberately *different* from `:player-id` for every player in this fixture,
-  because a fixture where the two are equal makes `db/sleeper->player-id` an
+  because a fixture where the two are equal makes `db/provider->player-id` an
   identity map — and an identity crosswalk hides every bug in which a caller
   forgets to translate. One did: the availability filter translated its roster
   ids and the drop candidate did not, so no real league resolved a single
@@ -38,6 +38,7 @@
             :active-ids (held "star" "meh") :faab-left 60}
            {:roster-id 2 :name "Rivals" :player-ids (held "bad")
             :active-ids (held "bad") :faab-left 95}]
+   :provider :sleeper
    :waiver {:type :faab :budget 100}})
 
 (defn- run [& {:as over}]
@@ -64,6 +65,7 @@
              {:player-id "SF" :position "DST" :ros-points 50.0}]
         out (waiver/waiver-board
              b {:league {:teams [{:roster-id 1 :name "Mine" :player-ids ["4034" "SF"]}]
+                         :provider :sleeper
                          :waiver {:type :rolling}}
                 :my-roster-id 1 :num-teams 12 :through-week 4 :season-games 17})]
     (is (empty? (:players out)) "both are rostered, under either id spelling")
@@ -190,6 +192,7 @@
                   (or held-extra []))
         lg  {:teams [{:roster-id 1 :name "Mine" :player-ids ids :active-ids ids
                       :starter-ids (or starter-ids []) :faab-left 60}]
+             :provider :sleeper
              :waiver {:type :faab :budget 100}}]
     (:my-roster
      (waiver/waiver-board ordering-board
@@ -575,3 +578,23 @@
   ;; budget — which is the old rule, reached without a special case.
   (let [absent (bids-for [[nil 80.0] [nil 20.0]] 100 2)]
     (is (= [80 20] absent))))
+
+(deftest the-crosswalk-follows-the-leagues-own-provider
+  ;; The board is keyed by one id space and a roster arrives in another, so the
+  ;; only thing that can say which map to use is the league itself. Reading an
+  ;; ESPN roster through the Sleeper map resolves nobody — and "nobody rostered"
+  ;; renders as a full free-agent pool, not as an error.
+  (let [espn-board [{:player-id "star" :player-name "Pstar" :position "RB"
+                     :ros-points 180.0 :ids {:sleeper "s-star" :espn "e-star"}}
+                    {:player-id "good" :player-name "Pgood" :position "WR"
+                     :ros-points 140.0 :ids {:sleeper "s-good" :espn "e-good"}}]
+        espn-league {:provider :espn
+                     :teams [{:roster-id 1 :name "Mine" :player-ids ["e-star"]
+                              :active-ids ["e-star"]}]
+                     :waiver {:type :rolling}}
+        out (waiver/waiver-board espn-board {:league espn-league :my-roster-id 1
+                                             :num-teams 12 :through-week 8
+                                             :season-games 17})]
+    (is (= ["good"] (mapv :player-id (:players out)))
+        "the rostered ESPN id resolved, so he is off the board")
+    (is (= "Mine" (get (:rostered out) "star")))))

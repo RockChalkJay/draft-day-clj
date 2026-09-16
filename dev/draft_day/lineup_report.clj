@@ -21,7 +21,7 @@
             [draft-day.ingestion.league-import.sleeper]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.pipeline :as pipeline]
-            [draft-day.ingestion.sleeper :as sleeper]
+            [draft-day.ingestion.season :as season]
             [draft-day.api.routes :as routes]
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.ros :as ros]
@@ -58,7 +58,7 @@
         ;; a one-shot report has nothing to cache, so it calls the pipeline
         ;; rather than reaching into a private var.
         {:keys [players season through-week]} (pipeline/load-universe {})
-        season*  (or season (sleeper/current-season))
+        season*  (season/resolve-season season)
         week     (inc (or through-week 0))
         weekly   (pipeline/load-weekly season* week)
         ctx      {:league             synced

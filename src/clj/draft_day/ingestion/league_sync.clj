@@ -12,15 +12,29 @@
   Same registration convention as `league-import`: a provider namespace
   defmethods onto both multimethods and this namespace never requires one, so
   adding Yahoo or ESPN is a new file plus a `:require` in `routes`, not a change
-  here.")
+  here. The network multimethods take one request map for the reason
+  `league-import`'s docstring gives — a host that needs a season or a cookie
+  has somewhere to read it from — while the normalizers stay pure and
+  positional.
+
+  Three guarantees are `sync-league`'s rather than a provider's, for
+  `unwrap-execution`'s reason: the season is defaulted, the reply names the
+  provider it came from, and every roster id is a string. That last one is not
+  cosmetic. `db/provider->player-id` builds a string-keyed crosswalk from the
+  id files, and `waiver/held-ids` maps an id it cannot find to itself — so a
+  host that publishes integer ids would resolve none of them, every rostered
+  player would read as a free agent, and no drop would ever be named."
+  (:require [draft-day.ingestion.season :as season]
+            [draft-day.providers :as providers]))
 
 (defmulti fetch-raw-rosters
-  "Network: raw provider-specific roster payload. Throws ex-info with :status on
-  failure, exactly as `league-import/fetch-raw-league` does."
-  (fn [provider _league-id] provider))
+  "Network: raw provider-specific roster payload, from a request map of
+  `{:league-id :season :credentials}`. Throws ex-info with :status on failure,
+  exactly as `league-import/fetch-raw-league` does."
+  (fn [provider _req] provider))
 
 (defmethod fetch-raw-rosters :default
-  [provider _league-id]
+  [provider _req]
   (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
 
 (defmulti normalize-rosters
@@ -53,11 +67,14 @@
   `token` keys — and none of it has any business reaching the browser, so an
   implementation builds the map it returns rather than passing one through.
 
+  Takes `{:credentials}` — whatever the catalog says identifies a manager to
+  this host, which is a username on one and a session cookie on another.
+
   Throws ex-info with `:status` on failure; an unknown name is a 404."
-  (fn [provider _username] provider))
+  (fn [provider _req] provider))
 
 (defmethod find-user :default
-  [provider _username]
+  [provider _req]
   (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
 
 (defmulti list-leagues
@@ -65,13 +82,14 @@
 
   -> `[{:league-id :name :season :num-teams :status :avatar}]`.
 
+  Takes `{:user-id :season :credentials}`.
+
   An empty vector is a real answer — a manager who plays no fantasy football
-  this year — and must not be reported as a missing account. `nil` season means
-  the provider's current one."
-  (fn [provider _user-id _season] provider))
+  this year — and must not be reported as a missing account."
+  (fn [provider _req] provider))
 
 (defmethod list-leagues :default
-  [provider _user-id _season]
+  [provider _req]
   (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
 
 (defn unwrap-execution
@@ -97,43 +115,91 @@
     (or (.getCause e) e)
     e))
 
+(defn string-ids
+  "One team's roster id lists as strings, with nils dropped.
+
+  Nils first: `(str nil)` is `\"\"`, which is a worse id than no id at all —
+  it resolves to nothing and occupies a seat."
+  [team]
+  (reduce (fn [t k] (update t k #(into [] (comp (remove nil?) (map str)) %)))
+          team
+          [:player-ids :active-ids :starter-ids]))
+
+(defn normalized
+  "A provider's normalized league, made to keep this namespace's promises: it
+  names its provider and its roster ids are strings. See the ns docstring."
+  [provider league]
+  ;; Guarded rather than unconditional: `(mapv f nil)` is `[]`, which would turn
+  ;; a provider that answered with no teams at all into a league everybody has
+  ;; left — exactly the shape `db/reconcile-league-sync` drops on arrival.
+  (cond-> (assoc league :provider provider)
+    (sequential? (:teams league)) (update :teams #(mapv string-ids %))))
+
 (defn sync-league
-  "{:provider :league-id} -> {:ok true :league {...}} or {:ok false :status :error}.
+  "{:provider :league-id :season :credentials} -> {:ok true :league {...}}
+  or {:ok false :status :error}.
 
   The same envelope `league-import/import-league` returns, so `routes` handles
   both with one shape."
-  [{:keys [provider league-id]}]
+  [{:keys [provider league-id season credentials]}]
   (let [provider (keyword provider)]
-    (try
-      (let [raw (fetch-raw-rosters provider league-id)]
-        {:ok true :league (normalize-rosters provider raw)})
-      ;; One catch rather than two: the unwrap has to happen before the status is
-      ;; read, and `ex-data` is nil for anything that is not an ex-info, so the
-      ;; 502 default already covers what the second clause used to.
-      (catch Exception e
-        (let [cause (unwrap-execution e)]
-          {:ok false
-           :status (or (:status (ex-data cause)) 502)
-           :error  (ex-message cause)})))))
+    (if-let [bad (providers/league-access-error provider league-id credentials)]
+      {:ok false :status 400 :error (:error bad)}
+      (try
+        (let [raw (fetch-raw-rosters provider {:league-id   league-id
+                                               :season      (season/resolve-season season)
+                                               :credentials credentials})]
+          {:ok true :league (normalized provider (normalize-rosters provider raw))})
+        ;; One catch rather than two: the unwrap has to happen before the status is
+        ;; read, and `ex-data` is nil for anything that is not an ex-info, so the
+        ;; 502 default already covers what the second clause used to.
+        (catch Exception e
+          (let [cause (unwrap-execution e)]
+            {:ok false
+             :status (or (:status (ex-data cause)) 502)
+             :error  (ex-message cause)}))))))
+
+(defn auth-failure?
+  "Did this fail because the host refused the credentials, rather than because
+  it could not answer? The two need opposite treatment in `find-leagues`."
+  [status]
+  (contains? #{400 401 403} status))
 
 (defn find-leagues
-  "{:provider :username :season} -> {:ok true :user {...} :leagues [...]}
+  "{:provider :credentials :season} -> {:ok true :user {...} :leagues [...]}
   or {:ok false :status :error}.
 
   The same envelope `sync-league` and `league-import/import-league` return, so
   `routes` handles all three with one shape.
 
+  A host that identifies the manager but cannot list his leagues answers
+  `{:ok true :leagues [] :leagues-error msg}` rather than failing outright.
+  The two are different facts and the card acts on them differently: a manager
+  with no leagues is told so, while a listing that broke gets the paste-a-
+  league-id row. Reporting the second as the first is how a discovery outage
+  came to tell a manager his account does not exist.
+
   Sequential rather than concurrent, because the leagues call needs the id the
   user call returns — there is nothing to overlap."
-  [{:keys [provider username season]}]
+  [{:keys [provider credentials season]}]
   (let [provider (keyword provider)]
-    (try
-      (let [user (find-user provider username)]
-        {:ok true
-         :user user
-         :leagues (list-leagues provider (:user-id user) season)})
-      (catch Exception e
-        (let [cause (unwrap-execution e)]
-          {:ok false
-           :status (or (:status (ex-data cause)) 502)
-           :error  (ex-message cause)})))))
+    (if-let [bad (providers/credential-errors provider credentials)]
+      {:ok false :status 400 :error (:error bad)}
+      (try
+        (let [user (find-user provider {:credentials credentials})
+              req  {:user-id     (:user-id user)
+                    :season      (season/resolve-season season)
+                    :credentials credentials}]
+          (try
+            {:ok true :user user :leagues (list-leagues provider req)}
+            (catch Exception e
+              (let [cause (unwrap-execution e)]
+                (if (auth-failure? (:status (ex-data cause)))
+                  (throw cause)
+                  {:ok true :user user :leagues []
+                   :leagues-error (ex-message cause)})))))
+        (catch Exception e
+          (let [cause (unwrap-execution e)]
+            {:ok false
+             :status (or (:status (ex-data cause)) 502)
+             :error  (ex-message cause)}))))))

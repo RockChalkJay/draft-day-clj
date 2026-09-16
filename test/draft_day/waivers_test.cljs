@@ -60,7 +60,7 @@
   {:teams [{:roster-id 1 :name "Mine" :player-ids ["a"] :active-ids ["a"] :faab-left 60}
            {:roster-id 2 :name "Them" :player-ids ["b"] :active-ids ["b"] :faab-left 95}]
    :waiver {:type "faab" :budget 100}
-   :roster-size 15 :league-id "987654"})
+   :roster-size 15 :league-id "987654" :provider "sleeper"})
 
 (def ^:private lk (db/league-key "sleeper" "987654"))
 
@@ -440,7 +440,7 @@
            {:roster-id 7 :owner-id "u-me" :name "Mine"
             :player-ids ["a"] :active-ids ["a"]}]
    :waiver {:type "faab" :budget 100}
-   :roster-size 15 :league-id "987654"})
+   :roster-size 15 :league-id "987654" :provider "sleeper"})
 
 (deftest connecting-an-account-answers-which-team-is-mine
   ;; The point of the unit. Until this, the manager had to pick his own roster

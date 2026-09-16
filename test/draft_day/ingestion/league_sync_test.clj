@@ -137,7 +137,7 @@
   (let [{:keys [ok status error]} (league-sync/sync-league {:provider "yahoo" :league-id "1"})]
     (is (not ok))
     (is (= 400 status))
-    (is (= "Unknown league provider" error))))
+    (is (= "unknown provider: :yahoo" error))))
 
 (deftest a-status-carrying-failure-keeps-its-status
   (with-redefs [league-sync/fetch-raw-rosters
@@ -215,9 +215,9 @@
   ;; tell them apart, so treating both as missing would tell a manager his
   ;; account does not exist because he took a year off.
   (with-redefs [league-sync/find-user    (fn [_ _] {:user-id "u1" :display-name "n"})
-                league-sync/list-leagues (fn [_ _ _] [])]
+                league-sync/list-leagues (fn [_ _] [])]
     (let [{:keys [ok leagues user]} (league-sync/find-leagues
-                                     {:provider :sleeper :username "n"})]
+                                     {:provider :sleeper :credentials {:username "n"}})]
       (is ok "no leagues is a success")
       (is (= [] leagues))
       (is (= "u1" (:user-id user))))))
@@ -226,14 +226,14 @@
   (with-redefs [league-sync/find-user
                 (fn [_ _] (throw (ex-info "Sleeper user not found" {:status 404})))]
     (let [{:keys [ok status error]} (league-sync/find-leagues
-                                     {:provider :sleeper :username "nope"})]
+                                     {:provider :sleeper :credentials {:username "nope"}})]
       (is (not ok))
       (is (= 404 status))
       (is (= "Sleeper user not found" error)))))
 
 (deftest an-unknown-provider-cannot-look-up-an-account
   (let [{:keys [ok status]} (league-sync/find-leagues
-                             {:provider :yahoo :username "someone"})]
+                             {:provider :yahoo :credentials {:username "someone"}})]
     (is (not ok))
     (is (= 400 status))))
 
@@ -256,3 +256,71 @@
 (deftest a-league-with-no-positions-yields-no-seats-rather-than-throwing
   (is (= [] (sync-sleeper/normalize-positions nil)))
   (is (= [] (sync-sleeper/normalize-positions []))))
+
+;; ---- what the dispatcher promises on every provider's behalf ----
+
+(deftest the-sync-passes-the-season-and-the-credentials-to-the-provider
+  (let [seen (atom nil)]
+    (with-redefs [league-sync/fetch-raw-rosters (fn [_ req] (reset! seen req) raw)]
+      (league-sync/sync-league {:provider "sleeper" :league-id "1"
+                                :season "2025" :credentials {:username "jay"}})
+      (is (= "2025" (:season @seen))
+          "a provider that never sees the season defaults to this one and imports
+           last year's copy of the league, which looks like an empty league")
+      (is (= {:username "jay"} (:credentials @seen))))))
+
+(deftest a-season-the-caller-holds-wins-over-this-years-default
+  (let [seen (atom nil)]
+    (with-redefs [league-sync/fetch-raw-rosters (fn [_ req] (reset! seen req) raw)]
+      (league-sync/sync-league {:provider "sleeper" :league-id "1" :season "2025"})
+      (is (= "2025" (:season @seen)))
+      (league-sync/sync-league {:provider "sleeper" :league-id "1"})
+      (is (some? (:season @seen)) "and absent still resolves to something"))))
+
+(deftest the-sync-names-the-provider-it-came-from
+  (with-redefs [league-sync/fetch-raw-rosters (fn [_ _] raw)]
+    (is (= :sleeper (:provider (:league (league-sync/sync-league
+                                         {:provider "sleeper" :league-id "1"}))))
+        "rankings.waiver picks its crosswalk off this; without it an ESPN league
+         is read with the Sleeper id map and every player reads as free")))
+
+(deftest roster-ids-come-back-as-strings-whatever-the-provider-published
+  (with-redefs [league-sync/normalize-rosters
+                (fn [_ _] {:teams [{:roster-id 1
+                                    :player-ids [4034 nil 6794]
+                                    :active-ids [4034]
+                                    :starter-ids [4034]}]})
+                league-sync/fetch-raw-rosters (fn [_ _] {})]
+    (let [team (first (:teams (:league (league-sync/sync-league
+                                        {:provider "sleeper" :league-id "1"}))))]
+      (is (= ["4034" "6794"] (:player-ids team))
+          "the crosswalk is string-keyed and held-ids maps a miss to itself, so an
+           integer id resolves nothing and the whole league reads as free agents")
+      (is (= ["4034"] (:active-ids team)))
+      (is (= ["4034"] (:starter-ids team))))))
+
+(deftest a-provider-that-returns-no-teams-is-not-a-league-everyone-has-left
+  (with-redefs [league-sync/normalize-rosters (fn [_ _] {:waiver {:type :faab}})
+                league-sync/fetch-raw-rosters (fn [_ _] {})]
+    (is (nil? (:teams (:league (league-sync/sync-league
+                                {:provider "sleeper" :league-id "1"}))))
+        "an absent roster list must stay absent so reconcile-league-sync drops it")))
+
+(deftest a-listing-that-broke-keeps-the-account-and-reports-the-gap
+  (with-redefs [league-sync/find-user    (fn [_ _] {:user-id "u1" :display-name "n"})
+                league-sync/list-leagues (fn [_ _] (throw (ex-info "upstream" {:status 502})))]
+    (let [{:keys [ok user leagues leagues-error]}
+          (league-sync/find-leagues {:provider :sleeper :credentials {:username "n"}})]
+      (is ok "a host that knows who you are has not failed to connect")
+      (is (= "u1" (:user-id user)))
+      (is (= [] leagues))
+      (is (= "upstream" leagues-error)
+          "reported apart from [], or a discovery outage tells a manager he plays in nothing"))))
+
+(deftest a-rejected-credential-during-listing-fails-the-connect
+  (with-redefs [league-sync/find-user    (fn [_ _] {:user-id "u1"})
+                league-sync/list-leagues (fn [_ _] (throw (ex-info "nope" {:status 401})))]
+    (let [{:keys [ok status]} (league-sync/find-leagues
+                               {:provider :sleeper :credentials {:username "n"}})]
+      (is (not ok) "an expired cookie is not a discovery failure")
+      (is (= 401 status)))))

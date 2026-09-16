@@ -50,7 +50,8 @@
 
   ROSTER IDS GO THROUGH `held-ids`, ALWAYS. Roster ids arrive as the provider's
   (see `league-sync.sleeper`); the board is keyed by GSIS wherever one resolved,
-  and `db/sleeper->player-id` bridges them. An id the crosswalk has no entry for
+  and `db/provider->player-id`, keyed off the synced league's own `:provider`,
+  bridges them. An id the crosswalk has no entry for
   maps to itself — team defenses carry their abbreviation in both spaces, and an
   unmapped id is not evidence of a bug: the universe may be a stale cache or the
   offline sample. It is a named function rather than inline because the *second*
@@ -373,7 +374,7 @@
   [board {:keys [league my-roster-id roster-size num-teams replacement-config
                  starting-slots] :as ctx}]
   (let [{:keys [teams waiver]} league
-        xwalk    (db/sleeper->player-id board)
+        xwalk    (db/provider->player-id board (:provider league))
         rostered (rostered-index teams xwalk)
         {:keys [levels players]} (with-ros-vorp board num-teams replacement-config)
         by-id    (db/index-by-id players)

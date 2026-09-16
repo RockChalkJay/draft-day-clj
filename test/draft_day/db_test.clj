@@ -426,8 +426,11 @@
   (is (nil? (db/reconcile-league-sync nil)))
   (is (nil? (db/reconcile-league-sync "nonsense")))
   (is (nil? (db/reconcile-league-sync {:waiver {:type :faab}})) "no :teams at all")
+  (is (nil? (db/reconcile-league-sync {:teams [{:roster-id 1 :player-ids ["a"]}]}))
+      "teams but no provider names no id space, so the whole league reads as free")
   (testing "a good one passes through with its teams intact"
     (let [ls {:teams [{:roster-id 1 :player-ids ["a" "b"] :starter-ids ["a"]}]
+              :provider "sleeper"
               :waiver {:type :faab :budget 100}}]
       (is (= ["a" "b"] (:player-ids (first (:teams (db/reconcile-league-sync ls))))))
       (is (= {:type :faab :budget 100} (:waiver (db/reconcile-league-sync ls)))))))
@@ -435,7 +438,8 @@
 (deftest a-team-with-no-player-ids-is-repaired-not-trusted
   ;; The shape that actually matters: it reaches `waiver/rostered-index` as a
   ;; team holding nobody, and every player on it silently becomes a free agent.
-  (let [out (db/reconcile-league-sync {:teams [{:roster-id 1}
+  (let [out (db/reconcile-league-sync {:provider "sleeper"
+                                       :teams [{:roster-id 1}
                                                {:roster-id 2 :player-ids ["a" nil "b"]
                                                 :active-ids ["a" nil]}
                                                "not a team"]})]
@@ -453,6 +457,7 @@
   ;; persisted, so the reconciler must not drop keys it does not recognise.
   (let [out (db/reconcile-league-sync
              {:teams [{:roster-id 1 :player-ids ["a"] :active-ids ["a"]}]
+              :provider "sleeper"
               :waiver {:type :faab :budget 100}
               :roster-size 15 :league-id "987654" :playoff-week-start 15})]
     (is (= "987654" (:league-id out)))
