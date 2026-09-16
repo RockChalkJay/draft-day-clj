@@ -7,20 +7,32 @@
   starter projected 260 never plays, and his contribution to points scored is
   zero however far he clears the last man on the bench.
 
-  GREEDY IS OPTIMAL HERE, and the reason is worth stating so nobody replaces
-  this with a matching algorithm. Dedicated seats accept exactly one position;
-  FLEX accepts a superset of three of them; QB, K and DST are disjoint from
-  FLEX. Filling dedicated seats with the best available at each position and
-  FLEX with the best remaining eligible therefore selects the same *set* an
-  optimal assignment would, and only the set determines the total — which of two
-  interchangeable seats a player sits in cannot change the sum. The one thing
-  that does matter is order: FLEX must be filled last, or it takes a running
-  back the RB seat needed.
+  Greedy is optimal for nested seats, and the argument is worth stating so
+  nobody replaces this with a matching algorithm. A dedicated seat accepts one
+  position, FLEX a superset of three, SUPER_FLEX a superset of FLEX plus the
+  quarterback — so each seat's eligible set contains every narrower seat's, and
+  filling them narrowest-first (the order is read off `db/flex-slots`, not
+  hardcoded) selects the same *set* an optimal assignment would. Only the set
+  determines the total.
+
+  `WRRB_FLEX` (RB/WR) and `REC_FLEX` (WR/TE) are the exception: neither contains
+  the other, so a league running both breaks the nesting and greedy can leave a
+  point or two behind. A deliberate trade — the exact answer is a weighted
+  matching, and it buys nothing until a real league runs that pair.
 
   Scored on whatever `score-key` the caller passes, the way
   `replacement/replacement-levels` and `with-vorp` already are, so the same code
   answers the rest-of-season question and a weekly one."
   (:require [draft-day.db :as db]))
+
+(defn slot-breadth
+  "How many positions a seat accepts; 1 for a dedicated one.
+
+  The sort key `best-lineup` fills by. Branching rather than defaulting to
+  `#{slot}` because `sort-by` calls its keyfn inside the comparator, and this
+  runs once per free agent."
+  [slot]
+  (if-let [accepts (get db/flex-slots slot)] (count accepts) 1))
 
 (defn best-lineup
   "`[[slot player] ...]` for the best legal lineup, in fill order.
@@ -32,9 +44,9 @@
   of throwing."
   [players slots score-key]
   (let [scored  (filterv #(number? (score-key %)) players)
-        ;; FLEX last. See the ns docstring — this is the whole correctness
-        ;; argument, not a cosmetic ordering.
-        ordered (concat (remove #{"FLEX"} slots) (filter #{"FLEX"} slots))]
+        ;; Narrowest seat first: the ns docstring's correctness argument, not
+        ;; a cosmetic ordering. `sort-by` is stable, so ties keep league order.
+        ordered (sort-by slot-breadth slots)]
     (first
      (reduce (fn [[acc used] slot]
                (if-let [p (->> scored

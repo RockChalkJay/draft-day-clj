@@ -28,9 +28,16 @@
 (defn roster-template [roster-cfg]
   (vec (mapcat (fn [[label k]] (repeat (get roster-cfg k 0) label)) roster-order)))
 
-(def ^:private flex-positions
-  "What a FLEX seat accepts."
-  #{"RB" "WR" "TE"})
+(def flex-slots
+  "What each multi-position seat accepts, and the one copy of that vocabulary.
+
+  Covers the spellings a host publishes on a synced league's `:roster-positions`
+  rather than the four `default-roster` can express. `rankings.lineup` reads the
+  *sizes* here, not the order — see its fill rule."
+  {"FLEX"       #{"RB" "WR" "TE"}
+   "WRRB_FLEX"  #{"RB" "WR"}
+   "REC_FLEX"   #{"WR" "TE"}
+   "SUPER_FLEX" #{"QB" "RB" "WR" "TE"}})
 
 (defn slot-accepts?
   "Can a player at `position` occupy a `slot` from `roster-template`?
@@ -42,17 +49,31 @@
   seating as well as for starting; `starting-slots` is what drops the bench."
   [slot position]
   (or (= slot position)
-      (and (= slot "FLEX") (contains? flex-positions position))
+      (contains? (get flex-slots slot) position)
       (= slot "BENCH")))
 
-(defn starting-slots
-  "The seats that actually score: `roster-template` without the bench.
+(def held-slots
+  "Seats that hold a player without scoring for him.
 
-  A bench seat holds a player and contributes nothing, so a lineup total that
-  counted them would just be the roster total and every claim would look like an
-  upgrade."
+  A lineup total that counted them would just be the roster total, and every
+  claim would look like an upgrade."
+  #{"BENCH" "IR" "TAXI"})
+
+(defn scoring-slots
+  "A concrete slot list minus the seats that hold without scoring.
+
+  Takes the list rather than a roster config: a synced league's order is the
+  only thing that can name which seat a starter occupies."
+  [slots]
+  (filterv (complement held-slots) slots))
+
+(defn starting-slots
+  "The seats that actually score, expanded from a roster *config*.
+
+  For the draft board, which has no provider to ask. A synced league should run
+  `scoring-slots` over its own `:roster-positions` instead."
   [roster-cfg]
-  (filterv #(not= "BENCH" %) (roster-template roster-cfg)))
+  (scoring-slots (roster-template roster-cfg)))
 
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
@@ -600,23 +621,25 @@
       (into (vec (sort-by (comp keyfn by-id) known)) unknown))
     (vec ids)))
 
+(defn provider->player-id
+  "{provider-id canonical-player-id} from a loaded universe, for one provider.
+
+  A live translation between the two id spaces that coexist at runtime, not a
+  migration — see `waiver/held-ids`. Ids with no entry map to themselves at the
+  call site, so a provider whose `[:ids <provider>]` column is not ingested yet
+  resolves nothing rather than resolving wrongly."
+  [players provider]
+  ;; Keyed once, not per player: ~600 rows on every in-season request.
+  (let [k (keyword provider)]
+    (into {}
+          (keep (fn [p] (when-let [s (get-in p [:ids k])]
+                          [s (:player-id p)])))
+          players)))
+
 (defn sleeper->player-id
-  "{sleeper-id canonical-player-id} from a loaded universe.
-
-  `:player-id` is the GSIS id wherever one resolves, but a synced league's
-  rosters arrive keyed by Sleeper's, so the waiver board needs a translation
-  between the two id spaces on every request — see `waiver/held-ids`. Ids with
-  no entry (team defenses, anyone absent from the crosswalk) map to themselves,
-  so applying it twice is a no-op.
-
-  This is a live translation, not a migration: it is the one piece of the old
-  id-remap machinery that outlived it, because the two id spaces still coexist
-  at runtime rather than only across a saved blob."
+  "`provider->player-id` for the one provider that has shipped."
   [players]
-  (into {}
-        (keep (fn [p] (when-let [s (get-in p [:ids :sleeper])]
-                        [s (:player-id p)])))
-        players))
+  (provider->player-id players :sleeper))
 
 ;; ---- waiver board ----
 ;; The in-season board asks different questions than the draft board, so it gets

@@ -164,6 +164,23 @@
      :wins            (:wins s)
      :losses          (:losses s)}))
 
+(def position-spellings
+  "Sleeper's seat names in the app's vocabulary; anything absent passes through.
+
+  The flex and held seats are already spelled the way `db/flex-slots` and
+  `db/held-slots` expect, and an IDP league's DL/LB/DB seats are carried
+  verbatim — `db/slot-accepts?` matches those on the position name."
+  {"DEF" "DST"
+   "BN"  "BENCH"})
+
+(defn normalize-positions
+  "Pure: a league's `roster_positions` in the app's seat vocabulary, in order.
+
+  The order is the point: Sleeper's `starters` array is positional against this
+  list, so it is the only thing that can say which seat a starter occupies."
+  [positions]
+  (mapv #(get position-spellings % %) positions))
+
 (defmethod league-sync/normalize-rosters :sleeper
   [_ {:keys [rosters users league]}]
   (let [waiver (import-sleeper/waiver-settings league)
@@ -174,6 +191,8 @@
      ;; drop turns on this number, and a manager who syncs without importing
      ;; has never told the app what his real league looks like.
      :roster-size (count (:roster_positions league))
+     ;; The seats themselves, not just how many; see `normalize-positions`.
+     :roster-positions (normalize-positions (:roster_positions league))
      ;; Carried so a re-sync is one click. It is the only thing the sync needs
      ;; and the only thing the reply did not have: without it the id lives in a
      ;; component-local atom that empties on reload, and a manager comes back to

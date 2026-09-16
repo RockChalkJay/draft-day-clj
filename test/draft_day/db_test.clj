@@ -573,3 +573,60 @@
     (is (= "NE" (opp {:week/opponent "NE" :kickoff/opponent "SEA"}))
         "Sleeper wins, as it does in the cell")
     (is (nil? (opp {})) "a bye still sorts as nothing")))
+
+(deftest a-superflex-seat-takes-a-quarterback-and-a-flex-does-not
+  (is (db/slot-accepts? "SUPER_FLEX" "QB"))
+  (is (not (db/slot-accepts? "FLEX" "QB"))
+      "a QB2 in a FLEX is illegal outside a superflex league")
+  (doseq [pos ["RB" "WR" "TE"]]
+    (is (db/slot-accepts? "SUPER_FLEX" pos) pos)
+    (is (db/slot-accepts? "FLEX" pos) pos)))
+
+(deftest the-narrower-flexes-accept-only-their-own-pair
+  (is (db/slot-accepts? "WRRB_FLEX" "RB"))
+  (is (db/slot-accepts? "WRRB_FLEX" "WR"))
+  (is (not (db/slot-accepts? "WRRB_FLEX" "TE")) "a WR/RB flex is not a full flex")
+  (is (db/slot-accepts? "REC_FLEX" "TE"))
+  (is (db/slot-accepts? "REC_FLEX" "WR"))
+  (is (not (db/slot-accepts? "REC_FLEX" "RB"))))
+
+(deftest a-kicker-still-fits-only-his-own-seat-and-the-bench
+  ;; Pinned because `flex-slots` replaced the branch beside it, and a map
+  ;; lookup that matched too widely would fail silently.
+  (is (db/slot-accepts? "K" "K"))
+  (is (db/slot-accepts? "BENCH" "K"))
+  (doseq [slot ["FLEX" "SUPER_FLEX" "WRRB_FLEX" "REC_FLEX" "RB"]]
+    (is (not (db/slot-accepts? slot "K")) slot))
+  (is (not (db/slot-accepts? "FLEX" "DST"))))
+
+(deftest scoring-slots-drops-every-seat-that-holds-without-scoring
+  (is (= ["QB" "RB" "FLEX"]
+         (db/scoring-slots ["QB" "RB" "BENCH" "FLEX" "IR" "TAXI"])))
+  (is (= [] (db/scoring-slots ["BENCH" "IR"])))
+  (is (= [] (db/scoring-slots []))))
+
+(deftest scoring-slots-keeps-the-order-it-was-given
+  (is (= ["FLEX" "QB" "RB"] (db/scoring-slots ["FLEX" "QB" "BENCH" "RB"]))
+      "the order is what pairs a starter with his seat"))
+
+(deftest starting-slots-is-scoring-slots-over-an-expanded-config
+  (is (= (db/scoring-slots (db/roster-template db/default-roster))
+         (db/starting-slots db/default-roster)))
+  (is (not-any? db/held-slots (db/starting-slots db/default-roster))))
+
+(deftest the-crosswalk-is-keyed-by-provider
+  (let [players [{:player-id "00-1" :ids {:sleeper "4034" :espn "e1"}}
+                 {:player-id "00-2" :ids {:sleeper "6794"}}]]
+    (is (= {"4034" "00-1" "6794" "00-2"} (db/provider->player-id players :sleeper)))
+    (is (= {"e1" "00-1"} (db/provider->player-id players :espn))
+        "a player carrying no id in that space is absent, not mapped to nil")
+    (is (= (db/provider->player-id players :sleeper) (db/sleeper->player-id players)))))
+
+(deftest a-provider-whose-ids-are-not-ingested-yet-resolves-nothing
+  (is (= {} (db/provider->player-id [{:player-id "00-1" :ids {:sleeper "4034"}}] :espn))
+      "every id falls through to itself rather than resolving to the wrong man"))
+
+(deftest the-provider-may-arrive-as-a-string
+  ;; It crosses the wire as JSON; same fix as `waiver/faab?`.
+  (is (= {"4034" "00-1"}
+         (db/provider->player-id [{:player-id "00-1" :ids {:sleeper "4034"}}] "sleeper"))))

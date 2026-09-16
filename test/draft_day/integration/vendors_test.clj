@@ -17,6 +17,8 @@
   (:require [clojure.test :refer [deftest is]]
             [draft-day.ingestion.espn-schedule :as sched]
             [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.matchups :as matchups]
+            [draft-day.ingestion.matchups.sleeper]
             [draft-day.ingestion.nflverse-weekly :as weekly]
             [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.teams :as teams]))
@@ -78,3 +80,9 @@
         scored  (filter #(get-in % [:stats :pts_ppr]) entries)]
     (is (seq scored) "somebody is projected in week 1")
     (is (some :opponent scored))))
+
+(deftest ^:integration sleeper-still-says-which-week-it-is-showing
+  ;; Shape only: a value assertion would fail every time the calendar turns.
+  (let [wk (matchups/current-week :sleeper)]
+    (is (number? wk) "display_week, or week as the fallback")
+    (is (<= 1 wk 22) "a plausible NFL week rather than a parsed string")))

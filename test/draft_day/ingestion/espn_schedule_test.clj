@@ -110,3 +110,22 @@
     (is (re-find #"dates=2026" u) "the season year, not a calendar date")
     (is (re-find #"seasontype=2" u) "regular season")
     (is (re-find #"week=3" u))))
+;; ---- has the ball been snapped ----
+;; The matchup board reads a provider's per-player points, and a provider scores
+;; everyone 0.0 before kickoff. Telling that apart from a real zero is what this
+;; predicate exists for — see `rankings.matchup`.
+
+(deftest a-scheduled-or-postponed-game-has-not-started
+  (is (sched/not-started? "STATUS_SCHEDULED"))
+  (is (sched/not-started? "STATUS_POSTPONED")
+      "a postponed game's zero is no more a result than a Sunday evening one"))
+
+(deftest a-game-under-way-or-over-has-started
+  (doseq [st ["STATUS_IN_PROGRESS" "STATUS_HALFTIME" "STATUS_END_PERIOD" "STATUS_FINAL"]]
+    (is (not (sched/not-started? st)) st)))
+
+(deftest an-unknown-status-is-unknown-rather-than-scheduled
+  (is (not (sched/not-started? nil))
+      "`fetch` degrades to nil whole; not-started there would blank a week")
+  (is (not (sched/not-started? "")))
+  (is (not (sched/not-started? "STATUS_SOMETHING_NEW"))))

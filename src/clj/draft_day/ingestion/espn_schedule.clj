@@ -73,6 +73,21 @@
   [payload]
   (into {} (mapcat parse-event) (:events payload)))
 
+(def not-started-statuses
+  "ESPN status names meaning the ball has not been snapped.
+
+  A postponed game's zero is no more a result than a Sunday evening one, so it
+  belongs here beside `STATUS_SCHEDULED`."
+  #{"STATUS_SCHEDULED" "STATUS_POSTPONED"})
+
+(defn not-started?
+  "Has this team's game yet to kick off?
+
+  A nil status is unknown, not scheduled: `fetch` degrades to nil whole, and
+  reading that as not-started would blank a completed week."
+  [status]
+  (contains? not-started-statuses status))
+
 (defn fetch
   "Network. Every failure shape collapses to nil, including a 200 whose body is
   not a scoreboard: the caller trades a kickoff for it, never the projection."
