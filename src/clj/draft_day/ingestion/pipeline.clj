@@ -563,6 +563,10 @@
               (assoc p
                      :kickoff/at       kickoff
                      :kickoff/status   status
+                     ;; Decided here so the ESPN status vocabulary stays in the
+                     ;; namespace that owns it. A player with no scoreboard
+                     ;; entry gets no key at all: absent means unknown.
+                     :kickoff/started? (not (espn-schedule/not-started? status))
                      :kickoff/detail   detail
                      :kickoff/venue    venue
                      :kickoff/opponent opponent

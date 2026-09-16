@@ -5,6 +5,7 @@
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.matchups :as matchups]
             [draft-day.scoring :as scoring]))
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
@@ -552,3 +553,82 @@
       (let [resp (routes/league-user-handler {:query-params {"username" "1/../evil"}})]
         (is (= 400 (:status resp)))
         (is (false? @called) "nothing reaches the provider")))))
+
+;; The crosswalk itself is pinned in `rankings.matchup-test`, whose fixture
+;; makes the two id spaces disagree; these cover the handler.
+
+(def ^:private raw-matchups
+  [{:matchup_id 1 :roster_id 1 :points 31.0
+    :starters ["rb2" "rb3"] :players ["rb2" "rb3"]
+    :players_points {:rb2 19.0 :rb3 12.0}}
+   {:matchup_id 1 :roster_id 2 :points 8.0
+    :starters ["rb4"] :players ["rb4"]
+    :players_points {:rb4 8.0}}])
+
+(defn- matchup [body & {:keys [week] :or {week 9}}]
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe       (fn [& _] in-season)
+                pipeline/load-weekly         stub-weekly
+                matchups/current-week        (fn [_] week)
+                matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)]
+    (routes/matchup-handler {:body (input-stream (json/write-value-as-string body))})))
+
+(def ^:private matchup-req
+  {:provider "sleeper" :league-id "1" :scoring "ppr"
+   :league synced :my-roster-id 1 :roster {:rb 2 :bench 3}})
+
+(deftest matchup-endpoint-values-every-team-not-just-mine
+  ;; So switching matchups costs no round trip.
+  (let [b (parse (matchup matchup-req))]
+    (is (= 2 (count (:teams b))))
+    (is (= [1 2] (mapv :roster-id (:teams b))))
+    (is (= [{:matchup-id 1 :roster-ids [1 2]}] (:matchups b)))))
+
+(deftest matchup-endpoint-takes-the-week-from-the-provider
+  ;; The fixture's `:through-week` is 8, so a handler deriving the week would
+  ;; ask for 9; the provider says 12 and the board has to follow it.
+  (let [b (parse (matchup matchup-req :week 12))]
+    (is (= 12 (:week b)))
+    (is (= 8 (:through-week in-season)) "which is deliberately not what was used")))
+
+(deftest matchup-endpoint-seats-the-lineup-in-the-leagues-own-order
+  ;; `:roster-positions` on the synced league beats the request's roster config.
+  (let [league (assoc synced :roster-positions ["RB" "FLEX" "BENCH"])
+        b      (parse (matchup (assoc matchup-req :league league)))
+        mine   (first (:teams b))]
+    (is (= ["RB" "FLEX"] (mapv :slot (:starters mine))))))
+
+(deftest matchup-endpoint-falls-back-to-the-roster-config
+  ;; A sync written before `:roster-positions` existed.
+  (let [mine (first (:teams (parse (matchup matchup-req))))]
+    (is (= ["RB" "RB"] (mapv :slot (:starters mine)))
+        "from {:rb 2 :bench 3}, with the bench dropped")))
+
+(deftest matchup-endpoint-ships-both-optimal-bases
+  (let [mine (first (:teams (parse (matchup matchup-req))))]
+    (is (number? (get-in mine [:optimal :projected :total])))
+    (is (number? (get-in mine [:optimal :actual :total])))
+    (is (= 31.0 (:actual mine)) "19 + 12, the two seats he started")
+    (is (= 31.0 (:official mine)) "and the provider's own total beside it")))
+
+(deftest matchup-endpoint-refuses-a-board-it-cannot-score
+  (let [resp (matchup (assoc matchup-req :scoring (zipmap scoring/stat-keys (repeat 0))))]
+    (is (= 400 (:status resp)))
+    (is (re-find #"non-zero" (:error (parse resp))))))
+
+(deftest matchup-endpoint-passes-a-providers-status-through
+  ;; Flattening it to 502 would report an unknown league as an outage.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe      (fn [& _] in-season)
+                matchups/current-week       (fn [_] 9)
+                matchups/fetch-raw-matchups (fn [_ _ _] (throw (ex-info "no league" {:status 404})))]
+    (let [resp (routes/matchup-handler
+                {:body (input-stream (json/write-value-as-string matchup-req))})]
+      (is (= 404 (:status resp)))
+      (is (= "no league" (:error (parse resp)))))))
+
+(deftest matchup-endpoint-does-not-ship-the-history-it-loaded
+  ;; A full stat map per player, and nothing here reads it.
+  (let [rows (mapcat (juxt :starters :bench) (:teams (parse (matchup matchup-req))))]
+    (is (not-any? #(contains? % :nflverse/game-log) (apply concat rows)))
+    (is (not-any? #(contains? % :week/stats) (apply concat rows)))))
