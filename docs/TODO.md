@@ -133,11 +133,10 @@ between a league's real rules and what the board can score.
     `:injury-risk` and the Inj column cover it on the board; folding it into the
     projection would be the double-charging `rankings.injury` argues against, so
     it needs a real argument before it happens.
-  - Only Sleeper syncs. ESPN and Yahoo need server-side auth, which is why the
-    sync is backend-proxied — adding one is two `defmethod`s and a `:require`.
-    The browser is now ready for them too: accounts are keyed by provider and
-    leagues by `db/league-key` (`provider:league-id`), so a second provider is a
-    new entry rather than a second shape.
+  - ~~Only Sleeper syncs.~~ ESPN imports, syncs and connects now. What it cost
+    beyond the promised "two `defmethod`s and a `:require`" is written up in
+    CLAUDE.md; the estimate was wrong in one place worth naming, which is that
+    there was nowhere for a credential to live at all.
   - **The bundled sample predates the in-season columns.** It stamps
     `:schema-version 5`, carries no `:through-week` and no
     `:nflverse/season-to-date`, so `DRAFTDAY_OFFLINE=1` can only ever show the
@@ -166,6 +165,47 @@ between a league's real rules and what the board can score.
   it says was fixed. `subs.cljs:66` also selects a key that never arrives. One
   line to fix: add `:market-multiplier` to the `select-keys` vector.
 
+- **The ESPN tables are documented numbering, not a payload this repo has
+  read.** Three of them: the defensive entries in
+  `league-import.espn/stat-ids` (93-106), `lineup-slots`, and
+  `league-sync.espn/pro-team-abbrev`. All three fail *silently* — a wrong stat
+  id prices a rule nobody set, a wrong slot mis-sizes the roster that decides
+  whether a claim costs a drop, a wrong team id drops a defense onto the
+  free-agent board while its owner holds it.
+  `test/draft_day/integration/espn_league_test.clj` checks all three against a
+  live league and skips out loud without `DRAFTDAY_ESPN_SWID`/`_S2`/`_LEAGUE`
+  in the environment. Run it once against a real league and the guesses stop
+  being guesses.
+
+- **ESPN's `:playoff-week-start` is deliberately unread.** `nil` is already the
+  legal answer for a host that says nothing, and `waiver/claims-left` degrades
+  honestly on it — while a wrong week mis-sizes every bid on the board and says
+  nothing. `settings.scheduleSettings` is where it lives; confirm the spelling
+  against a live league before reading it. `:waiver-position` is read from
+  `waiverRank` on the same evidence, i.e. none.
+
+- **ESPN league discovery is undocumented and will break.** `fan.api.espn.com`
+  is the only endpoint in the app with a credential in its *path*, and the only
+  one whose shape nobody publishes. `league-sync.espn/league-entries` is written
+  to find nothing rather than to throw, and `find-leagues` reports that as a gap
+  beside the account rather than as a failed connection, so the fallback is
+  pasting a league ID. That is the designed behaviour, not a bug to fix — but if
+  ESPN ever publishes a supported listing, this is the thing to replace.
+
+- **The `matchups` pair still takes positional arguments.** The other two pairs
+  now take one request map so a host can carry a season and a cookie; this one
+  was left alone because it is unreachable from the API on `main` and there is
+  unmerged work on it (`matchup-view`). ESPN's current week comes off the league
+  document, so converting it is not just consistency — it is what an ESPN
+  matchup board would need.
+
+- **Credentials sit in `localStorage`.** An `espn_s2` is a live session token
+  and it is persisted in the browser next to the rest of the app's state,
+  because the server holds nothing between requests and there is no session
+  store to put it in. Accepted, and written down here so it is a decision
+  rather than an oversight. `providers/redact` keeps it out of logs and error
+  bodies; nothing keeps it out of another script running on the same origin.
+
 - **Audit error handling across the application.** The app runs three error
   protocols at once and converts between them ad hoc:
 
@@ -186,9 +226,8 @@ between a league's real rules and what the board can score.
 
   Specific things already spotted:
 
-  - `league-import-handler` has no outer `try/catch`, so a malformed JSON body
-    500s where `rankings-handler` would have answered cleanly. The two should
-    agree.
+  - ~~`league-import-handler` has no outer `try/catch`~~ Fixed: all three
+    league handlers answer a malformed body with a 400 now.
   - `espn/http-get-string` returns nil on any non-200, producing exactly the
     silently empty column CLAUDE.md names as the worst ingestion failure — the
     same shape as the FantasyPros 429 it warns about.
@@ -196,7 +235,9 @@ between a league's real rules and what the board can score.
     the escape path and the swallow path disagree about what a failure is.
   - The frontend `:http` effect routes every non-2xx to `on-failure` with
     `(:error body)`, which assumes every handler returns `{:error msg}`. Worth
-    confirming that holds everywhere.
+    confirming that holds everywhere. It now appends the HTTP status alongside
+    the message, which is what lets a 401 be told from a 502 — but the *message*
+    is still the only thing most handlers read.
   - `:waivers-failed` and `:recompute-failed` deliberately keep stale data
     readable rather than blanking it. That is the good pattern; it should be
     stated as the convention rather than left as two coincidences.

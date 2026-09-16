@@ -773,14 +773,44 @@ Two guards return `400` before any work happens: a scoring config with no
 non-zero weight on a projected stat (an all-zero board is a lie, not a board),
 and a bankroll that cannot cover $1 per roster slot.
 
+### `POST /api/account/connect`
+
+Takes `{:provider :credentials :season}` and returns the account and the
+leagues it plays in:
+
+```clojure
+{:user    {:user-id "u1" :display-name "rockchalkjay" :avatar "…"}
+ :leagues [{:league-id "…" :name "…" :season "2026" :num-teams 12 :status "in_season"}]
+ :leagues-error "…"}     ; present only when the host could not list them
+```
+
+`:credentials` is whatever `draft-day.providers` says identifies a manager to
+that host — a username on Sleeper, a `SWID` and an `espn_s2` on ESPN. A POST
+rather than a GET because a session cookie in a query string reaches browser
+history, proxy logs and `Referer` headers, and there is no default provider:
+defaulting one meant a typo'd ESPN connect was looked up on Sleeper and came
+back "user not found".
+
+`:leagues-error` is reported *beside* an empty list rather than as a failure,
+because "plays in no leagues" and "the listing broke" are different facts and
+a manager needs opposite things from them. ESPN's listing endpoint is
+undocumented, so its failure is expected and falls back to pasting a league ID.
+
 ### `POST /api/league/import`
 
-Takes `{:provider :sleeper :league-id "…"}` and returns the league's scoring
-and roster settings, plus `:unsupported-scoring` — the rules a flat stat-line
-model cannot score. Providers are a multimethod pair (`fetch-raw-league`,
-`normalize-league`); adding one is a new namespace with two `defmethod`s and a
-`:require` for its registration. It is backend-proxied rather than called from
-the browser so that a provider needing server-side auth is a drop-in.
+Takes `{:provider :sleeper :league-id "…" :season "…" :credentials {…}}` and
+returns the league's scoring and roster settings, plus `:unsupported-scoring` —
+the rules a flat stat-line model cannot score. Providers are a multimethod pair
+(`fetch-raw-league`, `normalize-league`); adding one is a new namespace with two
+`defmethod`s, an entry in `draft-day.providers`, and a `:require` for its
+registration. It is backend-proxied rather than called from the browser because
+ESPN reads a private league only with the manager's own session cookies.
+
+The network multimethods take one request map rather than positional arguments
+so a host that needs a season in its URL or a cookie on its request has
+somewhere to read them from; the season, the access check, the provider on the
+reply and the string-coercion of every roster id are the dispatcher's job, not
+each provider's.
 
 ### `POST /api/waivers`
 
@@ -814,12 +844,17 @@ answers "who has him" without re-sending most of the universe on every refresh.
 
 ### `POST /api/league/sync`
 
-Takes `{:provider :sleeper :league-id "…"}` and returns each team's roster,
-FAAB spent and remaining, waiver position and record, plus the league's waiver
-rules. Same multimethod pair convention as the import (`fetch-raw-rosters`,
-`normalize-rosters`), and deliberately a *separate* pair: an import is a
-league's rules, which change once a year, while a sync is its state, which
-changes every time anyone makes a claim.
+Takes the same body as the import and returns each team's roster, FAAB spent
+and remaining, waiver position and record, plus the league's waiver rules and
+the `:provider` it came from. Same multimethod pair convention as the import
+(`fetch-raw-rosters`, `normalize-rosters`), and deliberately a *separate* pair:
+an import is a league's rules, which change once a year, while a sync is its
+state, which changes every time anyone makes a claim.
+
+The reply names its provider because `rankings.waiver` picks its id crosswalk
+off it. `/api/waivers` refuses a synced league that names none rather than
+guessing Sleeper — the guess would resolve nobody in an ESPN league and hand
+back a board on which its whole roster is available.
 
 ## Development
 
