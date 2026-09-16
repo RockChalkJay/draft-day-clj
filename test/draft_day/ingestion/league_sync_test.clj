@@ -237,23 +237,18 @@
     (is (not ok))
     (is (= 400 status))))
 
-;; ---- the seats themselves, not just how many ----
-;; `:roster-size` has always been the count of `roster_positions`. The count
-;; cannot say which seat a starter occupies, and Sleeper's `starters` array is
-;; positional against this list — so the order is the whole point.
-
 (deftest the-sync-carries-the-leagues-own-seats-in-order
   (let [{:keys [roster-positions roster-size]} (sync-of raw)]
     (is (= ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "K" "DST"
             "BENCH" "BENCH" "BENCH" "BENCH" "BENCH" "BENCH"]
-           roster-positions))
+           roster-positions)
+        "in order: Sleeper's `starters` array is positional against this list")
     (is (= 15 roster-size) "still the count, unchanged")
     (is (= roster-size (count roster-positions)))))
 
 (deftest sleepers-seat-names-arrive-in-the-apps-vocabulary
-  ;; DEF and BN are the two Sleeper spells differently. Everything else is
-  ;; already what `db/flex-slots` and `db/held-slots` expect, and an IDP seat is
-  ;; carried verbatim rather than dropped.
+  ;; DEF and BN are the two Sleeper spells differently; an IDP seat is carried
+  ;; verbatim rather than dropped.
   (is (= ["DST" "BENCH" "FLEX" "SUPER_FLEX" "IR" "TAXI" "DL"]
          (sync-sleeper/normalize-positions
           ["DEF" "BN" "FLEX" "SUPER_FLEX" "IR" "TAXI" "DL"]))))

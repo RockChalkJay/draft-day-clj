@@ -82,13 +82,7 @@
     (is (some :opponent scored))))
 
 (deftest ^:integration sleeper-still-says-which-week-it-is-showing
-  ;; The one live call the matchup board cannot replace with a fixture, and the
-  ;; one it cannot derive: `:through-week` advances as Sunday's games finish, so
-  ;; computing the week would ask for the next one while this one is playing.
-  ;;
-  ;; Shape only, deliberately — a value assertion here would be a test that
-  ;; fails every time the calendar turns over, which is the thing this namespace
-  ;; exists to avoid.
+  ;; Shape only: a value assertion would fail every time the calendar turns.
   (let [wk (matchups/current-week :sleeper)]
     (is (number? wk) "display_week, or week as the fallback")
     (is (<= 1 wk 22) "a plausible NFL week rather than a parsed string")))

@@ -7,27 +7,18 @@
   starter projected 260 never plays, and his contribution to points scored is
   zero however far he clears the last man on the bench.
 
-  GREEDY IS OPTIMAL FOR NESTED SEATS, and the reason is worth stating so nobody
-  replaces this with a matching algorithm. Dedicated seats accept exactly one
-  position; FLEX accepts a superset of three of them; SUPER_FLEX a superset of
-  FLEX plus the quarterback. Each seat's eligible set therefore contains every
-  narrower seat's, and filling them narrowest-first selects the same *set* an
-  optimal assignment would. Only the set determines the total — which of two
-  interchangeable seats a player sits in cannot change the sum — so that order
-  is the whole of the correctness argument.
+  Greedy is optimal for nested seats, and the argument is worth stating so
+  nobody replaces this with a matching algorithm. A dedicated seat accepts one
+  position, FLEX a superset of three, SUPER_FLEX a superset of FLEX plus the
+  quarterback — so each seat's eligible set contains every narrower seat's, and
+  filling them narrowest-first (the order is read off `db/flex-slots`, not
+  hardcoded) selects the same *set* an optimal assignment would. Only the set
+  determines the total.
 
-  THE ORDER IS READ OFF `db/flex-slots` RATHER THAN HARDCODED. It used to be the
-  single rule `FLEX last`, which is the same thing in a league whose only wide
-  seat is FLEX and silently wrong in a superflex one: SUPER_FLEX filled first
-  takes the back FLEX needed, which is precisely the mistake the rule exists to
-  prevent, one seat over.
-
-  WHERE IT IS ONLY NEAR-OPTIMAL. `WRRB_FLEX` (RB/WR) and `REC_FLEX` (WR/TE)
-  accept the same number of positions and neither contains the other, so a
-  league running both breaks the nesting this argument depends on and greedy can
-  leave a point or two behind. That is a deliberate trade rather than an
-  oversight: the exact answer is a weighted matching, and it buys nothing until
-  a real league runs that pair.
+  `WRRB_FLEX` (RB/WR) and `REC_FLEX` (WR/TE) are the exception: neither contains
+  the other, so a league running both breaks the nesting and greedy can leave a
+  point or two behind. A deliberate trade — the exact answer is a weighted
+  matching, and it buys nothing until a real league runs that pair.
 
   Scored on whatever `score-key` the caller passes, the way
   `replacement/replacement-levels` and `with-vorp` already are, so the same code
@@ -37,13 +28,9 @@
 (defn slot-breadth
   "How many positions a seat accepts; 1 for a dedicated one.
 
-  The sort key `best-lineup` fills by, and the reason `db/flex-slots` is a map
-  of sets rather than a list of names.
-
-  Branching rather than defaulting to `#{slot}`, because `sort-by` calls its
-  keyfn inside the comparator and `best-lineup` runs once per free agent — a
-  default would allocate a single-element set per comparison, a few hundred
-  times a request, to learn a number that is always 1."
+  The sort key `best-lineup` fills by. Branching rather than defaulting to
+  `#{slot}` because `sort-by` calls its keyfn inside the comparator, and this
+  runs once per free agent."
   [slot]
   (if-let [accepts (get db/flex-slots slot)] (count accepts) 1))
 
@@ -57,9 +44,8 @@
   of throwing."
   [players slots score-key]
   (let [scored  (filterv #(number? (score-key %)) players)
-        ;; Narrowest seat first. See the ns docstring — this is the whole
-        ;; correctness argument, not a cosmetic ordering. `sort-by` is stable,
-        ;; so seats of equal breadth keep the league's own order.
+        ;; Narrowest seat first: the ns docstring's correctness argument, not
+        ;; a cosmetic ordering. `sort-by` is stable, so ties keep league order.
         ordered (sort-by slot-breadth slots)]
     (first
      (reduce (fn [[acc used] slot]

@@ -574,16 +574,10 @@
         "Sleeper wins, as it does in the cell")
     (is (nil? (opp {})) "a bye still sorts as nothing")))
 
-;; ---- the seat vocabulary ----
-;; A synced league ships its own seats in its own order, so `slot-accepts?` has
-;; to cover what a host publishes rather than what `default-roster` can express.
-
 (deftest a-superflex-seat-takes-a-quarterback-and-a-flex-does-not
-  ;; The whole reason SUPER_FLEX is a separate seat rather than a wider FLEX:
-  ;; seating a QB2 in a FLEX is illegal in every league that is not a superflex
-  ;; one, and a single "wide seat" rule could not tell the two apart.
   (is (db/slot-accepts? "SUPER_FLEX" "QB"))
-  (is (not (db/slot-accepts? "FLEX" "QB")))
+  (is (not (db/slot-accepts? "FLEX" "QB"))
+      "a QB2 in a FLEX is illegal outside a superflex league")
   (doseq [pos ["RB" "WR" "TE"]]
     (is (db/slot-accepts? "SUPER_FLEX" pos) pos)
     (is (db/slot-accepts? "FLEX" pos) pos)))
@@ -597,9 +591,8 @@
   (is (not (db/slot-accepts? "REC_FLEX" "RB"))))
 
 (deftest a-kicker-still-fits-only-his-own-seat-and-the-bench
-  ;; The pre-existing rule, pinned because `flex-slots` replaced the branch next
-  ;; to it — a map lookup that matched too widely would fail silently, and a
-  ;; kicker in a FLEX is the loudest version of that.
+  ;; Pinned because `flex-slots` replaced the branch beside it, and a map
+  ;; lookup that matched too widely would fail silently.
   (is (db/slot-accepts? "K" "K"))
   (is (db/slot-accepts? "BENCH" "K"))
   (doseq [slot ["FLEX" "SUPER_FLEX" "WRRB_FLEX" "REC_FLEX" "RB"]]
@@ -607,28 +600,21 @@
   (is (not (db/slot-accepts? "FLEX" "DST"))))
 
 (deftest scoring-slots-drops-every-seat-that-holds-without-scoring
-  ;; IR and TAXI only ever arrive from a provider's roster positions. A lineup
-  ;; total that counted them would just be the roster total.
   (is (= ["QB" "RB" "FLEX"]
          (db/scoring-slots ["QB" "RB" "BENCH" "FLEX" "IR" "TAXI"])))
   (is (= [] (db/scoring-slots ["BENCH" "IR"])))
   (is (= [] (db/scoring-slots []))))
 
 (deftest scoring-slots-keeps-the-order-it-was-given
-  ;; The order is what pairs a starter with his seat, so a filter that sorted
-  ;; would mislabel every lineup it touched.
-  (is (= ["FLEX" "QB" "RB"] (db/scoring-slots ["FLEX" "QB" "BENCH" "RB"]))))
+  (is (= ["FLEX" "QB" "RB"] (db/scoring-slots ["FLEX" "QB" "BENCH" "RB"]))
+      "the order is what pairs a starter with his seat"))
 
 (deftest starting-slots-is-scoring-slots-over-an-expanded-config
   (is (= (db/scoring-slots (db/roster-template db/default-roster))
          (db/starting-slots db/default-roster)))
   (is (not-any? db/held-slots (db/starting-slots db/default-roster))))
 
-;; ---- the id crosswalk ----
-
 (deftest the-crosswalk-is-keyed-by-provider
-  ;; `sleeper->player-id` is now one caller of a general fn, so the seam a
-  ;; second host needs is what is under test rather than the Sleeper spelling.
   (let [players [{:player-id "00-1" :ids {:sleeper "4034" :espn "e1"}}
                  {:player-id "00-2" :ids {:sleeper "6794"}}]]
     (is (= {"4034" "00-1" "6794" "00-2"} (db/provider->player-id players :sleeper)))
@@ -637,13 +623,10 @@
     (is (= (db/provider->player-id players :sleeper) (db/sleeper->player-id players)))))
 
 (deftest a-provider-whose-ids-are-not-ingested-yet-resolves-nothing
-  ;; Which is exactly what makes ESPN's prerequisite visible rather than subtle:
-  ;; with no [:ids :espn] column, every id falls through to itself at the call
-  ;; site instead of silently resolving to the wrong player.
-  (is (= {} (db/provider->player-id [{:player-id "00-1" :ids {:sleeper "4034"}}] :espn))))
+  (is (= {} (db/provider->player-id [{:player-id "00-1" :ids {:sleeper "4034"}}] :espn))
+      "every id falls through to itself rather than resolving to the wrong man"))
 
 (deftest the-provider-may-arrive-as-a-string
-  ;; It crosses the wire as JSON, so it takes both spellings — the same shape of
-  ;; fix as `waiver/faab?` and `scoring/resolve-config`.
+  ;; It crosses the wire as JSON; same fix as `waiver/faab?`.
   (is (= {"4034" "00-1"}
          (db/provider->player-id [{:player-id "00-1" :ids {:sleeper "4034"}}] "sleeper"))))

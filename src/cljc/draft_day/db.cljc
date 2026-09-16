@@ -31,17 +31,9 @@
 (def flex-slots
   "What each multi-position seat accepts, and the one copy of that vocabulary.
 
-  A league's own seats arrive from its provider (`:roster-positions` on a synced
-  league), so this covers the spellings a host actually publishes rather than
-  the four `default-roster` can express. `league-import` still folds every one
-  of these into `:flex` for the draft board, which is why naming them here moves
-  no existing league's numbers.
-
-  SUPER_FLEX is a separate seat rather than a wider FLEX because it is a
-  different game: it accepts a quarterback, and seating a QB2 in a FLEX would be
-  illegal in every league that is not a superflex one.
-
-  `rankings.lineup` reads the *sizes* here, not the order — see its fill rule."
+  Covers the spellings a host publishes on a synced league's `:roster-positions`
+  rather than the four `default-roster` can express. `rankings.lineup` reads the
+  *sizes* here, not the order — see its fill rule."
   {"FLEX"       #{"RB" "WR" "TE"}
    "WRRB_FLEX"  #{"RB" "WR"}
    "REC_FLEX"   #{"WR" "TE"}
@@ -63,29 +55,23 @@
 (def held-slots
   "Seats that hold a player without scoring for him.
 
-  BENCH is `roster-template`'s own spelling; IR and TAXI only ever arrive from a
-  provider's `:roster-positions`. All three drop out for one reason — a lineup
-  total that counted them would just be the roster total, and every claim would
-  look like an upgrade."
+  A lineup total that counted them would just be the roster total, and every
+  claim would look like an upgrade."
   #{"BENCH" "IR" "TAXI"})
 
 (defn scoring-slots
   "A concrete slot list minus the seats that hold without scoring.
 
-  Takes the list rather than a roster config, because a synced league ships its
-  real seats in its own order, and that order is the only thing that can name
-  which seat a given starter occupies — `roster-template` rebuilds an
-  approximation from counts and cannot."
+  Takes the list rather than a roster config: a synced league's order is the
+  only thing that can name which seat a starter occupies."
   [slots]
   (filterv (complement held-slots) slots))
 
 (defn starting-slots
   "The seats that actually score, expanded from a roster *config*.
 
-  The draft board has no provider to ask, so counts are all it has. A synced
-  league should run `scoring-slots` over its own `:roster-positions` instead: a
-  manager who synced without importing has never set this config to match the
-  league he is looking at."
+  For the draft board, which has no provider to ask. A synced league should run
+  `scoring-slots` over its own `:roster-positions` instead."
   [roster-cfg]
   (scoring-slots (roster-template roster-cfg)))
 
@@ -638,25 +624,12 @@
 (defn provider->player-id
   "{provider-id canonical-player-id} from a loaded universe, for one provider.
 
-  `:player-id` is the GSIS id wherever one resolves, but a synced league's
-  rosters arrive keyed by its own host's ids, so every in-season board needs a
-  translation between the two id spaces on every request — see
-  `waiver/held-ids`. Ids with no entry (team defenses, anyone absent from the
-  crosswalk) map to themselves at the call site, so applying it twice is a
-  no-op.
-
-  This is a live translation, not a migration: it is the one piece of the old
-  id-remap machinery that outlived it, because the two id spaces still coexist
-  at runtime rather than only across a saved blob.
-
-  Keyed by provider rather than hardcoded to Sleeper so a second host is a
-  lookup rather than a second function. It reads `[:ids <provider>]`, so a
-  provider whose column ingestion does not populate yet resolves nothing and
-  every id falls through to itself — which is why adding ESPN needs
-  `[:ids :espn]` in `ingestion.player-ids` before it needs anything here."
+  A live translation between the two id spaces that coexist at runtime, not a
+  migration — see `waiver/held-ids`. Ids with no entry map to themselves at the
+  call site, so a provider whose `[:ids <provider>]` column is not ingested yet
+  resolves nothing rather than resolving wrongly."
   [players provider]
-  ;; Keyed once, not once per player: the universe is ~600 rows and this runs on
-  ;; every in-season request.
+  ;; Keyed once, not per player: ~600 rows on every in-season request.
   (let [k (keyword provider)]
     (into {}
           (keep (fn [p] (when-let [s (get-in p [:ids k])]

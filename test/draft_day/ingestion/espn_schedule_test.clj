@@ -125,9 +125,7 @@
     (is (not (sched/not-started? st)) st)))
 
 (deftest an-unknown-status-is-unknown-rather-than-scheduled
-  ;; `fetch` collapses every failure to nil whole, so a missing scoreboard leaves
-  ;; every player with no status at all. Reading that as "not started" would
-  ;; blank a completed week — the same lie as scoring an absent week 0.0.
-  (is (not (sched/not-started? nil)))
+  (is (not (sched/not-started? nil))
+      "`fetch` degrades to nil whole; not-started there would blank a week")
   (is (not (sched/not-started? "")))
   (is (not (sched/not-started? "STATUS_SOMETHING_NEW"))))
