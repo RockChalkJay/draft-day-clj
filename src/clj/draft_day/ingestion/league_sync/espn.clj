@@ -153,6 +153,24 @@
                             seasonId (assoc :season (str seasonId)))))))
         (:preferences raw)))
 
+(defn fan-status-error
+  "What a fan-endpoint status means, as `[status message]`.
+
+  Its own mapping rather than the league document's: this endpoint is asked
+  about an *account*, so borrowing \"league not found\" for a 404 sends a
+  manager looking for a league he never named.
+
+  Only 401 and 403 fail the connect — `league-sync/find-leagues` reports
+  anything else as a listing gap. A 404 here cannot tell a wrong SWID from an
+  endpoint that moved, and taking the connection down for the second would
+  defeat the paste-a-league-id fallback this whole arrangement exists for."
+  [status]
+  (case status
+    401 [401 "ESPN rejected your credentials — reconnect your ESPN account."]
+    403 [403 "ESPN will not list this account's leagues."]
+    404 [404 "ESPN does not recognise that account, or has moved this listing."]
+    [502 (str "ESPN answered " status " when asked for this account's leagues")]))
+
 (defmethod league-sync/list-leagues :espn
   [_ {:keys [user-id credentials]}]
   ;; The one URL in the app with a credential in its path, so its failures name
@@ -164,6 +182,6 @@
     (cond
       error             (throw (ex-info "ESPN would not list this account's leagues"
                                         {:status 502}))
-      (not= 200 status) (let [[s msg] (import-espn/status-error status)]
+      (not= 200 status) (let [[s msg] (fan-status-error status)]
                           (throw (ex-info msg {:status s})))
       :else             (league-entries (json/read-value body mapper)))))

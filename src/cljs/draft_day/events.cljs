@@ -30,6 +30,7 @@
   between requests."
   (:require [re-frame.core :as rf]
             [draft-day.db :as db]
+            [draft-day.providers :as providers]
             [draft-day.scoring :as scoring]
             [draft-day.fx :as fx]))
 
@@ -350,15 +351,30 @@
     {:db (db/update-config db assoc-in [:scoring stat-key] (scoring/usable-weight v))
      :debounce {:id :recompute :event [:recompute]}}))
 
+(defn league-request
+  "The body of an import or a sync: which league, and what authorizes asking.
+
+  The season is the *league entry's* and not this year's. A host that puts the
+  season in its URL — ESPN does — would otherwise be asked in January for next
+  season's copy of a league still being played, and answer with an empty shell
+  rather than an error."
+  [db {:keys [provider league-id] :as league}]
+  (let [stored (get-in db [:leagues (db/league-key provider league-id)])
+        league (merge stored league)]
+    {:provider    provider
+     :league-id   league-id
+     :season      (:season league)
+     :credentials (db/credentials-for db league)}))
+
 (rf/reg-event-fx :import-league
-  (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
+  (fn [{:keys [db]} [_ {:keys [provider league-id] :as league}]]
     ;; The key rides along so imported rules land in the league they were
     ;; fetched for — see the ns docstring.
     {:db   (assoc db :status "Importing league…")
      :http {:method :post :url "/api/league/import"
-            :body {:provider provider :league-id league-id}
+            :body (league-request db league)
             :on-success [:league-import-loaded (db/league-key provider league-id)]
-            :on-failure [:league-import-failed]}}))
+            :on-failure [:league-import-failed (db/league-key provider league-id)]}}))
 
 ;; A failed import now arrives at :league-import-failed, because the :http effect
 ;; routes any non-2xx there; this handler only ever sees a real config.
@@ -381,12 +397,24 @@
 
 (rf/reg-event-db :set-import-report (fn [db [_ r]] (assoc db :import-report r)))
 
-(rf/reg-event-db :league-import-failed
-  (fn [db [_ err]]
+(defn mark-stale
+  "Flag the account a league is read through as needing a reconnect.
+
+  On the account and not on the app, because the flag has to say *which* one:
+  a manager with a Sleeper league and an ESPN league whose cookie expired must
+  be sent to the ESPN card and left alone on the other."
+  [db k stale?]
+  (if-let [ak (:account-key (get-in db [:leagues k]))]
+    (assoc-in db [:accounts ak :credentials-stale?] stale?)
+    db))
+
+(rf/reg-event-db :league-import-failed [persist]
+  (fn [db [_ k err status]]
     ;; Both status lines: Settings renders `:waiver-status`, the header
     ;; `:status`, and only one put the failure on the unwatched tab.
     (let [msg (str "League import failed: " err)]
-      (assoc db :status msg :waiver-status msg))))
+      (cond-> (assoc db :status msg :waiver-status msg)
+        (= 401 status) (mark-stale k true)))))
 
 ;; ---- in-season: league sync + waivers ----
 
@@ -427,23 +455,27 @@
   (fn [{:keys [db]} [_ k]]
     ;; Both boards, because both are priced under this league's rules — a
     ;; switch that moved one would leave Worth priced under the league you left.
-    (if (contains? (:leagues db) k)
+    (if-let [entry (get (:leagues db) k)]
       {:db (activate db k)
-       :fx [[:dispatch [:recompute]]
-            [:dispatch [:fetch-waivers]]]}
+       :fx (cond-> [[:dispatch [:recompute]]
+                    [:dispatch [:fetch-waivers]]]
+             ;; A league added by pasted id has rosters nobody has fetched, and
+             ;; a waiver board built on no league says everyone is free.
+             (nil? (:sync entry))
+             (conj [:dispatch [:sync-league (select-keys entry [:provider :league-id])]]))}
       {})))
 
 (rf/reg-event-fx :sync-league
-  (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
+  (fn [{:keys [db]} [_ {:keys [provider league-id] :as league}]]
     ;; `db/league-key` calls `name` on the provider, and `(name nil)` throws in
     ;; ClojureScript — killing the event rather than reporting anything.
     (if-not (and provider league-id)
       {:db (assoc db :waiver-status "Nothing to sync — no league is selected.")}
       {:db   (assoc db :waiver-status "Syncing rosters…")
        :http {:method :post :url "/api/league/sync"
-              :body {:provider provider :league-id league-id}
+              :body (league-request db league)
               :on-success [:league-synced (db/league-key provider league-id)]
-              :on-failure [:league-sync-failed]}})))
+              :on-failure [:league-sync-failed (db/league-key provider league-id)]}})))
 
 (defn my-roster-id-for
   "Which roster in this league belongs to `user-id`, or nil."
@@ -458,12 +490,11 @@
     ;; dropped a field should fail here, where the status line can say so.
     (let [league   (db/reconcile-league-sync resp)
           entry    (get (:leagues db) k)
-          provider (:provider entry)
           ;; Only when unset: a manager who corrected the dropdown must not
           ;; have that undone by the next re-sync.
           mine     (or (:my-roster-id entry)
                        (my-roster-id-for (:teams league)
-                                         (get-in db [:accounts provider :user-id])))]
+                                         (:user-id (db/league-account db entry))))]
       {:db (-> db
                (update-in [:leagues k] merge
                           (cond-> {:sync league :my-roster-id mine}
@@ -476,67 +507,129 @@
                                        "Sync returned nothing usable")))
        :fx [[:dispatch [:fetch-waivers]]]})))
 
-(rf/reg-event-fx :league-connect
-  (fn [{:keys [db]} [_ username]]
-    {:db   (assoc db :waiver-status (str "Looking up " username "…"))
-     :http {:method :get
-            :url (str "/api/league/user?provider=sleeper&username="
-                      (js/encodeURIComponent username))
-            :on-success [:league-user-loaded]
-            :on-failure [:league-user-failed]}}))
+(rf/reg-event-fx :connect-account
+  (fn [{:keys [db]} [_ provider credentials]]
+    ;; POST, not GET: an ESPN espn_s2 is a live session token and a query
+    ;; string reaches browser history, proxy logs and Referer headers.
+    {:db   (assoc db :waiver-status (str "Connecting to " (providers/label provider) "…"))
+     :http {:method :post :url "/api/account/connect"
+            :body {:provider (name provider) :credentials credentials}
+            :on-success [:account-connected provider credentials]
+            :on-failure [:account-connect-failed provider]}}))
 
-(rf/reg-event-fx :league-user-loaded [persist]
-  (fn [{:keys [db]} [_ {:keys [user leagues]}]]
-    ;; Keyed by provider, so a second Sleeper account replaces the first while
-    ;; an ESPN one lands beside it. Persisted, or it is a login we hide.
-    (let [provider "sleeper"
+(rf/reg-event-fx :account-connected [persist]
+  (fn [{:keys [db]} [_ provider credentials {:keys [user leagues leagues-error]}]]
+    ;; Credentials are stored, or this is a login the manager has to repeat on
+    ;; every reload. They are the account's, not the app's: every league read
+    ;; through it sends these and nothing else does.
+    (let [ak  (db/account-key provider (:user-id user))
           db' (-> db
-                  (assoc-in [:accounts provider]
-                            {:provider provider
-                             :user-id  (:user-id user)
-                             :username (:display-name user)})
-                  (assoc :league-choices (vec leagues)))]
+                  (assoc-in [:accounts ak]
+                            {:provider    (name provider)
+                             :user-id     (:user-id user)
+                             :username    (:display-name user)
+                             :avatar      (:avatar user)
+                             :credentials credentials})
+                  ;; Scoped to the account, so connecting a second host does not
+                  ;; blow away the first one's list.
+                  (update-in [:accounts ak] dissoc :credentials-stale?)
+                  (assoc-in [:league-choices ak] (vec leagues))
+                  (assoc-in [:league-choices-error ak] leagues-error))]
       (cond
+        leagues-error
+        {:db (assoc db' :waiver-status
+                    (str (providers/label provider)
+                         " is connected, but its leagues could not be listed. Paste a league ID."))}
+
         (empty? leagues)
         {:db (assoc db' :waiver-status
-                    (str (:display-name user) " has no leagues this season."))}
+                    (str "That " (providers/label provider)
+                         " account plays in no leagues this season."))}
 
         ;; One league is not a choice. Making the manager pick it out of a list
         ;; of one is a step that asks him to confirm the only possible answer.
         (= 1 (count leagues))
-        {:db db'
-         :fx [[:dispatch [:league-choose (first leagues)]]]}
+        {:db db' :fx [[:dispatch [:league-choose ak (first leagues)]]]}
 
         :else
-        {:db (assoc db' :waiver-status
-                    (str "Pick one of " (count leagues) " leagues."))}))))
+        {:db (assoc db' :waiver-status (str "Pick one of " (count leagues) " leagues."))}))))
 
-(rf/reg-event-db :league-user-failed
-  (fn [db [_ err]] (assoc db :waiver-status (str "Lookup failed: " err))))
+(rf/reg-event-db :account-connect-failed [persist]
+  (fn [db [_ provider err status]]
+    ;; Marked on whatever account this host already has, if any. A first
+    ;; connection has no account to flag and the status line is the whole
+    ;; report — there is nothing yet to reconnect.
+    (cond-> (assoc db :waiver-status
+                   (str (providers/label provider) " connection failed: " err))
+      (= 401 status)
+      (update :accounts
+              #(reduce-kv (fn [m ak a]
+                            (assoc m ak (cond-> a
+                                          (= (name provider) (:provider a))
+                                          (assoc :credentials-stale? true))))
+                          {} %)))))
+
+(rf/reg-event-fx :disconnect-account [persist]
+  (fn [{:keys [db]} [_ ak]]
+    ;; The leagues go with it. They are read through this account's credentials
+    ;; and nothing else can refresh them, so leaving them behind would leave a
+    ;; board naming rosters nobody can re-sync.
+    (let [gone   (into #{} (comp (filter (fn [[_ e]] (= ak (:account-key e)))) (map key))
+                       (:leagues db))
+          db'    (-> db
+                     (update :accounts dissoc ak)
+                     (update :league-choices dissoc ak)
+                     (update :league-choices-error dissoc ak)
+                     (update :leagues #(apply dissoc % gone)))
+          moved? (contains? gone (:active-league db))
+          next-k (when moved? (first (sort (keys (:leagues db')))))]
+      (if-not moved?
+        {:db db'}
+        {:db (cond-> (assoc db' :active-league nil :waivers nil :compare [])
+               next-k (activate next-k))
+         :fx (if next-k
+               [[:dispatch [:recompute]] [:dispatch [:fetch-waivers]]]
+               [])}))))
+
+(defn choose-league
+  "Store this league under its account, make it active, and go ask both
+  questions about it: who is rostered, and what the rules are."
+  [db ak provider league league-id]
+  (let [k     (db/league-key provider league-id)
+        ;; What we knew wins over the seed — a re-chosen league keeps its team
+        ;; and rules — but the picker's name and season are freshest.
+        entry (merge {:provider provider :league-id league-id
+                      :account-key ak :config (:config db)}
+                     (get (:leagues db) k)
+                     (select-keys league [:name :season])
+                     {:account-key ak})
+        req   {:provider provider :league-id league-id}]
+    ;; Sync is who is rostered, import is the rules; `:recompute` because until
+    ;; the import answers this league seeds the previous one's config.
+    {:db (-> db (assoc-in [:leagues k] entry) (activate k))
+     :fx [[:dispatch [:sync-league req]]
+          [:dispatch [:import-league req]]
+          [:dispatch [:recompute]]]}))
 
 (rf/reg-event-fx :league-choose [persist]
-  (fn [{:keys [db]} [_ league]]
+  (fn [{:keys [db]} [_ ak league]]
     ;; Takes the picker's league map or a bare typed id. The map carries a name
     ;; and season the sync supplies only on reply, and the switcher wants both.
     (let [league    (if (map? league) league {:league-id league})
-          league-id (:league-id league)
-          provider  "sleeper"
-          k         (db/league-key provider league-id)
-          ;; What we knew wins over the seed — a re-chosen league keeps its
-          ;; team and rules — but the picker's name and season are freshest.
-          entry     (merge {:provider provider :league-id league-id
-                            :config   (:config db)}
-                           (get (:leagues db) k)
-                           (select-keys league [:name :season]))]
-      ;; Sync is who is rostered, import is the rules; `:recompute` because
-      ;; until the import answers this league seeds the previous one's config.
-      {:db (-> db (assoc-in [:leagues k] entry) (activate k))
-       :fx [[:dispatch [:sync-league {:provider provider :league-id league-id}]]
-            [:dispatch [:import-league {:provider provider :league-id league-id}]]
-            [:dispatch [:recompute]]]})))
+          league-id (str (:league-id league))
+          provider  (or (:provider league) (get-in db [:accounts ak :provider]))]
+      (if-not provider
+        ;; `db/league-key` calls `name` on the provider, and `(name nil)` throws
+        ;; in ClojureScript — killing the event rather than reporting anything.
+        {:db (assoc db :waiver-status "Connect an account before adding a league.")}
+        (choose-league db ak provider league league-id)))))
 
-(rf/reg-event-db :league-sync-failed
-  (fn [db [_ err]] (assoc db :waiver-status (str "League sync failed: " err))))
+(rf/reg-event-db :league-sync-failed [persist]
+  (fn [db [_ k err status]]
+    ;; A 401 is not an outage, it is an instruction: the host refused the
+    ;; credentials and the card must offer a reconnect rather than a retry.
+    (cond-> (assoc db :waiver-status (str "League sync failed: " err))
+      (= 401 status) (mark-stale k true))))
 
 (defn- waiver-request
   "The body of an /api/waivers call. `roster-size` is what the manager's league

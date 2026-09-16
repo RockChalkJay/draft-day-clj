@@ -133,3 +133,14 @@
   (is (= [] (espn/league-entries {})))
   (is (= [] (espn/league-entries {:preferences [{:metaData {:entry {:abbrev "FFL"}}}]})))
   (is (= [] (espn/league-entries {:preferences "not a list"}))))
+
+(deftest the-account-listing-reports-an-account-failure-not-a-league-one
+  ;; Borrowing the league document's mapping sent a manager looking for a
+  ;; league he never named.
+  (is (= 404 (first (espn/fan-status-error 404))))
+  (is (re-find #"account" (second (espn/fan-status-error 404))))
+  (is (not (re-find #"league not found" (second (espn/fan-status-error 404)))))
+  (testing "and only a refusal fails the connect; everything else is a gap"
+    (is (= 401 (first (espn/fan-status-error 401))))
+    (is (= 403 (first (espn/fan-status-error 403))))
+    (is (= 502 (first (espn/fan-status-error 500))))))

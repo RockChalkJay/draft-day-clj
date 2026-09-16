@@ -8,11 +8,11 @@
             [re-frame.core :as rf]
             [re-frame.db :as rdb]
             [re-frame.registrar :as registrar]
-            [clojure.walk]
             [reagent.ratom]
             [draft-day.db :as db]
             [draft-day.fx]
             [draft-day.subs :as subs]
+            [draft-day.test-render :refer [render press!]]
             [draft-day.views.board :as board]
             [draft-day.views.waivers :as waivers]
             [draft-day.events :as events]))
@@ -63,6 +63,7 @@
    :roster-size 15 :league-id "987654" :provider "sleeper"})
 
 (def ^:private lk (db/league-key "sleeper" "987654"))
+(def ^:private ak (db/account-key "sleeper" "u1"))
 
 (defn- with-league!
   "Put a league in db and make it active, the way `:league-choose` would.
@@ -73,10 +74,18 @@
   ([] (with-league! nil nil))
   ([sync mine]
    (swap! rdb/app-db assoc
-          :leagues {lk (cond-> {:provider "sleeper" :league-id "987654"}
+          :leagues {lk (cond-> {:provider "sleeper" :league-id "987654"
+                                :account-key ak}
                          sync (assoc :sync sync)
                          mine (assoc :my-roster-id mine))}
           :active-league lk)))
+
+(defn- with-account!
+  "The account the fixture league is read through."
+  [user-id]
+  (swap! rdb/app-db assoc-in [:accounts ak]
+         {:provider "sleeper" :user-id user-id :username "jay"
+          :credentials {:username "jay"}}))
 
 (defn- league-entry [] (get-in @rdb/app-db [:leagues lk]))
 
@@ -332,42 +341,6 @@
   (rf/clear-subscription-cache!)
   (is (= [] (sub [:my-waiver-roster])) "picked, but holding nobody"))
 
-(defn- render
-  "A component's hiccup, rendered inside a reactive context.
-
-  Same binding `sub` needs and for the same reason: the panel subscribes, and
-  re-frame warns on every subscribe made outside one."
-  [component]
-  (binding [reagent.ratom/*ratom-context* #js {}] (pr-str (component))))
-
-(defn- press!
-  "Find the button labelled `label` in a component's hiccup and call its
-  `:on-click`.
-
-  Returns the events it dispatched.
-
-  `render` stringifies, which is enough to assert what a panel *says* but not
-  what a button *does* — and the bugs in the sync strip were all in the payload a
-  click sends, which no amount of rendering reaches. `rf/dispatch` is redefined
-  rather than read off `captured`: a view calls the dispatch *function*, which
-  queues on the real router, and never touches the `:dispatch` effect the fixture
-  stubs."
-  [component label]
-  (let [found (atom nil)
-        seen  (atom [])]
-    (clojure.walk/postwalk
-     (fn [x]
-       (when (and (vector? x) (= :button (first x)) (map? (second x))
-                  (some #{label} (filter string? x)))
-         (reset! found (:on-click (second x))))
-       x)
-     (binding [reagent.ratom/*ratom-context* #js {}] (component)))
-    (if-let [f @found]
-      (with-redefs [rf/dispatch (fn [ev] (swap! seen conj ev))]
-        (f)
-        @seen)
-      (throw (ex-info (str "no button labelled " label) {})))))
-
 (deftest the-roster-panel-says-which-state-it-is-in
   (let [text (fn [] (render waivers/my-roster-panel))]
     (swap! rdb/app-db assoc :leagues {} :active-league nil :waivers {:my-roster nil})
@@ -447,7 +420,7 @@
   ;; out of a list of twelve before the board could name a drop, price a bid or
   ;; draw his roster — and all three read as blank until he did.
   (with-league!)
-  (swap! rdb/app-db assoc-in [:accounts "sleeper"] {:provider "sleeper" :user-id "u-me"})
+  (with-account! "u-me")
   (rf/dispatch-sync [:league-synced lk owned])
   (is (= 7 (:my-roster-id (league-entry)))))
 
@@ -455,13 +428,13 @@
   ;; Co-managed teams and second accounts are real; a manager who overrode the
   ;; guess must keep his override.
   (with-league! nil 1)
-  (swap! rdb/app-db assoc-in [:accounts "sleeper"] {:provider "sleeper" :user-id "u-me"})
+  (with-account! "u-me")
   (rf/dispatch-sync [:league-synced lk owned])
   (is (= 1 (:my-roster-id (league-entry)))))
 
 (deftest an-owner-nobody-matches-leaves-the-dropdown-to-answer
   (with-league!)
-  (swap! rdb/app-db assoc-in [:accounts "sleeper"] {:provider "sleeper" :user-id "u-nobody"})
+  (with-account! "u-nobody")
   (rf/dispatch-sync [:league-synced lk owned])
   (is (nil? (:my-roster-id (league-entry))) "a guess here would be worse than the prompt"))
 
@@ -473,34 +446,82 @@
   (is (nil? (events/my-roster-id-for (:teams owned) "")))
   (is (nil? (events/my-roster-id-for [] "u-me"))))
 
+(defn- connect!
+  ([resp] (connect! :sleeper {:username "jay"} resp))
+  ([provider creds resp]
+   (rf/dispatch-sync [:account-connected provider creds resp])))
+
 (deftest one-league-is-not-a-choice
-  (rf/dispatch-sync [:league-user-loaded
-                     {:user {:user-id "u1" :display-name "jay"}
-                      :leagues [{:league-id "L1" :name "Only" :num-teams 12}]}])
-  (is (= {:provider "sleeper" :user-id "u1" :username "jay"}
-         (get-in @rdb/app-db [:accounts "sleeper"]))
-      "keyed by provider, so a second provider lands beside it rather than over it")
+  (connect! {:user {:user-id "u1" :display-name "jay"}
+             :leagues [{:league-id "L1" :name "Only" :num-teams 12}]})
+  (is (= {:provider "sleeper" :user-id "u1" :username "jay" :avatar nil
+          :credentials {:username "jay"}}
+         (get-in @rdb/app-db [:accounts ak]))
+      "keyed by provider and user, so a second login lands beside it rather than over it")
   (is (some #{:league-choose} (dispatched))
       "asking a manager to confirm the only possible answer is a step for nothing"))
 
+(deftest two-accounts-on-one-host-both-survive
+  ;; Keyed by provider alone the second silently replaced the first, and the
+  ;; league it authorizes could no longer be synced.
+  (connect! {:user {:user-id "u1" :display-name "jay"} :leagues []})
+  (connect! :sleeper {:username "dana"} {:user {:user-id "u2" :display-name "dana"} :leagues []})
+  (is (= 2 (count (:accounts @rdb/app-db)))))
+
+(deftest a-second-host-does-not-blow-away-the-firsts-leagues
+  (connect! {:user {:user-id "u1" :display-name "jay"}
+             :leagues [{:league-id "L1" :name "One"} {:league-id "L2" :name "Two"}]})
+  (connect! :espn {:swid "{S}" :espn-s2 "x"}
+            {:user {:user-id "{S}"} :leagues [{:league-id "E1" :name "Big Show"}]})
+  (is (= 2 (count (get-in @rdb/app-db [:league-choices ak]))))
+  (is (= 1 (count (get-in @rdb/app-db [:league-choices (db/account-key "espn" "{S}")])))))
+
 (deftest several-leagues-wait-to-be-picked
-  (rf/dispatch-sync [:league-user-loaded
-                     {:user {:user-id "u1" :display-name "jay"}
-                      :leagues [{:league-id "L1" :name "One"} {:league-id "L2" :name "Two"}]}])
-  (is (= 2 (count (:league-choices @rdb/app-db))))
+  (connect! {:user {:user-id "u1" :display-name "jay"}
+             :leagues [{:league-id "L1" :name "One"} {:league-id "L2" :name "Two"}]})
+  (is (= 2 (count (get-in @rdb/app-db [:league-choices ak]))))
   (is (not (some #{:league-choose} (dispatched)))))
 
 (deftest an-account-with-no-leagues-says-so-rather-than-failing
-  (rf/dispatch-sync [:league-user-loaded
-                     {:user {:user-id "u1" :display-name "jay"} :leagues []}])
-  (is (= [] (:league-choices @rdb/app-db)) "looked up, and plays in none")
+  (connect! {:user {:user-id "u1" :display-name "jay"} :leagues []})
+  (is (= [] (get-in @rdb/app-db [:league-choices ak])) "looked up, and plays in none")
   (is (re-find #"no leagues" (:waiver-status @rdb/app-db)))
   (is (not (some #{:league-choose} (dispatched)))))
+
+(deftest a-listing-that-broke-is-not-an-account-that-plays-in-nothing
+  ;; The two read identically in db — an empty list — and the manager needs
+  ;; opposite things from them: one is told so, the other gets the paste row.
+  (connect! :espn {:swid "{S}" :espn-s2 "x"}
+            {:user {:user-id "{S}"} :leagues [] :leagues-error "ESPN would not list them"})
+  (let [ek (db/account-key "espn" "{S}")]
+    (is (= "ESPN would not list them" (get-in @rdb/app-db [:league-choices-error ek])))
+    (is (re-find #"could not be listed" (:waiver-status @rdb/app-db)))))
+
+(deftest a-rejected-credential-marks-the-account-that-holds-it
+  ;; On the account and not on the app: a manager whose ESPN cookie expired
+  ;; must be sent to the ESPN card and left alone on his Sleeper one.
+  (connect! {:user {:user-id "u1" :display-name "jay"} :leagues []})
+  (connect! :espn {:swid "{S}" :espn-s2 "x"} {:user {:user-id "{S}"} :leagues []})
+  (rf/dispatch-sync [:account-connect-failed :espn "rejected" 401])
+  (is (get-in @rdb/app-db [:accounts (db/account-key "espn" "{S}") :credentials-stale?]))
+  (is (nil? (get-in @rdb/app-db [:accounts ak :credentials-stale?]))
+      "the Sleeper account is fine and must not be flagged"))
+
+(deftest disconnecting-an-account-takes-its-leagues-with-it
+  ;; They are read through its credentials and nothing else can refresh them,
+  ;; so leaving them behind leaves a board naming rosters nobody can re-sync.
+  (connect! {:user {:user-id "u1" :display-name "jay"}
+             :leagues [{:league-id "L1" :name "Only"}]})
+  (rf/dispatch-sync [:disconnect-account ak])
+  (is (empty? (:accounts @rdb/app-db)))
+  (is (empty? (:leagues @rdb/app-db)))
+  (is (nil? (:active-league @rdb/app-db))))
 
 (deftest choosing-a-league-syncs-its-rosters-and-imports-its-rules
   ;; Two questions off one id. A manager who synced without importing gets a
   ;; board priced under the draft config's scoring rather than his league's.
-  (rf/dispatch-sync [:league-choose {:league-id "L1" :name "One" :season "2026"}])
+  (with-account! "u1")
+  (rf/dispatch-sync [:league-choose ak {:league-id "L1" :name "One" :season "2026"}])
   (let [evs (dispatched)
         k   (db/league-key "sleeper" "L1")]
     (is (some #{:sync-league} evs))
@@ -511,7 +532,8 @@
 
 (deftest a-bare-league-id-is-accepted-as-well-as-a-picked-one
   ;; The Settings field for a league the connected account is not in.
-  (rf/dispatch-sync [:league-choose "L9"])
+  (with-account! "u1")
+  (rf/dispatch-sync [:league-choose ak "L9"])
   (is (= (db/league-key "sleeper" "L9") (:active-league @rdb/app-db)))
   (is (= "L9" (get-in @rdb/app-db [:leagues (db/league-key "sleeper" "L9") :league-id]))))
 
@@ -708,7 +730,8 @@
   ;; board stayed priced under the league you left while the Scoring card showed
   ;; something else.
   (swap! rdb/app-db assoc :players [{:player-id "p1" :position "RB"}])
-  (rf/dispatch-sync [:league-choose {:league-id "L1" :name "One"}])
+  (with-account! "u1")
+  (rf/dispatch-sync [:league-choose ak {:league-id "L1" :name "One"}])
   (is (some #{:recompute} (dispatched))))
 
 (deftest a-failed-import-is-reported-where-the-league-was-chosen
@@ -792,10 +815,12 @@
   ;; The league *list* is not. It is a snapshot of what an account plays in this
   ;; season, refetched in one click, and a stored copy would go stale the first
   ;; time a manager joined a league.
-  (rf/dispatch-sync [:league-user-loaded
+  (rf/dispatch-sync [:account-connected :sleeper {:username "jay"}
                      {:user {:user-id "u1" :display-name "jay"} :leagues []}])
   (let [slice (last (:persist @captured))]
-    (is (= "jay" (get-in slice [:accounts "sleeper" :username])))
+    (is (= "jay" (get-in slice [:accounts ak :username])))
+    (is (= {:username "jay"} (get-in slice [:accounts ak :credentials]))
+        "or it is a login the app pretends not to have, retyped every session")
     (is (not (contains? slice :league-choices))))
   (testing "and everything a reload needs is in the persisted slice"
     (is (some #{:accounts} db/persist-keys))
