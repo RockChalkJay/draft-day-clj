@@ -7,11 +7,6 @@
   calling it from the browser, and why nothing here may put a credential in a
   URL, a message or an `ex-data` — see `providers/redact`.
 
-  It is http-kit like everything else. `ingestion.espn` uses the JDK client for
-  one reason, a ~37MB player feed; a league document with all three views is
-  tens of KB. That namespace is the player universe and shares only a hostname
-  with this one.
-
   Two answers ESPN gives that are not failures at the HTTP layer and must be
   treated as ones: a rejected cookie can arrive as an HTML login page with
   status 200, and a league the account cannot see can arrive as a 200 whose

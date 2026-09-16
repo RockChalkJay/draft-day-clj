@@ -153,10 +153,8 @@
                             seasonId (assoc :season (str seasonId)))))))
         (:preferences raw)))
 
-(defn fan-status-error
-  "What a fan-endpoint status means, as `[status message]`.
-
-  Its own mapping rather than the league document's: this endpoint is asked
+(defn status-error
+  "Its own mapping rather than the league document's: this endpoint is asked
   about an *account*, so borrowing \"league not found\" for a 404 sends a
   manager looking for a league he never named.
 
@@ -182,6 +180,6 @@
     (cond
       error             (throw (ex-info "ESPN would not list this account's leagues"
                                         {:status 502}))
-      (not= 200 status) (let [[s msg] (fan-status-error status)]
+      (not= 200 status) (let [[s msg] (status-error status)]
                           (throw (ex-info msg {:status s})))
       :else             (league-entries (json/read-value body mapper)))))

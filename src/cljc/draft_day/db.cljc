@@ -664,11 +664,6 @@
                           [s (:player-id p)])))
           players)))
 
-(defn sleeper->player-id
-  "`provider->player-id` for the one provider that has shipped."
-  [players]
-  (provider->player-id players :sleeper))
-
 ;; ---- waiver board ----
 ;; The in-season board asks different questions than the draft board, so it gets
 ;; its own catalog rather than more columns on that one. Nothing here is priced

@@ -625,7 +625,8 @@
     (is (= {"4034" "00-1" "6794" "00-2"} (db/provider->player-id players :sleeper)))
     (is (= {"e1" "00-1"} (db/provider->player-id players :espn))
         "a player carrying no id in that space is absent, not mapped to nil")
-    (is (= (db/provider->player-id players :sleeper) (db/sleeper->player-id players)))))
+    (is (= {"4034" "00-1" "6794" "00-2"} (db/provider->player-id players "sleeper"))
+        "a provider crosses the wire as a string, never a keyword")))
 
 (deftest a-provider-whose-ids-are-not-ingested-yet-resolves-nothing
   (is (= {} (db/provider->player-id [{:player-id "00-1" :ids {:sleeper "4034"}}] :espn))

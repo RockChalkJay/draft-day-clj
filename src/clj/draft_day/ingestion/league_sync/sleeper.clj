@@ -16,7 +16,7 @@
 
   ROSTER IDS ARE SLEEPER IDS. This namespace deliberately does not translate
   them: the crosswalk to the canonical GSIS ids the board is keyed by lives in
-  `db/sleeper->player-id` and needs the universe, which ingestion of a *league*
+  `db/provider->player-id` and needs the universe, which ingestion of a *league*
   has no business loading. `rankings.waiver` does the mapping where both halves
   are already in hand."
   (:require [org.httpkit.client :as http]
