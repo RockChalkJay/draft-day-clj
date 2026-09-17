@@ -20,6 +20,7 @@
        :matchups [{:matchup-id 1 :roster-ids [1 5]} ...]
        :scores   {roster-id {:official      96.1
                              :starter-ids   [\"4034\" ...]
+                             :player-ids    [\"4034\" ...]
                              :player-points {\"4034\" 18.4}}}}
 
   `:roster-ids` holds one id for a roster with no opponent rather than being

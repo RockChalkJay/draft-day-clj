@@ -140,6 +140,40 @@
     (rf/dispatch-sync [:set-active-league "sleeper:99"])
     (is (some #{:fetch-matchup} (dispatched)))))
 
+(deftest a-reply-about-the-league-you-left-cannot-land-under-this-one
+  ;; Asked on the matchup tab, then a switch from another tab, which does not
+  ;; refetch — so only the switch itself can retire the request.
+  (connect!)
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:100"]
+         {:provider "sleeper" :league-id "100" :sync {:teams []}})
+  (rf/dispatch-sync [:fetch-matchup])
+  (let [asked (:matchup-seq @rdb/app-db)]
+    (rf/dispatch-sync [:set-active-league "sleeper:100"])
+    (rf/dispatch-sync [:matchup-loaded asked reply])
+    (is (nil? (:matchup @rdb/app-db)))))
+
+(deftest a-first-sync-on-the-matchup-tab-fetches-after-the-rosters-land
+  ;; Fetching alongside the sync asked with no rosters: every team empty.
+  (connect!)
+  (swap! rdb/app-db assoc :view :matchup)
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:100"] {:provider "sleeper" :league-id "100"})
+  (rf/dispatch-sync [:set-active-league "sleeper:100"])
+  (is (not (some #{:fetch-matchup} (dispatched))) "not before the sync")
+  (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
+  (rf/dispatch-sync [:league-synced "sleeper:100" {:teams [{:roster-id 1 :name "A"}]}])
+  (is (some #{:fetch-matchup} (dispatched)) "but once it lands"))
+
+(deftest picking-my-team-moves-the-board-without-a-refetch
+  ;; The reply was asked before a team was picked.
+  (connect!)
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:99" :my-roster-id] nil)
+  (rf/dispatch-sync [:matchup-loaded 0 (assoc reply :my-roster-id nil)])
+  (is (= 7 (:matchup-id (sub [:selected-matchup]))) "the first game, with no team")
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:99" :my-roster-id] 2)
+  (rf/clear-subscription-cache!)
+  (is (= 8 (:matchup-id (sub [:selected-matchup]))))
+  (is (= ["Mine" "Them"] (mapv :name (sub [:matchup-sides])))))
+
 (deftest switching-games-costs-no-round-trip
   ;; Every roster came back in one reply.
   (connect!)
@@ -200,7 +234,8 @@
 (deftest the-other-side-is-nil-rather-than-a-blank-team
   ;; So the view can say "no opponent" rather than draw half a table.
   (connect!)
-  (rf/dispatch-sync [:matchup-loaded 0 (assoc reply :my-roster-id 5)])
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:99" :my-roster-id] 5)
+  (rf/dispatch-sync [:matchup-loaded 0 reply])
   (let [[l r] (sub [:matchup-sides])]
     (is (= "Byed" (:name l)))
     (is (nil? r))))

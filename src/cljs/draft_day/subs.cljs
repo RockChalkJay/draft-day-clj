@@ -477,8 +477,11 @@
 (rf/reg-sub :matchup-games
   :<- [:matchup]
   :<- [:matchup-teams]
-  (fn [[m by-id] _]
-    (let [mine (:my-roster-id m)]
+  :<- [:active-league]
+  (fn [[m by-id lg] _]
+    ;; Off the league, not the reply: picking a team in Settings must move the
+    ;; board without a refetch.
+    (let [mine (:my-roster-id lg)]
       (mapv (fn [{:keys [roster-ids] :as g}]
               (assoc g
                      :names (mapv #(:name (get by-id %) (str "Roster " %)) roster-ids)
@@ -504,10 +507,10 @@
 (rf/reg-sub :matchup-sides
   :<- [:selected-matchup]
   :<- [:matchup-teams]
-  :<- [:matchup]
-  (fn [[game by-id m] _]
+  :<- [:active-league]
+  (fn [[game by-id lg] _]
     (when game
-      (let [mine  (:my-roster-id m)
+      (let [mine  (:my-roster-id lg)
             ids   (:roster-ids game)
             ids   (if (= mine (second ids)) (reverse ids) ids)]
         [(get by-id (first ids)) (get by-id (second ids))]))))

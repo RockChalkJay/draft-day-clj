@@ -456,6 +456,10 @@
                    ;; league's name those are false, not stale.
                    :matchup nil
                    :matchup-pick nil
+                   ;; And any reply still in flight about it: a switch only
+                   ;; refetches on the matchup tab, so without the bump the old
+                   ;; league's reply still matches and lands under this one.
+                   :matchup-seq (inc (:matchup-seq db 0))
                    ;; Goes with the board it was asked about: a free agent in
                    ;; one league is rostered in another.
                    :compare [])
@@ -477,8 +481,9 @@
              (nil? (:sync entry))
              (conj [:dispatch [:sync-league (select-keys entry [:provider :league-id])]])
              ;; Only when it is the tab on screen; every other tab picks it up
-             ;; from `:set-view`'s first-open fetch, and this one is live.
-             (= :matchup (:view db))
+             ;; from `:set-view`'s first-open fetch, and this one is live. Not
+             ;; before a first sync, which asks for it once there are rosters.
+             (and (= :matchup (:view db)) (:sync entry))
              (conj [:dispatch [:fetch-matchup]]))}
       {})))
 
@@ -530,7 +535,10 @@
                (assoc :waiver-status (if league
                                        (str "✓ Synced " (count (:teams league)) " rosters")
                                        "Sync returned nothing usable")))
-       :fx [[:dispatch [:fetch-waivers]]]})))
+       :fx (cond-> [[:dispatch [:fetch-waivers]]]
+             ;; The matchup board asked with no rosters is every team empty.
+             (and (= :matchup (:view db)) (= k (:active-league db)))
+             (conj [:dispatch [:fetch-matchup]]))})))
 
 (rf/reg-event-fx :connect-account
   (fn [{:keys [db]} [_ provider credentials]]

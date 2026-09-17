@@ -25,7 +25,8 @@
   `:actual` is regret. The swaps are `:in`/`:out` lists rather than paired
   seats, since pairing would assert a correspondence a set difference does not
   carry."
-  (:require [draft-day.db :as db]
+  (:require [clojure.set :as set]
+            [draft-day.db :as db]
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.waiver :as waiver]))
 
@@ -35,7 +36,8 @@
   Named rather than passing whole board rows through: the response carries every
   roster in the league."
   [:player-id :player-name :position :team :bye :week-points
-   :week/opponent :week/home? :kickoff/at :kickoff/status :kickoff/neutral?
+   :week/opponent :week/home? :kickoff/at :kickoff/status
+   :kickoff/opponent :kickoff/home? :kickoff/neutral?
    :sleeper/injury-status])
 
 (defn actual-points
@@ -137,6 +139,25 @@
   {:player-id (:player-id p) :player-name (:player-name p)
    :position (:position p) :points (k p)})
 
+(defn without-each
+  "`coll` with one occurrence of each item in `xs` removed. A league with two WR
+  seats and one pending WR gives up one seat, not both."
+  [coll xs]
+  (reduce (fn [acc x]
+            (let [[before after] (split-with #(not= x %) acc)]
+              (vec (concat before (rest after)))))
+          (vec coll) xs))
+
+(defn settled-slots
+  "The seats whose result is in: `slots` less the seat of every starter who has
+  not played.
+
+  Regret is only measurable over a finished seat. Left in, the seat of a man who
+  plays Sunday is empty on the actual basis, so a bench player who played
+  Thursday is \"left on the bench\" in a seat that was never his to take."
+  [slots current-rows]
+  (without-each slots (keep #(when-not (number? (:actual %)) (:slot %)) current-rows)))
+
 (defn optimal
   "The best legal lineup on `score-key`, and what it would have changed.
 
@@ -155,15 +176,26 @@
      :out   (mapv #(brief score-key %) (remove #(ids (:player-id %)) current))}))
 
 (defn team-board
-  "One team's whole side of a matchup."
+  "One team's whole side of a matchup.
+
+  Who is on the roster comes off the matchup document where there is one, as the
+  lineup does, and only IR and taxi from the sync. The sync goes stale on anyone's
+  claim; drawing the roster from it put a man picked up midweek in the lineup and
+  nowhere among those who could start."
   [team score xwalk by-id slots]
   (let [points   (points-by-player-id score xwalk)
-        held     (waiver/held-ids team xwalk :player-ids)
-        active   (set (waiver/held-ids team xwalk :active-ids))
+        synced   (waiver/held-ids team xwalk :player-ids)
+        parked   (set/difference (set synced)
+                                 (set (waiver/held-ids team xwalk :active-ids)))
+        held     (if (seq (:player-ids score))
+                   (waiver/held-ids score xwalk :player-ids)
+                   synced)
         lineup   (week-lineup team score xwalk)
         starters (starter-rows slots lineup by-id points)
         ;; Off the seats rather than off `lineup` — see `bench-rows`.
         seated   (set (keep :player-id starters))
+        ;; A starter is startable whatever the sync says: the provider seated him.
+        active   (into (set/difference (set held) parked) seated)
         bench    (bench-rows held seated active by-id points)
         ;; A row with no position is out of *both* halves: `best-lineup` can
         ;; never seat it, so counting it as current would put a man who scored
@@ -186,7 +218,8 @@
      ;; kicked off: a provider publishes 0.0 for a team that has not played.
      :official  (when (some #(number? (:actual %)) starters) (:official score))
      :optimal   {:projected (optimal startable slots :week-points current)
-                 :actual    (optimal startable slots :actual current)}}))
+                 :actual    (optimal startable (settled-slots slots current)
+                                     :actual current)}}))
 
 (defn matchup-board
   "Every team in the league valued for this week, plus the pairing.

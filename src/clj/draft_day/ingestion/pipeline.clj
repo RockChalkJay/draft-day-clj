@@ -480,6 +480,12 @@
 (def default-weekly-cache-path
   (str "data/weekly_projections.v" weekly-schema-version ".transit"))
 
+(def matchup-weekly-cache-path
+  "The matchup board's own copy. It asks for the provider's week while the waiver
+  board asks for the next unplayed one, and those differ from the first game of
+  a week until the last; sharing one file made each board evict the other's."
+  (str "data/weekly_matchup.v" weekly-schema-version ".transit"))
+
 (defn- weekly-ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_WEEKLY_TTL_HOURS") "1")))
 

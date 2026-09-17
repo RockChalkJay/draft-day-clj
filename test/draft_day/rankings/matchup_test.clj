@@ -184,6 +184,34 @@
     (is (= ["rb1"] (mapv :player-id (:out o))))
     (is (= 25.0 (:points (first (:in o)))) "named in the unit it was measured in")))
 
+(deftest the-actual-basis-does-not-spend-a-seat-whose-game-is-still-to-come
+  ;; rb1 plays Sunday. Left in, his seat was empty on the actual basis and wr3
+  ;; took it: "25 left on the bench" in a seat that was never wr3's to take.
+  (let [sunday (mapv #(if (= "rb1" (:player-id %)) (assoc % :kickoff/started? false) %) board)
+        o      (get-in (side :board sunday) [:optimal :actual])]
+    (is (= 16.0 (:gain o)) "wr3 over rb3, the one back who has played and lost to him")
+    (is (= ["wr3"] (mapv :player-id (:in o))))
+    (is (= ["rb3"] (mapv :player-id (:out o))))))
+
+(deftest a-pickup-since-the-last-sync-is-startable
+  ;; wr9 was claimed and started after the sync. The lineup is live and the sync
+  ;; is not, so reading the roster off the sync made him a starter nobody could
+  ;; start: "sit wr9", and a negative gain off a perfect lineup.
+  (let [live    (-> (vec (remove #{"wr2"} roster)) (conj "wr9"))
+        started (assoc lineup 4 "wr9")
+        board'  (conj board (p "wr9" "WR" 11.0))
+        score'  (-> score
+                    (assoc :player-ids (mapv sleeper-id live)
+                           :starter-ids (mapv sleeper-id started))
+                    (assoc-in [:player-points (sleeper-id "wr9")] 11.0))
+        t       (side :board board' :score score')
+        o       (get-in t [:optimal :projected])]
+    (is (zero? (:gain o)))
+    (is (= [] (:out o)))
+    (is (not-any? #{"wr2"} (map :player-id (:bench t))) "and the man he replaced is gone")
+    (is (true? (:parked? (first (filter #(= "ir1" (:player-id %)) (:bench t)))))
+        "IR still comes from the sync, which is the only thing that knows it")))
+
 (deftest the-two-bases-disagree-and-both-are-reported
   (let [{:keys [projected actual]} (:optimal (side))]
     (is (not= (:gain projected) (:gain actual)))))
@@ -220,6 +248,14 @@
     (is (not-any? nil? (map :player-id (:out o))))
     (is (not-any? :empty? (:out o)))))
 
+
+(deftest a-row-carries-the-scoreboards-opponent
+  ;; `waivers/week-matchup` falls back to these when Sleeper names nobody.
+  (let [b (conj (vec (remove #(= "qb1" (:player-id %)) board))
+                (p "qb1" "QB" 22.0 :kickoff/opponent "NE" :kickoff/home? true))
+        qb (first (:starters (side :board b)))]
+    (is (= "NE" (:kickoff/opponent qb)))
+    (is (true? (:kickoff/home? qb)))))
 
 (deftest the-teams-come-back-as-a-vector
   ;; An integer map key round-trips through JSON as a keywordized string.

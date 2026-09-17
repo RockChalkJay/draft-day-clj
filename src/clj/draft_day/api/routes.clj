@@ -8,6 +8,7 @@
             [draft-day.db :as db]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.season :as season]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.espn]
@@ -354,6 +355,17 @@
   (or (some-> (seq (:roster-positions league)) vec db/scoring-slots)
       (some-> roster db/starting-slots)))
 
+(defn live-kickoffs
+  "This week's game statuses, fetched now rather than read off the weekly cache.
+
+  The cache holds a status for an hour, and a status is what turns a dash into a
+  score: a board loaded ten minutes before the 1pm slate would otherwise hide
+  every one of those games' points until well into the second half. The cached
+  copy is the fallback when ESPN does not answer."
+  [season week weekly]
+  (or (when-not (pipeline/offline?) (espn-schedule/fetch season week))
+      (:kickoffs weekly)))
+
 (defn matchup-handler
   "This week's head-to-head, every roster in the league valued.
 
@@ -375,7 +387,8 @@
             (json-response (or status 502) {:error error})
             (let [{:keys [players season]} (universe false)
                   season* (season/resolve-season season)
-                  weekly  (pipeline/load-weekly season* week)
+                  weekly  (pipeline/load-weekly season* week
+                                                {:path pipeline/matchup-weekly-cache-path})
                   ;; Leaner than the waiver board's pipeline — no VBD, no
                   ;; rest-of-season blend, no vendor columns: one week's
                   ;; question does not need them.
@@ -383,7 +396,7 @@
                               without-history
                               (pipeline/assoc-weekly (:lines weekly))
                               (waiver/with-week-points scoring*)
-                              (pipeline/assoc-kickoffs (:kickoffs weekly)))
+                              (pipeline/assoc-kickoffs (live-kickoffs season* week weekly)))
                   out     (matchup/matchup-board
                            board
                            {:league   league

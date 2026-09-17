@@ -6,6 +6,7 @@
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.matchups :as matchups]
             [draft-day.scoring :as scoring]))
 
@@ -346,7 +347,7 @@
 ;; A week with no projections and no kickoffs, shaped like the real envelope so
 ;; `assoc-weekly` and `assoc-kickoffs` still run. Stubbed because `load-weekly`
 ;; is the one call in these tests that reaches the wire — see `no-weekly`.
-(defn- stub-weekly [season week]
+(defn- stub-weekly [season week & _]
   {:schema-version pipeline/weekly-schema-version
    :season season :week week :fetched-at "2026-09-01T00:00:00Z"
    :lines {} :kickoffs {}})
@@ -591,7 +592,8 @@
   (with-redefs [pipeline/load-universe       (fn [& _] in-season)
                 pipeline/load-weekly         stub-weekly
                 matchups/current-week        (fn [_] week)
-                matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)]
+                matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                espn-schedule/fetch          (fn [_ _] nil)]
     (routes/matchup-handler {:body (input-stream (json/write-value-as-string body))})))
 
 (def ^:private matchup-req
@@ -631,6 +633,33 @@
     (is (number? (get-in mine [:optimal :actual :total])))
     (is (= 31.0 (:actual mine)) "19 + 12, the two seats he started")
     (is (= 31.0 (:official mine)) "and the provider's own total beside it")))
+
+(deftest matchup-endpoint-reads-kickoffs-live-not-off-the-weekly-cache
+  ;; The cache holds a status for an hour; a board loaded before the slate would
+  ;; hide every score in it until the cache turned over.
+  (let [seen (atom [])]
+    (routes/reset-universe!)
+    (with-redefs [pipeline/load-universe       (fn [& _] in-season)
+                  pipeline/load-weekly         stub-weekly
+                  matchups/current-week        (fn [_] 9)
+                  matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                  espn-schedule/fetch          (fn [s w] (swap! seen conj [s w]) {})]
+      (routes/matchup-handler {:body (input-stream (json/write-value-as-string matchup-req))}))
+    (is (= 9 (second (first @seen))) "fetched, for the provider's week")))
+
+(deftest matchup-endpoint-keeps-its-own-weekly-cache
+  ;; The waiver board asks for the next unplayed week; one shared file made
+  ;; each board evict the other's for most of every week.
+  (let [paths (atom [])]
+    (routes/reset-universe!)
+    (with-redefs [pipeline/load-universe       (fn [& _] in-season)
+                  pipeline/load-weekly         (fn [s w & [opts]] (swap! paths conj (:path opts)) (stub-weekly s w))
+                  matchups/current-week        (fn [_] 9)
+                  matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                  espn-schedule/fetch          (fn [_ _] nil)]
+      (routes/matchup-handler {:body (input-stream (json/write-value-as-string matchup-req))}))
+    (is (= [pipeline/matchup-weekly-cache-path] @paths))
+    (is (not= pipeline/default-weekly-cache-path pipeline/matchup-weekly-cache-path))))
 
 (deftest matchup-endpoint-refuses-a-board-it-cannot-score
   (let [resp (matchup (assoc matchup-req :scoring (zipmap scoring/stat-keys (repeat 0))))]

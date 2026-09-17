@@ -54,15 +54,18 @@
   (update-keys (or (:players_points entry) {}) name))
 
 (defn roster-score
-  "Pure: one raw entry -> `[roster-id {:official :starter-ids :player-points}]`.
+  "Pure: one raw entry -> `[roster-id {:official :starter-ids :player-ids
+  :player-points}]`.
 
   `:official` prefers `custom_points`, a commissioner's correction and null on
   an ordinary matchup, over the computed `points`. `:starter-ids` is the lineup
-  that counted for this week, not the roster's lineup as it stands now."
+  that counted for this week, not the roster's lineup as it stands now, and
+  `:player-ids` the roster as of this week rather than as of the last sync."
   [entry]
   [(:roster_id entry)
    {:official      (or (:custom_points entry) (:points entry))
     :starter-ids   (vec (:starters entry))
+    :player-ids    (vec (:players entry))
     :player-points (player-points entry)}])
 
 (defmethod matchups/normalize-matchups :sleeper
