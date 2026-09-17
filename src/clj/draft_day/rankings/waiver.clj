@@ -26,10 +26,13 @@
   \"no lineup to compute against\" cannot be read as \"adds nothing\".
 
   `:upgrade` is the bench delta, and it remains the honest floor: a claim costs a
-  *roster spot*, not a positional slot, so the thing you give up is your worst
-  player, not your worst player at his position. With a spot already open you
-  give up nothing and the upgrade is his whole rest-of-season line. It stays
-  signed, since most of a free-agent pool is worse than the man you would drop.
+  *roster spot*, not a positional slot, so the thing you give up is the player
+  you can lose most cheaply, not your worst player at his position.
+  `drop-candidate` reads that off the starting lineup wherever the league's seats
+  are known, and falls back to plain worst-points only when they are not. With a
+  spot already open you give up nothing and the upgrade is his whole
+  rest-of-season line. It stays signed, since most of a free-agent pool is worse
+  than the man you would drop.
 
   `:bid` is a conserving share of your remaining budget, and what it conserves
   against is the part worth stating: not every free agent, but the best
@@ -39,11 +42,8 @@
   small bids, one run left means spend it. Over those top claims the bids sum to
   the budget, which is the property `waiver-test` pins.
 
-  The budget is split into two pools, because the two upgrades answer different
-  questions and a single pool let bench depth outbid a starter. `stash-share`
-  (0.15) is reserved for players with no lineup delta; `weights` puts each
-  player in exactly one pool. With no `:lineup-upgrade` anywhere the stash pool
-  takes the whole budget, which is the pre-lineup rule exactly — no special case.
+  It is one budget but two pools, because a single pool let bench depth outbid a
+  starter — see BIDS COME FROM TWO POOLS below.
 
   A `:bid` of $0 is a real bid, not a refusal. FAAB accepts one, and a player
   whose upgrade rounds to nothing is honestly worth the minimum — unlike the
