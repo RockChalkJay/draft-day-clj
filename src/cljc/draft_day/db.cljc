@@ -514,7 +514,7 @@
   the morning after, and the in-season screens have nothing to say before a
   league has rosters. Settings belongs to neither and is always reachable."
   {:draft  [:board :league]
-   :season [:matchup :waivers]})
+   :season [:team :matchup :waivers]})
 
 (defn draft-complete?
   "Every seat on every team filled. False for no teams at all: a draft that has

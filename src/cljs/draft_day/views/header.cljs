@@ -52,7 +52,7 @@
      (when my-team-name [:span.league-team my-team-name])]))
 
 (def view-labels
-  {:board "Board" :league "League" :matchup "Matchup" :waivers "Waivers"})
+  {:board "Board" :league "League" :team "My Team" :matchup "Matchup" :waivers "Waivers"})
 
 (defn mode-link
   "The way to the other half of the app. Quiet on purpose: it is used a couple

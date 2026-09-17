@@ -249,6 +249,12 @@
 (rf/reg-sub :mode :<- [:view] :<- [:phase]
   (fn [[view phase] _] (or (db/view-mode view) phase)))
 
+;; The manager's own team as the sync reported it — record, FAAB, waiver order.
+(rf/reg-sub :my-sync-team :<- [:league-sync] :<- [:my-roster-id]
+  (fn [[ls mine] _]
+    (when (some? mine)
+      (some #(when (= (:roster-id %) mine) %) (:teams ls)))))
+
 ;; What the season header says about the league on screen: the week, FAAB and
 ;; when the rosters were fetched. FAAB off the sync rather than the waiver board,
 ;; so it is there on every season tab and not only once Waivers has loaded.

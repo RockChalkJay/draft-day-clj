@@ -513,7 +513,7 @@
     (keep (fn [[e v]] (when (= e :set-view) v)) @seen)))
 
 (deftest the-app-opens-on-the-half-the-season-is-in
-  (is (= [:matchup]
+  (is (= [:team]
          (dispatched-views
           #(rf/dispatch-sync [:players-loaded {:players [] :count 0 :source "x"
                                                :universe {:through-week 3}}])))
@@ -529,7 +529,7 @@
   (swap! rdb/app-db assoc :active-league "sleeper:1" :view :settings
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}}
          :universe {:through-week 0})
-  (is (= [:matchup] (dispatched-views #(rf/dispatch-sync [:switch-mode :season])))
+  (is (= [:team] (dispatched-views #(rf/dispatch-sync [:switch-mode :season])))
       "it leaves Settings for the season's first tab")
   (is (= :season (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))
       "preseason by the data, so choosing Season is an override")
@@ -546,4 +546,12 @@
                    "sleeper:2" {:provider "sleeper" :league-id "2" :phase :season
                                 :sync {:teams []}}})
   (dispatched-views #(rf/dispatch-sync [:set-active-league "sleeper:2"]))
-  (is (= :matchup (:view @rdb/app-db))))
+  (is (= :team (:view @rdb/app-db))))
+
+(deftest opening-my-team-loads-its-roster-and-the-week
+  (let [seen (atom [])
+        real (registrar/get-handler :fx :dispatch)]
+    (swap-fx! {:dispatch #(swap! seen conj %)})
+    (try (rf/dispatch-sync [:set-view :team])
+         (finally (swap-fx! {:dispatch real})))
+    (is (= #{:fetch-waivers :fetch-matchup} (set (map first @seen))))))

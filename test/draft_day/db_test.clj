@@ -661,7 +661,7 @@
 
 (deftest a-view-outside-the-phase-falls-back-to-where-the-phase-opens
   (is (= :board (db/view-for :draft :board)))
-  (is (= :matchup (db/view-for :season :board)))
+  (is (= :team (db/view-for :season :board)) "the season opens on My Team")
   (is (= :board (db/view-for :draft :waivers)))
   (is (= :settings (db/view-for :season :settings)) "Settings belongs to neither")
   (is (= :waivers (db/view-for :season :waivers))))

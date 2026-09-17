@@ -13,6 +13,7 @@
             [draft-day.views.watchlist :as watchlist]
             [draft-day.views.columns :as columns]
             [draft-day.views.settings :as settings]
+            [draft-day.views.team :as team]
             [draft-day.views.waivers :as waivers]
             [draft-day.views.matchup :as matchup]
             [draft-day.views.compare :as compare]
@@ -51,6 +52,7 @@
           :league   [roster/league-view]
           :settings [settings/settings]
           :waivers  [waivers/waivers-view]
+          :team     [team/team-view]
           :matchup  [matchup/matchup-view]
           [board-view])]
        ;; Mounted here rather than inside the waivers view because it is
