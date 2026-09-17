@@ -959,3 +959,20 @@ nav.views { display: flex; }
 .team-sub { display: flex; gap: 12px; font-size: 11px; color: var(--muted); margin: -4px 0 8px; }
 .team-sub b { color: var(--good); font-weight: 700; }
 .team-card.mine { border-color: var(--accent); }
+
+/* ---- My Team ----
+   The synced roster full width, in the board's own table: one strip over it for
+   who the team is, and group rows between starters, bench and IR. */
+.team-view { display: flex; flex-direction: column; gap: 10px; }
+.status-strip { display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 8px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.status-strip .strip-note { color: var(--muted); font-size: 12px; }
+.status-strip .strip-note b { color: var(--text); font-weight: 600; }
+.team-title { font-size: 16px; font-weight: 700; }
+table.board tr.group-row td { background: var(--panel2); color: var(--muted); font-size: 10px;
+  text-transform: uppercase; letter-spacing: .05em; padding: 5px 10px; }
+table.board tr.group-row:hover { background: transparent; }
+table.board tr.parked td { color: var(--muted); }
+/* The seat a claim would take — the same man the drop note names. */
+table.board tr.drop-seat td { background: color-mix(in oklab, var(--warn) 10%, transparent); }
+.team-view .drop-tag { color: var(--warn); font-weight: 600; }

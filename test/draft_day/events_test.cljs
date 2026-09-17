@@ -575,7 +575,7 @@
                           :sync {:teams [] :drafted? true}}}})
 
 (deftest the-app-opens-on-the-half-the-season-is-in
-  (is (= [:matchup]
+  (is (= [:team]
          (dispatched-views
           #(rf/dispatch-sync [:players-loaded {:players [] :count 0 :source "x"
                                                :universe {:through-week 3}}])))
@@ -599,7 +599,7 @@
     (fn [store]
       (swap! store assoc fx/store-key
              (pr-str {:v fx/storage-version :state drafted-league}))
-      (is (= [:matchup] (dispatched-views #(rf/dispatch-sync [:boot])))))))
+      (is (= [:team] (dispatched-views #(rf/dispatch-sync [:boot])))))))
 
 (deftest a-universe-reload-leaves-the-view-where-the-manager-put-it
   ;; The board stays up after the last pick so it can be undone; a cache reset
@@ -611,21 +611,21 @@
   (is (= [:board] (dispatched-views #(rf/dispatch-sync [:load-failed "down"])))
       "nothing says season, so draft day — where the failure is read")
   (swap! rdb/app-db merge drafted-league)
-  (is (= [:matchup] (dispatched-views #(rf/dispatch-sync [:load-failed "down"])))
+  (is (= [:team] (dispatched-views #(rf/dispatch-sync [:load-failed "down"])))
       "while a league that has drafted is still in season"))
 
-(deftest an-espn-league-s-season-opens-on-waivers
+(deftest an-espn-league-s-season-opens-on-my-team
   ;; There is no ESPN matchup board; opening on one was a 400 every boot.
   (swap! rdb/app-db assoc :active-league "espn:1"
          :leagues {"espn:1" {:provider "espn" :league-id "1"}})
-  (is (= [:waivers] (dispatched-views #(rf/dispatch-sync (universe-at 3))))))
+  (is (= [:team] (dispatched-views #(rf/dispatch-sync (universe-at 3))))))
 
 (deftest switching-mode-before-the-week-is-known-stores-no-override
   ;; There is nothing yet for the choice to disagree with; storing one here
   ;; outlived the load that would have agreed with it.
   (swap! rdb/app-db assoc :active-league "sleeper:1" :view :settings
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}})
-  (is (= [:matchup] (dispatched-views #(rf/dispatch-sync [:switch-mode :season]))))
+  (is (= [:team] (dispatched-views #(rf/dispatch-sync [:switch-mode :season]))))
   (is (nil? (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))))
 
 (deftest the-matchup-waits-for-the-league-s-rosters
@@ -650,7 +650,7 @@
   (swap! rdb/app-db assoc :active-league "sleeper:1" :view :settings
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}}
          :universe {:through-week 0})
-  (is (= [:matchup] (dispatched-views #(rf/dispatch-sync [:switch-mode :season])))
+  (is (= [:team] (dispatched-views #(rf/dispatch-sync [:switch-mode :season])))
       "it leaves Settings for the season's first tab")
   (is (= :season (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))
       "preseason by the data, so choosing Season is an override")
@@ -667,4 +667,12 @@
                    "sleeper:2" {:provider "sleeper" :league-id "2" :phase :season
                                 :sync {:teams []}}})
   (dispatched-views #(rf/dispatch-sync [:set-active-league "sleeper:2"]))
-  (is (= :matchup (:view @rdb/app-db))))
+  (is (= :team (:view @rdb/app-db))))
+
+(deftest opening-my-team-loads-its-roster-and-the-week
+  (let [seen (atom [])
+        real (registrar/get-handler :fx :dispatch)]
+    (swap-fx! {:dispatch #(swap! seen conj %)})
+    (try (rf/dispatch-sync [:set-view :team])
+         (finally (swap-fx! {:dispatch real})))
+    (is (= #{:fetch-waivers :fetch-matchup} (set (map first @seen))))))

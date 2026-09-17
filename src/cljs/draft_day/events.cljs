@@ -168,18 +168,23 @@
     ;;
     ;; `section` deep-links into Settings — "Connect a league" means the
     ;; accounts section, not whichever one was open last.
-    (let [lg (db/active-league db)]
+    ;;
+    ;; My Team reads the waiver reply for its rows and the matchup's week for
+    ;; the header, so opening it — which is where the season half opens — loads
+    ;; both. A league whose rosters never arrived is synced first, as
+    ;; `:set-active-league` does; `:league-synced` asks for both boards.
+    (let [lg       (db/active-league db)
+          matchup? (and (#{:matchup :team} v) (nil? (:matchup db)))
+          fx       (if (and matchup? lg (nil? (:sync lg))
+                            (providers/matchups? (:provider lg)))
+                     [[:dispatch [:sync-league (select-keys lg [:provider :league-id])]]]
+                     (cond-> []
+                       (and (#{:waivers :team} v) (nil? (:waivers db)))
+                       (conj [:dispatch [:fetch-waivers]])
+                       matchup? (conj [:dispatch [:fetch-matchup]])))]
       (cond-> {:db (cond-> (assoc db :view v)
                      section (assoc :settings-section section))}
-        (and (= v :waivers) (nil? (:waivers db)))
-        (assoc :fx [[:dispatch [:fetch-waivers]]])
-        ;; Mutually exclusive with the branch above, so this cannot clobber it.
-        ;; A league whose rosters never arrived is synced first, as
-        ;; `:set-active-league` does; `:league-synced` asks for the matchup.
-        (and (= v :matchup) (nil? (:matchup db)))
-        (assoc :fx [(if (and lg (nil? (:sync lg)) (providers/matchups? (:provider lg)))
-                      [:dispatch [:sync-league (select-keys lg [:provider :league-id])]]
-                      [:dispatch [:fetch-matchup]])])))))
+        (seq fx) (assoc :fx fx)))))
 ;; ---- phase ----
 
 (defn with-phase
@@ -623,7 +628,8 @@
                ;; Only when it is the tab on screen; every other tab picks it up
                ;; from `:set-view`'s first-open fetch, and this one is live. Not
                ;; before a first sync, which asks for it once there are rosters.
-               (and (= :matchup view) (:sync entry))
+               ;; My Team shows the matchup's week in the header.
+               (and (#{:matchup :team} view) (:sync entry))
                (conj [:dispatch [:fetch-matchup]]))})
       {})))
 
@@ -690,7 +696,7 @@
                                        "Sync returned nothing usable")))
        :fx (cond-> [[:dispatch [:fetch-waivers]]]
              ;; The matchup board asked with no rosters is every team empty.
-             (and (= :matchup (:view db)) (= k (:active-league db)))
+             (and (#{:matchup :team} (:view db)) (= k (:active-league db)))
              (conj [:dispatch [:fetch-matchup]]))})))
 
 (rf/reg-event-fx :connect-account
