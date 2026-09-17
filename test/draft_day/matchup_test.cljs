@@ -48,10 +48,14 @@
   {:provider "sleeper" :league-id "99" :name "The League" :my-roster-id 2
    :sync {:teams [{:roster-id 1 :name "Them"} {:roster-id 2 :name "Mine"}]}})
 
-(defn- connect! []
+(defn- connect!
+  "A synced league, in season. The matchup tab is only in the season's half of
+  the app, so a league still on draft day would switch the view off it."
+  []
   (swap! rdb/app-db assoc
          :leagues {"sleeper:99" league}
-         :active-league "sleeper:99"))
+         :active-league "sleeper:99"
+         :universe {:through-week 2}))
 
 (def ^:private reply
   {:week 3 :my-roster-id 2

@@ -93,6 +93,16 @@
           ^{:key (:roster-id t)}
           [:option {:value (str (:roster-id t))} (:name t)])]
        [:span])
+     ;; Writable for any league, unlike the team picker: it is a fact about
+     ;; that league, and `:set-phase` names the league it writes to.
+     [:select {:value     (if-let [p (:phase entry)] (name p) "auto")
+               :aria-label "Phase"
+               :title     "Which half of the app this league opens in. Auto follows the season: once a week is played or the draft is done, it opens in season."
+               :on-change #(let [v (.. % -target -value)]
+                             (rf/dispatch [:set-phase k (when (not= v "auto") (keyword v))]))}
+      [:option {:value "auto"} "Auto"]
+      [:option {:value "draft"} "Draft"]
+      [:option {:value "season"} "Season"]]
      ;; Rosters only, not the rules. `:league-choose` re-imports as well, which
      ;; would silently overwrite a hand-edited scoring config every time the
      ;; manager pressed a button labelled Re-sync.

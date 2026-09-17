@@ -187,74 +187,6 @@
 
 ;; ---- panels ----
 
-(defn sync-panel
-  "A status strip, not a form: which league and team the board is about, and the
-  two buttons that refresh it.
-
-  Every input that *sets* identity has moved to Settings. It used to be settable
-  here — a username row, a league picker, a league-id row and a team dropdown —
-  and in Settings as well, so the same three facts had four writers and no single
-  place to read them."
-  []
-  (let [{:keys [connected? username season my-team-name]} @(rf/subscribe [:account])
-        ;; The *league's* provider, not the account's. A league added by pasting
-        ;; an id needs no account at all, and `:account` falls back to whichever
-        ;; account happens to be connected — which is nil in that case (and, once
-        ;; ESPN exists, the wrong one).
-        league    @(rf/subscribe [:active-league])
-        synced?   @(rf/subscribe [:league-synced?])
-        status    @(rf/subscribe [:waiver-status])
-        ;; A league is active or it is not; whether it has a *name* yet is a
-        ;; question about the sync reply. Gating on the name meant a league whose
-        ;; sync failed read as no league at all — hiding the Re-sync button on
-        ;; the one screen that reports the failure.
-        active?    (some? league)
-        league-name (or (:name league) (:league-id league))]
-    [:div.sync-panel
-     (if active?
-       [:div.sync-row
-        [:div.sync-who
-         [:b league-name]
-         (when season [:span.muted (str " · " season)])
-         (when username [:span.muted (str " · " username)])
-         [:span.sync-team-name
-          (if my-team-name
-            (str " · " my-team-name)
-            [:span.muted " · no team picked"])]]
-        ;; Rosters only. Re-importing the rules here would overwrite a
-        ;; hand-edited scoring config under a button labelled Re-sync.
-        [:button {:on-click #(rf/dispatch [:sync-league
-                                           (select-keys league [:provider :league-id])])}
-         "Re-sync rosters"]
-        (when synced?
-          [:button.secondary {:on-click #(rf/dispatch [:fetch-waivers])} "Refresh board"])]
-       [:div.sync-empty
-        (if connected?
-          "No league active — pick one under Settings → Accounts."
-          (str "No league connected — this is a rest-of-season ranking of everyone, "
-               "not of who is actually free. Connect your account under Settings."))])
-     (when (and active? synced? (not my-team-name))
-       [:div.sync-empty
-        "Pick your team under Settings to see your roster and what a claim would cost."])
-     (when status [:div.sync-status status])]))
-
-(defn faab-panel []
-  (let [{:keys [type budget left rival-max]} @(rf/subscribe [:my-faab])
-        {:keys [claims-left]} @(rf/subscribe [:waiver-meta])]
-    (when type
-      [:div.faab-panel
-       (if (= "faab" (name type))
-         [:<>
-          [:div.stat [:span.stat-label "Budget left"]
-           [:span.stat-val.good (str "$" (or left 0) " of $" (or budget 0))]]
-          [:div.stat {:title "The largest budget anyone else still holds — what it would take to be sure"}
-           [:span.stat-label "Rival max"]
-           [:span.stat-val (if rival-max (str "$" rival-max) "–")]]
-          [:div.stat {:title "Waiver runs the season has left. Bids divide your budget across these, which is why they grow as the season shortens"}
-           [:span.stat-label "Runs left"] [:span.stat-val (or claims-left "–")]]]
-         [:div.stat.muted
-          "This league runs waiver priority, not FAAB — there is no bid to make."])])))
-
 (defn my-roster-panel
   "What the manager already has, beside what he could claim.
 
@@ -360,25 +292,48 @@
       [:span.week-age (str "Week " week " projection"
                            (when at (str ", updated " at)))])))
 
-(defn week-banner
-  "Which season this board is for — in three states, not two.
+(defn setup-note
+  "What the manager has to do before this board can say more, or nil. The
+  inputs are all in Settings, so this only says where."
+  [{:keys [league? connected? synced? team?]}]
+  (cond
+    (not league?) (if connected?
+                    "No league active — pick one under Settings."
+                    (str "No league connected — this ranks everyone, not who is actually "
+                         "free. Connect your account under Settings."))
+    (and synced? (not team?)) "Pick your team under Settings to see what a claim would cost."))
 
-  Preseason is said out loud rather than left to be inferred from an empty GP
-  column: in August this board is the draft board, and a manager who reads it as
-  live is reading a projection as a result. But that claim is only worth making
-  when it is *known* — asserting it while the board is still loading, or after a
-  failed refresh, states a fact about the season on no evidence at all, in week
-  10 as readily as in August."
+(defn status-line
+  "One muted line over the board: which season it is for, how old the week's
+  projection is, and anything standing between the manager and a real answer.
+
+  In three states, not two. Preseason is said out loud rather than left to be
+  inferred from an empty GP column: in August this board is the draft board,
+  and a manager who reads it as live is reading a projection as a result. But
+  that claim is only worth making when it is *known* — asserting it while the
+  board is still loading, or after a failed refresh, states a fact about the
+  season on no evidence at all.
+
+  The budget, the rival's budget and the waiver runs left used to sit in panels
+  of their own. FAAB is in the header on every season tab; the other two only
+  ever explained the Bid column, and they are gone."
   []
-  (let [{:keys [through-week] :as m} @(rf/subscribe [:waiver-meta])]
-    (case @(rf/subscribe [:season-phase])
-      :in-season [:div.week-banner
-                  (str "Rest-of-season, through week " through-week)
-                  [week-note m]]
-      :preseason [:div.week-banner.preseason
-                  "Preseason — no games played yet, so this is the full-season projection."
-                  [week-note m]]
-      [:div.week-banner "Loading the rest-of-season board…"])))
+  (let [{:keys [through-week] :as m} @(rf/subscribe [:waiver-meta])
+        {:keys [connected? my-team-name]} @(rf/subscribe [:account])
+        phase  @(rf/subscribe [:season-phase])
+        note   (setup-note {:league?    (some? @(rf/subscribe [:active-league]))
+                            :connected? connected?
+                            :synced?    @(rf/subscribe [:league-synced?])
+                            :team?      (some? my-team-name)})
+        status @(rf/subscribe [:waiver-status])]
+    [:div.week-banner {:class (when (= phase :preseason) "preseason")}
+     (case phase
+       :in-season (str "Rest-of-season, through week " through-week)
+       :preseason "Preseason — no games played yet, so this is the full-season projection."
+       "Loading the rest-of-season board…")
+     [week-note m]
+     (when note [:span.week-extra note])
+     (when status [:span.week-extra status])]))
 
 ;; ---- the view ----
 
@@ -389,8 +344,7 @@
         week    (:week @(rf/subscribe [:waiver-meta]))
         comparing (set @(rf/subscribe [:compare]))]
     [:div.waivers-view
-     [week-banner]
-     [:div.waiver-panels [sync-panel] [faab-panel]]
+     [status-line]
      [:div.board-controls
       [:div.filters [board/pos-filter] [board/search-box]]]
      [:details.col-details

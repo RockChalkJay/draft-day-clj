@@ -70,13 +70,19 @@
 (rf/reg-event-fx
  :players-loaded
  (fn [{:keys [db]} [_ resp]]
-   (let [status (str (:count resp) " players · " (:source resp))]
-     {:db (assoc db
-                 :players (:players resp)
-                 :universe (:universe resp)
-                 :status status
-                 :universe-status status)
-      :fx [[:dispatch [:recompute]]]})))
+   (let [status (str (:count resp) " players · " (:source resp))
+         db'    (assoc db
+                       :players (:players resp)
+                       :universe (:universe resp)
+                       :status status
+                       :universe-status status)
+         ;; The universe carries `:through-week`, so this is the first moment
+         ;; the app knows whether the season has started — and so which half of
+         ;; the app to open on. Through `:set-view`, which loads that tab's board.
+         v      (db/view-for (db/phase db') (:view db'))]
+     {:db db'
+      :fx (cond-> [[:dispatch [:recompute]]]
+            (not= v (:view db')) (conj [:dispatch [:set-view v]]))})))
 
 (rf/reg-event-db :load-failed (fn [db [_ err]] (assoc db :status (str "Load failed: " err))))
 
@@ -145,6 +151,40 @@
       ;; Mutually exclusive with the branch above, so this cannot clobber it.
       (and (= v :matchup) (nil? (:matchup db)))
       (assoc :fx [[:dispatch [:fetch-matchup]]]))))
+;; ---- phase ----
+
+(defn with-phase
+  "Store `p` as the phase override for league `k` — or, with `k` nil, for when
+  no league is active. `p` is stored exactly: nil is automatic."
+  [db k p]
+  (if k (assoc-in db [:leagues k :phase] p) (assoc db :phase p)))
+
+(rf/reg-event-fx :set-phase [persist]
+  (fn [{:keys [db]} [_ k p]]
+    ;; Only a change to the league on screen moves the view, and only off a tab
+    ;; the new phase does not have.
+    (let [db' (with-phase db k p)
+          v   (db/view-for (db/phase db') (:view db'))]
+      (cond-> {:db db'}
+        (and (= k (:active-league db)) (not= v (:view db')))
+        (assoc :fx [[:dispatch [:set-view v]]])))))
+
+(rf/reg-event-fx :switch-mode [persist]
+  (fn [{:keys [db]} [_ target]]
+    ;; The header's "Go to …" link. Choosing what the data already says stores
+    ;; no override, so a manager who went back to the board to fix a pick is
+    ;; returned to automatic by coming forward again. It always lands on a tab
+    ;; of the target mode — from Settings as well.
+    ;;
+    ;; The override is written here rather than through `:set-phase`, whose own
+    ;; view resolution would queue behind this one and keep Settings on screen.
+    (let [override (when (not= target (db/derived-phase db)) target)
+          view     (:view db)]
+      {:db (with-phase db (:active-league db) override)
+       :fx [[:dispatch [:set-view (if (= target (db/view-mode view))
+                                    view
+                                    (first (db/mode-views target)))]]]})))
+
 (rf/reg-event-db :set-settings-section (fn [db [_ k]] (assoc db :settings-section k)))
 (rf/reg-event-db :set-search    (fn [db [_ q]] (assoc db :search q)))
 (rf/reg-event-db :set-pos-filter (fn [db [_ p]] (assoc db :pos-filter (if (= p (:pos-filter db)) nil p))))
@@ -480,7 +520,11 @@
     ;; Both boards, because both are priced under this league's rules — a
     ;; switch that moved one would leave Worth priced under the league you left.
     (if-let [entry (get (:leagues db) k)]
-      {:db (activate db k)
+      ;; Leagues can be in different phases, so the tab on screen may not exist
+      ;; in this one. Resolved here rather than through `:set-view`: both boards
+      ;; are already being fetched below.
+      {:db (let [db' (activate db k)]
+             (assoc db' :view (db/view-for (db/phase db') (:view db'))))
        :fx (cond-> [[:dispatch [:recompute]]
                     [:dispatch [:fetch-waivers]]]
              ;; A league added by pasted id has rosters nobody has fetched, and
@@ -490,7 +534,8 @@
              ;; Only when it is the tab on screen; every other tab picks it up
              ;; from `:set-view`'s first-open fetch, and this one is live. Not
              ;; before a first sync, which asks for it once there are rosters.
-             (and (= :matchup (:view db)) (:sync entry))
+             (and (= :matchup (db/view-for (db/phase (activate db k)) (:view db)))
+                  (:sync entry))
              (conj [:dispatch [:fetch-matchup]]))}
       {})))
 
@@ -534,7 +579,10 @@
                                          (:user-id (db/league-account db entry))))]
       {:db (-> db
                (update-in [:leagues k] merge
-                          (cond-> {:sync league :my-roster-id mine}
+                          ;; Client clock: it answers "how old is what I am
+                          ;; looking at", which is a question about this browser.
+                          (cond-> {:sync league :my-roster-id mine
+                                   :synced-at (.toISOString (js/Date.))}
                             ;; Name and season ride along so a league synced
                             ;; by pasted id still reads in the switcher.
                             (:name league)   (assoc :name (:name league))

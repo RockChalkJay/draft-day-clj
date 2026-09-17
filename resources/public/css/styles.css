@@ -459,8 +459,6 @@ button.undo:hover { color: var(--warn); }
    fact about the calendar. */
 .week-banner.stale-rules { border-color: var(--warn); color: var(--text); }
 
-.waiver-panels { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-
 /* Board left, my roster right. The claim and what it would cost are one
    decision, so they belong on one screen — wrapping below the board on a narrow
    viewport rather than squeezing the table. */
@@ -489,24 +487,8 @@ button.undo:hover { color: var(--warn); }
 .waiver-roster tr.parked td.slot-player { color: var(--muted); }
 .waiver-roster .parked-tag { color: var(--muted); font-size: 10px; }
 
-.sync-panel { flex: 1 1 380px; background: var(--panel); border: 1px solid var(--border);
-  border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.sync-row { display: flex; gap: 8px; align-items: center; }
-.sync-row input { flex: 1; background: var(--panel2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
-.sync-row button { background: var(--accent); color: #fff; border: 0;
-  border-radius: 8px; padding: 6px 12px; }
-.sync-row button:disabled { background: var(--panel2); color: var(--muted); cursor: not-allowed; }
-.sync-row button.secondary { background: var(--panel2); color: var(--text);
-  border: 1px solid var(--border); }
 .sync-status { font-size: 12px; color: var(--muted); }
 .sync-empty { font-size: 12px; color: var(--muted); line-height: 1.5; }
-.sync-who { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
-.sync-team-name { color: var(--text); }
-
-.faab-panel { display: flex; gap: 18px; align-items: flex-start; padding: 10px 14px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
-.faab-panel .stat { align-items: flex-start; }
 
 /* Volume moving, not points scored — hence its own pair rather than the
    red/green .signed uses for money. The neutral band is wide on purpose: a
@@ -554,7 +536,7 @@ tr.upgrade .p-name { font-weight: 600; }
    than pushing the team picker onto a line of its own. */
 .league-rows { display: flex; flex-direction: column; gap: 6px; }
 .league-row { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
-  background: var(--panel2); display: grid; grid-template-columns: 96px minmax(0, 1fr) 200px auto;
+  background: var(--panel2); display: grid; grid-template-columns: 96px minmax(0, 1fr) 200px 100px auto;
   align-items: center; gap: 10px; }
 .league-row.on { border-color: var(--accent); background: var(--panel); }
 .league-who { min-width: 0; white-space: nowrap; }
@@ -932,7 +914,7 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
 /* Settings on a narrow screen: a league row puts its name on a line of its own,
    and the sidebar becomes a row of chips above the section. */
 @media (max-width: 640px) {
-  .league-row { grid-template-columns: 96px minmax(0, 1fr) auto; row-gap: 6px; }
+  .league-row { grid-template-columns: 96px minmax(0, 1fr) auto auto; row-gap: 6px; }
   .league-who { grid-column: 2 / -1; }
   .league-who + * { grid-column-start: 2; }
 }
@@ -941,3 +923,30 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
   .settings-nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; }
   .settings-nav button { border-color: var(--border); background: var(--panel); padding: 5px 10px; }
 }
+
+/* ---- the two halves: mode tag, mode link, season header ----
+   The tag says which half of the app is on screen; the link is the way to the
+   other one. Quiet, because it is used a couple of times a season. */
+header.top { flex-wrap: wrap; row-gap: 8px; }
+.mode-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 6px; padding: 1px 6px; margin-left: -8px; }
+nav.views { display: flex; }
+.mode-link { background: none; border: 0; color: var(--muted); font-size: 11px; padding: 0 4px; white-space: nowrap; }
+.mode-link:hover { color: var(--accent); }
+.gear { background: transparent; border: 1px solid transparent; color: var(--muted);
+  font-size: 16px; line-height: 1; border-radius: 8px; padding: 6px 9px; }
+.gear:hover, .gear.on { color: var(--text); background: var(--panel2); border-color: var(--border); }
+.season-meta { align-items: center; }
+.sync-btn { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 12px; font-size: 12px; text-align: left; }
+.sync-btn small { display: block; color: var(--muted); font-size: 10px; }
+/* Setup hints and sync status on the waiver board's one status line. */
+.week-extra { margin-left: 8px; }
+.week-extra::before { content: "· "; }
+
+/* Draft League: the money leads each card. */
+.team-head.split { display: flex; align-items: baseline; gap: 6px; }
+.money-left { margin-left: auto; color: var(--good); font-weight: 700; font-variant-numeric: tabular-nums; }
+.team-sub { display: flex; gap: 12px; font-size: 11px; color: var(--muted); margin: -4px 0 8px; }
+.team-sub b { color: var(--good); font-weight: 700; }
+.team-card.mine { border-color: var(--accent); }

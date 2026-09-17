@@ -1,5 +1,6 @@
 (ns draft-day.views.settings-test
   (:require [cljs.test :refer [deftest is testing use-fixtures]]
+            [clojure.walk]
             [re-frame.core :as rf]
             [re-frame.db :as rdb]
             [draft-day.db :as db]
@@ -203,3 +204,25 @@
   (rf/clear-subscription-cache!)
   (is (not (re-find #"nav-badge" (render settings/settings-nav))))
   (is (nil? (settings/import-warning))))
+
+(deftest each-league-row-says-and-sets-its-own-phase
+  (accounts! sleeper-ak sleeper-acct)
+  (swap! rdb/app-db assoc
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :name "Dynasty Dorks"
+                                :account-key sleeper-ak :phase :season}}
+         :active-league nil)
+  (rf/clear-subscription-cache!)
+  (let [h      (render/hiccup settings/connected-accounts)
+        select (atom nil)]
+    (clojure.walk/prewalk
+     (fn [x]
+       (when (and (vector? x) (= :select (first x)) (= "Phase" (:aria-label (second x))))
+         (reset! select x))
+       x)
+     h)
+    (is (= "season" (:value (second @select))) "a stored override shows as itself")
+    (let [seen (atom [])]
+      (with-redefs [rf/dispatch #(swap! seen conj %)]
+        ((:on-change (second @select)) #js {:target #js {:value "auto"}}))
+      (is (= [[:set-phase "sleeper:1" nil]] @seen)
+          "and Auto clears it, for that league rather than the active one"))))

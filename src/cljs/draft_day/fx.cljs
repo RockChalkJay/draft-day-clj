@@ -49,8 +49,12 @@
   8: a synced league carries `:roster-positions` — its own seats, in order. A
   stored sync written before that key has no way to name which seat a starter
   occupies, and the matchup board falls back to the draft config's slot
-  template, which is only a guess at that league's shape."
-  8)
+  template, which is only a guess at that league's shape.
+
+  9: a league entry may carry `:phase` — a manual Draft/Season override — and
+  `:synced-at`, when its rosters were last fetched; `:phase` is stored at the top
+  level too, for when no league is active."
+  9)
 
 (def drafts-key "draft-day-drafts")
 
