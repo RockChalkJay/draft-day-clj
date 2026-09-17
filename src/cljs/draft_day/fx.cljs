@@ -53,7 +53,9 @@
 
   9: a league entry may carry `:phase` — a manual Draft/Season override — and
   `:synced-at`, when its rosters were last fetched; `:phase` is stored at the top
-  level too, for when no league is active."
+  level too, for when no league is active. An ESPN sync's teams carry
+  `:starter-slots`, each starter's own seat; a sync stored without it labels
+  no seats rather than guessing them."
   9)
 
 (def drafts-key "draft-day-drafts")

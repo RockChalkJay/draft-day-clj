@@ -46,7 +46,9 @@
 (deftest the-slot-cell-names-the-seat
   (is (= "FLEX" (last (team/team-cell :slot {:slot "FLEX"} 3))))
   (is (= "BN" (last (team/team-cell :slot {} 3))))
-  (is (= "IR" (last (team/team-cell :slot {:parked? true} 3)))))
+  (is (= "IR" (last (team/team-cell :slot {:parked? true} 3))))
+  (is (= "–" (last (team/team-cell :slot {:starter? true} 3)))
+      "a starter whose seat is unknown is not labelled bench"))
 
 (defn- with-synced-team! [waivers]
   (swap! rdb/app-db assoc

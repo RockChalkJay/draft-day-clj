@@ -228,6 +228,20 @@
     (testing "a league that sent no seats labels nobody"
       (is (not-any? :slot (ordered-roster :starter-ids lineup))))))
 
+(deftest a-lineup-that-is-not-positional-is-never-labelled-by-index
+  ;; ESPN names each starter's seat on his entry; its seat list is ordered by
+  ;; slot id. Indexing that list would call a FLEX receiver whatever sits at
+  ;; his index.
+  (let [espn {:provider "espn" :roster-positions ["QB" "RB" "RB" "WR" "FLEX"]}]
+    (is (= ["FLEX" "QB"]
+           (waiver/starter-seats {:starter-slots ["FLEX" "QB"]} espn))
+        "the seats a team names are read as they are")
+    (is (nil? (waiver/starter-seats {} espn))
+        "and an ESPN sync stored before it named them gets no label, not a guess")
+    (is (= ["QB" "RB"]
+           (waiver/starter-seats {} {:provider :sleeper :roster-positions ["QB" "RB"]}))
+        "while Sleeper's lineup is positional against its seats")))
+
 (deftest my-roster-bench-is-ordered-by-position-then-by-points
   (let [roster (ordered-roster :starter-ids (held "qb1" "star" "ok" "te1"
                                                   "wr-flex" "k1" "dst1")

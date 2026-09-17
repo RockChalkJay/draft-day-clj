@@ -80,20 +80,33 @@
 
   `:active-ids` excludes the injured-reserve seat and `:starter-ids` excludes
   the bench as well. Unlike Sleeper's, neither is positional: an ESPN entry
-  names its own seat on `lineupSlotId`.
+  names its own seat on `lineupSlotId`. So `:starter-slots` carries that seat
+  for each starter, in `:starter-ids`' order — the only way a consumer can say
+  which seat an ESPN starter holds, since indexing `:roster-positions` would
+  answer confidently and wrongly.
 
   `:faab-left` is derived here because its halves come from different parts of
   the document — the budget from the league's settings, the spend from the team."
   [{:keys [type budget]} team]
   (let [entries (get-in team [:roster :entries])
         ids     (fn [pred] (into [] (comp (filter pred) (keep entry-player-id)) entries))
+        starter? #(not (#{import-espn/ir-slot bench-slot} (:lineupSlotId %)))
+        ;; Pairs, so an entry `entry-player-id` drops takes its seat with it and
+        ;; the two vectors cannot fall out of step.
+        starters (into [] (comp (filter starter?)
+                                (keep (fn [e]
+                                        (when-let [id (entry-player-id e)]
+                                          [id (get import-espn/lineup-slots (:lineupSlotId e)
+                                                   (str (:lineupSlotId e)))]))))
+                       entries)
         used    (or (get-in team [:transactionCounter :acquisitionBudgetSpent]) 0)]
     {:roster-id       (:id team)
      :owner-id        (or (first (:owners team)) (:primaryOwner team))
      :name            (team-name team)
      :player-ids      (ids (constantly true))
      :active-ids      (ids #(not= import-espn/ir-slot (:lineupSlotId %)))
-     :starter-ids     (ids #(not (#{import-espn/ir-slot bench-slot} (:lineupSlotId %))))
+     :starter-ids     (mapv first starters)
+     :starter-slots   (mapv second starters)
      :faab-used       used
      :faab-left       (when (= :faab type) (max 0 (- (or budget 0) used)))
      :waiver-position (:waiverRank team)
