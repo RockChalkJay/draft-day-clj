@@ -1,5 +1,6 @@
 (ns draft-day.rankings.waiver-test
   (:require [clojure.test :refer [deftest is testing]]
+            [draft-day.db :as db]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]))
 
@@ -234,12 +235,12 @@
   ;; his index.
   (let [espn {:provider "espn" :roster-positions ["QB" "RB" "RB" "WR" "FLEX"]}]
     (is (= ["FLEX" "QB"]
-           (waiver/starter-seats {:starter-slots ["FLEX" "QB"]} espn))
+           (db/starter-seats {:starter-slots ["FLEX" "QB"]} espn))
         "the seats a team names are read as they are")
-    (is (nil? (waiver/starter-seats {} espn))
+    (is (nil? (db/starter-seats {} espn))
         "and an ESPN sync stored before it named them gets no label, not a guess")
     (is (= ["QB" "RB"]
-           (waiver/starter-seats {} {:provider :sleeper :roster-positions ["QB" "RB"]}))
+           (db/starter-seats {} {:provider :sleeper :roster-positions ["QB" "RB"]}))
         "while Sleeper's lineup is positional against its seats")))
 
 (deftest my-roster-bench-is-ordered-by-position-then-by-points

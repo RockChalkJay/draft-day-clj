@@ -249,6 +249,20 @@
 (rf/reg-sub :mode :<- [:view] :<- [:phase]
   (fn [[view phase] _] (or (db/view-mode view) phase)))
 
+;; Every synced team's roster in standings order, for the season League tab —
+;; read through `db/team-roster`, the same id translation the server uses.
+(rf/reg-sub :league-rosters
+  :<- [:league-sync] :<- [:players] :<- [:my-roster-id]
+  (fn [[ls players mine] _]
+    (when (seq (:teams ls))
+      (let [xwalk (db/provider->player-id players (:provider ls))
+            by-id (db/index-by-id players)]
+        (mapv (fn [t]
+                (assoc (db/team-roster t ls xwalk by-id)
+                       :team t
+                       :mine? (= (:roster-id t) mine)))
+              (db/record-order (:teams ls)))))))
+
 ;; The manager's own team as the sync reported it — record, FAAB, waiver order.
 (rf/reg-sub :my-sync-team :<- [:league-sync] :<- [:my-roster-id]
   (fn [[ls mine] _]
