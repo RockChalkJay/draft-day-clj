@@ -998,9 +998,9 @@
      ;; Which game is on screen, named by one of its roster ids: a nil matchup
      ;; id collides exactly with "nothing picked". nil means mine.
      :matchup-pick nil
-     ;; The basis the optimal lineup is measured on. Projected is the default:
-     ;; it is the only one that answers a question you can still act on.
-     :optimal-basis :projected
+     ;; Which lineup each side of the matchup draws, by roster id: :set (the
+     ;; default, the lineup that scores), :projected or :actual. Transient.
+     :lineup-view  {}
      ;; At most two player-ids, in the order they were picked. Transient like
      ;; `:nominated-id` and deliberately outside `persist-keys`: a comparison is
      ;; a question being asked right now, not a layout worth restoring.
