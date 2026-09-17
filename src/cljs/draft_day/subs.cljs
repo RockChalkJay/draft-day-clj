@@ -10,7 +10,8 @@
            :watchlist :import-report :universe
            :accounts :leagues :waivers :waiver-sort :waiver-status
            :league-choices :league-choices-error
-           :waiver-columns :compare]]
+           :waiver-columns :compare
+           :matchup :matchup-status :matchup-pick :optimal-basis]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
@@ -462,3 +463,54 @@
   :<- [:compare]
   (fn [[by-id ids] _]
     (vec (keep #(get by-id %) ids))))
+
+
+(rf/reg-sub :matchup-teams
+  ;; `{roster-id team}`; the server ships a vector, since an integer map key
+  ;; round-trips through JSON as a string.
+  :<- [:matchup]
+  (fn [m _] (into {} (map (juxt :roster-id identity)) (:teams m))))
+
+
+;; Every game this week as `{:matchup-id :roster-ids :names :mine?}`, in the
+;; provider's own order. A roster with no opponent keeps its entry with one id.
+(rf/reg-sub :matchup-games
+  :<- [:matchup]
+  :<- [:matchup-teams]
+  :<- [:active-league]
+  (fn [[m by-id lg] _]
+    ;; Off the league, not the reply: picking a team in Settings must move the
+    ;; board without a refetch.
+    (let [mine (:my-roster-id lg)]
+      (mapv (fn [{:keys [roster-ids] :as g}]
+              (assoc g
+                     :names (mapv #(:name (get by-id %) (str "Roster " %)) roster-ids)
+                     :mine? (boolean (some #{mine} roster-ids))))
+            (:matchups m)))))
+
+
+;; The game on screen: the one picked, else mine, else the first. Falling
+;; through rather than defaulting in db, so `:matchup-pick` survives a league
+;; switch. The pick names a roster id — a nil matchup id would collide with
+;; "nothing picked" and select the bye.
+(rf/reg-sub :selected-matchup
+  :<- [:matchup-games]
+  :<- [:matchup-pick]
+  (fn [[games pick] _]
+    (or (when pick (first (filter #(some #{(str pick)} (map str (:roster-ids %))) games)))
+        (first (filter :mine? games))
+        (first games))))
+
+
+;; `[left right]` for the selected game, the manager's own team on the left. A
+;; nil right side is kept rather than collapsed, so the view can say so.
+(rf/reg-sub :matchup-sides
+  :<- [:selected-matchup]
+  :<- [:matchup-teams]
+  :<- [:active-league]
+  (fn [[game by-id lg] _]
+    (when game
+      (let [mine  (:my-roster-id lg)
+            ids   (:roster-ids game)
+            ids   (if (= mine (second ids)) (reverse ids) ids)]
+        [(get by-id (first ids)) (get by-id (second ids))]))))

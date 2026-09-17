@@ -14,6 +14,7 @@
             [draft-day.views.columns :as columns]
             [draft-day.views.settings :as settings]
             [draft-day.views.waivers :as waivers]
+            [draft-day.views.matchup :as matchup]
             [draft-day.views.compare :as compare]
             [draft-day.views.modal :as modal]
             [draft-day.views.player-detail :as player-detail]))
@@ -76,7 +77,8 @@
       (map (fn [[v label]]
              ^{:key v}
              [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])} label])
-           [[:board "Board"] [:waivers "Waivers"] [:league "League"] [:settings "Settings"]])]
+           [[:board "Board"] [:waivers "Waivers"] [:matchup "Matchup"]
+            [:league "League"] [:settings "Settings"]])]
      [league-switcher]
      [:div.status status]
      [:div.stats
@@ -123,6 +125,7 @@
           :league   [roster/league-view]
           :settings [settings/settings]
           :waivers  [waivers/waivers-view]
+          :matchup  [matchup/matchup-view]
           [board-view])]
        ;; Mounted here rather than inside the waivers view because it is
        ;; `position: fixed` and needs no place in that DOM — and because putting

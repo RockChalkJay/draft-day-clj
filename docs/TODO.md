@@ -97,8 +97,8 @@ for the known gaps between a league's real rules and what the board can score.
 
 - **The `matchups` pair still takes positional arguments.** The other two pairs
   now take one request map so a host can carry a season and a cookie; this one
-  was left alone because it is unreachable from the API on `main` and there is
-  unmerged work on it (`matchup-view`). ESPN's current week comes off the league
+  was left alone because the matchup board was in flight on another branch, and
+  so `POST /api/matchup` is Sleeper-only for now. ESPN's current week comes off the league
   document, so converting it is not just consistency — it is what an ESPN
   matchup board would need.
 

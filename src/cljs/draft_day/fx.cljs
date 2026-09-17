@@ -44,8 +44,13 @@
   credentials that authorize reading its leagues; every league entry names the
   account it is read through. Without the bump a stored account reads back
   under a key nothing looks up, so the switcher empties and every sync loses
-  what authorizes it."
-  7)
+  what authorizes it.
+
+  8: a synced league carries `:roster-positions` — its own seats, in order. A
+  stored sync written before that key has no way to name which seat a starter
+  occupies, and the matchup board falls back to the draft config's slot
+  template, which is only a guess at that league's shape."
+  8)
 
 (def drafts-key "draft-day-drafts")
 

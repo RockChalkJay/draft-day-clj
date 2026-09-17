@@ -58,6 +58,10 @@
   (is (= ["4034" "6794" "0"] (get-in (normalized) [:scores 1 :starter-ids]))
       "including the placeholder for an unfilled seat, which is not a player"))
 
+(deftest the-roster-comes-off-the-matchup-too
+  ;; This week's, not the last sync's — a pickup since then is on it.
+  (is (= ["4034" "6794" "9001"] (get-in (normalized) [:scores 1 :player-ids]))))
+
 (deftest the-providers-own-team-total-is-carried
   (is (= 96.1 (get-in (normalized) [:scores 1 :official])))
   (is (= 104.4 (get-in (normalized) [:scores 2 :official]))))
