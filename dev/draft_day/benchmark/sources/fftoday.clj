@@ -36,9 +36,6 @@
   "Two pages of 50 covers every draftable player at a position."
   [0 1])
 
-(def first-season 2008)
-(def last-season 2025)
-
 (defn page-url [season pos-id page]
   (str "https://www.fftoday.com/rankings/playerproj.php?Season=" season
        "&PosID=" pos-id "&LeagueID=1&cur_page=" page))
