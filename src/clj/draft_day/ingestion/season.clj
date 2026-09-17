@@ -21,6 +21,12 @@
   "`season` when the caller has one, this season otherwise.
 
   Blank counts as absent: a season crosses the wire as a string and an empty
-  field is a caller with no opinion, not a request for year zero."
+  field is a caller with no opinion, not a request for year zero. So does
+  anything that is not a four-digit year — this value is interpolated into a
+  URL *path segment* (`league-import.espn/league-url`,
+  `league-sync.sleeper/list-leagues`), which is the same reason
+  `providers/league-id-error` pins a league id to `#\"\\d+\"`. A request body
+  carrying `\"2026/../../..\"` would otherwise point a cookie-bearing fetch at
+  a path nobody named."
   [season]
-  (if (and season (not= "" (str season))) season (current)))
+  (if (re-matches #"\d{4}" (str season)) season (current)))

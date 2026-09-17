@@ -5,20 +5,7 @@ still open. See the [README](../README.md) for what the app is and how it
 works, and [scoring-coverage.md](scoring-coverage.md) for the known gaps
 between a league's real rules and what the board can score.
 
-
-- ~~Player budgeting~~
-
-- **Persistence**
-
-- ~~Don't position filter on suggestion cards~~
-
-- ~~Remove strategy tabs - they don't add value~~
-
-- ~~Injury history not just current health. Color code for serious injury or suspension~~
-
 - **Remove the 🚨 for tier cliffs. Postion views with tier coloring accomplish the same thing in a clean way.**
-
-- **Fix tier row color bug**
 
 - **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
 
@@ -31,25 +18,6 @@ between a league's real rules and what the board can score.
   drafts in two leagues does so months apart — but it must be settled before the
   next preseason, and moving them into the league entry is another
   `fx/storage-version` bump when it happens.
-
-- ~~Points for the current week alongside rest-of-season~~ Shipped. Sleeper's
-  weekly endpoint returns the same entry shape the season line already parses
-  and names the same vendor behind both, and it carries the opponent, so this
-  cost one fetch rather than the ingestion project it looks like. Cached apart
-  from the universe on a far shorter TTL — it is the only column in the app that
-  goes stale in under a day. Open follow-up: **mid-Sunday the board projects the
-  wrong week.** `:through-week` is the newest week nflverse has published and it
-  publishes as games finish, so partial week-6 rows push it to 6 and the board
-  asks for week 7 while week 6 is being played. Honest rather than mislabelled —
-  the banner names the week — but the fix is a slate-completeness check ("a week
-  is reached once its full slate has rows") rather than a calendar.
-
-- ~~Comparison UI — free agent against your roster, free agent against free
-  agent~~ Shipped, and the "large LOE" estimate was wrong: it was the
-  weekly/rest-of-season split it depended on that looked expensive, and that
-  turned out to be one fetch. Rows lean toward whoever leads so a split between
-  the two horizons reads as a zigzag, and the tile names the split without
-  picking for you.
 
 - **Neither board is reachable from a keyboard.** Rows on the draft board
   (click to nominate) and the waiver board (click to compare) have no
@@ -77,37 +45,6 @@ between a league's real rules and what the board can score.
   true for any non-linear rule (FG distance buckets, DST points-allowed tiers),
   the same set `scoring-coverage.md` already tracks.
 
-- ~~**A vendor-disagreement column.**~~ Superseded rather than shelved. It was
-  reaching for "is this difference real", and vendor agreement turns out to be a
-  poor proxy for that: the ESPN/Sleeper spread is 0.78 points against a real
-  median error of 4.04, so two vendors agreeing says far more about their shared
-  method than about the player. `draft-day.confidence` answers the same question
-  against **actual outcomes** instead, and in rank gaps rather than points, so it
-  needs no error model and is identical under any scoring config. The findings
-  that stopped the spread stand and are kept below, because they are facts about
-  the ESPN feed that the next idea to reach for it will need.
-
-  The original entry: the idea was a `±`
-  beside each projection showing how far ESPN and Sleeper disagree — display
-  only, so it needs no validation, and two players projecting the same number
-  with different agreement is not a tie. ESPN's full projected line is already
-  downloaded and its stat ids verified (3 pass yd, 4 pass td, 20 int, 19/26/44
-  two-point, 23/24/25 rush, 42/43/53/58 receiving, 72 fumbles lost, 83/86
-  kicking). What stopped it, measured against the live 2026 feed over 400
-  name-matched players:
-  - **No second weekly source.** ESPN publishes a season projection, so only
-    rest-of-season could ever carry a spread. A weekly one would be a second
-    37MB fetch per week.
-  - **A house bias that would read as an opinion.** Median ESPN/Sleeper is 1.13
-    for RB and 0.96 for TE, so a raw gap says "ESPN likes him" about every back
-    on the board. It needs per-position bias correction to mean anything.
-  - **Team defenses are unmappable.** Their ids sit in a 93-106 band whose
-    members cannot be told apart by magnitude, and guessing produces a confident
-    wrong number.
-  The residual disagreement is real once the bias is removed (IQR of the ratio
-  is 0.19-0.26 for RB/WR/TE) — but it is a fifth of the error it would be
-  standing in for, which is what settled it.
-
 - **The calibration is one vendor, one season, half-PPR.** `confidence/win-rates`
   was measured from 2025 Rotowire weekly projections against 2025 actuals. The
   *shape* travels — a rank gap needs no error model and is scoring-invariant —
@@ -117,33 +54,6 @@ between a league's real rules and what the board can score.
   measured at all (DST gets no verdict, deliberately), and the deep-pool split
   that matters most for a waiver board — where discrimination is *worst* — is
   recorded in prose rather than in the table the code reads.
-
-- ~~Drag-and-drop column bugs found reviewing #12: droppable `text/plain` payload,
-  picker drag dead in Firefox, missing `preventDefault`, insertion line flicker~~
-
-- ~~In-season waiver wire: sync real rosters, project rest-of-season, price a
-  claim against FAAB~~ Shipped. See [The waiver wire](../README.md#the-waiver-wire).
-  Open follow-ups it deliberately left:
-  - `ros/PRIOR-GAMES` and `nflverse-weekly/recent-window` are **chosen, not
-    measured**. `dev/draft_day/benchmark/` is where they would earn numbers —
-    the harness already replays historical seasons, which is exactly the shape
-    of evidence the blend needs.
-  - The rest-of-season projection reads no injury designation, so a player who
-    has been out since week 2 still carries a full share of the games remaining.
-    `:injury-risk` and the Inj column cover it on the board; folding it into the
-    projection would be the double-charging `rankings.injury` argues against, so
-    it needs a real argument before it happens.
-  - ~~Only Sleeper syncs.~~ ESPN imports, syncs and connects now. What it cost
-    beyond the promised "two `defmethod`s and a `:require`" is written up in
-    CLAUDE.md; the estimate was wrong in one place worth naming, which is that
-    there was nowhere for a credential to live at all.
-  - **The bundled sample predates the in-season columns.** It stamps
-    `:schema-version 5`, carries no `:through-week` and no
-    `:nflverse/season-to-date`, so `DRAFTDAY_OFFLINE=1` can only ever show the
-    preseason board. That is honest rather than wrong — a preseason capture read
-    back as preseason — but it means the in-season half cannot be exercised
-    offline at all, and `snapshot/missing-sources` now flags `:nflverse/weekly`.
-    Fixed by re-running `draft-day.tools.snapshot` once a season is under way.
 
 - **The watch list comes back in hash order after the set-to-vector migration.**
   `db/reconcile-watchlist` is `(into [] (distinct) stored)`, and over the `#{}`
@@ -224,10 +134,12 @@ between a league's real rules and what the board can score.
   would be nothing to unwrap. The audit should decide where the throw→value
   boundary belongs and make it consistent rather than adding another adapter.
 
+- **ESPN `My Roster` sorts wrong** When a ESPN league is active, the `My Roster`
+  sort order is not in the standard sort order by position. e.g. QB, RB, WR, TE, 
+  FLEX, K, DEF, BENCH, IR
+
   Specific things already spotted:
 
-  - ~~`league-import-handler` has no outer `try/catch`~~ Fixed: all three
-    league handlers answer a malformed body with a 400 now.
   - `espn/http-get-string` returns nil on any non-200, producing exactly the
     silently empty column CLAUDE.md names as the worst ingestion failure — the
     same shape as the FantasyPros 429 it warns about.

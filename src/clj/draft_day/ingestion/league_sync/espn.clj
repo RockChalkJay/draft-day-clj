@@ -113,7 +113,12 @@
                 (get-in raw [:settings :rosterSettings :lineupSlotCounts]))]
     {:teams            (mapv #(normalize-team waiver %) (:teams raw))
      :waiver           waiver
-     :roster-size      (count seats)
+     ;; Seats a claim can land in, so IR is not one of them — see
+     ;; `import-espn/ir-slot`. It stays in `:roster-positions`, which is the
+     ;; seat vocabulary rather than a count: `:active-ids` already excludes an
+     ;; IR'd player, so counting his seat here leaves a full roster reading as
+     ;; one short and `waiver/drop-candidate` naming no drop at all.
+     :roster-size      (count (remove #{"IR"} seats))
      :roster-positions seats
      :league-id        (str (:id raw))
      ;; Left unread until ESPN's spelling of it is confirmed against a live
@@ -136,22 +141,40 @@
 (def ^:private fan-base "https://fan.api.espn.com/apis/v2/fans/")
 
 (defn league-entries
-  "Pure: a fan document -> the fantasy football leagues it names.
+  "Pure: a fan document -> the fantasy football leagues it names, one row per
+  league.
+
+  Deduped on the league id, with `season`'s copy preferred and the newest
+  otherwise. The fan document carries a preference per season *played*, so a
+  manager who has run the same league for five years is named five times — and
+  nothing downstream can tell those apart: the picker keys its rows on the
+  league id alone and `db/league-key` carries no season, so five rows would
+  collide on one stored league.
 
   Written to find nothing rather than to throw when ESPN moves a field: an
   empty list is reported as a discovery gap and the manager pastes a league id,
   while an exception here would take the whole connect down with it."
-  [raw]
-  (into []
-        (comp (keep #(get-in % [:metaData :entry]))
-              (filter #(= "FFL" (:abbrev %)))
-              (mapcat (fn [{:keys [seasonId groups]}]
-                        (for [{:keys [groupId groupName]} groups
-                              :when groupId]
-                          (cond-> {:league-id (str groupId)
-                                   :name      (or (not-empty groupName) (str groupId))}
-                            seasonId (assoc :season (str seasonId)))))))
-        (:preferences raw)))
+  [raw season]
+  (let [rows (into []
+                   (comp (keep #(get-in % [:metaData :entry]))
+                         (filter #(= "FFL" (:abbrev %)))
+                         (mapcat (fn [{:keys [seasonId groups]}]
+                                   (for [{:keys [groupId groupName]} groups
+                                         :when groupId]
+                                     (cond-> {:league-id (str groupId)
+                                              :name      (or (not-empty groupName) (str groupId))}
+                                       seasonId (assoc :season (str seasonId)))))))
+                   (:preferences raw))
+        rank (fn [{s :season}]
+               [(if (= (str season) (str s)) 0 1)
+                (- (or (parse-long (str s)) 0))])]
+    (->> rows
+         (sort-by rank)
+         (reduce (fn [acc {:keys [league-id] :as row}]
+                   (cond-> acc (not (contains? acc league-id)) (assoc league-id row)))
+                 (array-map))
+         vals
+         vec)))
 
 (defn status-error
   "Its own mapping rather than the league document's: this endpoint is asked
@@ -170,7 +193,7 @@
     [502 (str "ESPN answered " status " when asked for this account's leagues")]))
 
 (defmethod league-sync/list-leagues :espn
-  [_ {:keys [user-id credentials]}]
+  [_ {:keys [user-id season credentials]}]
   ;; The one URL in the app with a credential in its path, so its failures name
   ;; no URL: an error message carrying this one would carry the SWID with it.
   (let [url (str fan-base (java.net.URLEncoder/encode (str user-id) "UTF-8")
@@ -182,4 +205,7 @@
                                         {:status 502}))
       (not= 200 status) (let [[s msg] (status-error status)]
                           (throw (ex-info msg {:status s})))
-      :else             (league-entries (json/read-value body mapper)))))
+      ;; The season is the dispatcher's, and it only *ranks* here — filtering on
+      ;; it would turn an unverified field into an account that plays in
+      ;; nothing, which is the one report this endpoint must not invent.
+      :else             (league-entries (json/read-value body mapper) season))))

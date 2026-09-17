@@ -28,7 +28,8 @@
   The in-season half runs on the same statelessness as the draft board: the
   browser owns the synced league and re-POSTs it, and the server holds nothing
   between requests."
-  (:require [re-frame.core :as rf]
+  (:require [clojure.string :as str]
+            [re-frame.core :as rf]
             [draft-day.db :as db]
             [draft-day.providers :as providers]
             [draft-day.scoring :as scoring]
@@ -380,7 +381,12 @@
 ;; routes any non-2xx there; this handler only ever sees a real config.
 (rf/reg-event-fx :league-import-loaded [persist]
   (fn [{:keys [db]} [_ k resp]]
-    (let [cfg    (select-keys resp [:scoring :roster :num-teams])
+    ;; Nils dropped, not merged: a provider that omits a field has no opinion
+    ;; about it, and `merge`ing the nil over what the manager already has is
+    ;; how a missing `total_rosters`/`settings.size` reaches `db/make-teams` as
+    ;; a team count of nothing.
+    (let [cfg    (into {} (remove (comp nil? val))
+                       (select-keys resp [:scoring :roster :num-teams]))
           known? (contains? (:leagues db) k)
           ;; Only the active league's rules may touch the board.
           live?  (or (nil? k) (= k (:active-league db)))]
@@ -478,11 +484,19 @@
               :on-failure [:league-sync-failed (db/league-key provider league-id)]}})))
 
 (defn my-roster-id-for
-  "Which roster in this league belongs to `user-id`, or nil."
+  "Which roster in this league belongs to `user-id`, or nil.
+
+  Case-folded, which costs a numeric Sleeper id nothing and is the difference
+  between finding the manager's own team and not on ESPN: his user id *is* his
+  SWID, ESPN publishes it uppercase in a team's `owners` array, and a manager
+  who pasted his cookie in lower case would otherwise land on a board with no
+  roster, no budget and no drop until he found the dropdown."
   [teams user-id]
   (when (not-empty (str user-id))
-    (some (fn [t] (when (= (str (:owner-id t)) (str user-id)) (:roster-id t)))
-          teams)))
+    (let [mine (str/lower-case (str user-id))]
+      (some (fn [t] (when (= (str/lower-case (str (:owner-id t))) mine)
+                      (:roster-id t)))
+            teams))))
 
 (rf/reg-event-fx :league-synced [persist]
   (fn [{:keys [db]} [_ k resp]]

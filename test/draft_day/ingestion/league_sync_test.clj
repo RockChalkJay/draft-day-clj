@@ -277,6 +277,17 @@
       (league-sync/sync-league {:provider "sleeper" :league-id "1"})
       (is (some? (:season @seen)) "and absent still resolves to something"))))
 
+(deftest a-season-that-is-not-a-year-is-a-caller-with-no-opinion
+  ;; It lands in a URL *path segment* on every host that puts the season in its
+  ;; URL — ESPN's league document, Sleeper's league listing — so it gets the
+  ;; same guard `providers/league-id-error` puts on an id, not none.
+  (let [seen (atom nil)]
+    (with-redefs [league-sync/fetch-raw-rosters (fn [_ req] (reset! seen req) raw)]
+      (doseq [bad ["2026/../../../../evil" "20261" "" "  " "nope"]]
+        (league-sync/sync-league {:provider "sleeper" :league-id "1" :season bad})
+        (is (re-matches #"\d{4}" (str (:season @seen)))
+            (str (pr-str bad) " reached a provider's URL unchanged"))))))
+
 (deftest the-sync-names-the-provider-it-came-from
   (with-redefs [league-sync/fetch-raw-rosters (fn [_ _] raw)]
     (is (= :sleeper (:provider (:league (league-sync/sync-league

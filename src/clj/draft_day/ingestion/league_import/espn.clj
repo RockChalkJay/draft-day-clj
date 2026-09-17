@@ -38,9 +38,16 @@
     (if (str/starts-with? s "{") s (str "{" s "}"))))
 
 (defn cookie-header
-  "The one place a credential becomes a request. Nothing else may format one."
+  "The one place a credential becomes a request. Nothing else may format one.
+
+  Trimmed here because `providers/field-error` validates the *trimmed* value
+  while the browser stores what was pasted: a cookie copied out of DevTools
+  with a trailing newline passes the form and then rides into the header
+  verbatim, and ESPN answers 401 — telling the manager to re-paste a credential
+  that was correct."
   [{:keys [swid espn-s2]}]
-  {"Cookie" (str "SWID=" (normalize-swid swid) "; espn_s2=" espn-s2)
+  {"Cookie" (str "SWID=" (normalize-swid swid)
+                 "; espn_s2=" (some-> espn-s2 str str/trim))
    "Accept" "application/json"})
 
 (defn league-url [season league-id views]
@@ -256,6 +263,12 @@
     {:scoring             (scoring-config items)
      :unsupported-scoring (unsupported-scoring items)
      :roster              (roster-config counts)
-     :num-teams           (or (get-in raw [:settings :size]) (count (:teams raw)))
+     ;; No fallback to `(count (:teams raw))`: this fetch asks for `mSettings`
+     ;; alone, so `:teams` is never in the document and the count would always
+     ;; be 0 — which `:apply-config` writes straight into the live config and
+     ;; `db/make-teams` turns into a league with no teams. nil is what
+     ;; `league-import.sleeper` answers when the field is missing, and it leaves
+     ;; the manager's own team count standing.
+     :num-teams           (get-in raw [:settings :size])
      :name                (get-in raw [:settings :name])
      :season              (str (:seasonId raw))}))

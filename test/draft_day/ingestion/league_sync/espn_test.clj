@@ -92,7 +92,10 @@
 (deftest the-sync-carries-the-leagues-own-seats-and-their-count
   (let [s (sync-of raw)]
     (is (= ["QB" "RB" "DST" "BENCH" "BENCH" "IR"] (:roster-positions s)))
-    (is (= 6 (:roster-size s)))
+    ;; Five, not six: IR is in the vocabulary and out of the count. `:active-ids`
+    ;; already drops the IR'd player, so counting his seat would leave a full
+    ;; roster one short and `waiver/drop-candidate` would name no drop.
+    (is (= 5 (:roster-size s)))
     (is (= "12345" (:league-id s)) "so a re-sync is one click")
     (is (= "The Big Show" (:name s)))
     (is (= "2026" (:season s)))
@@ -125,14 +128,32 @@
               {:metaData {}}]}]
     (is (= [{:league-id "12345" :name "The Big Show" :season "2026"}
             {:league-id "777" :name "Work League" :season "2026"}]
-           (espn/league-entries doc)))))
+           (espn/league-entries doc "2026")))))
+
+(deftest one-row-per-league-however-many-seasons-it-has-been-played
+  ;; The fan document carries a preference per season played. Listed once each,
+  ;; the picker draws five identical rows under one React key and five buttons
+  ;; that collide on one `db/league-key`.
+  (let [doc {:preferences
+             [{:metaData {:entry {:abbrev "FFL" :seasonId 2024
+                                  :groups [{:groupId 12345 :groupName "The Big Show (2024)"}]}}}
+              {:metaData {:entry {:abbrev "FFL" :seasonId 2026
+                                  :groups [{:groupId 12345 :groupName "The Big Show"}]}}}
+              {:metaData {:entry {:abbrev "FFL" :seasonId 2025
+                                  :groups [{:groupId 12345 :groupName "The Big Show (2025)"}]}}}]}]
+    (is (= [{:league-id "12345" :name "The Big Show" :season "2026"}]
+           (espn/league-entries doc "2026"))
+        "the season asked for wins")
+    (is (= [{:league-id "12345" :name "The Big Show" :season "2026"}]
+           (espn/league-entries doc "2019"))
+        "and the newest wins when it is not listed at all")))
 
 (deftest a-fan-document-that-moved-finds-nothing-rather-than-throwing
   ;; An exception here would take the connect down with it; an empty list is
   ;; reported as a gap and the manager pastes a league id.
-  (is (= [] (espn/league-entries {})))
-  (is (= [] (espn/league-entries {:preferences [{:metaData {:entry {:abbrev "FFL"}}}]})))
-  (is (= [] (espn/league-entries {:preferences "not a list"}))))
+  (is (= [] (espn/league-entries {} "2026")))
+  (is (= [] (espn/league-entries {:preferences [{:metaData {:entry {:abbrev "FFL"}}}]} "2026")))
+  (is (= [] (espn/league-entries {:preferences "not a list"} "2026"))))
 
 (deftest the-account-listing-reports-an-account-failure-not-a-league-one
   ;; Borrowing the league document's mapping sent a manager looking for a
