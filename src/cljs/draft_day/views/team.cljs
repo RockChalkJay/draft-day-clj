@@ -13,7 +13,9 @@
   seat, the IR/taxi mark and the drop. Both come from the one `/api/waivers`
   reply, so opening this tab loads that board."
   (:require [re-frame.core :as rf]
+            [draft-day.db :as db]
             [draft-day.views.board :as board]
+            [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
 (def columns
@@ -81,6 +83,108 @@
        [:span.strip-note {:title "Where your claims fall in the waiver order"}
         (str "Waiver priority " pos)])]))
 
+;; ---- the side cards ----
+;; Three questions a manager opens this tab to ask before he opens any other:
+;; who am I playing, is anything wrong with my lineup, and is anyone on the wire
+;; worth a claim. Each is answered from a board already fetched — the matchup
+;; reply and the waiver reply — and each links to the tab that says more.
+
+(defn next-kickoff
+  "The earliest kickoff among `starters` whose game has not started, as an ISO
+  stamp, or nil. ISO stamps sort as strings."
+  [starters]
+  (->> starters
+       (filter #(and (:kickoff/at %)
+                     (contains? #{nil "STATUS_SCHEDULED"} (:kickoff/status %))))
+       (map :kickoff/at)
+       sort
+       first))
+
+(defn lineup-issues
+  "What is wrong with the lineup as set, as sentences: a starter on bye, a
+  starter carrying an injury designation, and what the best lineup by projection
+  would gain. Empty when there is nothing to say."
+  [team week]
+  (let [starters (remove :empty? (:starters team))
+        gain     (get-in team [:optimal :projected :gain])]
+    (cond-> (vec
+             (concat
+              (for [p starters
+                    :when (= "Bye" (waivers/week-matchup p week))]
+                {:text (str (:player-name p) " is on bye") :tag (:slot p) :warn? true})
+              (for [p starters
+                    :let [st (:sleeper/injury-status p)]
+                    :when st]
+                {:text (str (:player-name p) " — " st) :tag (:slot p)
+                 :warn? (boolean (db/serious-injury? st))})))
+      (and (number? gain) (pos? gain))
+      (conj {:text (str "Best lineup by projection: +" (.toFixed gain 1))
+             :tag "Matchup"}))))
+
+(defn best-claims
+  "The free agents who would improve the starting lineup, best first — the
+  waiver board's own order — at most `n`."
+  [players n]
+  (->> players
+       (filter #(pos? (or (:lineup-upgrade %) 0)))
+       (sort-by db/waiver-rank-key)
+       (take n)
+       vec))
+
+(defn go-link [view label]
+  [:button.link {:on-click #(rf/dispatch [:set-view view])} label])
+
+(defn this-week-card []
+  (let [[mine theirs] @(rf/subscribe [:my-matchup])
+        m @(rf/subscribe [:matchup])]
+    [:div.side-card
+     [:h3 "This week"]
+     (if-not mine
+       [:p.muted (if m "No matchup for your team this week." "Loading this week's matchup…")]
+       [:<>
+        [:div.side-line [:span.muted "vs"]
+         [:b (if theirs
+               (str (:name theirs)
+                    (when-let [rec (record-label theirs)] (str " (" rec ")")))
+               "No opponent")]]
+        [:div.side-line [:span.muted "Projected"]
+         [:span (str (board/format-one-decimal (:projected mine))
+                     (when theirs (str " – " (board/format-one-decimal (:projected theirs)))))]]
+        (when-let [at (util/kickoff-label (next-kickoff (:starters mine)))]
+          [:div.side-line [:span.muted "Next kickoff"] [:span at]])])
+     [:div.side-line [go-link :matchup "Open matchup →"]]]))
+
+(defn lineup-check-card []
+  (let [[mine] @(rf/subscribe [:my-matchup])
+        week   (:week @(rf/subscribe [:matchup]))]
+    (when mine
+      (let [issues (lineup-issues mine week)]
+        [:div.side-card
+         [:h3 "Lineup check"]
+         (if (seq issues)
+           (for [{:keys [text tag warn?]} issues]
+             ^{:key text}
+             [:div.side-line
+              [:span (when warn? [:span.warn "⚠ "]) text]
+              [:span.muted tag]])
+           [:div.side-line [:span.muted "Nothing to fix in your lineup."]])]))))
+
+(defn best-claims-card []
+  (let [w @(rf/subscribe [:waivers])]
+    (when w
+      (let [claims (best-claims (:players w) 3)]
+        [:div.side-card
+         [:h3 "Best claims"]
+         (if (seq claims)
+           (for [p claims]
+             ^{:key (:player-id p)}
+             [:div.side-line
+              [:span (:player-name p) [:span.muted (str " " (:position p))]]
+              [:span.good (str "+" (js/Math.round (:lineup-upgrade p))
+                               (when (number? (:bid p)) (str " · $" (:bid p))))]])
+           [:div.side-line [:span.muted "Nobody on the wire improves your lineup."]])
+         [:div.side-line [go-link :waivers "Open waivers →"]]]))))
+
 (defn team-view []
   (let [waivers @(rf/subscribe [:waivers])
         roster  @(rf/subscribe [:my-waiver-roster])
@@ -93,7 +197,12 @@
        (nil? waivers) [:p.muted "Loading your roster…"]
        (nil? roster)  [:p.muted "Pick your team under Settings to see your roster."]
        (empty? roster) [:p.muted "This team holds nobody yet."]
-       :else [roster-table (roster-groups roster (:my-roster-players waivers)) week])
+       :else [:div.team-body
+              [roster-table (roster-groups roster (:my-roster-players waivers)) week]
+              [:div.side-cards
+               [this-week-card]
+               [lineup-check-card]
+               [best-claims-card]]])
      (when-let [drop (some #(when (:drop? %) %) roster)]
        [:div.drop-note
         "A claim costs a roster spot. Yours would come from "
