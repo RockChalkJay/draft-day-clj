@@ -70,7 +70,10 @@
   (let [t (mine)]
     (is (= #{"4034" "6794" "ARI"} (set (:starter-ids t))))
     (is (not-any? #{"9001"} (:starter-ids t)) "the bench does not start")
-    (is (some #{"9001"} (:active-ids t)) "but it does hold a seat")))
+    (is (some #{"9001"} (:active-ids t)) "but it does hold a seat")
+    (is (= {"4034" "QB" "6794" "RB" "ARI" "DST"}
+           (zipmap (:starter-ids t) (:starter-slots t)))
+        "and each starter carries the seat his entry names, in step with the ids")))
 
 (deftest faab-left-is-derived-where-both-halves-are-in-hand
   (is (= 30 (:faab-used (mine))))

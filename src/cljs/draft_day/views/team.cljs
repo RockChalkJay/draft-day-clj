@@ -42,7 +42,12 @@
 
 (defn team-cell [k p week]
   (case k
-    :slot [:td.muted (or (:slot p) (when (:parked? p) "IR") "BN")]
+    ;; A starter whose seat is not known gets a dash, never BN: he is in the
+    ;; Starters block, and a league that cannot name the seat has not benched him.
+    :slot [:td.muted (cond (:slot p)     (:slot p)
+                           (:starter? p) "–"
+                           (:parked? p)  "IR"
+                           :else         "BN")]
     :name (if (:unvalued? p)
             [:td.player [:span.muted {:title (str "No projection for id " (:player-id p))}
                          (:player-id p)]]
