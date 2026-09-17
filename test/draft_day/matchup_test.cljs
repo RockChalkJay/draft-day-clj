@@ -280,3 +280,21 @@
         scored  (pr-str (matchup/player-cell {:player-id "a" :player-name "A" :actual 0.0} :l 3))]
     (is (re-find #"mu-a pending" pending))
     (is (not (re-find #"pending" scored)))))
+
+(deftest the-two-sides-mirror-so-the-actuals-meet-at-the-centre
+  ;; Player · Proj · Actual | seat | Actual · Proj · Player.
+  (let [classes (fn [side]
+                  (->> (matchup/player-cell {:player-id "a" :player-name "A" :slot "QB"
+                                             :week-points 20.0 :actual 18.0} side 3)
+                       (drop 2)
+                       (mapv (fn [child] (re-find #"mu-who|mu-p|mu-a" (pr-str child))))))]
+    (is (= ["mu-who" "mu-p" "mu-a"] (classes :l)))
+    (is (= ["mu-a" "mu-p" "mu-who"] (classes :r)))))
+
+(deftest a-bench-player-names-his-own-position-in-his-meta
+  ;; A bench row has no shared seat label down the middle to say it.
+  (is (re-find #"RB · " (pr-str (matchup/player-cell {:player-id "a" :player-name "A"
+                                                      :position "RB"} :l 3))))
+  (is (not (re-find #"RB · " (pr-str (matchup/player-cell {:player-id "a" :player-name "A"
+                                                           :position "RB" :slot "RB"} :l 3))))
+      "a starter's seat is already down the middle"))

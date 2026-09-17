@@ -18,7 +18,7 @@
             [draft-day.ingestion.matchups :as matchups]))
 
 (defmethod matchups/current-week :sleeper
-  [_]
+  [_ _req]
   (let [state (sync-sleeper/get-json "state/nfl"
                                      {:empty-is-missing? true
                                       :not-found-msg "Sleeper season state unavailable"})]
@@ -26,7 +26,7 @@
       (when (and (number? wk) (pos? wk)) wk))))
 
 (defmethod matchups/fetch-raw-matchups :sleeper
-  [_ league-id week]
+  [_ {:keys [league-id week]}]
   (sync-sleeper/get-json (str "league/" league-id "/matchups/" week)
                          {:empty-is-missing? false}))
 

@@ -98,13 +98,6 @@ for the known gaps between a league's real rules and what the board can score.
   pasting a league ID. That is the designed behaviour, not a bug to fix — but if
   ESPN ever publishes a supported listing, this is the thing to replace.
 
-- **The `matchups` pair still takes positional arguments.** The other two pairs
-  now take one request map so a host can carry a season and a cookie; this one
-  was left alone because the matchup board was in flight on another branch, and
-  so `POST /api/matchup` is Sleeper-only for now. ESPN's current week comes off the league
-  document, so converting it is not just consistency — it is what an ESPN
-  matchup board would need.
-
 - **Credentials sit in `localStorage`.** An `espn_s2` is a live session token
   and it is persisted in the browser next to the rest of the app's state,
   because the server holds nothing between requests and there is no session

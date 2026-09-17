@@ -863,7 +863,7 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
   border-radius: 8px; padding: 4px 8px; font-size: 12px; max-width: 320px; }
 
 .mu-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-.mu-head { display: grid; grid-template-columns: 1fr 88px 1fr; gap: 12px; align-items: end;
+.mu-head { display: grid; grid-template-columns: 1fr 64px 1fr; gap: 12px; align-items: end;
   padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .mu-team.r { text-align: right; }
 .mu-name { font-size: 16px; font-weight: 700; }
@@ -875,18 +875,23 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
 .mu-vs { text-align: center; color: var(--muted); font-size: 11px;
   text-transform: uppercase; letter-spacing: .06em; }
 
-.mu-row, .mu-tot, .mu-opt { display: grid; grid-template-columns: 1fr 88px 1fr; gap: 12px; }
+.mu-hdr, .mu-row, .mu-tot, .mu-opt { display: grid; grid-template-columns: 1fr 64px 1fr; gap: 12px; }
+.mu-hdr { padding: 10px 0 4px; border-bottom: 1px solid var(--border); align-items: end; }
+.mu-hdr .mu-who, .mu-hdr .mu-p, .mu-hdr .mu-a, .mu-hdr .mu-slot { font-size: 10px; font-weight: 400;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .mu-row { align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); }
 .mu-slot { text-align: center; color: var(--muted); font-size: 10px;
   text-transform: uppercase; letter-spacing: .05em; }
-/* Each side fans out from the centre, so the two are mirror images and the seat
-   label is the axis. The mirror is the column TEMPLATE, not `direction: rtl` —
-   `player-cell` already emits the left side's children in reverse, and doing
-   both cancelled out: the name kept the wide track at the outer edge, the two
-   numbers bunched together inward, and every left-hand name truncated. */
-.mu-side { display: grid; grid-template-columns: 1fr 52px 52px; gap: 8px; align-items: baseline; }
-.mu-side.l { grid-template-columns: 52px 52px 1fr; }
-.mu-side.l .mu-who { text-align: right; }
+/* Player · Proj · Actual | seat | Actual · Proj · Player. The two sides are
+   mirror images with the seat label as the axis, so both teams' numbers meet at
+   the centre and names run toward the outer edges. The mirror is the column
+   TEMPLATE plus `player-cell`'s child order, not `direction: rtl` — doing both
+   cancels out and bunches the numbers. */
+.mu-side { display: grid; gap: 8px; align-items: baseline; }
+.mu-side.l { grid-template-columns: minmax(0, 1fr) 56px 56px; }
+.mu-side.r { grid-template-columns: 56px 56px minmax(0, 1fr); }
+.mu-side.r .mu-who { text-align: right; }
+.mu-slot { font-weight: 600; }
 .mu-p { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); font-size: 12px; }
 /* Bold, because a result outranks a forecast. */
 .mu-a { font-variant-numeric: tabular-nums; text-align: right; font-weight: 700; }
@@ -915,8 +920,10 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
 .mu-out { color: var(--warn); }
 
 @media (max-width: 900px) {
-  .mu-head, .mu-row, .mu-tot, .mu-opt { grid-template-columns: 1fr 56px 1fr; }
-  .mu-side { grid-template-columns: 1fr 44px 44px; gap: 5px; }
+  .mu-head, .mu-hdr, .mu-row, .mu-tot, .mu-opt { grid-template-columns: 1fr 48px 1fr; }
+  .mu-side { gap: 5px; }
+  .mu-side.l { grid-template-columns: minmax(0, 1fr) 44px 44px; }
+  .mu-side.r { grid-template-columns: 44px 44px minmax(0, 1fr); }
   .mu-score { font-size: 22px; }
 }
 
