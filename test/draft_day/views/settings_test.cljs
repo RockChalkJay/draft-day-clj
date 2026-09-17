@@ -138,3 +138,54 @@
          (settings/unadded-choices "espn" [{:league-id "1"}] [["sleeper:1" {}]]))
       "keyed by provider too, or an ESPN league vanishes behind a Sleeper one
        that happens to share its id"))
+
+;; ---- sections ----
+
+(deftest settings-shows-one-section-at-a-time
+  ;; The whole fix for the stretching: cards that are not in the open section
+  ;; are not on the page to be stretched against.
+  (let [html (render settings/settings)]
+    (is (re-find #"Leagues & Accounts" html) "opens on accounts")
+    (is (re-find #"Add account|Connect" html))
+    (is (not (re-find #"Danger Zone" html)))
+    (is (not (re-find #"Budget Plan" html))))
+  (rf/dispatch-sync [:set-settings-section :draft])
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/settings)]
+    (is (re-find #"Budget Plan" html))
+    (is (re-find #"Draft Archive" html))
+    (is (not (re-find #"Add account" html)))))
+
+(deftest every-section-is-reachable-from-the-sidebar
+  (is (= (set (map (fn [[k _]] [:set-settings-section k]) db/settings-sections))
+         (set (for [[_ label] db/settings-sections
+                    ev (press! settings/settings-nav label)]
+                ev)))))
+
+(deftest the-sidebar-says-what-is-waiting-inside-a-section
+  (is (not (re-find #"nav-badge|nav-dot" (render settings/settings-nav)))
+      "nothing to report, nothing drawn")
+  (accounts! espn-ak (assoc espn-acct :credentials-stale? true))
+  (swap! rdb/app-db assoc :import-report {:unsupported-scoring ["fg_50p" "pts_allow_0"]})
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/settings-nav)]
+    (is (re-find #"nav-dot" html) "an expired session marks Leagues & Accounts")
+    (is (re-find #"nav-badge.*\b2\b" html) "and the count of dropped rules marks Scoring")))
+
+(deftest unapplied-rules-are-listed-one-by-one
+  ;; A comma-joined run of underscore keys has nowhere to wrap and ran straight
+  ;; out of the card.
+  (swap! rdb/app-db assoc :import-report {:unsupported-scoring ["fg_50p" "pts_allow_0"]})
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/import-warning)]
+    (is (= 2 (count (re-seq #":span\.rule-chip\b" html))))))
+
+(deftest connect-a-league-opens-the-accounts-section
+  (swap! rdb/app-db assoc :settings-section :data)
+  (rf/dispatch-sync [:set-view :settings :leagues])
+  (is (= :settings (:view @rdb/app-db)))
+  (is (= :leagues (:settings-section @rdb/app-db)))
+  (testing "a plain view change leaves the section alone"
+    (swap! rdb/app-db assoc :settings-section :scoring)
+    (rf/dispatch-sync [:set-view :settings])
+    (is (= :scoring (:settings-section @rdb/app-db)))))

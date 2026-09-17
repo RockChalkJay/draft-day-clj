@@ -505,6 +505,21 @@
 
 (def columns-by-key (into {} (map (juxt :key identity)) column-catalog))
 
+;; ---- settings sections ----
+
+(def settings-sections
+  "Settings, one section at a time, in sidebar order.
+
+  One at a time is the point. On a single grid every card sat in a row with its
+  neighbours and stretched to the tallest of them, so opening the custom scoring
+  editor or connecting a second account turned the small cards beside it into
+  tall empty boxes. A section only ever grows its own page."
+  [[:leagues "Leagues & Accounts"]
+   [:scoring "Scoring"]
+   [:roster  "Roster & League"]
+   [:draft   "Draft"]
+   [:data    "Data"]])
+
 ;; ---- scoring catalog ----
 ;; Grouped presentational metadata for the custom scoring editor: each group is
 ;; rendered as a section of numeric weight inputs, in this order.
@@ -858,5 +873,8 @@
      :pos-filter  nil
      :search      ""
      :view        :board
+     ;; Transient: Settings reopens on the section most often needed, not the
+     ;; one last visited.
+     :settings-section :leagues
      :columns     (default-columns)
      :waiver-columns (default-waiver-columns)}))

@@ -132,15 +132,20 @@
 ;; ---- UI state ----
 
 (rf/reg-event-fx :set-view
-  (fn [{:keys [db]} [_ v]]
+  (fn [{:keys [db]} [_ v section]]
     ;; A second full rank of the universe, so it loads on first open only:
     ;; after that a refresh is a button, not a side effect of navigation.
-    (cond-> {:db (assoc db :view v)}
+    ;;
+    ;; `section` deep-links into Settings — "Connect a league" means the
+    ;; accounts section, not whichever one was open last.
+    (cond-> {:db (cond-> (assoc db :view v)
+                   section (assoc :settings-section section))}
       (and (= v :waivers) (nil? (:waivers db)))
       (assoc :fx [[:dispatch [:fetch-waivers]]])
       ;; Mutually exclusive with the branch above, so this cannot clobber it.
       (and (= v :matchup) (nil? (:matchup db)))
       (assoc :fx [[:dispatch [:fetch-matchup]]]))))
+(rf/reg-event-db :set-settings-section (fn [db [_ k]] (assoc db :settings-section k)))
 (rf/reg-event-db :set-search    (fn [db [_ q]] (assoc db :search q)))
 (rf/reg-event-db :set-pos-filter (fn [db [_ p]] (assoc db :pos-filter (if (= p (:pos-filter db)) nil p))))
 (rf/reg-event-db :set-nominated (fn [db [_ id]] (assoc db :nominated-id id)))

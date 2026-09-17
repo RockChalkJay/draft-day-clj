@@ -11,7 +11,7 @@
            :accounts :leagues :waivers :waiver-sort :waiver-status
            :league-choices :league-choices-error
            :waiver-columns :compare
-           :matchup :matchup-status :matchup-pick :optimal-basis]]
+           :matchup :matchup-status :matchup-pick :optimal-basis :settings-section]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),
@@ -48,6 +48,15 @@
 (def vendor-gap-sources
   "The format-scoped FantasyPros halves, in the order the notice names them."
   [:fantasypros/ecr :fantasypros/aav])
+
+;; What each Settings section has waiting for the manager, so the sidebar can
+;; say so without the section being open: an account whose session expired, and
+;; how many of the league's scoring rules the board could not apply.
+(rf/reg-sub :settings-alerts
+  :<- [:accounts] :<- [:import-report]
+  (fn [[accounts report] _]
+    {:leagues (boolean (some :credentials-stale? (vals accounts)))
+     :scoring (count (:unsupported-scoring report))}))
 
 (rf/reg-sub :vendor-gaps
   :<- [:scoring-format]
