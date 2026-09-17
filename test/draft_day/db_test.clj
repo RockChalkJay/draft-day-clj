@@ -651,3 +651,38 @@
     (is (contains? (db/league-owned-keys (on {:status :imported :bankroll? true})) :starting-bankroll))
     (is (contains? (db/league-owned-keys (on {:status :failed :bankroll? true})) :starting-bankroll)
         "and a failed retry does not hand back one an earlier import set")))
+
+;; ---- phase ----
+
+(defn- full-team [] {:roster [{:pos "QB" :player-id "a"} {:pos "RB" :player-id "b"}]})
+(defn- open-team [] {:roster [{:pos "QB" :player-id "a"} {:pos "RB" :player-id nil}]})
+
+(deftest a-draft-is-complete-only-when-every-seat-is-filled
+  (is (false? (db/draft-complete? [])) "a draft that has not started is not over")
+  (is (false? (db/draft-complete? [(full-team) (open-team)])))
+  (is (true? (db/draft-complete? [(full-team) (full-team)]))))
+
+(deftest the-phase-follows-the-data-unless-overridden
+  (is (= :draft (db/phase {:universe {:through-week 0}})))
+  (is (= :season (db/phase {:universe {:through-week 1}})) "a week has been played")
+  (is (= :season (db/phase {:teams [(full-team)]})) "or the draft has filled every roster")
+  (testing "a league's own override wins over the data"
+    (is (= :draft (db/phase {:universe {:through-week 5}
+                             :active-league "k" :leagues {"k" {:phase :draft}}}))))
+  (testing "and only that league's: the top-level override speaks when none is active"
+    (is (= :season (db/phase {:universe {:through-week 5} :phase :draft
+                              :active-league "k" :leagues {"k" {}}})))
+    (is (= :draft (db/phase {:universe {:through-week 5} :phase :draft})))))
+
+(deftest a-view-outside-the-phase-falls-back-to-where-the-phase-opens
+  (is (= :board (db/view-for :draft :board)))
+  (is (= :matchup (db/view-for :season :board)))
+  (is (= :board (db/view-for :draft :waivers)))
+  (is (= :settings (db/view-for :season :settings)) "Settings belongs to neither")
+  (is (= :waivers (db/view-for :season :waivers))))
+
+(deftest max-bid-leaves-a-dollar-for-every-other-open-seat
+  (is (= 198 (db/max-bid {:bankroll 200 :roster [{:player-id nil} {:player-id nil}
+                                                 {:player-id nil}]})))
+  (is (= 1 (db/max-bid {:bankroll 1 :roster [{:player-id nil} {:player-id nil}]})))
+  (is (nil? (db/max-bid nil))))

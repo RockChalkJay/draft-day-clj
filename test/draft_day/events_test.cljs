@@ -321,7 +321,7 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 9 fx/storage-version)
+  (is (= 10 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
   (is (= "espn:{SWID}" (db/account-key "espn" "{SWID}"))
@@ -348,7 +348,7 @@
       "including its nested roster, which a new bench slot would change")
 
   (is (= [:config :teams :drafted :picks :columns :my-team-id :watchlist
-          :accounts :leagues :active-league :waiver-columns]
+          :accounts :leagues :active-league :waiver-columns :phase]
          db/persist-keys)
       "and this is everything that gets stored at all")
 
@@ -548,3 +548,51 @@
       (is (= 10 (get-in @rdb/app-db [:config :num-teams])))
       (is (= 300 (get-in @rdb/app-db [:config :starting-bankroll])))
       (is (= 10 (count (:teams @rdb/app-db))) "and the teams are the league's"))))
+
+;; ---- the two halves ----
+
+(defn- dispatched-views
+  "The `:set-view`s the handler under `f` asked for, captured rather than queued
+  — a real `:dispatch` runs on a later tick, after the assertion."
+  [f]
+  (let [seen (atom [])
+        real (registrar/get-handler :fx :dispatch)]
+    (swap-fx! {:dispatch #(swap! seen conj %)})
+    (try (f) (finally (swap-fx! {:dispatch real})))
+    (keep (fn [[e v]] (when (= e :set-view) v)) @seen)))
+
+(deftest the-app-opens-on-the-half-the-season-is-in
+  (is (= [:matchup]
+         (dispatched-views
+          #(rf/dispatch-sync [:players-loaded {:players [] :count 0 :source "x"
+                                               :universe {:through-week 3}}])))
+      "week 3 has been played: open in season"))
+
+(deftest the-app-stays-on-the-board-before-the-season
+  (is (empty? (dispatched-views
+               #(rf/dispatch-sync [:players-loaded {:players [] :count 0 :source "x"
+                                                    :universe {:through-week 0}}]))))
+  (is (= :board (:view @rdb/app-db))))
+
+(deftest switching-mode-lands-on-that-mode-and-stores-only-a-disagreement
+  (swap! rdb/app-db assoc :active-league "sleeper:1" :view :settings
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}}
+         :universe {:through-week 0})
+  (is (= [:matchup] (dispatched-views #(rf/dispatch-sync [:switch-mode :season])))
+      "it leaves Settings for the season's first tab")
+  (is (= :season (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))
+      "preseason by the data, so choosing Season is an override")
+  (swap! rdb/app-db assoc :view :matchup)
+  (is (= [:board] (dispatched-views #(rf/dispatch-sync [:switch-mode :draft]))))
+  (is (nil? (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))
+      "choosing what the data says goes back to automatic"))
+
+(deftest a-league-switch-leaves-a-tab-the-new-league-s-phase-does-not-have
+  (swap! rdb/app-db assoc
+         :view :board
+         :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}
+                   "sleeper:2" {:provider "sleeper" :league-id "2" :phase :season
+                                :sync {:teams []}}})
+  (dispatched-views #(rf/dispatch-sync [:set-active-league "sleeper:2"]))
+  (is (= :matchup (:view @rdb/app-db))))
