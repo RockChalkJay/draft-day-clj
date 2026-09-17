@@ -336,7 +336,7 @@
   of a league's rules while reporting success is the failure this exists to
   prevent."
   []
-  (let [{:keys [unsupported-scoring]} @(rf/subscribe [:import-report])]
+  (let [{:keys [unsupported-scoring]} @(rf/subscribe [:active-import-report])]
     (when (seq unsupported-scoring)
       [:div.scoring-warning
        [:b (str (count unsupported-scoring) " scoring rules were not applied.")]

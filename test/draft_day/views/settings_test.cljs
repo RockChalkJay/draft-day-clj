@@ -166,7 +166,7 @@
   (is (not (re-find #"nav-badge|nav-dot" (render settings/settings-nav)))
       "nothing to report, nothing drawn")
   (accounts! espn-ak (assoc espn-acct :credentials-stale? true))
-  (swap! rdb/app-db assoc :import-report {:unsupported-scoring ["fg_50p" "pts_allow_0"]})
+  (swap! rdb/app-db assoc :import-report {:league-key nil :unsupported-scoring ["fg_50p" "pts_allow_0"]})
   (rf/clear-subscription-cache!)
   (let [html (render settings/settings-nav)]
     (is (re-find #"nav-dot" html) "an expired session marks Leagues & Accounts")
@@ -175,7 +175,7 @@
 (deftest unapplied-rules-are-listed-one-by-one
   ;; A comma-joined run of underscore keys has nowhere to wrap and ran straight
   ;; out of the card.
-  (swap! rdb/app-db assoc :import-report {:unsupported-scoring ["fg_50p" "pts_allow_0"]})
+  (swap! rdb/app-db assoc :import-report {:league-key nil :unsupported-scoring ["fg_50p" "pts_allow_0"]})
   (rf/clear-subscription-cache!)
   (let [html (render settings/import-warning)]
     (is (= 2 (count (re-seq #":span\.rule-chip\b" html))))))
@@ -189,3 +189,17 @@
     (swap! rdb/app-db assoc :settings-section :scoring)
     (rf/dispatch-sync [:set-view :settings])
     (is (= :scoring (:settings-section @rdb/app-db)))))
+
+(deftest an-import-report-speaks-only-for-its-own-league
+  ;; Nothing clears the report on a switch, and a badge that kept League A's
+  ;; dropped rules on screen under League B would be a claim about B.
+  (swap! rdb/app-db assoc
+         :active-league "sleeper:1"
+         :import-report {:league-key "sleeper:1" :unsupported-scoring ["fg_50p"]})
+  (rf/clear-subscription-cache!)
+  (is (re-find #"nav-badge" (render settings/settings-nav)))
+  (is (re-find #"rule-chip" (render settings/import-warning)))
+  (swap! rdb/app-db assoc :active-league "espn:9")
+  (rf/clear-subscription-cache!)
+  (is (not (re-find #"nav-badge" (render settings/settings-nav))))
+  (is (nil? (settings/import-warning))))

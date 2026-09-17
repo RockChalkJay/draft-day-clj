@@ -405,7 +405,8 @@
                         (update-in [:leagues k] merge (select-keys resp [:name :season]))))
        :fx (if live?
              [[:dispatch [:apply-config cfg]]
-              [:dispatch [:set-import-report (select-keys resp [:name :season :unsupported-scoring])]]
+              [:dispatch [:set-import-report (assoc (select-keys resp [:name :season :unsupported-scoring])
+                                                   :league-key k)]]
               [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]
              [])})))
 
