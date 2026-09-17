@@ -102,10 +102,38 @@
   [provider league-id]
   (str (name provider) ":" league-id))
 
+(defn account-key
+  "The id an account is stored under: the provider and that provider's own id
+  for the manager.
+
+  Composite for `league-key`'s reason, one level up. Keyed by provider alone an
+  account is a property of the host rather than of the manager, so a second
+  login on the same host silently replaces the first — and there is nowhere to
+  hang the several leagues one account plays in.
+
+  Opaque, like `league-key`: nothing splits it. An ESPN user id is a SWID full
+  of braces and hyphens, and a host is free to use a colon tomorrow."
+  [provider user-id]
+  (str (name provider) ":" user-id))
+
 (defn active-league
   "The league everything on screen is about, or nil when none is connected."
   [db]
   (get-in db [:leagues (:active-league db)]))
+
+(defn league-account
+  "The account a league is read through, or nil for one added by bare id.
+
+  Named rather than inlined because the alternative is what it replaced: a
+  lookup by provider that fell back to whichever account happened to be
+  connected, which is right while there is one and quietly wrong after that."
+  [db league]
+  (get-in db [:accounts (:account-key league)]))
+
+(defn credentials-for
+  "What authorizes a request about this league, or nil when nothing does."
+  [db league]
+  (:credentials (league-account db league)))
 
 (defn set-config
   "Write `:config`, mirroring it into the active league's entry.
@@ -636,11 +664,6 @@
                           [s (:player-id p)])))
           players)))
 
-(defn sleeper->player-id
-  "`provider->player-id` for the one provider that has shipped."
-  [players]
-  (provider->player-id players :sleeper))
-
 ;; ---- waiver board ----
 ;; The in-season board asks different questions than the draft board, so it gets
 ;; its own catalog rather than more columns on that one. Nothing here is priced
@@ -747,9 +770,16 @@
   reaches `waiver/rostered-index` as a team holding nobody, and every player on
   it silently becomes a free agent. `:active-ids` is repaired alongside it
   because it decides the *other* question — whether a claim needs a drop at
-  all."
+  all.
+
+  A sync with teams but no `:provider` is dropped for the same reason: it names
+  no id space, so `waiver/waiver-board` can resolve nobody and the whole league
+  comes back available. It is the shape a sync stored before providers were
+  named has, and one click re-fetches it."
   [stored]
-  (when (and (map? stored) (sequential? (:teams stored)))
+  (when (and (map? stored)
+             (sequential? (:teams stored))
+             (or (empty? (:teams stored)) (some? (:provider stored))))
     (-> stored
         (update :teams (fn [ts]
                          (into [] (comp (filter map?)
@@ -788,13 +818,19 @@
      ;; A manager plays in more than one league, and one day across more than one
      ;; provider. Both maps are keyed so a second provider is a new entry rather
      ;; than a second shape: accounts by provider, leagues by `league-key`.
-     :accounts     {}           ; provider -> {:provider :user-id :username}
-     ;; league-key -> {:provider :league-id :name :season :my-roster-id
+     ;; account-key -> {:provider :user-id :username :avatar :credentials}
+     :accounts     {}
+     ;; league-key -> {:provider :league-id :account-key :name :season :my-roster-id
      ;;                :config  — this league's scoring/roster/team count
      ;;                :sync    — last /api/league/sync reply: who is rostered, and FAAB}
      :leagues      {}
      :active-league nil         ; which league-key everything on screen is about
-     :league-choices   nil      ; leagues an account plays in; refetched, never stored
+     ;; account-key -> the leagues that account plays in, and why the listing
+     ;; failed when it did. Top-level rather than inside the account, because
+     ;; `:accounts` is persisted and these are refetched, never stored. nil and
+     ;; [] differ: never looked up, against looked up and plays in none.
+     :league-choices   nil
+     :league-choices-error nil
      ;; Read from `fx/drafts-key` at boot, not from the persisted slice: an
      ;; archived draft has its own key and its own version.
      :drafts       []           ; completed drafts, oldest first

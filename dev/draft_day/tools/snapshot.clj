@@ -20,7 +20,7 @@
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [draft-day.ingestion.pipeline :as pipeline]
-            [draft-day.ingestion.sleeper :as sleeper]))
+            [draft-day.ingestion.season :as season]))
 
 (def sample-path
   "Written in place; it is a committed artifact, so the diff is the review."
@@ -80,7 +80,7 @@
 
 (defn -main [& args]
   (let [{:keys [season allow-partial]} (parse-args args)
-        season (or season (sleeper/current-season))]
+        season (season/resolve-season season)]
     (println "capturing season" season "…")
     (let [snap    (capture season)
           missing (missing-sources snap)]

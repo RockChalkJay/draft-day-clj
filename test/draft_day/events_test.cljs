@@ -321,8 +321,11 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 6 fx/storage-version)
+  (is (= 7 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
+
+  (is (= "espn:{SWID}" (db/account-key "espn" "{SWID}"))
+      "a stored :accounts map is keyed off this, and a league entry names it")
 
   (is (= [:rank :ecr :name :team :bye :position :worth :value :market :espn-value
           :fp-aav :bargain :vorp :risk :inj :edge :adp :tier :fp-tier :proj

@@ -3,6 +3,7 @@
             [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.db :as db]
+            [draft-day.providers :as providers]
             [draft-day.scoring :as scoring]))
 
 (defn- numeric-field
@@ -93,71 +94,179 @@
                 :on-click #(rf/dispatch [:sync-league (select-keys entry [:provider :league-id])])}
        "Re-sync"]]]))
 
-(defn- connected-accounts
+(defn- credential-field
+  "One field of a provider's connect form, drawn from the catalog.
+
+  A secret is masked until asked for. The toggle is per field rather than per
+  form: a manager checking a mistyped SWID has no reason to put his session
+  cookie on screen beside it."
+  [{:keys [key label secret? placeholder]} draft]
+  (let [shown (r/atom false)]
+    (fn [{:keys [key label secret? placeholder]} draft]
+      [:label.field {:class (when secret? "secret")}
+       [:span label]
+       [:input {:type (if (and secret? (not @shown)) "password" "text")
+                :placeholder placeholder
+                :auto-complete "off"
+                :spell-check false
+                :value (get @draft key "")
+                :on-change #(swap! draft assoc key (.. % -target -value))}]
+       (when secret?
+         [:button.reveal {:type "button"
+                          :title (if @shown "Hide" "Show")
+                          :on-click #(swap! shown not)}
+          (if @shown "hide" "show")])])))
+
+(defn- connect-form
+  "The whole of connecting to a host, rendered from `providers/catalog`.
+
+  Nothing here names a provider. A second host is an entry in that catalog and
+  two defmethods on the server; it costs no markup, which is the difference
+  between supporting one more and supporting them one at a time."
+  [picked draft on-done]
+  (let [p     @picked
+        creds (into {} (filter (comp not-empty str val)) @draft)
+        bad   (providers/credential-errors p creds)]
+    [:<>
+     [:div.provider-tabs
+      (for [x (providers/providers)]
+        ^{:key x}
+        [:button.provider-tab {:class (when (= x p) "on")
+                               :on-click #(do (reset! picked x) (reset! draft {}))}
+         (providers/label x)])]
+     [:div.connect-form
+      (for [f (providers/fields p)]
+        ^{:key (:key f)} [credential-field f draft])]
+     [:div.connect-actions
+      [:button.primary {:disabled (some? bad)
+                        :on-click #(do (rf/dispatch [:connect-account p creds])
+                                       (reset! draft {})
+                                       (on-done))}
+       "Connect"]
+      [:button {:on-click #(do (reset! draft {}) (on-done))} "Cancel"]
+      (when-let [{:keys [url]} (providers/help p)]
+        [:a.connect-help {:href url :target "_blank" :rel "noreferrer"}
+         "Where do I find these?"])]
+     (when-let [{:keys [text]} (providers/help p)]
+       [:p.connect-note text])
+     ;; Only once something has been typed: an empty form is not a mistake.
+     (when (and bad (seq creds))
+       [:div.connect-error (:error bad)])]))
+
+(defn unadded-choices
+  "The leagues this account plays in that are not stored yet.
+
+  They shrink out of this list as they are added rather than doubling with the
+  rows below, which is what the two disconnected lists used to do."
+  [provider choices leagues]
+  (let [stored (into #{} (map first) leagues)]
+    (remove #(stored (db/league-key provider (:league-id %))) choices)))
+
+(defn- add-by-id
+  "The paste-a-league-ID row. Per account, never global: an ESPN league needs
+  *this* account's cookie to sync at all, so an id with no account beside it
+  would name a league nothing could fetch."
+  [ak provider typed]
+  (let [v   (get @typed ak "")
+        bad (providers/league-id-error provider v)]
+    [:div.row.league-id-row
+     [:input {:type "text" :placeholder (providers/league-id-label provider)
+              :value v
+              :on-change #(swap! typed assoc ak (.. % -target -value))}]
+     [:button {:disabled (some? bad)
+               :on-click #(do (rf/dispatch [:league-choose ak (str/trim v)])
+                              (swap! typed dissoc ak))}
+      "Add league"]
+     [:span.muted "For a league this account is not in."]]))
+
+(defn- account-group
+  "One account and everything read through it: its stored leagues, the ones it
+  plays in that are not stored yet, and the row for an id it does not list."
+  [[ak acct leagues] {:keys [active-key reconnect! typed-id]}]
+  (let [provider (:provider acct)
+        {:keys [choices error]} (when ak @(rf/subscribe [:account-choices ak]))]
+    [:section.account-group {:class (cond (nil? ak) "no-account"
+                                          (:credentials-stale? acct) "stale")}
+     [:div.account-head
+      [:span.account-provider (if ak (providers/label provider) "No account")]
+      ;; Omitted rather than defaulted to the provider's name: ESPN publishes no
+      ;; display name, and "ESPN · ESPN" says the label twice. The SWID is never
+      ;; a fallback — it is half the credential pair.
+      (when-let [nm (and ak (not-empty (:username acct)))]
+        [:b.account-name nm])
+      (when (:credentials-stale? acct)
+        [:span.account-stale "Session expired — reconnect"])
+      (when ak
+        [:div.account-actions
+         (when (:credentials-stale? acct)
+           [:button.link {:on-click #(reconnect! provider)} "Reconnect"])
+         [:button.link {:on-click #(rf/dispatch [:disconnect-account ak])} "Disconnect"]])]
+
+     (when error
+       [:div.discovery-warn
+        [:b (str "Couldn't list this account's leagues.")]
+        [:div.muted
+         (str (providers/label provider) " publishes no supported way to do it, so this "
+              "can stop working without notice. Paste a league ID instead.")]])
+
+     (if (seq leagues)
+       [:div.league-rows
+        (for [[k _ :as row] leagues] ^{:key k} [league-row row active-key])]
+       (when-not (seq choices)
+         [:p.muted "No leagues from this account yet."]))
+
+     (when-let [unadded (seq (unadded-choices provider choices leagues))]
+       [:div.league-choices
+        (for [{:keys [league-id name num-teams status] :as choice} unadded]
+          ^{:key league-id}
+          [:button.league-choice {:on-click #(rf/dispatch [:league-choose ak choice])}
+           [:span.league-choice-name name]
+           [:span.muted (str/join " · " (cons "" (remove nil? [(when num-teams (str num-teams "-team"))
+                                                               status])))]
+           [:span.league-choice-add "Add"]])])
+
+     (when (and ak (= [] choices) (empty? leagues) (not error))
+       [:div.sync-empty "That account plays in no leagues this season."])
+
+     (when ak [add-by-id ak provider typed-id])]))
+
+(defn connected-accounts
   "The one place an account, a league and a team are set.
 
-  They used to be settable from the Settings import card and from two rows of
-  the Waivers panel, with a real league id hardcoded into the first — three
-  inputs writing state that the rest of the app read from one key. Everything
-  that identifies the manager now lives here, and every other view reads
-  `:account`."
+  Everything that identifies the manager lives here and every other view reads
+  it: the header switcher and the Waivers strip only display. The connect form
+  folds away once there is an account, because connecting is rare and this card
+  is read far more often than it is used."
   []
-  (let [typed  (r/atom nil)
-        typed-id (r/atom "")]
+  (let [picked   (r/atom (first (providers/providers)))
+        draft    (r/atom {})
+        typed-id (r/atom {})
+        adding?  (r/atom false)]
     (fn []
-      (let [accounts   @(rf/subscribe [:accounts])
-            leagues    @(rf/subscribe [:league-list])
+      (let [groups     @(rf/subscribe [:leagues-by-account])
             active-key @(rf/subscribe [:active-league-key])
-            choices    @(rf/subscribe [:league-choices])
             status     @(rf/subscribe [:waiver-status])
-            acct       (first (vals accounts))
-            username   (or @typed (:username acct) "")
-            connect!   #(when-not (str/blank? username)
-                          (rf/dispatch [:league-connect username]))]
+            any?       (seq @(rf/subscribe [:accounts]))
+            reconnect! (fn [p] (reset! picked (keyword p)) (reset! draft {}) (reset! adding? true))
+            open?      (or @adding? (not any?))]
         [:section.settings-card.accounts
-         [:h3 "Connected Accounts"]
+         [:h3 "Accounts"]
          [:p.muted "Connect a fantasy account to pull its leagues. Everything on the
                     board — scoring, rosters, waivers — follows whichever league is
-                    active."]
-         [:div.row
-          [:input {:type "text" :placeholder "Sleeper username"
-                   :value username
-                   :on-change #(reset! typed (.. % -target -value))
-                   :on-key-down #(when (= "Enter" (.-key %)) (connect!))}]
-          [:button.primary {:disabled (str/blank? username) :on-click connect!}
-           (if acct "Reconnect" "Connect")]]
-         (when acct
-           [:p.muted (str "Sleeper · " (:username acct))])
+                    active. Credentials are kept in this browser and sent only to
+                    read your leagues."]
+         (if open?
+           [connect-form picked draft #(reset! adding? false)]
+           [:button.link {:on-click #(reset! adding? true)} "+ Add account"])
 
-         ;; Leagues that account plays in but has not been added yet. Once a
-         ;; league is stored it is listed below instead, so this list shrinks as
-         ;; leagues are picked rather than doubling them.
-         (when-let [unadded (seq (remove #(contains? (into #{} (map first) leagues)
-                                                     (db/league-key "sleeper" (:league-id %)))
-                                         choices))]
-           [:div.league-choices
-            (for [{:keys [league-id name num-teams status] :as choice} unadded]
-              ^{:key league-id}
-              [:button.league-choice {:on-click #(rf/dispatch [:league-choose choice])}
-               [:span.league-choice-name name]
-               [:span.muted (str " · " num-teams "-team · " status)]])])
-         (when (and (some? choices) (empty? choices))
-           [:div.sync-empty "That account plays in no leagues this season."])
-
-         (if (seq leagues)
-           [:div.league-rows
-            (for [[k _ :as row] leagues]
-              ^{:key k} [league-row row active-key])]
-           [:p.muted "No leagues yet — connect an account, or paste a league ID below."])
-
-         [:div.row
-          [:input {:type "text" :placeholder "Sleeper league ID"
-                   :value @typed-id
-                   :on-change #(reset! typed-id (.. % -target -value))}]
-          [:button {:disabled (str/blank? @typed-id)
-                    :on-click #(rf/dispatch [:league-choose (str/trim @typed-id)])}
-           "Add league"]
-          [:span.muted "For a league this account is not in."]]
+         (when (seq groups)
+           [:div.account-groups
+            (for [[ak acct leagues] groups]
+              ^{:key (or ak "orphans")}
+              [account-group [ak acct leagues]
+               {:active-key active-key :reconnect! reconnect! :typed-id typed-id}])])
+         (when (and (empty? groups) any?)
+           [:p.muted "No leagues yet — pick one above, or paste a league ID."])
          (when status [:div.sync-status status])]))))
 
 (defn- league-config []

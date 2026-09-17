@@ -1,5 +1,6 @@
 (ns draft-day.api.routes-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is]]
             [jsonista.core :as json]
             [draft-day.api.routes :as routes]
             [draft-day.ingestion.pipeline :as pipeline]
@@ -155,7 +156,7 @@
         resp (routes/league-import-handler req)
         b    (parse resp)]
     (is (= 400 (:status resp)))
-    (is (= "league-id must be numeric" (:error b)))))
+    (is (= "Sleeper league ID must be numeric" (:error b)))))
 
 ;; ---- scoring reaches the board, and malformed configs do not blank it ----
 
@@ -338,6 +339,7 @@
             :active-ids ["rb4"] :faab-left 95}]
    :waiver {:type "faab" :budget 100}
    :roster-size 2
+   :provider "sleeper"
    :playoff-week-start 15})
 
 ;; A week with no projections and no kickoffs, shaped like the real envelope so
@@ -507,48 +509,67 @@
 
 ;; ---- connecting an account ----
 
-(deftest league-user-endpoint-returns-the-account-and-its-leagues
+(def ^:private creds {:username "rockchalkjay"})
+
+(defn- connect [body]
+  (routes/account-connect-handler
+   {:body (input-stream (json/write-value-as-string body))}))
+
+(deftest connect-returns-the-account-and-its-leagues
   (with-redefs [league-sync/find-leagues
                 (fn [_] {:ok true
                          :user {:user-id "u1" :display-name "jay" :avatar "a"}
                          :leagues [{:league-id "L1" :name "RaiderNation" :num-teams 12}]})]
-    (let [resp (routes/league-user-handler {:query-params {"username" "rockchalkjay"}})
+    (let [resp (connect {:provider "sleeper" :credentials creds})
           b    (parse resp)]
       (is (= 200 (:status resp)))
       (is (= "u1" (get-in b [:user :user-id])))
-      (is (= 1 (count (:leagues b)))))))
+      (is (= 1 (count (:leagues b))))
+      (is (not (contains? b :leagues-error))))))
 
-(deftest league-user-endpoint-passes-a-404-through
+(deftest connect-passes-a-404-through
   (with-redefs [league-sync/find-leagues
                 (fn [_] {:ok false :status 404 :error "Sleeper user not found"})]
-    (let [resp (routes/league-user-handler {:query-params {"username" "nope"}})]
+    (let [resp (connect {:provider "sleeper" :credentials {:username "nope"}})]
       (is (= 404 (:status resp)))
       (is (= "Sleeper user not found" (:error (parse resp)))))))
 
-(deftest a-username-is-guarded-separately-from-a-league-id
-  ;; `league-id-error` is `#"\d+"` — the path-traversal defence for an id that
-  ;; goes into a URL path segment. A username occupies the same position and is
-  ;; not numeric, so borrowing that rule would reject every real name while
-  ;; having no rule at all would pass a slash straight through.
-  (is (nil? (routes/username-error "rockchalkjay")))
-  (is (nil? (routes/username-error "a_1")))
-  ;; On evidence, not taste: `the-commish` is a real Sleeper account, so a
-  ;; letters-and-digits rule would refuse a legitimate name.
-  (is (nil? (routes/username-error "the-commish")) "hyphens are real handles")
-  (is (nil? (routes/username-error "has.dot")))
-  (is (some? (routes/username-error "")))
-  (is (some? (routes/username-error "   ")))
-  ;; What is dangerous is the path, not the punctuation.
-  (is (some? (routes/username-error "1/../evil")) "a slash injects a segment")
-  (is (some? (routes/username-error "a..b")) "and `..` climbs one")
-  (is (some? (routes/username-error "..")))
-  (is (some? (routes/username-error ".hidden")) "the segment cannot start with a dot")
-  (is (some? (routes/username-error "has space")))
-  (is (some? (routes/username-error (apply str (repeat 33 "a")))) "bounded"))
+(deftest connect-reports-a-listing-failure-without-losing-the-account
+  (with-redefs [league-sync/find-leagues
+                (fn [_] {:ok true :user {:user-id "u1"} :leagues []
+                         :leagues-error "ESPN would not list them"})]
+    (let [b (parse (connect {:provider "espn" :credentials creds}))]
+      (is (= "u1" (get-in b [:user :user-id])))
+      (is (= "ESPN would not list them" (:leagues-error b))
+          "a listing that broke is not a manager who plays in nothing"))))
 
-(deftest league-user-endpoint-refuses-a-bad-username-before-any-fetch
+(deftest connect-has-no-default-provider
   (let [called (atom false)]
-    (with-redefs [league-sync/find-leagues (fn [_] (reset! called true) {:ok true})]
-      (let [resp (routes/league-user-handler {:query-params {"username" "1/../evil"}})]
-        (is (= 400 (:status resp)))
-        (is (false? @called) "nothing reaches the provider")))))
+    (with-redefs [league-sync/find-user (fn [_ _] (reset! called true) {:user-id "u1"})]
+      (is (= 400 (:status (connect {:credentials creds}))))
+      (is (= 400 (:status (connect {:provider "yahoo" :credentials creds}))))
+      (is (false? @called)
+          "defaulting a typo'd host looks the manager up on the wrong one"))))
+
+(deftest connect-refuses-a-bad-credential-before-any-fetch
+  (let [called (atom false)]
+    (with-redefs [league-sync/find-user (fn [_ _] (reset! called true) {:user-id "u1"})]
+      (is (= 400 (:status (connect {:provider "sleeper"
+                                    :credentials {:username "1/../evil"}}))))
+      (is (= 400 (:status (connect {:provider "espn" :credentials {:swid "nope"}}))))
+      (is (false? @called) "nothing reaches the provider"))))
+
+(deftest connect-never-echoes-a-credential
+  (let [secret "SUPERSECRETsentinel"]
+    (with-redefs [league-sync/find-leagues
+                  (fn [_] {:ok false :status 502 :error "upstream broke"})]
+      (let [resp (connect {:provider "espn"
+                           :credentials {:swid secret :espn-s2 secret}})]
+        (is (not (str/includes? (:body resp) secret))
+            "an echoed session cookie reaches a terminal scrollback and a bug report")))))
+
+(deftest a-malformed-body-is-a-400-not-a-500
+  (doseq [h [routes/account-connect-handler
+             routes/league-import-handler
+             routes/league-sync-handler]]
+    (is (= 400 (:status (h {:body (input-stream "{not json")}))))))

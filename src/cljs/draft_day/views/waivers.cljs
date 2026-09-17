@@ -230,7 +230,7 @@
           [:button.secondary {:on-click #(rf/dispatch [:fetch-waivers])} "Refresh board"])]
        [:div.sync-empty
         (if connected?
-          "No league active — pick one under Settings → Connected Accounts."
+          "No league active — pick one under Settings → Accounts."
           (str "No league connected — this is a rest-of-season ranking of everyone, "
                "not of who is actually free. Connect your account under Settings."))])
      (when (and active? synced? (not my-team-name))

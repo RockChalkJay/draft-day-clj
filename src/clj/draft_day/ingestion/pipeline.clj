@@ -31,6 +31,7 @@
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.player-ids :as player-ids]
+            [draft-day.ingestion.season :as season]
             [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.validate :as validate]
             [draft-day.scoring :as scoring])
@@ -415,7 +416,7 @@
   a stale cache beats the committed sample, and both beat an empty board."
   [season cache-path]
   (try
-    (let [season' (or season (sleeper/current-season))
+    (let [season' (season/resolve-season season)
           {:keys [players validation sources through-week]} (fetch-enriched-universe season')
           env {:schema-version schema-version
                :season         season'

@@ -2,17 +2,18 @@
   "Stateless JSON API. The browser owns draft state and sends only the lightweight
   LeagueState + config; the server runs static+live valuation on the cached
   universe and returns the valued board. Also serves the compiled SPA."
-  (:require [clojure.string :as str]
-            [reitit.ring :as ring]
+  (:require [reitit.ring :as ring]
             [reitit.ring.middleware.parameters :as parameters]
             [jsonista.core :as json]
             [draft-day.db :as db]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.nflverse :as nflverse]
-            [draft-day.ingestion.sleeper :as sleeper]
+            [draft-day.ingestion.season :as season]
             [draft-day.ingestion.league-import :as league-import]
+            [draft-day.ingestion.league-import.espn]
             [draft-day.ingestion.league-import.sleeper]
             [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.league-sync.espn]
             [draft-day.ingestion.league-sync.sleeper]
             [draft-day.rankings.engine :as engine]
             [draft-day.rankings.model :as model]
@@ -69,81 +70,69 @@
   (reset-universe!)
   (json-response 200 {:status "ok"}))
 
-(defn league-id-error
-  "The 400 body for an unusable league id, or nil when it is fine.
+(defn league-request
+  "The body of an import or a sync, as the dispatchers take it.
 
-  Shared by import and sync because they take the same identifier from the same
-  field, and a second copy of the rule is how one endpoint ends up accepting
-  what the other rejects."
-  [league-id]
-  (cond
-    (str/blank? league-id)          {:error "league-id is required"}
-    (not (re-matches #"\d+" league-id)) {:error "league-id must be numeric"}))
+  One reader because the two endpoints take the same four fields from the same
+  browser, and a second copy of that is how one comes to accept what the other
+  rejects. Validation is not here: `league-import/import-league` and
+  `league-sync/sync-league` both check access themselves, so a caller that
+  reaches them another way is checked too."
+  [req]
+  (let [{:keys [provider league-id season credentials]} (read-json-body req)]
+    {:provider provider :league-id (str league-id)
+     :season season :credentials credentials}))
 
 (defn league-import-handler [req]
-  (let [{:keys [provider league-id]} (read-json-body req)
-        league-id (str league-id)]
-    (if-let [bad (league-id-error league-id)]
-      (json-response 400 bad)
-      (let [{:keys [ok config status error]}
-            (league-import/import-league {:provider provider :league-id league-id})]
-        (if ok
-          (json-response 200 config)
-          (json-response status {:error error}))))))
+  (try
+    (let [{:keys [ok config status error]}
+          (league-import/import-league (league-request req))]
+      (if ok
+        (json-response 200 config)
+        (json-response status {:error error})))
+    ;; A malformed body is the caller's fault, not the server's. Without this
+    ;; `read-json-body` throwing 500s where `rankings-handler` answers cleanly.
+    (catch Exception e
+      (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
 (defn league-sync-handler
   "Who is rostered right now. Separate from the import for the same reason the
   namespaces are: an import is the league's rules and a sync is its state, and
   the state changes every time anyone in the league makes a claim."
   [req]
-  (let [{:keys [provider league-id]} (read-json-body req)
-        league-id (str league-id)]
-    (if-let [bad (league-id-error league-id)]
-      (json-response 400 bad)
-      (let [{:keys [ok league status error]}
-            (league-sync/sync-league {:provider provider :league-id league-id})]
-        (if ok
-          (json-response 200 league)
-          (json-response status {:error error}))))))
+  (try
+    (let [{:keys [ok league status error]}
+          (league-sync/sync-league (league-request req))]
+      (if ok
+        (json-response 200 league)
+        (json-response status {:error error})))
+    (catch Exception e
+      (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
-(defn username-error
-  "The 400 body for an unusable username, or nil when it is fine."
-  [username]
-  (cond
-    (str/blank? username)
-    {:error "username is required"}
+(defn account-connect-handler
+  "Who this manager is on a host, and which leagues he plays in.
 
-    (not (re-matches #"[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}" username))
-    {:error "username must be 1-32 letters, digits, underscores, dots or hyphens"}
+  POST rather than GET, and a body rather than query params, because an
+  `espn_s2` is a live session token and a query string reaches browser history,
+  proxy logs and `Referer` headers. It reads nothing and changes nothing, which
+  is what a GET would have bought — not enough to put a credential in a URL.
 
-    (str/includes? username "..")
-    {:error "username cannot contain '..'"}))
-
-(defn league-user-handler
-  "A manager's account and the leagues it plays in, so the app can be told who he
-  is rather than made to look up a 19-digit league id.
-
-  GET rather than POST, and query params rather than a body, because it reads
-  nothing and changes nothing — `cache-reset-handler` already takes its argument
-  the same way.
-
-  The `try` is not decoration: `read-json-body` throwing out of a sibling handler
-  is a 500 today, and this one takes user input straight from the query string."
+  There is no default provider. An absent one is a 400: defaulting it meant a
+  typo'd ESPN connect was looked up on Sleeper and came back \"user not found\",
+  which points the manager at entirely the wrong problem."
   [req]
   (try
-    (let [{:strs [provider username season]} (:query-params req)
-          username (str username)]
-      (if-let [bad (username-error username)]
-        (json-response 400 bad)
-        (let [{:keys [ok user leagues status error]}
-              (league-sync/find-leagues {:provider (or (not-empty provider) "sleeper")
-                                         :username username
-                                         :season   (not-empty season)})]
-          (if ok
-            (json-response 200 {:user user :leagues leagues})
-            (json-response status {:error error})))))
+    (let [{:keys [provider credentials season]} (read-json-body req)
+          {:keys [ok user leagues leagues-error status error]}
+          (league-sync/find-leagues {:provider    provider
+                                     :credentials credentials
+                                     :season      season})]
+      (if ok
+        (json-response 200 (cond-> {:user user :leagues leagues}
+                             leagues-error (assoc :leagues-error leagues-error)))
+        (json-response status {:error error})))
     (catch Exception e
-      (json-response 500 {:error (ex-message e)}))))
+      (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
 (defn resolve-scoring
   "Coerce the request's scoring field into a scoring config, bounded to known
@@ -273,13 +262,23 @@
                   roster]}
           (read-json-body req)
           scoring* (resolve-scoring scoring)]
-      (if-not (scoring/scores-anything? scoring*)
+      (cond
         ;; Same guard and the same reason as the rankings board: an all-zero
         ;; config scores every player 0.0, and a waiver board where nobody is an
         ;; upgrade over anybody is a lie, not a board.
+        (not (scoring/scores-anything? scoring*))
         (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
+
+        ;; `rankings.waiver` picks its id crosswalk off this. Defaulting it would
+        ;; read an ESPN league through the Sleeper id map, resolve nobody, and
+        ;; hand back a board on which the whole league is available — which is
+        ;; not a degraded answer but a confident wrong one.
+        (and (seq (:teams league)) (nil? (:provider league)))
+        (json-response 400 {:error "synced league does not name its provider — re-sync it"})
+
+        :else
         (let [{:keys [players season through-week]} (universe false)
-              season*      (or season (sleeper/current-season))
+              season*      (season/resolve-season season)
               season-games (nflverse/games-in-season season*)
               ;; The next unplayed week, read off the data the way :through-week
               ;; is, never off the calendar. Loaded per request rather than with
@@ -348,7 +347,7 @@
      ["/api/waivers"  {:post waivers-handler}]
      ["/api/league/import"   {:post league-import-handler}]
      ["/api/league/sync"     {:post league-sync-handler}]
-     ["/api/league/user"     {:get  league-user-handler}]]
+     ["/api/account/connect" {:post account-connect-handler}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})
