@@ -21,18 +21,17 @@
     keyword form deliberately — the JVM sees integers and would otherwise never
     touch the shape the browser actually gets.")
 
-(def stat-positions
-  "Positions the table is built for. K and DST render no table at all: nflverse
-  publishes no DST rows, and a kicker's realized line is not ingested (his
-  columns in `nflverse/line-columns` would all be structurally zero). Rather than
-  show a table of dashes for them, the tile falls back to what it showed before."
-  #{"QB" "RB" "WR" "TE"})
-
 (def position-rows
   "position -> ordered [label stat-keys] the table describes it by.
 
   Keyed by the same Sleeper stat keys a projected `:stats` line uses, which is
   why a realized season and a projected one can share a row without translation.
+
+  QB/RB/WR/TE only, and the key set is the gate: K and DST miss and render no
+  table at all, because nflverse publishes no DST rows and a kicker's realized
+  line is not ingested (his columns in `nflverse/line-columns` would all be
+  structurally zero). Rather than show a table of dashes, a caller that misses
+  here falls back to what the tile showed before.
 
   A label may name more than one key: `TD` is rushing plus receiving, because a
   back who scores twelve does not care which way they came, and two rows of

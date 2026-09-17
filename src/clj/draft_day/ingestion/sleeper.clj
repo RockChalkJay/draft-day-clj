@@ -8,6 +8,7 @@
             [clojure.tools.logging :as log]
             [org.httpkit.client :as http]
             [jsonista.core :as json]
+            [draft-day.ingestion.season :as season]
             [draft-day.json :refer [mapper]]))
 
 (def ^:private base "https://api.sleeper.app")
@@ -109,9 +110,6 @@
   [entries]
   (into [] (keep normalize-entry) entries))
 
-(defn current-season []
-  (.getValue (java.time.Year/now)))
-
 (defn- projections-url [season]
   (str base "/projections/nfl/" season "?season_type=regular"
        (apply str (map #(str "&position[]=" %) fantasy-positions))))
@@ -127,7 +125,7 @@
 
 (defn fetch-universe
   "Network: the normalized player universe for a season (defaults to current)."
-  ([] (fetch-universe (current-season)))
+  ([] (fetch-universe (season/current)))
   ([season] (universe-from-entries (fetch-projections season))))
 
 ;; ---- bye weeks (derived from the regular-season schedule) ----
@@ -178,7 +176,7 @@
 
 (defn fetch-byes
   "Network: {team-abbrev bye-week} for a season (defaults to current)."
-  ([] (fetch-byes (current-season)))
+  ([] (fetch-byes (season/current)))
   ([season] (schedule->byes (fetch-schedule season))))
 
 ;; ---- weekly projections ----

@@ -1,13 +1,14 @@
 (ns draft-day.ingestion.pipeline
   "Resolve the player universe with a TTL disk cache and a fallout chain, mirroring
   the POC: offline-sample -> fresh-cache -> live -> stale-cache -> bundled-sample.
-  The cache is Transit on disk (data/players_cache.v1.transit); the bundled sample
-  is EDN on the classpath (resources/sample_players.edn).
+  The cache is Transit on disk, its name carrying `schema-version` so an old file
+  is never found rather than read back short a column (data/players_cache.v9.transit
+  today); the bundled sample is EDN on the classpath (resources/sample_players.edn).
 
   Every branch returns the same envelope, so a caller can always tell what it is
   looking at:
 
-    {:schema-version 1
+    {:schema-version 9
      :season         2026        ; the NFL season the rows were fetched for
      :fetched-at     \"...Z\"      ; when, nil for the committed sample
      :source         \"live\"      ; which rung of the fallout chain answered
@@ -31,6 +32,7 @@
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.player-ids :as player-ids]
+            [draft-day.ingestion.season :as season]
             [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.validate :as validate]
             [draft-day.scoring :as scoring])
@@ -415,7 +417,7 @@
   a stale cache beats the committed sample, and both beat an empty board."
   [season cache-path]
   (try
-    (let [season' (or season (sleeper/current-season))
+    (let [season' (season/resolve-season season)
           {:keys [players validation sources through-week]} (fetch-enriched-universe season')
           env {:schema-version schema-version
                :season         season'

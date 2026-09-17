@@ -1,8 +1,9 @@
 (ns draft-day.rankings.engine
   "Static/live orchestration — the core answer to 'some of this is live state,
-  some isn't'. `static-rankings` (points -> tiers -> vorp) computes once per
-  scoring/roster-size config; `live-valuation` (value -> inflation -> worth ->
-  bargain, + the tcm display signal) recomputes after every pick.
+  some isn't'. `static-rankings` (points -> projections -> replacement -> vorp
+  -> tiers -> injury -> pos-rank) computes once per scoring/roster-size config;
+  `live-valuation` (value -> inflation -> worth -> bargain, + the tcm display
+  signal) recomputes after every pick.
 
   ORDERING IN THE STATIC HALF. Replacement runs before tiering because the tier
   cut needs to know where a position stops being draftable, and VORP runs before

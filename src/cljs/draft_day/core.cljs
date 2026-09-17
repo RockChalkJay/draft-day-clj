@@ -4,6 +4,7 @@
             [reagent.dom.client :as rdomc]
             [re-frame.core :as rf]
             [draft-day.db :as db]
+            [draft-day.providers :as providers]
             [draft-day.events]
             [draft-day.subs]
             [draft-day.views.board :as board]
@@ -26,9 +27,14 @@
   A dropdown once there is more than one, a plain label when there is one, and a
   route to Settings when there is none — because a select with a single option is
   a control that asks you to confirm the only possible answer, and one with no
-  options is a control that cannot be used."
+  options is a control that cannot be used.
+
+  Grouped by account, so switching hosts is the same control as switching
+  leagues rather than a second one. The group label names the account and never
+  its id: an ESPN user id is the SWID, which is half the credential pair."
   []
   (let [leagues @(rf/subscribe [:league-list])
+        groups  @(rf/subscribe [:leagues-by-account])
         active  @(rf/subscribe [:active-league-key])
         {:keys [league-name my-team-name]} @(rf/subscribe [:account])]
     [:div.league-switcher
@@ -43,8 +49,15 @@
        [:select {:value (str active)
                  :title "Switch league — the board, the prices and the waiver wire all follow"
                  :on-change #(rf/dispatch [:set-active-league (.. % -target -value)])}
-        (for [[k e] leagues]
-          ^{:key k} [:option {:value k} (or (:name e) (:league-id e))])])
+        (for [[ak acct ls] groups
+              :when (seq ls)]
+          ^{:key (or ak "orphans")}
+          [:optgroup {:label (if ak
+                               (str (providers/label (:provider acct))
+                                    (when (:username acct) (str " · " (:username acct))))
+                               "No account")}
+           (for [[k e] ls]
+             ^{:key k} [:option {:value k} (or (:name e) (:league-id e))])])])
      (when my-team-name [:span.league-team my-team-name])]))
 
 (defn- header []

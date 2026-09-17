@@ -11,7 +11,7 @@
   (str "https://api.sleeper.app/v1/league/" league-id))
 
 (defmethod league-import/fetch-raw-league :sleeper
-  [_ league-id]
+  [_ {:keys [league-id]}]
   (let [{:keys [status body error]} @(http/get (league-url league-id) {:timeout 30000})]
     (cond
       error             (throw (ex-info "Sleeper league fetch failed" {:status 502 :error error}))

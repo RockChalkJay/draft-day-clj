@@ -1,8 +1,7 @@
 (ns draft-day.benchmark.fantasypros-ecr-test
   "Six name formats across 2011-2020, all of which parse into plausible-looking
   garbage rather than errors when handled wrongly. Each is pinned."
-  (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is testing]]
             [draft-day.benchmark.sources.fantasypros-archive :as fp-archive]
             [draft-day.benchmark.sources.fantasypros-ecr :as ecr])
   (:import [org.jsoup Jsoup]))

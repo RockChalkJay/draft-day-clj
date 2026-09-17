@@ -39,11 +39,18 @@
   bump an existing manager keeps his stored columns and his rows reorder on a
   number he cannot see.
 
-  7: a synced league carries `:roster-positions` — its own seats, in order. A
+  7: accounts are keyed by `db/account-key` — the provider and its own id for
+  the manager — rather than by provider alone, and each one carries the
+  credentials that authorize reading its leagues; every league entry names the
+  account it is read through. Without the bump a stored account reads back
+  under a key nothing looks up, so the switcher empties and every sync loses
+  what authorizes it.
+
+  8: a synced league carries `:roster-positions` — its own seats, in order. A
   stored sync written before that key has no way to name which seat a starter
   occupies, and the matchup board falls back to the draft config's slot
   template, which is only a guess at that league's shape."
-  7)
+  8)
 
 (def drafts-key "draft-day-drafts")
 
@@ -81,6 +88,16 @@
                   (pr-str {:v drafts-version :drafts (conj (read-drafts) entry)}))
         (catch :default _ nil))))
 
+(defn failure-event
+  "`on-failure` with the message and the status appended.
+
+  The status is what lets a handler tell a rejected credential from an outage:
+  a 401 means reconnect and a 502 means try again, and a message alone reads
+  the same either way. Appended rather than substituted, so a handler that
+  destructures `[_ err]` keeps working and ignores it."
+  [on-failure body status]
+  (conj on-failure (or (:error body) "request failed") status))
+
 (rf/reg-fx
  :http
  (fn [{:keys [method url body on-success on-failure]}]
@@ -93,14 +110,14 @@
        ;; whole board rendered blank with nothing to explain it.
        (.then (fn [resp]
                 (.then (.json resp)
-                       (fn [j] [(.-ok resp) (js->clj j :keywordize-keys true)]))))
-       (.then (fn [[ok? body]]
+                       (fn [j] [(.-ok resp) (.-status resp)
+                                (js->clj j :keywordize-keys true)]))))
+       (.then (fn [[ok? status body]]
                 (cond
                   (and ok? on-success)       (rf/dispatch (conj on-success body))
-                  (and (not ok?) on-failure) (rf/dispatch (conj on-failure
-                                                               (or (:error body) "request failed"))))))
+                  (and (not ok?) on-failure) (rf/dispatch (failure-event on-failure body status)))))
        (.catch (fn [err] (when on-failure
-                           (rf/dispatch (conj on-failure (str err)))))))))
+                           (rf/dispatch (failure-event on-failure {:error (str err)} nil))))))))
 
 ;; Coalesce a burst of dispatches of the same event into one. Every keystroke in
 ;; the custom scoring editor changes a weight, and each change re-ranks the whole

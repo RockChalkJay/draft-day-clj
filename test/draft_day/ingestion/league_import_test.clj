@@ -44,7 +44,7 @@
   (let [{:keys [ok status error]} (league-import/import-league {:provider "yahoo" :league-id "1"})]
     (is (not ok))
     (is (= 400 status))
-    (is (= "Unknown league provider" error))))
+    (is (= "unknown provider: :yahoo" error))))
 
 (deftest an-import-reports-the-rules-it-could-not-apply
   ;; Silently keeping 20 of 85 rules and reporting success hands back a config
@@ -67,3 +67,20 @@
   (testing "a league with nothing exotic reports nothing"
     (is (= [] (sleeper-import/unsupported-scoring {:rec 1.0 :rush_yd 0.1})))
     (is (= [] (sleeper-import/unsupported-scoring nil)))))
+
+(deftest the-import-passes-the-season-and-the-credentials-to-the-provider
+  (let [seen (atom nil)]
+    (with-redefs [league-import/fetch-raw-league (fn [_ req] (reset! seen req) raw-league)]
+      (league-import/import-league {:provider "sleeper" :league-id "1"
+                                    :season "2025" :credentials {:username "jay"}})
+      (is (= "2025" (:season @seen))
+          "a provider that never sees the season imports last year's copy of the
+           league, which looks like a successful import of an empty one")
+      (is (= {:username "jay"} (:credentials @seen)))
+      (is (= "1" (:league-id @seen))))))
+
+(deftest a-public-host-imports-without-an-account
+  (with-redefs [league-import/fetch-raw-league (fn [_ _] raw-league)]
+    (is (:ok (league-import/import-league {:provider "sleeper" :league-id "1"}))
+        "Sleeper serves a league to anyone with the id; demanding a username
+         would refuse a case that works")))

@@ -72,9 +72,11 @@ short FG buckets (`fgm_0_19`…`fgm_30_39`), and all but the first `pts_allow_*`
 
 Three modelled weights are inert for the same reason: `ff`, `def_td` and `safe` never appear
 in a projection, so team defenses score on sacks/interceptions/fumble recoveries alone. The
-custom scoring editor shows them (with `fgm`) as "not projected" via `db/unprojected-stats`
-rather than offering an editable box that cannot move any player's points. `fgm` is the odd
-one out in that set — it is inert today but *is* recoverable from the distance buckets.
+custom scoring editor shows them as "not projected" via `scoring/unprojected-stats` rather
+than offering an editable box that cannot move any player's points. `fgm` used to be in that
+set and no longer is: it *was* recoverable from the distance buckets, and now is recovered
+(see above), so leaving it there would have locked FG Made in the editor for the one
+position the fix exists for.
 
 ### Closing it
 

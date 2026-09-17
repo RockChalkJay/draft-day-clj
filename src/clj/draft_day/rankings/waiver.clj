@@ -16,12 +16,23 @@
   and `with-vorp`, which already accept a `score-key` and so run on
   `:ros-points` untouched.
 
-  THE THREE ANSWERS.
+  THE FOUR ANSWERS.
 
-  `:upgrade` is the real waiver question. A claim costs a *roster spot*, not a
-  positional slot, so the thing you give up is your worst player, not your worst
-  player at his position. With a spot already open you give up nothing and the
-  upgrade is his whole rest-of-season line.
+  `:lineup-upgrade` is the headline, and the board sorts on it. It is what the
+  claim adds to the *starting lineup*: seat the player, re-fill the lineup, and
+  take the difference. That is the question a manager is actually asking, and it
+  is why it leads — a bench delta can be large for a player who would never
+  start. It is absent rather than 0 when the league's seats are unknown, so that
+  \"no lineup to compute against\" cannot be read as \"adds nothing\".
+
+  `:upgrade` is the bench delta, and it remains the honest floor: a claim costs a
+  *roster spot*, not a positional slot, so the thing you give up is the player
+  you can lose most cheaply, not your worst player at his position.
+  `drop-candidate` reads that off the starting lineup wherever the league's seats
+  are known, and falls back to plain worst-points only when they are not. With a
+  spot already open you give up nothing and the upgrade is his whole
+  rest-of-season line. It stays signed, since most of a free-agent pool is worse
+  than the man you would drop.
 
   `:bid` is a conserving share of your remaining budget, and what it conserves
   against is the part worth stating: not every free agent, but the best
@@ -30,6 +41,9 @@
   what makes the number behave like FAAB actually behaves — many runs left means
   small bids, one run left means spend it. Over those top claims the bids sum to
   the budget, which is the property `waiver-test` pins.
+
+  It is one budget but two pools, because a single pool let bench depth outbid a
+  starter — see BIDS COME FROM TWO POOLS below.
 
   A `:bid` of $0 is a real bid, not a refusal. FAAB accepts one, and a player
   whose upgrade rounds to nothing is honestly worth the minimum — unlike the
@@ -50,7 +64,8 @@
 
   ROSTER IDS GO THROUGH `held-ids`, ALWAYS. Roster ids arrive as the provider's
   (see `league-sync.sleeper`); the board is keyed by GSIS wherever one resolved,
-  and `db/sleeper->player-id` bridges them. An id the crosswalk has no entry for
+  and `db/provider->player-id`, keyed off the synced league's own `:provider`,
+  bridges them. An id the crosswalk has no entry for
   maps to itself — team defenses carry their abbreviation in both spaces, and an
   unmapped id is not evidence of a bug: the universe may be a stale cache or the
   offline sample. It is a named function rather than inline because the *second*
@@ -373,7 +388,7 @@
   [board {:keys [league my-roster-id roster-size num-teams replacement-config
                  starting-slots] :as ctx}]
   (let [{:keys [teams waiver]} league
-        xwalk    (db/sleeper->player-id board)
+        xwalk    (db/provider->player-id board (:provider league))
         rostered (rostered-index teams xwalk)
         {:keys [levels players]} (with-ros-vorp board num-teams replacement-config)
         by-id    (db/index-by-id players)

@@ -116,8 +116,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .w-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .w-pos { color: var(--muted); font-weight: 400; font-size: 10px; text-transform: uppercase; margin-left: 5px; }
-/* hook for the deferred shared-bye conflict badge */
-.w-warn { color: var(--warn); margin-left: 5px; }
 .w-worth { color: var(--good); font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
 .w-mkt { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; width: 34px; text-align: right; }
 .w-remove { background: none; border: none; color: var(--muted); font-size: 14px;
@@ -350,7 +348,6 @@ td.risk { white-space: nowrap; }
 .roster-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; height: 100%; }
 .roster-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .roster-head h3 { margin: 0; font-size: 14px; }
-.roster-cash b { color: var(--good); }
 table.roster { width: 100%; border-collapse: collapse; }
 table.roster td { padding: 4px 6px; border-bottom: 1px solid var(--border); font-size: 12px; }
 table.roster th { padding: 2px 6px; border-bottom: 1px solid var(--border);
@@ -535,6 +532,59 @@ tr.upgrade .p-name { font-weight: 600; }
 .league-pick.on { border-color: var(--accent); color: var(--accent); cursor: default; }
 .field.inline { display: flex; flex-direction: row; gap: 6px; align-items: center; }
 .field.inline span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/* Connecting an account. The picker is a row of toggle chips borrowed from the
+   board's position filter, and the fields under it are rendered from
+   `draft-day.providers` rather than written out — which is the whole point: a
+   second host costs a catalog entry, not a second form.
+
+   The form is folded away once an account exists. Connecting is rare and the
+   card is read far more often than it is used; a stale account carries its own
+   Reconnect, so the recovery path does not depend on the form being open. */
+.provider-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.provider-tab { background: var(--panel2); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; font-size: 12px; }
+.provider-tab.on { color: var(--accent); background: var(--panel); border-color: var(--accent); }
+.connect-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 10px; align-items: end; }
+.connect-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.connect-help { color: var(--accent); font-size: 12px; text-decoration: none; }
+.connect-help:hover { text-decoration: underline; }
+.connect-note { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.5; }
+.connect-error { font-size: 12px; color: var(--warn); margin-top: 8px; }
+/* A secret is masked by default. The toggle sits inside the field rather than
+   beside it so the grid keeps one column per field however many there are. */
+.field.secret { position: relative; }
+.field.secret input { padding-right: 46px; }
+.reveal { position: absolute; right: 6px; bottom: 5px; background: none; border: 0;
+  color: var(--muted); font-size: 11px; line-height: 1; padding: 3px 4px; }
+.reveal:hover { color: var(--text); }
+
+/* One account and everything read through it. The box is what makes the
+   boundary between two accounts' leagues obvious — which league is active
+   decides what every number on the board means, and whose credentials fetched
+   it decides whether it can be refreshed at all. */
+.account-groups { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.account-group { border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; background: var(--panel); }
+.account-group.stale { border-color: var(--warn); }
+/* Leagues added by bare id on a host that needs no account. Dashed, because
+   there is nothing to disconnect and nothing to re-list. */
+.account-group.no-account { border-style: dashed; }
+.account-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+.account-provider { font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); }
+.account-name { color: var(--text); }
+.account-stale { font-size: 11px; color: var(--warn); background: var(--warn-bg);
+  border-radius: 6px; padding: 2px 8px; }
+.account-actions { margin-left: auto; display: flex; gap: 10px; align-items: baseline; }
+.league-choice-add { margin-left: 8px; color: var(--accent); font-size: 11px; }
+.league-id-row { margin-top: 8px; }
+/* A listing that broke, which is a different fact from an account that plays in
+   no leagues — and the manager needs opposite things from the two. */
+.discovery-warn { margin: 8px 0; padding: 8px 10px; border-radius: 6px;
+  background: rgba(240,85,95,.10); border: 1px solid rgba(240,85,95,.35); font-size: 12px; }
+.league-switcher optgroup { color: var(--muted); }
 
 /* Archived drafts. Deliberately plain: this is a record to glance at, not a
    board to work from — the live board is one tab away. */

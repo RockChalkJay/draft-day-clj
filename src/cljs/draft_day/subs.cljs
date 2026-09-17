@@ -9,6 +9,7 @@
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
            :watchlist :import-report :universe
            :accounts :leagues :waivers :waiver-sort :waiver-status
+           :league-choices :league-choices-error
            :waiver-columns :compare
            :matchup :matchup-status :matchup-pick :optimal-basis]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
@@ -284,6 +285,28 @@
   (fn [leagues _]
     (vec (sort-by (fn [[k e]] [(str (:name e)) k]) leagues))))
 
+;; The one read-path for "which leagues sit under which account", rendered by
+;; both the header switcher and the Settings card. Leagues with no account —
+;; added by bare id on a host that needs none — come last under a nil key, so
+;; they are listed rather than disappearing.
+(rf/reg-sub :leagues-by-account
+  :<- [:accounts] :<- [:league-list]
+  (fn [[accounts leagues] _]
+    (let [grouped (group-by (fn [[_ e]] (:account-key e)) leagues)
+          named   (for [[ak acct] (sort-by key accounts)]
+                    [ak acct (vec (get grouped ak []))])
+          orphans (vec (get grouped nil []))]
+      (cond-> (vec named)
+        (seq orphans) (conj [nil nil orphans])))))
+
+;; One account's leagues. nil choices means "never looked up" and [] means
+;; "looked up, plays in none this season"; the card says different things for
+;; the two, so this does not normalize them.
+(rf/reg-sub :account-choices
+  :<- [:league-choices] :<- [:league-choices-error]
+  (fn [[choices errors] [_ ak]]
+    {:choices (get choices ak) :error (get errors ak)}))
+
 ;; Kept as subs of their own so nothing downstream — the waiver board, its
 ;; roster panel, its team picker — has to know the league entry exists.
 (rf/reg-sub :league-sync :<- [:active-league]
@@ -306,8 +329,12 @@
 (rf/reg-sub :account
   :<- [:accounts] :<- [:active-league] :<- [:active-league-key] :<- [:my-team-name]
   (fn [[accounts lg k team-name] _]
-    (let [acct (or (get accounts (:provider lg)) (first (vals accounts)))]
-      {:connected?   (boolean acct)
+    ;; The league names its own account. There is deliberately no fallback to
+    ;; "whichever one is connected": that is right while there is one account
+    ;; and silently wrong after that, which is the whole reason the Waivers
+    ;; strip had to read the provider off the league instead.
+    (let [acct (get accounts (:account-key lg))]
+      {:connected?   (boolean (seq accounts))
        :provider     (:provider acct)
        :username     (:username acct)
        :league-key   k
@@ -321,9 +348,6 @@
 (rf/reg-sub :league-synced? :<- [:league-sync]
   (fn [ls _] (boolean (seq (:teams ls)))))
 
-(rf/reg-sub :sync-teams :<- [:league-sync]
-  (fn [ls _] (vec (:teams ls))))
-
 ;; Which league the persisted rosters came from, so a re-sync is one click. It
 ;; rides on the sync reply rather than being stored separately, because the two
 ;; must not be able to disagree about which league is on screen.
@@ -336,10 +360,6 @@
 ;; `db/drafted-anything?` answers for the event, asked from the view so the
 ;; button is absent rather than inert when there is nothing to keep.
 (rf/reg-sub :draft-has-picks? (fn [db _] (db/drafted-anything? db)))
-
-;; nil means "never looked up"; [] means "looked up, plays in none this season".
-;; The panel says different things for the two, so this does not normalize them.
-(rf/reg-sub :league-choices (fn [db _] (:league-choices db)))
 
 (rf/reg-sub :visible-waiver-columns :<- [:waiver-columns]
   (fn [cols _] (filterv :visible? cols)))

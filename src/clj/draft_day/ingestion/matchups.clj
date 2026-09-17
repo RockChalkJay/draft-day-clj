@@ -9,10 +9,10 @@
 
   Two things a caller cannot derive. Ids stay in the provider's space, both the
   roster ids and the player ids inside `:player-points` — the crosswalk needs
-  the universe, and `rankings.matchup` bridges them where both halves are in
-  hand. And the week is asked of the provider, never computed from
-  `:through-week`, which advances as games finish and so names week N+1 while
-  week N is being played.
+  the universe, so `db/provider->player-id` bridges them at the point where both
+  halves are in hand, the way `rankings.waiver` already does for a roster. And
+  the week is asked of the provider, never computed from `:through-week`, which
+  advances as games finish and so names week N+1 while week N is being played.
 
   The normalized shape, carrying no provider's vocabulary:
 

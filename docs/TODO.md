@@ -1,28 +1,17 @@
 # TODO
 
-Working list for Draft Day. Struck-through entries are done; bold ones are
-still open. See the [README](../README.md) for what the app is and how it
-works, and [scoring-coverage.md](scoring-coverage.md) for the known gaps
-between a league's real rules and what the board can score.
-
-
-- ~~Player budgeting~~
-
-- **Persistence**
-
-- ~~Don't position filter on suggestion cards~~
-
-- ~~Remove strategy tabs - they don't add value~~
-
-- ~~Injury history not just current health. Color code for serious injury or suspension~~
+Working list for Draft Day. Everything here is open; entries are deleted when
+they are done rather than struck through. See the [README](../README.md) for
+what the app is and how it works, and [scoring-coverage.md](scoring-coverage.md)
+for the known gaps between a league's real rules and what the board can score.
 
 - **Remove the 🚨 for tier cliffs. Postion views with tier coloring accomplish the same thing in a clean way.**
 
-- **Fix tier row color bug**
-
 - **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
 
-- **Add stats and player pic to the on the block card** Include additional stats like target percentage, number of targets, number of receptions.
+- **Add stats to the on the block card.** Target percentage, targets,
+  receptions. The player picture is done (`views/controls.cljs` renders a
+  headshot with a silhouette fallback); the stats half is what is left.
 
 - **Per-league draft state.** `:teams`, `:drafted`, `:picks` and `:my-team-id`
   are still one draft for one team, sitting beside a `:leagues` map that holds
@@ -31,25 +20,6 @@ between a league's real rules and what the board can score.
   drafts in two leagues does so months apart — but it must be settled before the
   next preseason, and moving them into the league entry is another
   `fx/storage-version` bump when it happens.
-
-- ~~Points for the current week alongside rest-of-season~~ Shipped. Sleeper's
-  weekly endpoint returns the same entry shape the season line already parses
-  and names the same vendor behind both, and it carries the opponent, so this
-  cost one fetch rather than the ingestion project it looks like. Cached apart
-  from the universe on a far shorter TTL — it is the only column in the app that
-  goes stale in under a day. Open follow-up: **mid-Sunday the board projects the
-  wrong week.** `:through-week` is the newest week nflverse has published and it
-  publishes as games finish, so partial week-6 rows push it to 6 and the board
-  asks for week 7 while week 6 is being played. Honest rather than mislabelled —
-  the banner names the week — but the fix is a slate-completeness check ("a week
-  is reached once its full slate has rows") rather than a calendar.
-
-- ~~Comparison UI — free agent against your roster, free agent against free
-  agent~~ Shipped, and the "large LOE" estimate was wrong: it was the
-  weekly/rest-of-season split it depended on that looked expensive, and that
-  turned out to be one fetch. Rows lean toward whoever leads so a split between
-  the two horizons reads as a zigzag, and the tile names the split without
-  picking for you.
 
 - **Neither board is reachable from a keyboard.** Rows on the draft board
   (click to nominate) and the waiver board (click to compare) have no
@@ -77,37 +47,6 @@ between a league's real rules and what the board can score.
   true for any non-linear rule (FG distance buckets, DST points-allowed tiers),
   the same set `scoring-coverage.md` already tracks.
 
-- ~~**A vendor-disagreement column.**~~ Superseded rather than shelved. It was
-  reaching for "is this difference real", and vendor agreement turns out to be a
-  poor proxy for that: the ESPN/Sleeper spread is 0.78 points against a real
-  median error of 4.04, so two vendors agreeing says far more about their shared
-  method than about the player. `draft-day.confidence` answers the same question
-  against **actual outcomes** instead, and in rank gaps rather than points, so it
-  needs no error model and is identical under any scoring config. The findings
-  that stopped the spread stand and are kept below, because they are facts about
-  the ESPN feed that the next idea to reach for it will need.
-
-  The original entry: the idea was a `±`
-  beside each projection showing how far ESPN and Sleeper disagree — display
-  only, so it needs no validation, and two players projecting the same number
-  with different agreement is not a tie. ESPN's full projected line is already
-  downloaded and its stat ids verified (3 pass yd, 4 pass td, 20 int, 19/26/44
-  two-point, 23/24/25 rush, 42/43/53/58 receiving, 72 fumbles lost, 83/86
-  kicking). What stopped it, measured against the live 2026 feed over 400
-  name-matched players:
-  - **No second weekly source.** ESPN publishes a season projection, so only
-    rest-of-season could ever carry a spread. A weekly one would be a second
-    37MB fetch per week.
-  - **A house bias that would read as an opinion.** Median ESPN/Sleeper is 1.13
-    for RB and 0.96 for TE, so a raw gap says "ESPN likes him" about every back
-    on the board. It needs per-position bias correction to mean anything.
-  - **Team defenses are unmappable.** Their ids sit in a 93-106 band whose
-    members cannot be told apart by magnitude, and guessing produces a confident
-    wrong number.
-  The residual disagreement is real once the bias is removed (IQR of the ratio
-  is 0.19-0.26 for RB/WR/TE) — but it is a fifth of the error it would be
-  standing in for, which is what settled it.
-
 - **The calibration is one vendor, one season, half-PPR.** `confidence/win-rates`
   was measured from 2025 Rotowire weekly projections against 2025 actuals. The
   *shape* travels — a rank gap needs no error model and is scoring-invariant —
@@ -118,53 +57,76 @@ between a league's real rules and what the board can score.
   that matters most for a waiver board — where discrimination is *worst* — is
   recorded in prose rather than in the table the code reads.
 
-- ~~Drag-and-drop column bugs found reviewing #12: droppable `text/plain` payload,
-  picker drag dead in Firefox, missing `preventDefault`, insertion line flicker~~
-
-- ~~In-season waiver wire: sync real rosters, project rest-of-season, price a
-  claim against FAAB~~ Shipped. See [The waiver wire](../README.md#the-waiver-wire).
-  Open follow-ups it deliberately left:
-  - `ros/PRIOR-GAMES` and `nflverse-weekly/recent-window` are **chosen, not
-    measured**. `dev/draft_day/benchmark/` is where they would earn numbers —
-    the harness already replays historical seasons, which is exactly the shape
-    of evidence the blend needs.
-  - The rest-of-season projection reads no injury designation, so a player who
-    has been out since week 2 still carries a full share of the games remaining.
-    `:injury-risk` and the Inj column cover it on the board; folding it into the
-    projection would be the double-charging `rankings.injury` argues against, so
-    it needs a real argument before it happens.
-  - Only Sleeper syncs. ESPN and Yahoo need server-side auth, which is why the
-    sync is backend-proxied — adding one is two `defmethod`s and a `:require`.
-    The browser is now ready for them too: accounts are keyed by provider and
-    leagues by `db/league-key` (`provider:league-id`), so a second provider is a
-    new entry rather than a second shape.
-  - **The bundled sample predates the in-season columns.** It stamps
-    `:schema-version 5`, carries no `:through-week` and no
-    `:nflverse/season-to-date`, so `DRAFTDAY_OFFLINE=1` can only ever show the
-    preseason board. That is honest rather than wrong — a preseason capture read
-    back as preseason — but it means the in-season half cannot be exercised
-    offline at all, and `snapshot/missing-sources` now flags `:nflverse/weekly`.
-    Fixed by re-running `draft-day.tools.snapshot` once a season is under way.
-
-- **The watch list comes back in hash order after the set-to-vector migration.**
-  `db/reconcile-watchlist` is `(into [] (distinct) stored)`, and over the `#{}`
-  the app used to persist that is hash-iteration order. `:watchlist-players`
-  used to end in a `sort-by rank-key` which hid it; that sort is gone now the
-  order is the manager's. An upgrading manager opens the app to a scrambled
-  list with nothing saying anything moved. `(set? stored)` is detectable at
-  exactly the point the repair happens, so `:boot` could re-sort once.
-  Predates the waiver work — noted here rather than fixed inside it.
-
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
-  computes and returns it (`src/clj/draft_day/rankings/engine.clj:87`)
+  computes and returns it (`src/clj/draft_day/rankings/engine.clj:89`)
   precisely so the client does not recompose `inflation × market-heat` itself
   and skip the band. But `rankings-handler` selects only
   `[:inflation :inflation-index :market-heat]`
-  (`src/clj/draft_day/api/routes.clj:124`), so the key never ships, and the
-  header's fallback branch in `src/cljs/draft_day/core.cljs:26` always wins —
+  (`src/clj/draft_day/api/routes.clj:199`), so the key never ships, and the
+  header's fallback branch in `src/cljs/draft_day/core.cljs:71` always wins —
   displaying the un-banded product, which is the exact defect the comment above
-  it says was fixed. `subs.cljs:66` also selects a key that never arrives. One
+  it says was fixed. `subs.cljs:97` also selects a key that never arrives. One
   line to fix: add `:market-multiplier` to the `select-keys` vector.
+
+- **The ESPN tables are documented numbering, not a payload this repo has
+  read.** Three of them: the defensive entries in
+  `league-import.espn/stat-ids` (93-106), `lineup-slots`, and
+  `league-sync.espn/pro-team-abbrev`. All three fail *silently* — a wrong stat
+  id prices a rule nobody set, a wrong slot mis-sizes the roster that decides
+  whether a claim costs a drop, a wrong team id drops a defense onto the
+  free-agent board while its owner holds it.
+  `test/draft_day/integration/espn_league_test.clj` checks all three against a
+  live league and skips out loud without `DRAFTDAY_ESPN_SWID`/`_S2`/`_LEAGUE`
+  in the environment. Run it once against a real league and the guesses stop
+  being guesses.
+
+- **ESPN's `:playoff-week-start` is deliberately unread.** `nil` is already the
+  legal answer for a host that says nothing, and `waiver/claims-left` degrades
+  honestly on it — while a wrong week mis-sizes every bid on the board and says
+  nothing. `settings.scheduleSettings` is where it lives; confirm the spelling
+  against a live league before reading it. `:waiver-position` is read from
+  `waiverRank` on the same evidence, i.e. none.
+
+- **ESPN league discovery is undocumented and will break.** `fan.api.espn.com`
+  is the only endpoint in the app with a credential in its *path*, and the only
+  one whose shape nobody publishes. `league-sync.espn/league-entries` is written
+  to find nothing rather than to throw, and `find-leagues` reports that as a gap
+  beside the account rather than as a failed connection, so the fallback is
+  pasting a league ID. That is the designed behaviour, not a bug to fix — but if
+  ESPN ever publishes a supported listing, this is the thing to replace.
+
+- **The `matchups` pair still takes positional arguments.** The other two pairs
+  now take one request map so a host can carry a season and a cookie; this one
+  was left alone because the matchup board was in flight on another branch, and
+  so `POST /api/matchup` is Sleeper-only for now. ESPN's current week comes off the league
+  document, so converting it is not just consistency — it is what an ESPN
+  matchup board would need.
+
+- **Credentials sit in `localStorage`.** An `espn_s2` is a live session token
+  and it is persisted in the browser next to the rest of the app's state,
+  because the server holds nothing between requests and there is no session
+  store to put it in. Accepted, and written down here so it is a decision
+  rather than an oversight. Nothing keeps it out of another script running on
+  the same origin — and, per the entry below, nothing currently keeps it out of
+  a log line either.
+
+- **`providers/redact` is the rule nobody applies.** CLAUDE.md and
+  `league_import/espn.clj`'s docstring both name it as the only sanctioned way a
+  credential may reach a log line, an `ex-data` or an error body, and the
+  function is correct and tested — but it has **no production caller**. Every
+  throw site today happens to carry `{:status n}` and nothing more, so nothing
+  leaks; the discipline is maintained by hand at each site rather than by the
+  guard, which is exactly the arrangement that holds until the first person adds
+  a helpful `{:credentials creds}` to an `ex-info` while debugging. Either route
+  the provider throws through `redact`, or stop documenting it as mandatory.
+
+- **The waiver board derives its week instead of asking for it.**
+  `ingestion/matchups.clj` states the rule — `:through-week` advances as games
+  finish, so `(inc through-week)` asks for week N+1 while week N is still being
+  played — and says the same bug is tracked here against the waiver board. It
+  was not; this entry is that reference. For a matchup it is the wrong game, and
+  for a price it is a stale one. `matchups` asks the provider; the waiver board
+  should too.
 
 - **Audit error handling across the application.** The app runs three error
   protocols at once and converts between them ad hoc:
@@ -184,11 +146,12 @@ between a league's real rules and what the board can score.
   would be nothing to unwrap. The audit should decide where the throw→value
   boundary belongs and make it consistent rather than adding another adapter.
 
+- **ESPN `My Roster` sorts wrong** When a ESPN league is active, the `My Roster`
+  sort order is not in the standard sort order by position. e.g. QB, RB, WR, TE, 
+  FLEX, K, DEF, BENCH, IR
+
   Specific things already spotted:
 
-  - `league-import-handler` has no outer `try/catch`, so a malformed JSON body
-    500s where `rankings-handler` would have answered cleanly. The two should
-    agree.
   - `espn/http-get-string` returns nil on any non-200, producing exactly the
     silently empty column CLAUDE.md names as the worst ingestion failure — the
     same shape as the FantasyPros 429 it warns about.
@@ -196,7 +159,9 @@ between a league's real rules and what the board can score.
     the escape path and the swallow path disagree about what a failure is.
   - The frontend `:http` effect routes every non-2xx to `on-failure` with
     `(:error body)`, which assumes every handler returns `{:error msg}`. Worth
-    confirming that holds everywhere.
+    confirming that holds everywhere. It now appends the HTTP status alongside
+    the message, which is what lets a 401 be told from a 502 — but the *message*
+    is still the only thing most handlers read.
   - `:waivers-failed` and `:recompute-failed` deliberately keep stale data
     readable rather than blanking it. That is the good pattern; it should be
     stated as the convention rather than left as two coincidences.
