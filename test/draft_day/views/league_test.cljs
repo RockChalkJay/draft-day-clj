@@ -48,5 +48,17 @@
     (is (re-find #"2–0" html))
     (is (re-find #"\(You\)" html))))
 
+(deftest only-a-name-the-detail-modal-can-open-is-a-button
+  (let [row (fn [p bench? openable?] (render (fn [] (league/player-row p bench? openable?))))]
+    (is (re-find #"name-btn" (row {:player-id "a" :player-name "Mine"} false true)))
+    (is (not (re-find #"name-btn" (row {:player-id "b" :player-name "Theirs"} false false)))
+        "another team's player is not on the waiver board the modal reads")))
+
+(deftest a-starter-with-no-known-seat-shows-a-dash-not-his-position
+  (let [slot (fn [p bench?] (last (nth (league/player-row p bench? false) 2)))]
+    (is (= "FLEX" (slot {:slot "FLEX" :position "WR"} false)))
+    (is (= "–" (slot {:position "WR"} false)))
+    (is (= "WR" (slot {:position "WR"} true)) "below the bench line the column is a position")))
+
 (deftest a-league-with-no-sync-says-where-to-get-one
   (is (re-find #"Sync a league" (render league/season-view))))

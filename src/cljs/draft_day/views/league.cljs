@@ -10,18 +10,33 @@
             [draft-day.views.team :as team]
             [draft-day.views.waivers :as waivers]))
 
-(defn player-row [p bench?]
+(defn player-row
+  "One held player. `openable?` says whether the detail modal has a row for
+  him: it reads the waiver board, which carries free agents and the manager's
+  own roster but not another team's, and a name that looks clickable and does
+  nothing is worse than plain text.
+
+  The first cell is a seat for a starter and a position below the bench line.
+  A starter whose seat is unknown gets a dash — his position there would read
+  as the seat `db/starter-seats` declined to guess."
+  [p bench? openable?]
   ^{:key (:player-id p)}
   [:tr {:class (when bench? "bench")}
-   [:td.slot (or (:slot p) (:position p) "–")]
-   [:td (if (:unvalued? p)
-          [:span.muted {:title (str "No player for id " (:player-id p))} (:player-id p)]
-          [:button.name-btn {:on-click #(waivers/open-detail! % p)
-                             :title    "Player detail"}
-           (if bench? (:player-name p) [:b (:player-name p)])])]
+   [:td.slot (if bench? (or (:position p) "–") (or (:slot p) "–"))]
+   [:td (let [nm (if bench? (:player-name p) [:b (:player-name p)])]
+          (cond
+            (:unvalued? p)
+            [:span.muted {:title (str "No player for id " (:player-id p))} (:player-id p)]
+
+            openable?
+            [:button.name-btn {:on-click #(waivers/open-detail! % p)
+                               :title    "Player detail"}
+             nm]
+
+            :else nm))]
    [:td.muted (:team p)]])
 
-(defn team-card [{:keys [team starters bench parked mine?]} faab?]
+(defn team-card [{:keys [team starters bench parked mine?]} faab? openable]
   [:div.team-card {:class (when mine? "mine")}
    [:div.team-head.split
     (:name team)
@@ -32,21 +47,22 @@
     (when-let [pos (:waiver-position team)] [:span (str "Waiver #" pos)])]
    [:table.roster
     [:tbody
-     (map #(player-row % false) starters)
+     (map #(player-row % false (openable (:player-id %))) starters)
      (when (seq bench)
        [:<> [:tr.roster-group [:td {:col-span 3} "Bench"]]
-        (map #(player-row % true) bench)])
+        (map #(player-row % true (openable (:player-id %))) bench)])
      (when (seq parked)
        [:<> [:tr.roster-group [:td {:col-span 3} "IR / Taxi"]]
-        (map #(player-row % true) parked)])]]])
+        (map #(player-row % true (openable (:player-id %))) parked)])]]])
 
 (defn season-view []
-  (let [rosters @(rf/subscribe [:league-rosters])
-        ls      @(rf/subscribe [:league-sync])
+  (let [rosters  @(rf/subscribe [:league-rosters])
+        ls       @(rf/subscribe [:league-sync])
+        openable @(rf/subscribe [:comparable-by-id])
         faab?   (= "faab" (some-> ls :waiver :type name))]
     (if (seq rosters)
       [:div.league-grid
        (for [r rosters]
          ^{:key (get-in r [:team :roster-id])}
-         [team-card r faab?])]
+         [team-card r faab? openable])]
       [:p.muted "Sync a league under Settings to see every team's roster."])))
