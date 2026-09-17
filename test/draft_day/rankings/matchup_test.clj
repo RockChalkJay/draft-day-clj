@@ -20,8 +20,9 @@
 (defn- p [id pos wk & {:as over}]
   (merge {:player-id id :player-name (str "P" id) :position pos
           :week-points wk :ids {:sleeper (sleeper-id id)}
-          ;; Every game has kicked off unless a test sets otherwise locally.
-          :kickoff/started? true}
+          ;; Every game is over unless a test sets otherwise locally.
+          :kickoff/started? true
+          :kickoff/status "STATUS_FINAL"}
          over))
 
 (def ^:private slots ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "K" "DST"])
@@ -184,14 +185,58 @@
     (is (= ["rb1"] (mapv :player-id (:out o))))
     (is (= 25.0 (:points (first (:in o)))) "named in the unit it was measured in")))
 
-(deftest the-actual-basis-does-not-spend-a-seat-whose-game-is-still-to-come
-  ;; rb1 plays Sunday. Left in, his seat was empty on the actual basis and wr3
-  ;; took it: "25 left on the bench" in a seat that was never wr3's to take.
-  (let [sunday (mapv #(if (= "rb1" (:player-id %)) (assoc % :kickoff/started? false) %) board)
-        o      (get-in (side :board sunday) [:optimal :actual])]
-    (is (= 16.0 (:gain o)) "wr3 over rb3, the one back who has played and lost to him")
-    (is (= ["wr3"] (mapv :player-id (:in o))))
-    (is (= ["rb3"] (mapv :player-id (:out o))))))
+(deftest the-actual-basis-waits-until-every-game-is-final
+  ;; rb1 plays Sunday. Before then wr3's 25 is "left on the bench" in a seat
+  ;; whose starter has not played, which is not regret but a guess.
+  (let [sunday (mapv #(if (= "rb1" (:player-id %))
+                        (assoc % :kickoff/started? false :kickoff/status "STATUS_SCHEDULED")
+                        %)
+                     board)]
+    (is (nil? (get-in (side :board sunday) [:optimal :actual])))
+    (is (some? (get-in (side :board sunday) [:optimal :projected]))
+        "while the projection still has advice to give"))
+  (testing "a side with no scoreboard at all is unknown, not final"
+    (let [blind (mapv #(dissoc % :kickoff/status) board)]
+      (is (nil? (get-in (side :board blind) [:optimal :actual]))))))
+
+(deftest the-projected-basis-only-moves-players-whose-games-have-not-started
+  ;; wr3 is projected to outscore rb3 at FLEX, but only if rb3's game has not
+  ;; kicked off and wr3's has not either.
+  (let [open  (fn [ids] (mapv #(if (ids (:player-id %))
+                                 (assoc % :kickoff/started? false :kickoff/status "STATUS_SCHEDULED")
+                                 %)
+                              board))
+        wr3up (fn [b] (mapv #(if (= "wr3" (:player-id %)) (assoc % :week-points 12.0) %) b))]
+    (testing "both unlocked: the swap is offered"
+      (let [o (get-in (side :board (wr3up (open #{"rb3" "wr3"}))) [:optimal :projected])]
+        (is (= ["wr3"] (mapv :player-id (:in o))))
+        (is (= ["rb3"] (mapv :player-id (:out o))))
+        (is (= 3.0 (:gain o)))
+        (is (false? (:locked? o)))))
+    (testing "the starter already playing keeps his seat"
+      (let [o (get-in (side :board (wr3up (open #{"wr3"}))) [:optimal :projected])]
+        (is (= [] (:in o)))
+        (is (true? (:locked? o)) "every seat's starter has kicked off")))
+    (testing "a bench player already playing cannot come in"
+      (let [o (get-in (side :board (wr3up (open #{"rb3"}))) [:optimal :projected])]
+        (is (= [] (:in o)))
+        (is (zero? (:gain o)))))))
+
+(deftest the-best-lineup-comes-back-as-seats-and-a-bench
+  (let [open (mapv #(cond-> %
+                      (#{"rb3" "wr3"} (:player-id %))
+                      (assoc :kickoff/started? false :kickoff/status "STATUS_SCHEDULED")
+                      (= "wr3" (:player-id %)) (assoc :week-points 12.0))
+                   board)
+        {:keys [starters bench]} (get-in (side :board open) [:optimal :projected])
+        flex (nth starters 6)]
+    (is (= slots (mapv :slot starters)) "every seat, in the league's order")
+    (is (= "wr3" (:player-id flex)))
+    (is (:moved-in? flex))
+    (is (not-any? :moved-in? (remove #(= "wr3" (:player-id %)) starters)))
+    (is (= "rb3" (:player-id (first bench))) "the benched starter leads the bench")
+    (is (:moved-out? (first bench)))
+    (is (not-any? #{"wr3"} (map :player-id bench)))))
 
 (deftest a-pickup-since-the-last-sync-is-startable
   ;; wr9 was claimed and started after the sync. The lineup is live and the sync

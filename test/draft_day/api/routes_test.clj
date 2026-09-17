@@ -1,6 +1,6 @@
 (ns draft-day.api.routes-test
   (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing]]
             [jsonista.core :as json]
             [draft-day.api.routes :as routes]
             [draft-day.ingestion.pipeline :as pipeline]
@@ -630,9 +630,23 @@
 (deftest matchup-endpoint-ships-both-optimal-bases
   (let [mine (first (:teams (parse (matchup matchup-req))))]
     (is (number? (get-in mine [:optimal :projected :total])))
-    (is (number? (get-in mine [:optimal :actual :total])))
+    (is (nil? (get-in mine [:optimal :actual]))
+        "with no scoreboard nothing is known to be final, so there is no regret to measure")
     (is (= 31.0 (:actual mine)) "19 + 12, the two seats he started")
-    (is (= 31.0 (:official mine)) "and the provider's own total beside it")))
+    (is (= 31.0 (:official mine)) "and the provider's own total beside it"))
+  (testing "once every game on the side is final, the actual basis ships too"
+    (routes/reset-universe!)
+    (let [on-kc (update in-season :players (fn [ps] (mapv #(assoc % :team "KC") ps)))
+          final {"KC" {:status "STATUS_FINAL"}}
+          mine  (with-redefs [pipeline/load-universe       (fn [& _] on-kc)
+                              pipeline/load-weekly         stub-weekly
+                              matchups/current-week        (fn [_ _] 9)
+                              matchups/fetch-raw-matchups  (fn [_ _] raw-matchups)
+                              espn-schedule/fetch          (fn [_ _] final)]
+                  (first (:teams (parse (routes/matchup-handler
+                                         {:body (input-stream (json/write-value-as-string
+                                                               matchup-req))})))))]
+      (is (number? (get-in mine [:optimal :actual :total]))))))
 
 (deftest matchup-endpoint-reads-kickoffs-live-not-off-the-weekly-cache
   ;; The cache holds a status for an hour; a board loaded before the slate would

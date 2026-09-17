@@ -507,6 +507,7 @@
                    ;; league's name those are false, not stale.
                    :matchup nil
                    :matchup-pick nil
+                   :lineup-view {}
                    :matchup-status nil
                    ;; And any reply still in flight about it: a switch only
                    ;; refetches on the matchup tab, so without the bump the old
@@ -813,12 +814,15 @@
     ;; minutes old still answers who is winning.
     (assoc db :matchup-status (str "Matchup failed: " err))))
 
-(rf/reg-event-db :set-optimal-basis
-  (fn [db [_ basis]] (assoc db :optimal-basis basis)))
+(rf/reg-event-db :set-lineup-view
+  ;; Per team, so each side of the matchup can show its set or best lineup on
+  ;; its own.
+  (fn [db [_ roster-id v]] (assoc-in db [:lineup-view roster-id] v)))
 
 (rf/reg-event-db :set-matchup-pick
   ;; No refetch: every team came back in one reply. See `matchup-board`.
-  (fn [db [_ roster-id]] (assoc db :matchup-pick roster-id)))
+  ;; A different game is different teams, so each side opens on its set lineup.
+  (fn [db [_ roster-id]] (assoc db :matchup-pick roster-id :lineup-view {})))
 
 (rf/reg-event-db :set-waiver-sort
   (fn [db [_ k]]

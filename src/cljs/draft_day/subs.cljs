@@ -11,7 +11,7 @@
            :accounts :leagues :waivers :waiver-sort :waiver-status
            :league-choices :league-choices-error
            :waiver-columns :compare
-           :matchup :matchup-status :matchup-pick :optimal-basis :settings-section]]
+           :matchup :matchup-status :matchup-pick :lineup-view :settings-section]]
   (rf/reg-sub k (fn [dbv _] (get dbv k))))
 
 ;; :custom when :scoring is a full {stat weight} map (hand-edited or imported),

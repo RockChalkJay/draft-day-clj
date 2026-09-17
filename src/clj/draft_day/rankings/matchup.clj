@@ -21,10 +21,17 @@
 
   Optimal is drawn from `:active-ids`, not from everyone rostered — a man on IR
   seated in an optimal lineup would report a gain nobody could have taken. It is
-  computed on both bases: `:week-points` is a decision (start him over him),
-  `:actual` is regret. The swaps are `:in`/`:out` lists rather than paired
-  seats, since pairing would assert a correspondence a set difference does not
-  carry."
+  computed on both bases, and each is only reported when it can be acted on or
+  believed. `:week-points` is a decision (start him over him), so it moves only
+  players whose games have not started: a starter already playing keeps his
+  seat and a bench player already playing cannot take one, or the advice is a
+  swap the league will not allow. `:actual` is regret, so it is nil until every
+  game on the side is final — before that, a bench player who played Thursday
+  is \"left on the bench\" in a seat whose starter plays Sunday. The swaps are
+  `:in`/`:out` lists rather than paired seats, since pairing would assert a
+  correspondence a set difference does not carry; the seating itself comes back
+  as `:starters`/`:bench` rows so the board can draw the best lineup rather than
+  describe it."
   (:require [clojure.set :as set]
             [draft-day.db :as db]
             [draft-day.rankings.lineup :as lineup]
@@ -57,7 +64,13 @@
   wants explained."
   [slot p id points]
   (if p
-    (assoc (select-keys p row-keys) :slot slot :actual (actual-points p points))
+    (assoc (select-keys p row-keys)
+           :slot slot
+           :actual (actual-points p points)
+           ;; Kicked off: his seat can no longer change. Only a known start
+           ;; locks — with no scoreboard nothing is locked, which errs toward
+           ;; advice the league may refuse rather than toward none at all.
+           :locked? (true? (:kickoff/started? p)))
     {:player-id id :slot slot :unvalued? true :actual points}))
 
 (defn points-by-player-id
@@ -148,32 +161,68 @@
               (vec (concat before (rest after)))))
           (vec coll) xs))
 
-(defn settled-slots
-  "The seats whose result is in: `slots` less the seat of every starter who has
-  not played.
+(def final-status
+  "ESPN's status name for a game that is over."
+  "STATUS_FINAL")
 
-  Regret is only measurable over a finished seat. Left in, the seat of a man who
-  plays Sunday is empty on the actual basis, so a bench player who played
-  Thursday is \"left on the bench\" in a seat that was never his to take."
-  [slots current-rows]
-  (without-each slots (keep #(when-not (number? (:actual %)) (:slot %)) current-rows)))
+(defn week-final?
+  "Is every game these rows are in over?
+
+  A row with no status is a player whose team is not on the scoreboard — on bye
+  — and has nothing left to play. But a side where *no* row has a status has no
+  scoreboard at all, which is unknown rather than final."
+  [rows]
+  (let [statuses (keep :kickoff/status rows)]
+    (boolean (and (seq statuses) (every? #{final-status} statuses)))))
+
+(defn seat-rows
+  "The seats in `slots` order, each filled from `pairs` (`[[slot row] ...]`) or
+  marked empty. A row not in `now` — the lineup as set — is `:moved-in?`."
+  [slots pairs now]
+  (first
+   (reduce (fn [[out left] slot]
+             (let [[before [hit & after]] (split-with #(not= slot (first %)) left)]
+               (if hit
+                 (let [r (second hit)]
+                   [(conj out (assoc r :slot slot :moved-in? (not (now (:player-id r)))))
+                    (into (vec before) after)])
+                 [(conj out {:slot slot :empty? true}) left])))
+           [[] (vec pairs)]
+           slots)))
 
 (defn optimal
-  "The best legal lineup on `score-key`, and what it would have changed.
+  "The best legal lineup on `score-key`, what it would change, and the seating.
 
-  `:gain` is measured against the current lineup on the same key, so both sides
-  sum the same thing. `:in`/`:out` are set differences, not pairs."
-  [candidates slots score-key current-rows]
-  (let [best    (lineup/best-lineup candidates slots score-key)
-        seated  (mapv second best)
-        ids     (set (map :player-id seated))
-        current (filterv #(number? (score-key %)) current-rows)
-        now     (set (map :player-id current))
-        best'   (total seated score-key)]
-    {:total best'
-     :gain  (- best' (total current score-key))
-     :in    (mapv #(brief score-key %) (remove #(now (:player-id %)) seated))
-     :out   (mapv #(brief score-key %) (remove #(ids (:player-id %)) current))}))
+  `pinned` are starters who keep their seats whatever the optimizer thinks —
+  on the projected basis, everyone whose game has started; they come out of the
+  seat list and out of the candidates. `:locked?` says there was no seat left
+  to fill. `:gain` is measured against the current lineup on the same key, so
+  both sides sum the same thing. `:in`/`:out` are set differences, not pairs.
+
+  `:starters` and `:bench` are that lineup as rows: every seat in league order,
+  a player who moves in flagged `:moved-in?`, and a starter who loses his seat
+  at the top of the bench flagged `:moved-out?`."
+  [candidates slots score-key current-rows {:keys [pinned starters bench]}]
+  (let [pinned-ids (set (map :player-id pinned))
+        open       (without-each slots (map :slot pinned))
+        best       (lineup/best-lineup (remove #(pinned-ids (:player-id %)) candidates)
+                                       open score-key)
+        pairs      (into (mapv (juxt :slot identity) pinned) best)
+        seated     (mapv second pairs)
+        ids        (set (map :player-id seated))
+        current    (filterv #(number? (score-key %)) current-rows)
+        now        (set (map :player-id current))
+        held       (remove :empty? starters)
+        best'      (total seated score-key)]
+    {:total    best'
+     :gain     (- best' (total current score-key))
+     :in       (mapv #(brief score-key %) (remove #(now (:player-id %)) seated))
+     :out      (mapv #(brief score-key %) (remove #(ids (:player-id %)) current))
+     :locked?  (boolean (and (seq slots) (empty? open)))
+     :starters (seat-rows slots pairs (set (map :player-id held)))
+     :bench    (into (mapv #(assoc % :slot nil :moved-out? true)
+                           (remove #(ids (:player-id %)) held))
+                     (remove #(ids (:player-id %)) bench))}))
 
 (defn team-board
   "One team's whole side of a matchup.
@@ -217,9 +266,13 @@
      ;; The league's score of record, nil'd alongside `:actual` when nothing has
      ;; kicked off: a provider publishes 0.0 for a team that has not played.
      :official  (when (some #(number? (:actual %)) starters) (:official score))
-     :optimal   {:projected (optimal startable slots :week-points current)
-                 :actual    (optimal startable (settled-slots slots current)
-                                     :actual current)}}))
+     :optimal   {:projected (optimal (remove :locked? startable) slots :week-points current
+                                     {:pinned   (filter :locked? current)
+                                      :starters starters
+                                      :bench    bench})
+                 :actual    (when (week-final? (concat current startable))
+                              (optimal startable slots :actual current
+                                       {:starters starters :bench bench}))}}))
 
 (defn matchup-board
   "Every team in the league valued for this week, plus the pairing.
