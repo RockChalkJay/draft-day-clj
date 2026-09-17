@@ -193,17 +193,23 @@ shadow-cljs also serves `resources/public` on :8280, but nothing answers
 | `PORT` | `8080` | server port |
 | `DRAFTDAY_OFFLINE` | unset | `1` forces the bundled sample universe — no network calls |
 | `DRAFTDAY_CACHE_TTL_HOURS` | `24` | how long the on-disk player cache stays fresh |
+| `DRAFTDAY_WEEKLY_TTL_HOURS` | `1` | the same window for the weekly line, which moves far faster |
 | `DRAFTDAY_AS_OF_WEEK` | unset | dev only: truncate the in-season data at a week, so a finished season replays as one in progress |
+| `DRAFTDAY_ESPN_SWID` / `_S2` / `_LEAGUE` | unset | `lein test :integration` only: check ESPN's stat ids, slot table and team abbreviations against a live league. Without them those tests skip out loud |
+| `DRAFTDAY_ESPN_SEASON` | current | which season the ESPN integration test reads |
 
 ## Using it
 
-**Set up the league.** In **Settings**, paste a Sleeper league ID to pull its
-real scoring and roster settings, or set them by hand. An import reports
+**Set up the league.** In **Settings**, connect a Sleeper or ESPN account and
+pick one of its leagues to pull that league's real scoring and roster settings —
+or paste a league ID, or set them by hand. ESPN needs your own session cookies
+(`SWID` and `espn_s2`), which is why the server proxies the call and the browser
+never talks to a provider directly. An import reports
 exactly which of your league's rules it could *not* apply — see
 [docs/scoring-coverage.md](docs/scoring-coverage.md), because a config that
 looks complete but scores differently is worse than one that admits its gaps.
 
-![The Settings view: Sleeper import, league size and budget, a per-position
+![The Settings view: league import, league size and budget, a per-position
 budget plan, scoring preset, roster slot counts, and a danger zone with a
 player-cache reset.](docs/img/settings.png)
 
@@ -241,10 +247,19 @@ question from the draft board's, so it shares none of them:
 | Column | Means |
 | --- | --- |
 | `ROS` | rest-of-season projected points — the preseason projection, corrected by what he has actually done |
-| `Upg` | **the number that matters** — points this claim gains you, over the player you would have to drop |
+| `Lineup` | **the number that matters**, and what the board sorts by — points this claim adds to your *starting lineup*, after seating him and re-filling it |
+| `Upg` | the bench delta beneath it — points gained over the player you would actually have to drop. Large for a good player who would still never start |
 | `Bid` | your share of the remaining FAAB, across the waiver runs the season still allows. `$0` is a real bid; blank means this league does not bid |
+| `Wk` | projected points for this week's game — blank on a bye, or when he is nobody's starter |
 | `Trend` | recent opportunity per game against his season rate — above `1.00×` the role is growing |
 | `GP` | games he has played this season |
+| `Risk` | injury risk, 1 (durable) to 5 (fragile) — games missed per season over the last three |
+| `Inj` | current injury designation |
+
+Eight more are off by default and switched on from the column picker: `Wk#`
+(his positional rank on this week's projection), `Opp`, `Form` (points per game
+over the last three weeks), `VORP`, `Tgt`, `Car`, `Pre` (the preseason
+projection the ROS line is correcting) and `ECR`.
 
 See [The waiver wire](#the-waiver-wire) for how each of those is computed and
 why none of them is a dollar the auction invented.
@@ -312,7 +327,7 @@ flowchart TD
     start["load-universe"] --> off{"DRAFTDAY_OFFLINE?"}
     off -- yes --> sample["bundled sample<br/>resources/sample_players.edn"]
     off -- no --> fresh{"disk cache fresh?<br/>mtime vs TTL"}
-    fresh -- yes --> cached["data/players_cache.v4.transit"]
+    fresh -- yes --> cached["data/players_cache.v9.transit"]
     fresh -- no --> live["live fetch"]
 
     live --> fan["fan out — all at once"]
@@ -351,6 +366,7 @@ flowchart LR
         p3 --> p4["VORP<br/>:vorp"]
         p4 --> p5["tiers<br/>:tiers :tier"]
         p5 --> p6["injury<br/>:injury-risk"]
+        p6 --> p7["pos-rank<br/>:pos-rank"]
     end
 
     subgraph live["live-valuation — after every pick"]
@@ -458,7 +474,7 @@ row count.
 
 ### Cache and provenance
 
-The universe is cached to `data/players_cache.v4.transit`. The schema version
+The universe is cached to `data/players_cache.v9.transit`. The schema version
 rides in both the filename and the payload, so bumping it orphans the old file
 rather than silently reusing an incompatible one. Freshness is file mtime
 against `DRAFTDAY_CACHE_TTL_HOURS`. `POST /api/cache/reset` drops it.
@@ -487,7 +503,7 @@ roster seat with a budget you spend down over months — so Worth, Value, Market
 and Bargain are all absent from the Waivers tab, and nothing there is priced in
 dollars the auction invented.
 
-Connect a league with its Sleeper ID and the board becomes a *waiver wire*
+Connect a Sleeper or ESPN league and the board becomes a *waiver wire*
 rather than a ranking: everyone on somebody's roster drops out, and what is left
 is what you can actually claim. Without a league it still ranks every player by
 rest-of-season value, and says out loud that it is doing so.
@@ -537,11 +553,23 @@ to a November league priced on an August projection.
 
 ### Upgrade, bid and rival max — `waiver.clj`
 
-**`:upgrade`** is the real question. A claim costs a *roster spot*, not a
-positional slot, so the comparison is against your worst player — not your worst
-player at his position. Players parked on IR or taxi are excluded from that
+**`:lineup-upgrade`** is the headline, and what the board sorts by. It is what
+the claim adds to your *starting lineup*: seat the player, re-fill the lineup
+under the league's own seats, and take the difference. That is the question a
+manager is actually asking, and it is why it leads — a bench delta can be large
+for a player who would never start a week. It is *absent* rather than 0 when the
+league's seats are unknown, so "no lineup to compute against" cannot be misread
+as "adds nothing".
+
+**`:upgrade`** is the bench delta beneath it. A claim costs a *roster spot*, not
+a positional slot, so the comparison is against your worst player — not your
+worst player at his position. Players parked on IR or taxi are excluded from that
 count in both directions: they fill no active seat, so they must not make a
-roster look full, and dropping one frees no seat for the claim being priced. With a spot already open you give up nothing and the
+roster look full, and dropping one frees no seat for the claim being priced.
+Which player that is depends on what the league told us: knowing the seats,
+`drop-candidate` picks by *marginal starting-lineup cost* — who you can lose
+most cheaply — and falls back to plain worst-points only when the seats are
+unknown. With a spot already open you give up nothing and the
 upgrade is his whole rest-of-season line. It stays signed: most of a free-agent
 pool is worse than the man you would drop, and flattening that to zero would
 make the entire tail look equally plausible.
@@ -553,6 +581,15 @@ hundreds of players you will never claim and rounds every real target to nothing
 runs the season has left. That bound is read off the calendar rather than
 chosen, and it makes the number behave the way FAAB behaves: many runs left
 means small bids, one run left means spend it.
+
+The budget is split into two pools rather than one, because the two upgrades
+answer different questions and a single pool let bench depth outbid a starter.
+`stash-share` — 0.15, chosen rather than measured, the same standing as
+`PRIOR-GAMES` — is the slice reserved for players with no lineup gain, and
+`weights` puts each player in exactly one pool. That is why a big `Upg` with no
+`Lineup` gain still bids little. With no lineup anywhere, the stash pool takes
+the whole budget and the rule collapses back to the pre-lineup one, with no
+special case.
 
 A `$0` bid is a **real bid**, not a refusal — FAAB accepts one, and a player
 whose upgrade rounds to nothing is honestly worth the minimum. That is the
@@ -820,17 +857,27 @@ each provider's.
  :scoring            :ppr
  :replacement-config {:qb 1 :rb 2 :wr 2 :te 1 :flex 1}
  :roster-size        15               ; seats per team, so a claim knows its cost
+ :roster             { … }            ; the league's seats — what :lineup-upgrade is computed against
  :my-roster-id       1
  :league             { … }}           ; the reply from /api/league/sync, verbatim
 
 ;; response
 {:through-week 8       ; read off the data, not the calendar; 0 all preseason
  :season-games 17
+ :week         9       ; the week the weekly line covers; nil when there is none
+ :week-fetched-at "…"  ; ISO stamp — the browser renders the wall clock
  :claims-left  6       ; waiver runs left — what the bids are a share of
  :faab     {:type "faab" :budget 100 :left 60 :rival-max 95}
  :rostered {"00-0038563" "Kansas Screamers" …}   ; who has him
- :players  [ … ]}      ; free agents only, with :ros-points :upgrade :bid :trend
+ :my-roster-players [ … ]   ; my own roster, valued the same way; nil ≠ empty
+ :players  [ … ]}      ; free agents only, with :ros-points :lineup-upgrade
+                       ; :upgrade :bid :trend
 ```
+
+`:roster` is what makes `:lineup-upgrade` possible: `db/starting-slots` reads
+the scoring seats off it. It is deliberately not `:replacement-config`, which
+drops K and DST because replacement prices neither — right there, wrong here,
+since both fill a starting slot and both score.
 
 The request's `:roster-size` is a fallback; the synced league's own seat count
 wins where it has one, since the browser derives its copy from the *draft*
@@ -867,7 +914,7 @@ npm test                                         # the ClojureScript node-test b
 
 `src/cljc` is on the JVM classpath, so `lein test` already covers the shared
 db/scoring code. `npm test` exists for the cljs-only namespaces — `events`,
-`fx`, `subs`, `waivers` — that `lein test` cannot reach, so a ClojureScript test
+`subs`, `waivers` and six under `views/` — that `lein test` cannot reach, so a ClojureScript test
 is only worth writing for genuinely browser-side behaviour.
 
 ### Seeing the in-season half work

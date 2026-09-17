@@ -42,11 +42,11 @@
 (defn slot-accepts?
   "Can a player at `position` occupy a `slot` from `roster-template`?
 
-  The one copy of the FLEX rule on this side of the wire. It had four spellings
-  — `events/eligible?`, `rankings.pdm`, `replacement/flex-starter-keys` and
-  `benchmark.simulate` — and `replacement.clj`'s docstring already calls that
-  drift out by name. BENCH accepts anyone, which is what makes this usable for
-  seating as well as for starting; `starting-slots` is what drops the bench."
+  The one copy of the FLEX rule on this side of the wire. It had three spellings
+  — `events/eligible?`, `replacement/flex-starter-keys` and `benchmark.simulate`
+  — and `replacement.clj`'s docstring already calls that drift out by name. BENCH
+  accepts anyone, which is what makes this usable for seating as well as for
+  starting; `starting-slots` is what drops the bench."
   [slot position]
   (or (= slot position)
       (contains? (get flex-slots slot) position)

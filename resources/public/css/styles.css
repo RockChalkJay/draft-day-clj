@@ -116,8 +116,6 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
 .w-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .w-pos { color: var(--muted); font-weight: 400; font-size: 10px; text-transform: uppercase; margin-left: 5px; }
-/* hook for the deferred shared-bye conflict badge */
-.w-warn { color: var(--warn); margin-left: 5px; }
 .w-worth { color: var(--good); font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
 .w-mkt { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; width: 34px; text-align: right; }
 .w-remove { background: none; border: none; color: var(--muted); font-size: 14px;
@@ -350,7 +348,6 @@ td.risk { white-space: nowrap; }
 .roster-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; height: 100%; }
 .roster-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .roster-head h3 { margin: 0; font-size: 14px; }
-.roster-cash b { color: var(--good); }
 table.roster { width: 100%; border-collapse: collapse; }
 table.roster td { padding: 4px 6px; border-bottom: 1px solid var(--border); font-size: 12px; }
 table.roster th { padding: 2px 6px; border-bottom: 1px solid var(--border);

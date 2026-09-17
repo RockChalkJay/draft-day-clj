@@ -97,12 +97,6 @@
   [season]
   (into {} (map (juxt :gsis-id identity)) (map row->usage (season-rows season))))
 
-(defn available?
-  "Whether nflverse publishes this season (used by --source-report)."
-  [season]
-  (or (fetch/cache-exists? (fetch/cache-path "nflverse" season))
-      (some? (fetch/http-get-string (season-url season)))))
-
 ;; ---- weekly participation ----
 
 (defn week-url [season] (str base "/stats_player_week_" season ".csv"))

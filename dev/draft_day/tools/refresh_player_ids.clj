@@ -18,8 +18,6 @@
   orphans real data. Those are reported and refuse to write without
   --allow-changes."
   (:require [clojure.java.io :as io]
-            [clojure.pprint :as pp]
-            [clojure.string :as str]
             [draft-day.benchmark.fetch :as fetch]
             [draft-day.ingestion.player-ids :as player-ids]))
 

@@ -21,9 +21,7 @@
     price -> share of the room's pool   (num-teams * budget)
     rank  -> fraction of picks made
 
-  which makes a $400 fourteen-team room and a $100 ten-team room comparable."
-  (:require [clojure.java.io :as io]
-            [clojure.edn :as edn]))
+  which makes a $400 fourteen-team room and a $100 ten-team room comparable.")
 
 (defn pool
   "Total money in the room."
@@ -120,21 +118,6 @@
 ;; ---- corpus ----------------------------------------------------------------
 
 (def ^:private cache-dir "data/replay_cache")
-
-(defn load-drafts
-  "Every normalized draft cached by the replay harness.
-
-  Reads the v2 cache only. A v1 file carries no league type, which would read as
-  `:superflex? false` and quietly file superflex rooms among the standard ones —
-  the trap that put the version token on the path in the first place."
-  []
-  (->> (file-seq (io/file cache-dir))
-       (map #(.getName %))
-       (filter #(re-matches #"draft-v2-\d+\.edn" %))
-       (keep (fn [f] (try (edn/read-string (slurp (str cache-dir "/" f)))
-                          (catch Exception _ nil))))
-       (filter #(seq (:picks %)))
-       vec))
 
 (defn for-picks
   "The curve a room making `n-picks` should price against, from `drafts`.

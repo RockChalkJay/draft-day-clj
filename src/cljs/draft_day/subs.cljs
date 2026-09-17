@@ -347,9 +347,6 @@
 (rf/reg-sub :league-synced? :<- [:league-sync]
   (fn [ls _] (boolean (seq (:teams ls)))))
 
-(rf/reg-sub :sync-teams :<- [:league-sync]
-  (fn [ls _] (vec (:teams ls))))
-
 ;; Which league the persisted rosters came from, so a re-sync is one click. It
 ;; rides on the sync reply rather than being stored separately, because the two
 ;; must not be able to disagree about which league is on screen.

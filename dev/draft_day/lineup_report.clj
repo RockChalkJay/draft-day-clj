@@ -13,8 +13,7 @@
 
   Omit --roster-id and it reports every team in turn, which is the honest way to
   see whether an effect is real or an artifact of one roster's shape."
-  (:require [clojure.string :as str]
-            [draft-day.db :as db]
+  (:require [draft-day.db :as db]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-sync.sleeper]
             [draft-day.ingestion.league-import :as league-import]

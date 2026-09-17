@@ -9,8 +9,8 @@
 
   Two things a caller cannot derive. Ids stay in the provider's space, both the
   roster ids and the player ids inside `:player-points` — the crosswalk needs
-  the universe, and `rankings.matchup` bridges them where both halves are in
-  hand. And the week is asked of the provider, never computed from
+  the universe, so `db/provider->player-id` bridges them at the point where both
+  halves are in hand, the way `rankings.waiver` already does for a roster. And the week is asked of the provider, never computed from
   `:through-week`, which advances as games finish and so names week N+1 while
   week N is being played.
 
@@ -41,7 +41,8 @@
   `:player-points` covers the whole roster, not only the starters, or the
   optimal-lineup half of the board cannot say what a bench player scored. A
   provider publishes the zeros it is given; whether one means \"has not played\"
-  is `rankings.matchup`'s judgment against the kickoff clock, not a provider's."
+  is the matchup board's judgment against the kickoff clock, not a provider's —
+  see `espn-schedule/not-started?`. That board is unmerged; see `docs/TODO.md`."
   (fn [provider _raw] provider))
 
 (defmulti current-week
