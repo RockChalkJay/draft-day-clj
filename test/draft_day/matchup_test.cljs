@@ -163,6 +163,17 @@
   (rf/dispatch-sync [:league-synced "sleeper:100" {:teams [{:roster-id 1 :name "A"}]}])
   (is (some #{:fetch-matchup} (dispatched)) "but once it lands"))
 
+(deftest a-failed-first-sync-says-so-on-the-matchup-tab
+  ;; The fetch waits for the sync, so a sync that fails would otherwise leave
+  ;; "Loading…" up for good — or the league you left's status under this name.
+  (connect!)
+  (swap! rdb/app-db assoc :view :matchup :matchup-status "Matchup failed: old league")
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:100"] {:provider "sleeper" :league-id "100"})
+  (rf/dispatch-sync [:set-active-league "sleeper:100"])
+  (is (nil? (:matchup-status @rdb/app-db)) "the old league's status does not carry over")
+  (rf/dispatch-sync [:league-sync-failed "sleeper:100" "no such league" 404])
+  (is (= "League sync failed: no such league" (:matchup-status @rdb/app-db))))
+
 (deftest picking-my-team-moves-the-board-without-a-refetch
   ;; The reply was asked before a team was picked.
   (connect!)

@@ -456,6 +456,7 @@
                    ;; league's name those are false, not stale.
                    :matchup nil
                    :matchup-pick nil
+                   :matchup-status nil
                    ;; And any reply still in flight about it: a switch only
                    ;; refetches on the matchup tab, so without the bump the old
                    ;; league's reply still matches and lands under this one.
@@ -662,6 +663,9 @@
     ;; A 401 is not an outage, it is an instruction: the host refused the
     ;; credentials and the card must offer a reconnect rather than a retry.
     (cond-> (assoc db :waiver-status (str "League sync failed: " err))
+      ;; A matchup on a never-synced league waits for this sync, so it is the
+      ;; one place that can say why the board never arrived.
+      (= k (:active-league db)) (assoc :matchup-status (str "League sync failed: " err))
       (= 401 status) (mark-stale k true))))
 
 (defn- waiver-request
