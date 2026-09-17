@@ -716,9 +716,9 @@
   ;; The matchup backend is Sleeper-only, and the tab it cannot fill was the
   ;; one every ESPN league's season opened on.
   (let [espn {:active-league "k" :leagues {"k" {:provider "espn" :league-id "1"}}}]
-    (is (= [:team :waivers] (db/phase-views {:provider "espn"} :season)))
-    (is (= [:team :matchup :waivers] (db/phase-views {:provider "sleeper"} :season)))
-    (is (= [:team :matchup :waivers] (db/phase-views nil :season)) "no league, no reason to hide it")
+    (is (= [:team :waivers :rosters] (db/phase-views {:provider "espn"} :season)))
+    (is (= [:team :matchup :waivers :rosters] (db/phase-views {:provider "sleeper"} :season)))
+    (is (= [:team :matchup :waivers :rosters] (db/phase-views nil :season)) "no league, no reason to hide it")
     (is (= :team (db/view-for espn :season nil)))
     (is (= :team (db/view-for espn :season :matchup)))))
 
@@ -731,3 +731,55 @@
   (is (= 0 (db/max-bid {:bankroll 7 :roster [{:player-id "a"}]}))
       "a full roster has no seat to bid for — it read $8, more than it had")
   (is (nil? (db/max-bid nil))))
+
+;; ---- synced rosters ----
+
+(def ^:private synced-by-id
+  {"00-qb" {:player-id "00-qb" :player-name "Jalen Hurts" :position "QB" :team "PHI"}
+   "00-wr" {:player-id "00-wr" :player-name "DeVonta Smith" :position "WR" :team "PHI"}
+   "00-rb" {:player-id "00-rb" :player-name "Tony Pollard" :position "RB" :team "TEN"}
+   "00-ir" {:player-id "00-ir" :player-name "Nico Collins" :position "WR" :team "HOU"}
+   "PHI"   {:player-id "PHI" :player-name "Eagles" :position "DST" :team "PHI"}})
+
+(def ^:private synced-xwalk {"11" "00-qb" "22" "00-wr" "33" "00-rb" "44" "00-ir"})
+
+(deftest a-synced-roster-reads-through-the-crosswalk-into-three-blocks
+  (let [team   {:player-ids ["11" "22" "33" "44" "PHI" "99"]
+                :active-ids ["11" "22" "33" "PHI" "99"]
+                :starter-ids ["11" "0" "22" "PHI"]}
+        league {:provider "sleeper" :roster-positions ["QB" "RB" "FLEX" "DST" "BENCH"]}
+        {:keys [starters bench parked]} (db/team-roster team league synced-xwalk synced-by-id)]
+    (is (= ["00-qb" "00-wr" "PHI"] (mapv :player-id starters))
+        "provider ids become board ids; a defense keeps its abbreviation; an empty seat is no one")
+    (is (= ["QB" "FLEX" "DST"] (mapv :slot starters))
+        "the empty seat still consumes its index, so FLEX stays FLEX")
+    (is (= ["00-rb" "99"] (mapv :player-id bench)))
+    (is (:unvalued? (second bench)) "an id nobody resolves keeps its row")
+    (is (= ["00-ir"] (mapv :player-id parked)))))
+
+(deftest an-espn-team-is-labelled-by-the-seats-it-names
+  (let [team {:player-ids ["11" "22"] :active-ids ["11" "22"]
+              :starter-ids ["22" "11"] :starter-slots ["FLEX" "QB"]}
+        {:keys [starters]} (db/team-roster team {:provider "espn"
+                                                  :roster-positions ["QB" "RB" "FLEX"]}
+                                           synced-xwalk synced-by-id)]
+    (is (= [["00-wr" "FLEX"] ["00-qb" "QB"]] (mapv (juxt :player-id :slot) starters))))
+  (testing "and a stored ESPN sync that names none gets no label rather than a guess"
+    (let [{:keys [starters]} (db/team-roster {:player-ids ["11"] :active-ids ["11"]
+                                              :starter-ids ["11"]}
+                                             {:provider "espn" :roster-positions ["RB"]}
+                                             synced-xwalk synced-by-id)]
+      (is (not-any? :slot starters)))))
+
+(deftest standings-order-is-wins-then-losses-then-name
+  (is (= ["B" "A" "C" "D"]
+         (mapv :name (db/record-order [{:name "A" :wins 2 :losses 1}
+                                       {:name "C" :wins 1 :losses 2}
+                                       {:name "B" :wins 2 :losses 0}
+                                       {:name "D"}])))))
+
+(deftest each-half-has-its-own-league-tab
+  (is (= :draft (db/view-mode :league)))
+  (is (= :season (db/view-mode :rosters)))
+  (is (= :team (db/view-for {} :season :league)))
+  (is (= :board (db/view-for {} :draft :rosters))))

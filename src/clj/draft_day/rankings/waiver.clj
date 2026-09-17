@@ -121,9 +121,12 @@
 (defn held-ids
   "One team's roster ids in the *board's* id space — see the ns docstring, which
   every roster reader is required to come through. `k` selects the list:
-  `:player-ids` for who is unavailable, `:active-ids` for who occupies a seat."
-  ([team xwalk] (held-ids team xwalk :player-ids))
-  ([team xwalk k] (mapv (fn [id] (get xwalk id id)) (get team k))))
+  `:player-ids` for who is unavailable, `:active-ids` for who occupies a seat.
+
+  The implementation is `db/held-ids`, in cljc so the browser's League tab reads
+  a roster through the same translation rather than a second copy of it."
+  ([team xwalk] (db/held-ids team xwalk :player-ids))
+  ([team xwalk k] (db/held-ids team xwalk k)))
 
 (defn rostered-index
   "`{canonical-player-id team-name}` over every team in the synced league."
@@ -344,22 +347,6 @@
    (db/position-rank position)
    (- (or ros-points 0.0))])
 
-(defn starter-seats
-  "Each starter's seat, in `:starter-ids`' order, or nil when that cannot be
-  known.
-
-  A team that names its starters' seats (`:starter-slots`, ESPN) is read as it
-  is. Otherwise the lineup is positional against the league's
-  `:roster-positions` — true of Sleeper, and of no provider known to be
-  otherwise — and anything else gets no label, because indexing the seat list
-  for a lineup that is not positional labels a FLEX receiver RB with nothing
-  on screen to say so. An ESPN sync stored before `:starter-slots` existed is
-  that case."
-  [team league]
-  (or (:starter-slots team)
-      (when (= "sleeper" (some-> (:provider league) name))
-        (:roster-positions league))))
-
 (defn my-roster
   "The manager's own roster for the panel beside the board and for My Team,
   ordered; nil when no team is picked, since both say something different for
@@ -367,7 +354,7 @@
   as placeholders.
 
   A starter carries `:slot`, the seat he occupies, read off `seats` — a vector
-  in `:starter-ids`' order (`starter-seats`). That is the only thing that can say
+  in `:starter-ids`' order (`db/starter-seats`). That is the only thing that can say
   a receiver is starting at FLEX. Absent when there is no such vector."
   [my-team xwalk by-id drop seats]
   (when my-team
@@ -435,7 +422,7 @@
                                drop starting-slots)
                              (with-bids waiver (:faab-left my-team) n)
                              with-trend)
-     :my-roster          (my-roster my-team xwalk by-id drop (starter-seats my-team league))
+     :my-roster          (my-roster my-team xwalk by-id drop (db/starter-seats my-team league))
      :my-roster-players  (my-roster-players my-team xwalk by-id)
      :rostered           rostered
      :replacement-levels levels
