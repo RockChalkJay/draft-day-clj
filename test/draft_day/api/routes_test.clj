@@ -591,8 +591,8 @@
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe       (fn [& _] in-season)
                 pipeline/load-weekly         stub-weekly
-                matchups/current-week        (fn [_] week)
-                matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                matchups/current-week        (fn [_ _] week)
+                matchups/fetch-raw-matchups  (fn [_ _] raw-matchups)
                 espn-schedule/fetch          (fn [_ _] nil)]
     (routes/matchup-handler {:body (input-stream (json/write-value-as-string body))})))
 
@@ -641,8 +641,8 @@
     (routes/reset-universe!)
     (with-redefs [pipeline/load-universe       (fn [& _] in-season)
                   pipeline/load-weekly         stub-weekly
-                  matchups/current-week        (fn [_] 9)
-                  matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                  matchups/current-week        (fn [_ _] 9)
+                  matchups/fetch-raw-matchups  (fn [_ _] raw-matchups)
                   espn-schedule/fetch          (fn [s w] (swap! seen conj [s w]) {})]
       (routes/matchup-handler {:body (input-stream (json/write-value-as-string matchup-req))}))
     (is (= 9 (second (first @seen))) "fetched, for the provider's week")))
@@ -654,8 +654,8 @@
     (routes/reset-universe!)
     (with-redefs [pipeline/load-universe       (fn [& _] in-season)
                   pipeline/load-weekly         (fn [s w & [opts]] (swap! paths conj (:path opts)) (stub-weekly s w))
-                  matchups/current-week        (fn [_] 9)
-                  matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                  matchups/current-week        (fn [_ _] 9)
+                  matchups/fetch-raw-matchups  (fn [_ _] raw-matchups)
                   espn-schedule/fetch          (fn [_ _] nil)]
       (routes/matchup-handler {:body (input-stream (json/write-value-as-string matchup-req))}))
     (is (= [pipeline/matchup-weekly-cache-path] @paths))
@@ -670,8 +670,8 @@
   ;; Flattening it to 502 would report an unknown league as an outage.
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe      (fn [& _] in-season)
-                matchups/current-week       (fn [_] 9)
-                matchups/fetch-raw-matchups (fn [_ _ _] (throw (ex-info "no league" {:status 404})))]
+                matchups/current-week       (fn [_ _] 9)
+                matchups/fetch-raw-matchups (fn [_ _] (throw (ex-info "no league" {:status 404})))]
     (let [resp (routes/matchup-handler
                 {:body (input-stream (json/write-value-as-string matchup-req))})]
       (is (= 404 (:status resp)))

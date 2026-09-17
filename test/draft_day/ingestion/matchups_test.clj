@@ -90,8 +90,8 @@
   (is (= {} (m-sleeper/player-points {:roster_id 9}))))
 
 (deftest fetch-matchups-returns-the-same-envelope-the-other-pairs-do
-  (with-redefs [matchups/current-week        (fn [_] 3)
-                matchups/fetch-raw-matchups  (fn [_ _ _] raw)]
+  (with-redefs [matchups/current-week        (fn [_ _] 3)
+                matchups/fetch-raw-matchups  (fn [_ _] raw)]
     (let [{:keys [ok week matchups scores]} (matchups/fetch-matchups
                                              {:provider "sleeper" :league-id "1"})]
       (is ok)
@@ -101,17 +101,17 @@
 
 (deftest an-explicit-week-skips-asking-the-provider
   (let [asked (atom false)]
-    (with-redefs [matchups/current-week       (fn [_] (reset! asked true) 3)
-                  matchups/fetch-raw-matchups (fn [_ _ wk] (is (= 7 wk)) raw)]
+    (with-redefs [matchups/current-week       (fn [_ _] (reset! asked true) 3)
+                  matchups/fetch-raw-matchups (fn [_ {:keys [week]}] (is (= 7 week)) raw)]
       (is (= 7 (:week (matchups/fetch-matchups {:provider :sleeper :league-id "1" :week 7}))))
       (is (not @asked) "there is nothing to overlap, and nothing to ask"))))
 
 (deftest a-concurrent-fetch-does-not-cost-an-error-its-status
   ;; A future's deref wraps the thunk's throw in an `ExecutionException`
   ;; carrying no ex-data; unwrapped, every 404 would report as a 502.
-  (with-redefs [matchups/current-week (fn [_] 3)
+  (with-redefs [matchups/current-week (fn [_ _] 3)
                 matchups/fetch-raw-matchups
-                (fn [_ _ _] (throw (java.util.concurrent.ExecutionException.
+                (fn [_ _] (throw (java.util.concurrent.ExecutionException.
                                     (ex-info "not found" {:status 404}))))]
     (let [{:keys [ok status error]} (matchups/fetch-matchups
                                      {:provider :sleeper :league-id "9"})]
@@ -120,8 +120,8 @@
       (is (= "not found" error) "the cause's message, not the wrapper's"))))
 
 (deftest the-envelopes-own-keys-are-not-a-providers-to-set
-  (with-redefs [matchups/current-week (fn [_] 3)
-                matchups/fetch-raw-matchups (fn [_ _ _] raw)
+  (with-redefs [matchups/current-week (fn [_ _] 3)
+                matchups/fetch-raw-matchups (fn [_ _] raw)
                 matchups/normalize-matchups (fn [_ _] {:matchups [] :scores {}
                                                        :ok false :week 99})]
     (let [{:keys [ok week]} (matchups/fetch-matchups {:provider :sleeper :league-id "1"})]
@@ -129,12 +129,12 @@
       (is (= 3 week)))))
 
 (deftest a-bare-failure-is-a-502
-  (with-redefs [matchups/current-week (fn [_] 3)
-                matchups/fetch-raw-matchups (fn [_ _ _] (throw (ex-info "boom" {})))]
+  (with-redefs [matchups/current-week (fn [_ _] 3)
+                matchups/fetch-raw-matchups (fn [_ _] (throw (ex-info "boom" {})))]
     (is (= 502 (:status (matchups/fetch-matchups {:provider :sleeper :league-id "1"}))))))
 
 (deftest a-provider-between-seasons-has-no-week-to-show
-  (with-redefs [matchups/current-week (fn [_] nil)]
+  (with-redefs [matchups/current-week (fn [_ _] nil)]
     (let [{:keys [ok status]} (matchups/fetch-matchups {:provider :sleeper :league-id "1"})]
       (is (not ok) "no matchup to draw — not week zero, and not a crash")
       (is (= 404 status)))))
@@ -148,10 +148,27 @@
 (deftest a-week-with-no-games-is-an-empty-board-not-an-error
   ;; Sleeper answers a valid league asked for an out-of-season week with `[]`,
   ;; which is why the fetch does not treat empty as missing.
-  (with-redefs [matchups/current-week (fn [_] 25)
-                matchups/fetch-raw-matchups (fn [_ _ _] [])]
+  (with-redefs [matchups/current-week (fn [_ _] 25)
+                matchups/fetch-raw-matchups (fn [_ _] [])]
     (let [{:keys [ok matchups scores]} (matchups/fetch-matchups
                                         {:provider :sleeper :league-id "1"})]
       (is ok)
       (is (= [] matchups))
       (is (= {} scores)))))
+
+(deftest a-provider-is-asked-with-the-same-request-map-the-other-pairs-use
+  ;; A host that puts the season in its URL or a cookie on its request needs
+  ;; somewhere to read them from; ESPN's current week is on the league document.
+  (let [asked (atom {})]
+    (with-redefs [matchups/current-week       (fn [_ req] (swap! asked assoc :week-req req) 3)
+                  matchups/fetch-raw-matchups (fn [_ req] (swap! asked assoc :raw-req req) raw)]
+      (matchups/fetch-matchups {:provider :sleeper :league-id "1" :season 2025
+                                :credentials {:username "jay"}})
+      (is (= {:league-id "1" :season 2025 :credentials {:username "jay"}} (:week-req @asked)))
+      (is (= 3 (get-in @asked [:raw-req :week])) "the scoreboard request adds its week")
+      (is (= 2025 (get-in @asked [:raw-req :season]))))))
+
+(deftest a-league-this-host-cannot-be-asked-about-is-refused-before-the-network
+  (with-redefs [matchups/current-week (fn [_ _] (throw (ex-info "should not be asked" {})))]
+    (is (= 400 (:status (matchups/fetch-matchups {:provider :espn :league-id "123"})))
+        "an ESPN league with no cookie to read it with")))
