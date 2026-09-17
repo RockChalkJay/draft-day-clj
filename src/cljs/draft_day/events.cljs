@@ -523,20 +523,20 @@
       ;; Leagues can be in different phases, so the tab on screen may not exist
       ;; in this one. Resolved here rather than through `:set-view`: both boards
       ;; are already being fetched below.
-      {:db (let [db' (activate db k)]
-             (assoc db' :view (db/view-for (db/phase db') (:view db'))))
-       :fx (cond-> [[:dispatch [:recompute]]
-                    [:dispatch [:fetch-waivers]]]
-             ;; A league added by pasted id has rosters nobody has fetched, and
-             ;; a waiver board built on no league says everyone is free.
-             (nil? (:sync entry))
-             (conj [:dispatch [:sync-league (select-keys entry [:provider :league-id])]])
-             ;; Only when it is the tab on screen; every other tab picks it up
-             ;; from `:set-view`'s first-open fetch, and this one is live. Not
-             ;; before a first sync, which asks for it once there are rosters.
-             (and (= :matchup (db/view-for (db/phase (activate db k)) (:view db)))
-                  (:sync entry))
-             (conj [:dispatch [:fetch-matchup]]))}
+      (let [db'  (activate db k)
+            view (db/view-for (db/phase db') (:view db'))]
+        {:db (assoc db' :view view)
+         :fx (cond-> [[:dispatch [:recompute]]
+                      [:dispatch [:fetch-waivers]]]
+               ;; A league added by pasted id has rosters nobody has fetched, and
+               ;; a waiver board built on no league says everyone is free.
+               (nil? (:sync entry))
+               (conj [:dispatch [:sync-league (select-keys entry [:provider :league-id])]])
+               ;; Only when it is the tab on screen; every other tab picks it up
+               ;; from `:set-view`'s first-open fetch, and this one is live. Not
+               ;; before a first sync, which asks for it once there are rosters.
+               (and (= :matchup view) (:sync entry))
+               (conj [:dispatch [:fetch-matchup]]))})
       {})))
 
 (rf/reg-event-fx :sync-league

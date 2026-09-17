@@ -252,14 +252,18 @@
 ;; What the season header says about the league on screen: the week, FAAB and
 ;; when the rosters were fetched. FAAB off the sync rather than the waiver board,
 ;; so it is there on every season tab and not only once Waivers has loaded.
+;;
+;; The week only off the matchup reply, which asks the provider. `:through-week`
+;; advances as games finish, so `(inc through-week)` — which is also what the
+;; waiver reply's `:week` is — names next week while this one is still being
+;; played. Nothing is better than that in the one place every tab shares.
 (rf/reg-sub :season-header
-  :<- [:active-league] :<- [:matchup] :<- [:waivers] :<- [:universe]
-  (fn [[lg matchup waivers universe] _]
+  :<- [:active-league] :<- [:matchup]
+  (fn [[lg matchup] _]
     (let [ls   (:sync lg)
           mine (:my-roster-id lg)
-          team (some #(when (= (:roster-id %) mine) %) (:teams ls))
-          tw   (or (:through-week universe) 0)]
-      {:week      (or (:week matchup) (:week waivers) (when (pos? tw) (inc tw)))
+          team (some #(when (= (:roster-id %) mine) %) (:teams ls))]
+      {:week      (:week matchup)
        :faab      (when (and team (= "faab" (some-> ls :waiver :type name)))
                     {:left (:faab-left team) :budget (get-in ls [:waiver :budget])})
        :synced-at (:synced-at lg)})))

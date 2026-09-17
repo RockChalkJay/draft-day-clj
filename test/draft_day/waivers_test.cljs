@@ -419,9 +419,14 @@
          :universe {:through-week 2})
   (rf/clear-subscription-cache!)
   (let [{:keys [week faab synced-at]} (sub [:season-header])]
-    (is (= 3 week) "the week after the last one played, until a board says otherwise")
+    (is (nil? week)
+        "never derived from :through-week, which names next week while this one is played")
     (is (= {:left 74 :budget 100} faab))
     (is (some? synced-at)))
+  (testing "the week is the one the provider says is being played"
+    (swap! rdb/app-db assoc :matchup {:week 3} :waivers {:week 4})
+    (rf/clear-subscription-cache!)
+    (is (= 3 (:week (sub [:season-header])))))
   (testing "a league on waiver priority has no budget to show"
     (swap! rdb/app-db assoc-in [:leagues lk :sync :waiver :type] "rolling")
     (rf/clear-subscription-cache!)
