@@ -115,7 +115,7 @@
                     starters)))
       (and (number? gain) (pos? gain))
       (conj {:text (str "Best lineup by projection: +" (.toFixed gain 1))
-             :tag "Matchup"}))))
+             :link :matchup}))))
 
 (defn best-claims
   "The free agents who would improve the starting lineup, best first — the
@@ -158,11 +158,12 @@
         [:div.side-card
          [:h3 "Lineup check"]
          (if (seq issues)
-           (map (fn [{:keys [text tag warn?]}]
+           (map (fn [{:keys [text tag warn? link]}]
                   ^{:key text}
                   [:div.side-line
                    [:span (when warn? [:span.warn "⚠ "]) text]
-                   [:span.muted tag]])
+                   ;; The gain is only actionable where the best lineup is drawn.
+                   (if link [go-link link "See it →"] [:span.muted tag])])
                 issues)
            [:div.side-line [:span.muted "Nothing to fix in your lineup."]])]))))
 
