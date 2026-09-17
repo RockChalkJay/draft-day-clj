@@ -98,7 +98,8 @@
             "Best lineup by projection: +11.6"]
            (mapv :text issues)))
     (is (not (:warn? (second issues))) "a Questionable is not shouted like an IR")
-    (is (:warn? (first issues))))
+    (is (:warn? (first issues)))
+    (is (= :matchup (:link (last issues))) "the one issue fixed elsewhere links there"))
   (is (empty? (team/lineup-issues {:starters [] :optimal {:projected {:gain 0}}} 3))
       "a clean lineup has nothing to say"))
 
