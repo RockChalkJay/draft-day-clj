@@ -774,18 +774,18 @@
 (defn- matchup-request
   "The body of an /api/matchup call.
 
-  `:provider` and `:league-id` ride along because unlike the other two boards
-  this one takes a *live* fetch server-side, so it needs to know whose
-  scoreboard to read. Everything else is the same active-league copy the waiver
-  request uses."
+  Unlike the waiver board this one takes a *live* fetch server-side, so it
+  carries what a sync carries — whose scoreboard, which season, and the league's
+  own credentials (`league-request`); an ESPN scoreboard cannot be read without
+  them. Everything else is the same active-league copy the waiver request uses."
   [db]
   (let [lg (db/active-league db)]
-    {:provider  (:provider lg)
-     :league-id (:league-id lg)
-     :scoring   (get-in db [:config :scoring])
+    (merge
+     (league-request db (select-keys lg [:provider :league-id]))
+     {:scoring   (get-in db [:config :scoring])
      :league    (:sync lg)
      :roster    (get-in db [:config :roster])
-     :my-roster-id (:my-roster-id lg)}))
+     :my-roster-id (:my-roster-id lg)})))
 
 (rf/reg-event-fx :fetch-matchup
   (fn [{:keys [db]} _]

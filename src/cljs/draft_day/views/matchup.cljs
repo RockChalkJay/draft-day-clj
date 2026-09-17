@@ -2,8 +2,11 @@
   "Your team against your opponent's, for the week being played.
 
   ONE ROW PER SEAT, FACING. The seat label runs down the middle and each side
-  fans out from it, so a reader compares two quarterbacks by looking across one
-  line rather than by holding a number in his head between two tables. It is the
+  mirrors the other — Player · Proj · Actual | seat | Actual · Proj · Player —
+  so the two teams' numbers meet at the centre and a reader compares two
+  quarterbacks by looking across a few inches of one line, rather than holding
+  a number in his head between two tables. Names sit at the outer edges, where
+  a long one has room to run. It is the
   arrangement `views.compare` already uses for two players, one scale up — and
   the reason the alternative (two independent tables) was not taken is that the
   comparison is the whole point of the screen.
@@ -47,9 +50,11 @@
 (defn player-cell
   "A player's name, his NFL game, and the two numbers.
 
-  `side` mirrors the layout: the left team reads outward from the centre. The
-  name opens the detail modal by dispatching rather than by requiring it — the
-  require cycle `core/app` warns about."
+  `side` mirrors the layout: name, projection, actual on the left; actual,
+  projection, name on the right, so both actuals sit against the centre. A
+  bench player's meta leads with his own position, because a bench row has no
+  shared seat label to say it. The name opens the detail modal by dispatching
+  rather than by requiring it — the require cycle `core/app` warns about."
   [p side week]
   (let [nums [^{:key :p} [:div.mu-p (fmt (:week-points p))]
               ^{:key :a} [:div {:class (str "mu-a" (when-not (number? (:actual p)) " pending"))}
@@ -65,9 +70,19 @@
                   :title "Player detail"}
                  (:player-name p)])
               (when (:parked? p) [:span.mu-meta {:title "IR or taxi"} "IR"])
-              [:span.mu-meta (waivers/week-matchup p week)]]]
+              [:span.mu-meta (str (when (and (nil? (:slot p)) (:position p))
+                                    (str (:position p) " · "))
+                                  (waivers/week-matchup p week))]]]
     (into [:div {:class (str "mu-side " (name side))}]
-          (if (= side :l) (conj (vec (reverse nums)) who) (cons who nums)))))
+          (if (= side :l) (cons who nums) (conj (vec (reverse nums)) who)))))
+
+(defn column-head
+  "The labels over both sides, in the same mirrored order as every row."
+  []
+  [:div.mu-hdr
+   [:div.mu-side.l [:div.mu-who "Player"] [:div.mu-p "Proj"] [:div.mu-a "Actual"]]
+   [:div.mu-slot "Pos"]
+   [:div.mu-side.r [:div.mu-a "Actual"] [:div.mu-p "Proj"] [:div.mu-who "Player"]]])
 
 (defn empty-cell
   "The other side of a row this team has nobody for.
@@ -196,15 +211,16 @@
                                    a b week seat? (str tag i))))
                      (range (max (count ls) (count rs)))))]
     [:<>
+     [column-head]
      (seat-rows (:starters l) (:starters r) true "s")
      ;; Child order mirrors `player-cell`, or the totals do not line up with
      ;; the columns they are totalling.
      [:div.mu-tot
-      [:div.mu-side.l [:div.mu-a (fmt (:actual l))] [:div.mu-p (fmt (:projected l))]
-       [:div.mu-who "Starters"]]
+      [:div.mu-side.l [:div.mu-who "Starters"] [:div.mu-p (fmt (:projected l))]
+       [:div.mu-a (fmt (:actual l))]]
       [:div.mu-slot]
-      [:div.mu-side.r [:div.mu-who "Starters"] [:div.mu-p (fmt (:projected r))]
-       [:div.mu-a (fmt (:actual r))]]]
+      [:div.mu-side.r [:div.mu-a (fmt (:actual r))] [:div.mu-p (fmt (:projected r))]
+       [:div.mu-who "Starters"]]]
      [:div.mu-sep "Bench"]
      (seat-rows (:bench l) (:bench r) false "b")]))
 
