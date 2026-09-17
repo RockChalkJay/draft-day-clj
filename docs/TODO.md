@@ -1,15 +1,17 @@
 # TODO
 
-Working list for Draft Day. Struck-through entries are done; bold ones are
-still open. See the [README](../README.md) for what the app is and how it
-works, and [scoring-coverage.md](scoring-coverage.md) for the known gaps
-between a league's real rules and what the board can score.
+Working list for Draft Day. Everything here is open; entries are deleted when
+they are done rather than struck through. See the [README](../README.md) for
+what the app is and how it works, and [scoring-coverage.md](scoring-coverage.md)
+for the known gaps between a league's real rules and what the board can score.
 
 - **Remove the 🚨 for tier cliffs. Postion views with tier coloring accomplish the same thing in a clean way.**
 
 - **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
 
-- **Add stats and player pic to the on the block card** Include additional stats like target percentage, number of targets, number of receptions.
+- **Add stats to the on the block card.** Target percentage, targets,
+  receptions. The player picture is done (`views/controls.cljs` renders a
+  headshot with a silhouette fallback); the stats half is what is left.
 
 - **Per-league draft state.** `:teams`, `:drafted`, `:picks` and `:my-team-id`
   are still one draft for one team, sitting beside a `:leagues` map that holds
@@ -55,24 +57,15 @@ between a league's real rules and what the board can score.
   that matters most for a waiver board — where discrimination is *worst* — is
   recorded in prose rather than in the table the code reads.
 
-- **The watch list comes back in hash order after the set-to-vector migration.**
-  `db/reconcile-watchlist` is `(into [] (distinct) stored)`, and over the `#{}`
-  the app used to persist that is hash-iteration order. `:watchlist-players`
-  used to end in a `sort-by rank-key` which hid it; that sort is gone now the
-  order is the manager's. An upgrading manager opens the app to a scrambled
-  list with nothing saying anything moved. `(set? stored)` is detectable at
-  exactly the point the repair happens, so `:boot` could re-sort once.
-  Predates the waiver work — noted here rather than fixed inside it.
-
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
-  computes and returns it (`src/clj/draft_day/rankings/engine.clj:87`)
+  computes and returns it (`src/clj/draft_day/rankings/engine.clj:89`)
   precisely so the client does not recompose `inflation × market-heat` itself
   and skip the band. But `rankings-handler` selects only
   `[:inflation :inflation-index :market-heat]`
-  (`src/clj/draft_day/api/routes.clj:124`), so the key never ships, and the
-  header's fallback branch in `src/cljs/draft_day/core.cljs:26` always wins —
+  (`src/clj/draft_day/api/routes.clj:199`), so the key never ships, and the
+  header's fallback branch in `src/cljs/draft_day/core.cljs:71` always wins —
   displaying the un-banded product, which is the exact defect the comment above
-  it says was fixed. `subs.cljs:66` also selects a key that never arrives. One
+  it says was fixed. `subs.cljs:97` also selects a key that never arrives. One
   line to fix: add `:market-multiplier` to the `select-keys` vector.
 
 - **The ESPN tables are documented numbering, not a payload this repo has
@@ -113,8 +106,27 @@ between a league's real rules and what the board can score.
   and it is persisted in the browser next to the rest of the app's state,
   because the server holds nothing between requests and there is no session
   store to put it in. Accepted, and written down here so it is a decision
-  rather than an oversight. `providers/redact` keeps it out of logs and error
-  bodies; nothing keeps it out of another script running on the same origin.
+  rather than an oversight. Nothing keeps it out of another script running on
+  the same origin — and, per the entry below, nothing currently keeps it out of
+  a log line either.
+
+- **`providers/redact` is the rule nobody applies.** CLAUDE.md and
+  `league_import/espn.clj`'s docstring both name it as the only sanctioned way a
+  credential may reach a log line, an `ex-data` or an error body, and the
+  function is correct and tested — but it has **no production caller**. Every
+  throw site today happens to carry `{:status n}` and nothing more, so nothing
+  leaks; the discipline is maintained by hand at each site rather than by the
+  guard, which is exactly the arrangement that holds until the first person adds
+  a helpful `{:credentials creds}` to an `ex-info` while debugging. Either route
+  the provider throws through `redact`, or stop documenting it as mandatory.
+
+- **The waiver board derives its week instead of asking for it.**
+  `ingestion/matchups.clj` states the rule — `:through-week` advances as games
+  finish, so `(inc through-week)` asks for week N+1 while week N is still being
+  played — and says the same bug is tracked here against the waiver board. It
+  was not; this entry is that reference. For a matchup it is the wrong game, and
+  for a price it is a stale one. `matchups` asks the provider; the waiver board
+  should too.
 
 - **Audit error handling across the application.** The app runs three error
   protocols at once and converts between them ad hoc:

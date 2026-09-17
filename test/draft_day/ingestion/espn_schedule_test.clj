@@ -113,7 +113,8 @@
 ;; ---- has the ball been snapped ----
 ;; The matchup board reads a provider's per-player points, and a provider scores
 ;; everyone 0.0 before kickoff. Telling that apart from a real zero is what this
-;; predicate exists for — see `rankings.matchup`.
+;; predicate exists for. Its consumer, the matchup board, is unmerged — the
+;; predicate ships ahead of it; see `docs/TODO.md`.
 
 (deftest a-scheduled-or-postponed-game-has-not-started
   (is (sched/not-started? "STATUS_SCHEDULED"))

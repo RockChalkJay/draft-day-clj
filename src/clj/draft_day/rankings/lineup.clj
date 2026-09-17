@@ -1,11 +1,16 @@
 (ns draft-day.rankings.lineup
   "What a roster's best legal starting lineup is worth.
 
-  The waiver board's `:upgrade` measures a claim against the manager's worst
-  *rostered* player, which answers whether his bench improved. It is not the
-  question a claim is really asking. A quarterback projected 180 behind a
-  starter projected 260 never plays, and his contribution to points scored is
-  zero however far he clears the last man on the bench.
+  The waiver board's `:upgrade` measures a claim against the player it would cost
+  — the one a manager can lose most cheaply — which answers whether his roster
+  improved. It is not the question a claim is really asking. (`drop-candidate`
+  picks that player by marginal cost *to this lineup* wherever the league's seats
+  are known, falling back to plain worst-points only when they are not; both
+  answer the bench question, which is the one being improved on here.)
+
+  A quarterback projected 180 behind a starter projected 260 never plays, and his
+  contribution to points scored is zero however far he clears the last man on the
+  bench.
 
   Greedy is optimal for nested seats, and the argument is worth stating so
   nobody replaces this with a matching algorithm. A dedicated seat accepts one

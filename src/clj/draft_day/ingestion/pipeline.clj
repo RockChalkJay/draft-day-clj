@@ -1,13 +1,14 @@
 (ns draft-day.ingestion.pipeline
   "Resolve the player universe with a TTL disk cache and a fallout chain, mirroring
   the POC: offline-sample -> fresh-cache -> live -> stale-cache -> bundled-sample.
-  The cache is Transit on disk (data/players_cache.v1.transit); the bundled sample
-  is EDN on the classpath (resources/sample_players.edn).
+  The cache is Transit on disk, its name carrying `schema-version` so an old file
+  is never found rather than read back short a column (data/players_cache.v9.transit
+  today); the bundled sample is EDN on the classpath (resources/sample_players.edn).
 
   Every branch returns the same envelope, so a caller can always tell what it is
   looking at:
 
-    {:schema-version 1
+    {:schema-version 9
      :season         2026        ; the NFL season the rows were fetched for
      :fetched-at     \"...Z\"      ; when, nil for the committed sample
      :source         \"live\"      ; which rung of the fallout chain answered
