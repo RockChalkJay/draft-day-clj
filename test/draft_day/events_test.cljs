@@ -321,7 +321,7 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 8 fx/storage-version)
+  (is (= 9 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
   (is (= "espn:{SWID}" (db/account-key "espn" "{SWID}"))
@@ -499,3 +499,13 @@
   (is (= {:kind :player-detail :player-id "p1"} (:modal @rdb/app-db)))
   (rf/dispatch-sync [:close-modal])
   (is (nil? (:modal @rdb/app-db))))
+
+(deftest a-connected-league-s-scoring-cannot-be-edited
+  ;; The Scoring section draws it read-only; the events hold the same line, so
+  ;; nothing can write a league's rules behind the import's back.
+  (swap! rdb/app-db assoc :active-league "sleeper:1")
+  (let [before (get-in @rdb/app-db [:config :scoring])]
+    (rf/dispatch-sync [:enable-custom-scoring])
+    (rf/dispatch-sync [:set-scoring-weight :rec 0.25])
+    (rf/dispatch-sync [:select-scoring-preset :standard])
+    (is (= before (get-in @rdb/app-db [:config :scoring])))))

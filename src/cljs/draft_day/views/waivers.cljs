@@ -221,11 +221,8 @@
           (if my-team-name
             (str " · " my-team-name)
             [:span.muted " · no team picked"])]]
-        ;; Rosters only. Re-importing the rules here would overwrite a
-        ;; hand-edited scoring config under a button labelled Re-sync.
-        [:button {:on-click #(rf/dispatch [:sync-league
-                                           (select-keys league [:provider :league-id])])}
-         "Re-sync rosters"]
+        [:button {:on-click #(rf/dispatch [:refresh-league (select-keys league [:provider :league-id])])}
+         "Re-sync league"]
         (when synced?
           [:button.secondary {:on-click #(rf/dispatch [:fetch-waivers])} "Refresh board"])]
        [:div.sync-empty

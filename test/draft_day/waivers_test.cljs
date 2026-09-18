@@ -366,8 +366,8 @@
   (with-league! synced 1)
   (swap! rdb/app-db assoc :accounts {})
   (rf/clear-subscription-cache!)
-  (is (= [[:sync-league {:provider "sleeper" :league-id "987654"}]]
-         (press! waivers/sync-panel "Re-sync rosters"))))
+  (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
+         (press! waivers/sync-panel "Re-sync league"))))
 
 (deftest a-league-whose-sync-failed-still-offers-to-retry-it
   ;; It has no `:name` until a reply lands, and gating the strip on the name made
@@ -379,11 +379,11 @@
          :waivers {:my-roster nil})
   (rf/clear-subscription-cache!)
   (let [out (render waivers/sync-panel)]
-    (is (re-find #"Re-sync rosters" out))
+    (is (re-find #"Re-sync league" out))
     (is (re-find #"987654" out) "and names itself by its id until the sync answers")
     (is (not (re-find #"No league active" out))))
-  (is (= [[:sync-league {:provider "sleeper" :league-id "987654"}]]
-         (press! waivers/sync-panel "Re-sync rosters"))))
+  (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
+         (press! waivers/sync-panel "Re-sync league"))))
 
 (deftest the-roster-panel-splits-starters-from-bench-and-marks-the-seat-at-stake
   ;; The synced league knows the real lineup; the draft config's slot template
@@ -741,6 +741,18 @@
   (is (re-find #"import failed" (:status @rdb/app-db)))
   (is (re-find #"import failed" (:waiver-status @rdb/app-db))))
 
+(deftest a-failed-import-is-recorded-on-its-league
+  ;; The scoring is read-only, so the Scoring section has to be able to say the
+  ;; board is still on the rules it had before — after a reload, too.
+  (swap! rdb/app-db assoc :leagues {"sleeper:a" {:provider "sleeper" :league-id "a"}})
+  (rf/dispatch-sync [:league-import-failed "sleeper:a" "not found" 404])
+  (is (= {:status :failed :error "not found"}
+         (get-in @rdb/app-db [:leagues "sleeper:a" :rules]))))
+
+(deftest re-sync-refreshes-rosters-and-rules-together
+  (rf/dispatch-sync [:refresh-league {:provider "sleeper" :league-id "a"}])
+  (is (= #{:sync-league :import-league} (set (dispatched)))))
+
 (deftest a-sync-with-no-league-to-sync-says-so-rather-than-throwing
   ;; `db/league-key` calls `name` on the provider, and `(name nil)` throws in
   ;; ClojureScript — killing the event rather than reporting anything.
@@ -756,13 +768,13 @@
          :players [{:player-id "p1" :position "RB"}]
          :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
                    "sleeper:b" {:provider "sleeper" :league-id "b"
-                                :config (assoc db/default-config :scoring :standard)}}
+                                :config (assoc db/default-config :starting-bankroll 100)}}
          :active-league "sleeper:a")
-  (rf/dispatch-sync [:select-scoring-preset :half-ppr])
+  (rf/dispatch-sync [:apply-config {:starting-bankroll 150}])
   (rf/dispatch-sync [:set-active-league "sleeper:b"])
-  (is (= :standard (get-in @rdb/app-db [:config :scoring])))
+  (is (= 100 (get-in @rdb/app-db [:config :starting-bankroll])))
   (rf/dispatch-sync [:set-active-league "sleeper:a"])
-  (is (= :half-ppr (get-in @rdb/app-db [:config :scoring]))
+  (is (= 150 (get-in @rdb/app-db [:config :starting-bankroll]))
       "the edit is still there — it was written to the league, not only to the copy"))
 
 (deftest a-background-import-does-not-narrate-itself-as-the-league-on-screen
@@ -781,15 +793,16 @@
                       :unsupported-scoring ["fgm_50p"]}])
   (let [evs (dispatched)]
     (is (not (some #{:set-status} evs)))
-    (is (not (some #{:set-import-report} evs)))
     (is (not (some #{:apply-config} evs))))
+  (is (= {:status :imported :unsupported ["fgm_50p"]}
+         (get-in @rdb/app-db [:leagues "sleeper:a" :rules]))
+      "but what it could not apply is kept on its own league")
   (testing "while the league on screen still announces its own import"
     (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
     (rf/dispatch-sync [:league-import-loaded "sleeper:b"
                        {:name "Mine" :season "2026" :scoring :ppr}])
     (let [evs (dispatched)]
       (is (some #{:set-status} evs))
-      (is (some #{:set-import-report} evs))
       (is (some #{:apply-config} evs)))))
 
 (deftest an-import-for-a-league-you-are-no-longer-on-is-stored-not-applied

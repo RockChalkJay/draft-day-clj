@@ -505,24 +505,13 @@
 
 (def columns-by-key (into {} (map (juxt :key identity)) column-catalog))
 
-;; ---- settings sections ----
-
 (def settings-sections
-  "Settings, one section at a time, in sidebar order.
-
-  One at a time is the point. On a single grid every card sat in a row with its
-  neighbours and stretched to the tallest of them, so opening the custom scoring
-  editor or connecting a second account turned the small cards beside it into
-  tall empty boxes. A section only ever grows its own page."
+  "Settings, one section at a time, in sidebar order."
   [[:leagues "Leagues & Accounts"]
    [:scoring "Scoring"]
    [:roster  "Roster & League"]
    [:draft   "Draft"]
    [:data    "Data"]])
-
-;; ---- scoring catalog ----
-;; Grouped presentational metadata for the custom scoring editor: each group is
-;; rendered as a section of numeric weight inputs, in this order.
 
 (def scoring-catalog
   [{:group "Passing"   :stats [[:pass_yd "Pass Yd"] [:pass_td "Pass TD"]
@@ -540,8 +529,6 @@
   {:rank     :rank
    :name     :player-name
    :team     :team
-   ;; [position ordinal], not the "RB25" string the board renders: sorted as a
-   ;; string that reads RB1, RB10, RB2. Unranked rows sort last either way.
    :position pos-sort-key
    :worth    :worth
    :value    :value
@@ -821,7 +808,6 @@
      :universe-status nil       ; "N players · source", restored after a recompute error
      :universe    nil           ; /api/players provenance: season, fetched-at, per-source :ok?
      :recompute-error nil       ; the failure message, while it is still on :status
-     :import-report nil         ; {:league-key :name :season :unsupported-scoring [...]}
      :config      cfg
      :teams       (make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
      :my-team-id  "t0"

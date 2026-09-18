@@ -338,17 +338,26 @@
     (let [v (if (and (number? v) (not (js/isNaN v))) (max 0 v) 0)]
       (db/update-config db assoc-in [:budget-plan bucket] v))))
 
+(defn scoring-editable?
+  "A connected league's scoring is its import's, never the manager's: letting it
+  be edited is what kept Re-sync from refreshing the rules, and an edit is lost
+  to the next import anyway. Only a board with no league behind it is hand-set."
+  [db]
+  (nil? (:active-league db)))
+
 (rf/reg-event-fx :select-scoring-preset [persist]
   (fn [{:keys [db]} [_ preset]]
-    {:db (db/update-config db assoc :scoring preset)
-     :fx [[:dispatch [:recompute]]]}))
+    (if (scoring-editable? db)
+      {:db (db/update-config db assoc :scoring preset)
+       :fx [[:dispatch [:recompute]]]}
+      {})))
 
 ;; Seeded from the shared preset table, never a fetched one: picking Custom
 ;; before an async reply landed used to write nil, which the server read as PPR.
 (rf/reg-event-fx :enable-custom-scoring [persist]
   (fn [{:keys [db]} _]
     (let [s (get-in db [:config :scoring])]
-      (if (map? s)
+      (if (or (map? s) (not (scoring-editable? db)))
         {}
         {:db (db/update-config db assoc :scoring (scoring/resolve-config s))
          :fx [[:dispatch [:recompute]]]}))))
@@ -357,8 +366,10 @@
   (fn [{:keys [db]} [_ stat-key v]]
     ;; `usable-weight` is the server's own guard; a NaN used to 400 the call.
     ;; Debounced, because each edit re-ranks the whole universe.
-    {:db (db/update-config db assoc-in [:scoring stat-key] (scoring/usable-weight v))
-     :debounce {:id :recompute :event [:recompute]}}))
+    (if (scoring-editable? db)
+      {:db (db/update-config db assoc-in [:scoring stat-key] (scoring/usable-weight v))
+       :debounce {:id :recompute :event [:recompute]}}
+      {})))
 
 (defn league-request
   "The body of an import or a sync: which league, and what authorizes asking.
@@ -398,19 +409,20 @@
           known? (contains? (:leagues db) k)
           ;; Only the active league's rules may touch the board.
           live?  (or (nil? k) (= k (:active-league db)))]
-      ;; Status and report describe *the board*, so they are gated with
+      ;; What the import could not apply goes on the league, persisted, so the
+      ;; warning outlives a reload and a late reply lands in its own league.
+      ;; The status line describes *the board*, so it is gated with
       ;; `:apply-config` — a late reply would otherwise announce the old league.
       {:db (cond-> db
              known? (-> (update-in [:leagues k :config] merge cfg)
-                        (update-in [:leagues k] merge (select-keys resp [:name :season]))))
+                        (update-in [:leagues k] merge (select-keys resp [:name :season]))
+                        (assoc-in [:leagues k :rules]
+                                  {:status :imported
+                                   :unsupported (vec (:unsupported-scoring resp))})))
        :fx (if live?
              [[:dispatch [:apply-config cfg]]
-              [:dispatch [:set-import-report (assoc (select-keys resp [:name :season :unsupported-scoring])
-                                                   :league-key k)]]
               [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]
              [])})))
-
-(rf/reg-event-db :set-import-report (fn [db [_ r]] (assoc db :import-report r)))
 
 (defn mark-stale
   "Flag the account a league is read through as needing a reconnect.
@@ -427,8 +439,11 @@
   (fn [db [_ k err status]]
     ;; Both status lines: Settings renders `:waiver-status`, the header
     ;; `:status`, and only one put the failure on the unwatched tab.
+    ;; Recorded on the league, because its scoring is read-only: the manager
+    ;; has to be told the board is still on the rules it had before.
     (let [msg (str "League import failed: " err)]
       (cond-> (assoc db :status msg :waiver-status msg)
+        (contains? (:leagues db) k) (assoc-in [:leagues k :rules] {:status :failed :error err})
         (= 401 status) (mark-stale k true)))))
 
 ;; ---- in-season: league sync + waivers ----
@@ -505,6 +520,14 @@
               :body (league-request db league)
               :on-success [:league-synced (db/league-key provider league-id)]
               :on-failure [:league-sync-failed (db/league-key provider league-id)]}})))
+
+(rf/reg-event-fx :refresh-league
+  (fn [_ [_ league]]
+    ;; Rosters and rules together: the rules are read-only now, so there is no
+    ;; hand edit left for a re-import to overwrite.
+    (let [req (select-keys league [:provider :league-id])]
+      {:fx [[:dispatch [:sync-league req]]
+            [:dispatch [:import-league req]]]})))
 
 (defn my-roster-id-for
   "Which roster in this league belongs to `user-id`, or nil.

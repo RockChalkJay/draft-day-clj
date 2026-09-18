@@ -166,7 +166,9 @@
   (is (not (re-find #"nav-badge|nav-dot" (render settings/settings-nav)))
       "nothing to report, nothing drawn")
   (accounts! espn-ak (assoc espn-acct :credentials-stale? true))
-  (swap! rdb/app-db assoc :import-report {:league-key nil :unsupported-scoring ["fg_50p" "pts_allow_0"]})
+  (swap! rdb/app-db assoc
+         :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:rules {:status :imported :unsupported ["fg_50p" "pts_allow_0"]}}})
   (rf/clear-subscription-cache!)
   (let [html (render settings/settings-nav)]
     (is (re-find #"nav-dot" html) "an expired session marks Leagues & Accounts")
@@ -175,7 +177,9 @@
 (deftest unapplied-rules-are-listed-one-by-one
   ;; A comma-joined run of underscore keys has nowhere to wrap and ran straight
   ;; out of the card.
-  (swap! rdb/app-db assoc :import-report {:league-key nil :unsupported-scoring ["fg_50p" "pts_allow_0"]})
+  (swap! rdb/app-db assoc
+         :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:rules {:status :imported :unsupported ["fg_50p" "pts_allow_0"]}}})
   (rf/clear-subscription-cache!)
   (let [html (render settings/import-warning)]
     (is (= 2 (count (re-seq #":span\.rule-chip\b" html))))))
@@ -191,11 +195,12 @@
     (is (= :scoring (:settings-section @rdb/app-db)))))
 
 (deftest an-import-report-speaks-only-for-its-own-league
-  ;; Nothing clears the report on a switch, and a badge that kept League A's
-  ;; dropped rules on screen under League B would be a claim about B.
+  ;; A badge that kept League A's dropped rules on screen under League B would
+  ;; be a claim about B.
   (swap! rdb/app-db assoc
          :active-league "sleeper:1"
-         :import-report {:league-key "sleeper:1" :unsupported-scoring ["fg_50p"]})
+         :leagues {"sleeper:1" {:rules {:status :imported :unsupported ["fg_50p"]}}
+                   "espn:9"    {:rules {:status :imported :unsupported []}}})
   (rf/clear-subscription-cache!)
   (is (re-find #"nav-badge" (render settings/settings-nav)))
   (is (re-find #"rule-chip" (render settings/import-warning)))
@@ -203,3 +208,36 @@
   (rf/clear-subscription-cache!)
   (is (not (re-find #"nav-badge" (render settings/settings-nav))))
   (is (nil? (settings/import-warning))))
+
+(deftest a-connected-league-s-scoring-is-shown-not-edited
+  ;; Its rules are its import's: an edit would be lost to the next Re-sync, and
+  ;; allowing one is what kept Re-sync from refreshing them.
+  (swap! rdb/app-db assoc
+         :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :name "Dynasty"
+                                :rules {:status :imported :unsupported []}}})
+  (swap! rdb/app-db assoc-in [:config :scoring] {:rec 0.5 :pass_td 6})
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/section-body :scoring)]
+    (is (re-find #"Dynasty" html) "it says whose rules these are")
+    (is (not (re-find #"Preset" html)) "no preset to pick")
+    (is (not (re-find #":on-change" html)) "and no field that writes back")
+    (is (not (re-find #"scoring-warning" html)) "a clean import warns about nothing")))
+
+(deftest a-failed-import-says-the-board-is-on-the-old-rules
+  (swap! rdb/app-db assoc
+         :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"
+                                :rules {:status :failed :error "league not found"}}})
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/section-body :scoring)]
+    (is (re-find #"league not found" html))
+    (is (re-find #"previous rules" html)))
+  (is (= [[:import-league {:provider "sleeper" :league-id "1"}]]
+         (press! settings/section-body "Retry import" :scoring))))
+
+(deftest with-no-league-the-scoring-is-the-manager-s-to-set
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/section-body :scoring)]
+    (is (re-find #"Preset" html))
+    (is (not (re-find #"previous rules" html)))))

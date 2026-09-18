@@ -49,21 +49,23 @@
   "The format-scoped FantasyPros halves, in the order the notice names them."
   [:fantasypros/ecr :fantasypros/aav])
 
-;; The last import's report, but only while the league it was imported for is
-;; the active one. Nothing clears the report on a switch, so read raw it would
-;; warn about League A's dropped rules under League B's name.
-(rf/reg-sub :active-import-report :<- [:import-report] :<- [:active-league-key]
-  (fn [[report k] _]
-    (when (= (:league-key report) k) report)))
+;; What the active league's import did with its rules: `{:status :imported
+;; :unsupported [...]}`, `{:status :failed :error ...}`, or nil if it never ran.
+;; Kept per league, so a switch can never show one league's report under
+;; another's name.
+(rf/reg-sub :active-league-rules :<- [:leagues] :<- [:active-league-key]
+  (fn [[leagues k] _]
+    (get-in leagues [k :rules])))
 
 ;; What each Settings section has waiting for the manager, so the sidebar can
 ;; say so without the section being open: an account whose session expired, and
 ;; how many of the league's scoring rules the board could not apply.
 (rf/reg-sub :settings-alerts
-  :<- [:accounts] :<- [:active-import-report]
-  (fn [[accounts report] _]
+  :<- [:accounts] :<- [:active-league-rules]
+  (fn [[accounts rules] _]
     {:leagues (boolean (some :credentials-stale? (vals accounts)))
-     :scoring (count (:unsupported-scoring report))}))
+     :scoring (cond-> (count (:unsupported rules))
+                (= :failed (:status rules)) inc)}))
 
 (rf/reg-sub :vendor-gaps
   :<- [:scoring-format]
