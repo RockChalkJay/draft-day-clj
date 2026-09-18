@@ -7,7 +7,7 @@
 ;; ---- simple extracts ----
 (doseq [k [:view :status :config :teams :my-team-id :players
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
-           :watchlist :import-report :universe
+           :watchlist :importing :universe
            :accounts :leagues :waivers :waiver-sort :waiver-status
            :league-choices :league-choices-error
            :waiver-columns :compare
@@ -50,22 +50,34 @@
   [:fantasypros/ecr :fantasypros/aav])
 
 ;; What the active league's import did with its rules: `{:status :imported
-;; :unsupported [...]}`, `{:status :failed :error ...}`, or nil if it never ran.
-;; Kept per league, so a switch can never show one league's report under
-;; another's name.
+;; :unsupported [...] :bankroll? bool}`, `{:status :failed :error ...}` beside
+;; whatever the last good import left, or nil if it never ran. Kept per league,
+;; so a switch can never show one league's report under another's name.
 (rf/reg-sub :active-league-rules :<- [:leagues] :<- [:active-league-key]
   (fn [[leagues k] _]
     (get-in leagues [k :rules])))
 
+;; Whether the active league's import is in flight. "Not imported yet" and
+;; "importing" are different instructions, and Retry belongs only to the first.
+(rf/reg-sub :active-league-importing? :<- [:importing] :<- [:active-league-key]
+  (fn [[importing k] _]
+    (contains? importing k)))
+
+;; The config keys the active league sets, drawn read-only — `db/league-owned-keys`.
+(rf/reg-sub :league-owned-keys
+  (fn [db _] (db/league-owned-keys db)))
+
 ;; What each Settings section has waiting for the manager, so the sidebar can
-;; say so without the section being open: an account whose session expired, and
-;; how many of the league's scoring rules the board could not apply.
+;; say so without the section being open: an account whose session expired, how
+;; many of the league's scoring rules the board could not apply, and a league
+;; whose rules never arrived — its board is priced under somebody else's.
 (rf/reg-sub :settings-alerts
-  :<- [:accounts] :<- [:active-league-rules]
-  (fn [[accounts rules] _]
-    {:leagues (boolean (some :credentials-stale? (vals accounts)))
-     :scoring (cond-> (count (:unsupported rules))
-                (= :failed (:status rules)) inc)}))
+  :<- [:accounts] :<- [:active-league-key]
+  :<- [:active-league-rules] :<- [:active-league-importing?]
+  (fn [[accounts k rules importing?] _]
+    {:leagues        (boolean (some :credentials-stale? (vals accounts)))
+     :scoring        (count (:unsupported rules))
+     :rules-missing? (and (some? k) (not importing?) (not= :imported (:status rules)))}))
 
 (rf/reg-sub :vendor-gaps
   :<- [:scoring-format]

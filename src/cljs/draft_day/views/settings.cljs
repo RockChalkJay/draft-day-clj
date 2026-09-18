@@ -62,7 +62,11 @@
      [:div.league-who
       [:b (or (:name entry) (:league-id entry))]
       [:span.muted (str (or (:season entry) "—")
-                        (when (seq teams) (str " · " (count teams) " teams")))]]
+                        (when (seq teams) (str " · " (count teams) " teams")))
+       ;; On the row, not only on the status line: Re-sync runs the sync and the
+       ;; import together, and a sync that answers second overwrites the line.
+       (when (= :failed (get-in entry [:rules :status]))
+         [:span.warn {:title (get-in entry [:rules :error])} " · settings not imported"])]]
      (if (seq teams)
        [:select {:value (str mine)
                  :aria-label "My team"
@@ -260,13 +264,30 @@
            [:p.muted "No leagues yet — pick one above, or paste a league ID."])
          (when status [:div.sync-status status])]))))
 
+(defn- fixed-field
+  "A value the active league sets: shown, never edited — `db/league-owned-keys`."
+  [label value]
+  [:label.field
+   [:span label]
+   [:input {:type "number" :value (str value) :disabled true :read-only true}]])
+
 (defn- league-config []
-  (let [cfg @(rf/subscribe [:config])]
+  (let [cfg   @(rf/subscribe [:config])
+        owned @(rf/subscribe [:league-owned-keys])
+        rules @(rf/subscribe [:active-league-rules])
+        field (fn [k label]
+                (if (owned k)
+                  [fixed-field label (get cfg k)]
+                  [num-field label (get cfg k) #(rf/dispatch [:edit-config {k %}])]))]
     [:section.settings-card
      [:h3 "League"]
      [:div.fields
-      [num-field "Teams" (:num-teams cfg) #(rf/dispatch [:apply-config {:num-teams %}])]
-      [num-field "Budget $" (:starting-bankroll cfg) #(rf/dispatch [:apply-config {:starting-bankroll %}])]]]))
+      (field :num-teams "Teams")
+      (field :starting-bankroll "Budget $")]
+     ;; Worded for either reason the import brought none: a snake draft has no
+     ;; budget, and Sleeper's draft fetch is best-effort.
+     (when (and (= :imported (:status rules)) (not (:bankroll? rules)))
+       [:p.muted.field-note "Your league's import didn't include an auction budget, so this one is yours to set."])]))
 
 (defn- budget-config []
   (let [cfg      @(rf/subscribe [:config])
@@ -298,11 +319,6 @@
   [label value]
   [:label.field.unprojected {:title unprojected-note}
    [:span label [:i.not-projected "not projected"]]
-   [:input {:type "number" :value (str value) :disabled true :read-only true}]])
-
-(defn- fixed-field [label value]
-  [:label.field
-   [:span label]
    [:input {:type "number" :value (str value) :disabled true :read-only true}]])
 
 (defn- custom-scoring-editor [weights read-only?]
@@ -344,20 +360,40 @@
              (map (fn [rule] ^{:key rule} [:span.rule-chip rule]))
              unsupported)])))
 
-(defn import-failure
-  "A league whose rules never arrived. The scoring is read-only, so the board is
-  still on whatever it had before — another league's rules, possibly — and the
-  manager has to be told so rather than shown them as this league's."
+(defn league-source
+  "Where a connected league's settings came from, and whether they came at all.
+
+  Heads every section that shows them. They are read-only, so a manager who
+  cannot change a number has to be able to tell whose it is — and when the
+  import failed, that the board is still on the settings it had before, which
+  for a newly added league are another league's."
   []
-  (let [{:keys [status error]} @(rf/subscribe [:active-league-rules])
-        league                 @(rf/subscribe [:active-league])]
-    (when (not= :imported status)
+  (let [league     @(rf/subscribe [:active-league])
+        importing? @(rf/subscribe [:active-league-importing?])
+        {:keys [status error unsupported]} @(rf/subscribe [:active-league-rules])
+        named      [:b (or (:name league) (:league-id league))]]
+    (cond
+      (nil? league) nil
+
+      importing?
+      [:p.league-source.muted "Importing " named "'s settings…"]
+
+      (= :imported status)
+      [:p.league-source.muted "From " named
+       (when-let [season (:season league)] (str " (" season ")"))
+       ". Re-sync the league to refresh them."]
+
+      :else
       [:div.scoring-warning
        [:b (if (= :failed status)
-             (str "Couldn't import this league's scoring: " error)
-             "This league's scoring hasn't been imported yet.")]
-       [:p.muted "The board is still using the previous rules."]
-       [:button {:on-click #(rf/dispatch [:import-league (select-keys league [:provider :league-id])])}
+             (str "Couldn't import this league's settings: " error)
+             "This league's settings haven't been imported yet.")]
+       ;; An earlier good import leaves its `:unsupported` list behind, and the
+       ;; board is still on *those* settings — this league's, only older.
+       [:p.muted (if (some? unsupported)
+                   "The board is still using the last imported settings."
+                   "The board is still using the previous settings, which may be another league's.")]
+       [:button.plain {:on-click #(rf/dispatch [:import-league (select-keys league [:provider :league-id])])}
         "Retry import"]])))
 
 (def vendor-gap-copy
@@ -398,13 +434,8 @@
   "A connected league's scoring, as imported. Shown, never edited: the league
   sets its rules, and Re-sync is how they are refreshed."
   [cfg]
-  (let [league @(rf/subscribe [:active-league])
-        s      (:scoring cfg)]
+  (let [s (:scoring cfg)]
     [:section.settings-card
-     [:p.muted "Scoring from " [:b (or (:name league) "this league")]
-      (when-let [season (:season league)] (str " (" season ")"))
-      ". Re-sync the league to refresh it."]
-     [import-failure]
      [import-warning]
      [vendor-gap-warning]
      [custom-scoring-editor (if (map? s) s (scoring/resolve-config s)) true]]))
@@ -413,7 +444,7 @@
   (let [cfg    @(rf/subscribe [:config])
         mode   @(rf/subscribe [:scoring-mode])
         mode-s (name mode)]
-    (if @(rf/subscribe [:active-league-key])
+    (if (contains? @(rf/subscribe [:league-owned-keys]) :scoring)
       [league-scoring cfg]
       [:section.settings-card
        [:label.field.preset
@@ -434,13 +465,16 @@
 (defn- roster-config []
   (let [cfg    @(rf/subscribe [:config])
         roster (:roster cfg)
-        set-r  (fn [k v] (rf/dispatch [:apply-config {:roster (assoc roster k v)}]))]
+        fixed? (contains? @(rf/subscribe [:league-owned-keys]) :roster)
+        set-r  (fn [k v] (rf/dispatch [:edit-config {:roster (assoc roster k v)}]))]
     [:section.settings-card
      [:h3 "Roster"]
      [:div.fields
+      ;; The key rides on each branch — see `custom-scoring-editor`.
       (map (fn [[k label]]
-             ^{:key k}
-             [num-field label (get roster k 0) #(set-r k %)])
+             (if fixed?
+               ^{:key k} [fixed-field label (get roster k 0)]
+               ^{:key k} [num-field label (get roster k 0) #(set-r k %)]))
            [[:qb "QB"] [:rb "RB"] [:wr "WR"] [:te "TE"]
             [:flex "FLEX"] [:k "K"] [:dst "DST"] [:bench "Bench"]])]]))
 
@@ -489,13 +523,14 @@
   "The sentence under each section's heading, where one earns its place."
   {:leagues "Connect a fantasy account to pull its leagues. Everything on the board — scoring, rosters, waivers — follows whichever league is active. Credentials are kept in this browser and sent only to read your leagues."
    :scoring "How the active league scores. A connected league's rules come from its import and are read-only."
+   :roster  "A connected league's team count, roster and auction budget come from its import and are read-only."
    :draft   "Your auction budget plan, and the drafts already done."})
 
 (defn section-body [k]
   (case k
     :leagues [connected-accounts]
-    :scoring [scoring-config]
-    :roster  [:<> [league-config] [roster-config]]
+    :scoring [:<> [league-source] [scoring-config]]
+    :roster  [:<> [league-source] [league-config] [roster-config]]
     :draft   [:<> [budget-config] [draft-archive]]
     :data    [danger-zone]
     [connected-accounts]))
@@ -512,20 +547,32 @@
        [:button {:class (when (= k on) "on")
                  :on-click #(rf/dispatch [:set-settings-section k])}
         label
-        (case k
-          :leagues (when (:leagues alerts)
-                     [:span.nav-dot {:title "An account needs reconnecting"}])
-          :scoring (when (pos? (:scoring alerts))
-                     [:span.nav-badge {:title "Scoring rules this board could not apply"}
-                      (:scoring alerts)])
-          nil)])]))
+        (let [missing [:span.nav-dot {:title "This league's settings were not imported"}]]
+          (case k
+            :leagues (when (:leagues alerts)
+                       [:span.nav-dot {:title "An account needs reconnecting"}])
+            ;; Missing outranks the count: it asks for a Retry, and the count
+            ;; asks for nothing the manager can do.
+            :scoring (cond
+                       (:rules-missing? alerts) missing
+                       (pos? (:scoring alerts))
+                       [:span.nav-badge {:title "Scoring rules this board could not apply"}
+                        (:scoring alerts)])
+            :roster  (when (:rules-missing? alerts) missing)
+            nil))])]))
 
-(defn settings []
-  (let [k     (or @(rf/subscribe [:settings-section]) :leagues)
-        label (some (fn [[sk l]] (when (= sk k) l)) db/settings-sections)]
+(defn settings
+  "Every section stays mounted and only the chosen one is shown. Unmounting the
+  rest threw away whatever was typed into them — a half-pasted ESPN cookie gone
+  because the manager glanced at Scoring. Hidden sections are `display: none`,
+  so they are still not on the page for a card to be stretched against."
+  []
+  (let [on (or @(rf/subscribe [:settings-section]) :leagues)]
     [:div.settings
      [settings-nav]
-     [:div.settings-section
-      [:h2 label]
-      (when-let [lede (section-ledes k)] [:p.lede lede])
-      [section-body k]]]))
+     (for [[k label] db/settings-sections]
+       ^{:key k}
+       [:div.settings-section {:hidden (not= k on)}
+        [:h2 label]
+        (when-let [lede (section-ledes k)] [:p.lede lede])
+        [section-body k]])]))

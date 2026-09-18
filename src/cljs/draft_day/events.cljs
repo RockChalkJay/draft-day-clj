@@ -300,8 +300,12 @@
 
 (rf/reg-event-fx :start-draft [persist]
   (fn [{:keys [db]} [_ {:keys [num-teams starting-bankroll team-names]}]]
-    (let [num-teams (max 2 (min 20 (or num-teams 12)))
-          bankroll  (max 1 (or starting-bankroll 200))
+    ;; The modal draws a connected league's figures read-only; this holds the
+    ;; same line, so the modal is not a way round Settings.
+    (let [owned     (db/league-owned-keys db)
+          pick      (fn [k typed] (if (owned k) (get-in db [:config k]) typed))
+          num-teams (max 2 (min 20 (or (pick :num-teams num-teams) 12)))
+          bankroll  (max 1 (or (pick :starting-bankroll starting-bankroll) 200))
           cfg   (assoc (:config db)
                        :num-teams num-teams
                        :starting-bankroll bankroll)
@@ -320,16 +324,32 @@
             [:dispatch [:refresh-drafts]]
             [:dispatch [:recompute]]]})))
 
-;; Debounced for the same reason as :set-scoring-weight — the League and Roster
-;; fields dispatch this per keystroke, and each one re-ranks the whole universe.
+(defn apply-config
+  "Merge `new-cfg` into the live config and rebuild the teams it sizes.
+
+  Debounced for the same reason as :set-scoring-weight — the League and Roster
+  fields dispatch per keystroke, and each one re-ranks the whole universe."
+  [db new-cfg]
+  (let [cfg   (merge (:config db) new-cfg)
+        teams (if (empty? (:picks db))
+                (db/make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
+                (:teams db))]
+    {:db (-> db (db/set-config cfg) (assoc :teams teams))
+     :debounce {:id :recompute :event [:recompute]}}))
+
+;; The import's own path: it is what sets a league's rules, so nothing is
+;; dropped here. Hand edits go through `:edit-config`.
 (rf/reg-event-fx :apply-config [persist]
   (fn [{:keys [db]} [_ new-cfg]]
-    (let [cfg   (merge (:config db) new-cfg)
-          teams (if (empty? (:picks db))
-                  (db/make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
-                  (:teams db))]
-      {:db (-> db (db/set-config cfg) (assoc :teams teams))
-       :debounce {:id :recompute :event [:recompute]}})))
+    (apply-config db new-cfg)))
+
+;; A hand edit from Settings. What the active league sets is dropped — its
+;; import is the only writer, and an edit here would be reverted by the next
+;; Re-sync without a word.
+(rf/reg-event-fx :edit-config [persist]
+  (fn [{:keys [db]} [_ new-cfg]]
+    (let [cfg (apply dissoc new-cfg (db/league-owned-keys db))]
+      (if (seq cfg) (apply-config db cfg) {}))))
 
 ;; Manager's per-position budget plan — client-only tracking, so no team
 ;; rebuild and no :recompute; just persist the :config slice.
@@ -339,11 +359,10 @@
       (db/update-config db assoc-in [:budget-plan bucket] v))))
 
 (defn scoring-editable?
-  "A connected league's scoring is its import's, never the manager's: letting it
-  be edited is what kept Re-sync from refreshing the rules, and an edit is lost
-  to the next import anyway. Only a board with no league behind it is hand-set."
+  "A connected league's scoring is its import's, never the manager's — see
+  `db/league-owned-keys`."
   [db]
-  (nil? (:active-league db)))
+  (not (contains? (db/league-owned-keys db) :scoring)))
 
 (rf/reg-event-fx :select-scoring-preset [persist]
   (fn [{:keys [db]} [_ preset]]
@@ -388,13 +407,20 @@
 
 (rf/reg-event-fx :import-league
   (fn [{:keys [db]} [_ {:keys [provider league-id] :as league}]]
-    ;; The key rides along so imported rules land in the league they were
-    ;; fetched for — see the ns docstring.
-    {:db   (assoc db :status "Importing league…")
-     :http {:method :post :url "/api/league/import"
-            :body (league-request db league)
-            :on-success [:league-import-loaded (db/league-key provider league-id)]
-            :on-failure [:league-import-failed (db/league-key provider league-id)]}}))
+    ;; `db/league-key` calls `name` on the provider, and `(name nil)` throws in
+    ;; ClojureScript — killing the event rather than reporting anything.
+    (if-not (and provider league-id)
+      {:db (assoc db :status "Nothing to import — no league is selected.")}
+      ;; The key rides along so imported rules land in the league they were
+      ;; fetched for — see the ns docstring.
+      (let [k (db/league-key provider league-id)]
+        {:db   (-> db
+                   (assoc :status "Importing league…")
+                   (update :importing (fnil conj #{}) k))
+         :http {:method :post :url "/api/league/import"
+                :body (league-request db league)
+                :on-success [:league-import-loaded k]
+                :on-failure [:league-import-failed k]}}))))
 
 ;; A failed import now arrives at :league-import-failed, because the :http effect
 ;; routes any non-2xx there; this handler only ever sees a real config.
@@ -404,25 +430,36 @@
     ;; about it, and `merge`ing the nil over what the manager already has is
     ;; how a missing `total_rosters`/`settings.size` reaches `db/make-teams` as
     ;; a team count of nothing.
-    (let [cfg    (into {} (remove (comp nil? val))
-                       (select-keys resp [:scoring :roster :num-teams]))
-          known? (contains? (:leagues db) k)
+    (let [cfg      (into {} (remove (comp nil? val))
+                         (select-keys resp [:scoring :roster :num-teams :starting-bankroll]))
+          known?   (contains? (:leagues db) k)
           ;; Only the active league's rules may touch the board.
-          live?  (or (nil? k) (= k (:active-league db)))]
+          live?    (or (nil? k) (= k (:active-league db)))
+          ;; Re-sync re-imports every time, and a league's rules almost never
+          ;; move between presses: an unchanged import re-prices nothing.
+          changed? (not= cfg (select-keys (:config db) (keys cfg)))]
       ;; What the import could not apply goes on the league, persisted, so the
       ;; warning outlives a reload and a late reply lands in its own league.
       ;; The status line describes *the board*, so it is gated with
       ;; `:apply-config` — a late reply would otherwise announce the old league.
-      {:db (cond-> db
+      {:db (cond-> (update db :importing disj k)
              known? (-> (update-in [:leagues k :config] merge cfg)
                         (update-in [:leagues k] merge (select-keys resp [:name :season]))
                         (assoc-in [:leagues k :rules]
-                                  {:status :imported
-                                   :unsupported (vec (:unsupported-scoring resp))})))
-       :fx (if live?
-             [[:dispatch [:apply-config cfg]]
-              [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]]
-             [])})))
+                                  {:status      :imported
+                                   :unsupported (vec (:unsupported-scoring resp))
+                                   :bankroll?   (contains? cfg :starting-bankroll)})))
+       :fx (cond-> []
+             (and live? changed?)
+             (into [[:dispatch [:apply-config cfg]]
+                    ;; Both in-season boards are priced under the rules too, and
+                    ;; the sync that raced this import asked under the old ones;
+                    ;; the seq guards drop its reply.
+                    [:dispatch [:fetch-waivers]]])
+             (and live? changed? (= :matchup (:view db)))
+             (conj [:dispatch [:fetch-matchup]])
+             live?
+             (conj [:dispatch [:set-status (str "✓ Imported \"" (:name resp) "\" (" (:season resp) ")")]]))})))
 
 (defn mark-stale
   "Flag the account a league is read through as needing a reconnect.
@@ -439,11 +476,15 @@
   (fn [db [_ k err status]]
     ;; Both status lines: Settings renders `:waiver-status`, the header
     ;; `:status`, and only one put the failure on the unwatched tab.
-    ;; Recorded on the league, because its scoring is read-only: the manager
-    ;; has to be told the board is still on the rules it had before.
+    ;; Recorded on the league, because its rules are read-only: the manager
+    ;; has to be told the board is still on the ones it had before. Assoc'd,
+    ;; not replaced — the last good import's unapplied rules are still the
+    ;; ones in force, and a failed retry must not wipe the list of them.
     (let [msg (str "League import failed: " err)]
-      (cond-> (assoc db :status msg :waiver-status msg)
-        (contains? (:leagues db) k) (assoc-in [:leagues k :rules] {:status :failed :error err})
+      (cond-> (-> db
+                  (assoc :status msg :waiver-status msg)
+                  (update :importing disj k))
+        (contains? (:leagues db) k) (update-in [:leagues k :rules] assoc :status :failed :error err)
         (= 401 status) (mark-stale k true)))))
 
 ;; ---- in-season: league sync + waivers ----
@@ -522,12 +563,14 @@
               :on-failure [:league-sync-failed (db/league-key provider league-id)]}})))
 
 (rf/reg-event-fx :refresh-league
-  (fn [_ [_ league]]
-    ;; Rosters and rules together: the rules are read-only now, so there is no
-    ;; hand edit left for a re-import to overwrite.
-    (let [req (select-keys league [:provider :league-id])]
-      {:fx [[:dispatch [:sync-league req]]
-            [:dispatch [:import-league req]]]})))
+  (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
+    ;; Rosters and rules together: everything the import sets is read-only
+    ;; (`db/league-owned-keys`), so there is no hand edit for it to overwrite.
+    (if-not (and provider league-id)
+      {:db (assoc db :waiver-status "Nothing to sync — no league is selected.")}
+      (let [req {:provider provider :league-id league-id}]
+        {:fx [[:dispatch [:sync-league req]]
+              [:dispatch [:import-league req]]]}))))
 
 (defn my-roster-id-for
   "Which roster in this league belongs to `user-id`, or nil.

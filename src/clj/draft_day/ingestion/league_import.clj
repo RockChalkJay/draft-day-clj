@@ -29,7 +29,10 @@
   (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
 
 (defmulti normalize-league
-  "Pure: a provider's raw league payload -> {:scoring :roster :num-teams :name :season}."
+  "Pure: a provider's raw league payload ->
+  {:scoring :unsupported-scoring :roster :num-teams :starting-bankroll :name :season}.
+
+  `:starting-bankroll` is the auction budget, nil for any other kind of draft."
   (fn [provider _raw] provider))
 
 (defn import-league

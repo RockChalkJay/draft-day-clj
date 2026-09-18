@@ -51,9 +51,9 @@
   occupies, and the matchup board falls back to the draft config's slot
   template, which is only a guess at that league's shape.
 
-  9: a league entry carries `:rules` — what its import could not apply, or why
-  it failed — because a connected league's scoring is read-only and the warning
-  has to outlive a reload."
+  9: a league entry carries `:rules` — what its import could not apply, whether
+  it brought an auction budget, or why it failed — because a connected league's
+  settings are read-only and the warning has to outlive a reload."
   9)
 
 (def drafts-key "draft-day-drafts")

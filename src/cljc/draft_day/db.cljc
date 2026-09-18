@@ -156,6 +156,21 @@
   [db f & args]
   (set-config db (apply f (:config db) args)))
 
+(defn league-owned-keys
+  "The config keys the active league sets, which the manager can see but not
+  edit: its import is the only writer. Every hand edit — Settings, the Start
+  Draft modal — drops these, and every view draws them read-only off this one
+  set, so the two cannot disagree about what is editable.
+
+  The bankroll is owned only once an import has actually supplied one. A snake
+  league publishes no auction budget, and locking the field there would leave a
+  number nobody can ever set."
+  [db]
+  (if-let [k (:active-league db)]
+    (cond-> #{:scoring :roster :num-teams}
+      (get-in db [:leagues k :rules :bankroll?]) (conj :starting-bankroll))
+    #{}))
+
 (defn rules-stamp
   "The half of a config a ranked board is only valid under.
 
@@ -823,9 +838,15 @@
      :accounts     {}
      ;; league-key -> {:provider :league-id :account-key :name :season :my-roster-id
      ;;                :config  — this league's scoring/roster/team count
-     ;;                :sync    — last /api/league/sync reply: who is rostered, and FAAB}
+     ;;                :sync    — last /api/league/sync reply: who is rostered, and FAAB
+     ;;                :rules   — what the last import did: {:status :imported
+     ;;                           :unsupported [...] :bankroll? bool}, or :failed
+     ;;                           with an :error beside what the last good one left}
      :leagues      {}
      :active-league nil         ; which league-key everything on screen is about
+     ;; league-keys with an import in flight. Transient, so a reload mid-import
+     ;; cannot leave a league reading as forever importing.
+     :importing    #{}
      ;; account-key -> the leagues that account plays in, and why the listing
      ;; failed when it did. Top-level rather than inside the account, because
      ;; `:accounts` is persisted and these are refetched, never stored. nil and

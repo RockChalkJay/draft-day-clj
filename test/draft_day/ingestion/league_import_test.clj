@@ -84,3 +84,36 @@
     (is (:ok (league-import/import-league {:provider "sleeper" :league-id "1"}))
         "Sleeper serves a league to anyone with the id; demanding a username
          would refuse a case that works")))
+
+(deftest an-auction-league-brings-its-budget
+  ;; Without it the one number a connected league still needed typed by hand
+  ;; was the bankroll the whole board is priced out of.
+  (is (= 300 (:starting-bankroll
+              (league-import/normalize-league
+               :sleeper (assoc raw-league :draft {:type "auction" :settings {:budget 300}})))))
+  (testing "a snake draft has no budget to bring, whatever its settings carry"
+    (is (nil? (:starting-bankroll
+               (league-import/normalize-league
+                :sleeper (assoc raw-league :draft {:type "snake" :settings {:budget 200}}))))))
+  (testing "and a league with no draft document says nothing either"
+    (is (nil? (:starting-bankroll (league-import/normalize-league :sleeper raw-league))))))
+
+(deftest the-draft-is-fetched-alongside-the-league-but-never-fails-it
+  (let [asked (atom nil)]
+    (with-redefs [sleeper-import/fetch-league (fn [_] (assoc raw-league :draft_id "d1"))
+                  sleeper-import/fetch-draft  (fn [id] (reset! asked id) {:type "auction"
+                                                                          :settings {:budget 250}})]
+      (is (= 250 (-> (league-import/import-league {:provider "sleeper" :league-id "1"})
+                     :config :starting-bankroll)))
+      (is (= "d1" @asked) "the draft asked for is the league's own")))
+  (testing "a draft fetch that throws still imports the rules"
+    (with-redefs [sleeper-import/fetch-league (fn [_] (assoc raw-league :draft_id "d1"))
+                  sleeper-import/fetch-draft  (fn [_] (throw (ex-info "down" {:status 502})))]
+      (let [{:keys [ok config]} (league-import/import-league {:provider "sleeper" :league-id "1"})]
+        (is ok)
+        (is (= 10 (:num-teams config)))
+        (is (nil? (:starting-bankroll config))))))
+  (testing "a league with no draft scheduled asks for none"
+    (with-redefs [sleeper-import/fetch-league (fn [_] raw-league)
+                  sleeper-import/fetch-draft  (fn [_] (throw (AssertionError. "fetched a draft")))]
+      (is (:ok (league-import/import-league {:provider "sleeper" :league-id "1"}))))))

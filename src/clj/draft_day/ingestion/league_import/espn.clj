@@ -256,6 +256,15 @@
     {:type   (if (:isUsingAcquisitionBudget a) :faab :rolling)
      :budget (or (:acquisitionBudget a) 0)}))
 
+(defn auction-budget
+  "Pure: what each team starts the draft with, or nil for anything but an
+  auction. ESPN fills `auctionBudget` in a snake league too, so the draft type
+  is what decides, the way `league-import.sleeper/auction-budget` reads it."
+  [raw]
+  (let [d (get-in raw [:settings :draftSettings])]
+    (when (= "AUCTION" (:type d))
+      (:auctionBudget d))))
+
 (defmethod league-import/normalize-league :espn
   [_ raw]
   (let [items  (get-in raw [:settings :scoringSettings :scoringItems])
@@ -270,5 +279,6 @@
      ;; `league-import.sleeper` answers when the field is missing, and it leaves
      ;; the manager's own team count standing.
      :num-teams           (get-in raw [:settings :size])
+     :starting-bankroll   (auction-budget raw)
      :name                (get-in raw [:settings :name])
      :season              (str (:seasonId raw))}))

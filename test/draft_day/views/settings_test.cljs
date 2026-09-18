@@ -141,20 +141,42 @@
 
 ;; ---- sections ----
 
+(defn- sections
+  "Each Settings section as `[shown? markup]`, in sidebar order."
+  []
+  (->> (render/hiccup settings/settings)
+       (tree-seq coll? seq)
+       (filter #(and (vector? %) (= :div.settings-section (first %))))
+       (map (fn [[_ attrs & body]] [(not (:hidden attrs)) (pr-str body)]))))
+
+(defn- shown [] (some (fn [[shown? html]] (when shown? html)) (sections)))
+
 (deftest settings-shows-one-section-at-a-time
   ;; The whole fix for the stretching: cards that are not in the open section
-  ;; are not on the page to be stretched against.
-  (let [html (render settings/settings)]
+  ;; are `display: none`, so not on the page to be stretched against.
+  (is (= 1 (count (filter first (sections)))))
+  (let [html (shown)]
     (is (re-find #"Leagues & Accounts" html) "opens on accounts")
     (is (re-find #"Add account|Connect" html))
     (is (not (re-find #"Danger Zone" html)))
     (is (not (re-find #"Budget Plan" html))))
   (rf/dispatch-sync [:set-settings-section :draft])
   (rf/clear-subscription-cache!)
-  (let [html (render settings/settings)]
+  (let [html (shown)]
     (is (re-find #"Budget Plan" html))
     (is (re-find #"Draft Archive" html))
     (is (not (re-find #"Add account" html)))))
+
+(deftest a-section-you-leave-keeps-what-you-typed
+  ;; Hidden, never unmounted: an unmounted connect form loses its local atoms,
+  ;; and with them a half-pasted ESPN cookie, when the manager glances at
+  ;; another section.
+  (rf/dispatch-sync [:set-settings-section :scoring])
+  (rf/clear-subscription-cache!)
+  (is (= (count db/settings-sections) (count (sections)))
+      "every section is still in the tree")
+  (is (re-find #"Add account|Connect" (pr-str (map second (sections))))
+      "including the one holding the connect form"))
 
 (deftest every-section-is-reachable-from-the-sidebar
   (is (= (set (map (fn [[k _]] [:set-settings-section k]) db/settings-sections))
@@ -232,7 +254,7 @@
   (rf/clear-subscription-cache!)
   (let [html (render settings/section-body :scoring)]
     (is (re-find #"league not found" html))
-    (is (re-find #"previous rules" html)))
+    (is (re-find #"previous settings, which may be another league's" html)))
   (is (= [[:import-league {:provider "sleeper" :league-id "1"}]]
          (press! settings/section-body "Retry import" :scoring))))
 
@@ -240,4 +262,54 @@
   (rf/clear-subscription-cache!)
   (let [html (render settings/section-body :scoring)]
     (is (re-find #"Preset" html))
-    (is (not (re-find #"previous rules" html)))))
+    (is (not (re-find #"previous settings" html)))))
+
+(defn- league! [rules & {:as entry}]
+  (swap! rdb/app-db assoc
+         :active-league "sleeper:1"
+         :leagues {"sleeper:1" (merge {:provider "sleeper" :league-id "1" :name "Dynasty"
+                                       :season "2026" :rules rules}
+                                      entry)})
+  (rf/clear-subscription-cache!))
+
+(deftest a-connected-league-s-roster-and-teams-are-shown-not-edited
+  ;; Re-sync re-imports them, so an edit here was reverted on the next press.
+  (league! {:status :imported :unsupported [] :bankroll? true})
+  (swap! rdb/app-db update :config assoc :num-teams 10 :starting-bankroll 300)
+  (let [html (render settings/section-body :roster)]
+    (is (re-find #"From .*Dynasty.* \(2026\)" html) "it says whose settings these are")
+    (is (re-find #":value \"10\"" html) "the league's own team count")
+    (is (re-find #":value \"300\"" html) "and its budget")
+    (is (not (re-find #":on-change" html)) "and no field that writes back")))
+
+(deftest a-league-with-no-auction-budget-leaves-the-budget-to-the-manager
+  ;; A snake league publishes none, and a locked field there could never be set.
+  (league! {:status :imported :unsupported [] :bankroll? false})
+  (let [html (render settings/section-body :roster)]
+    (is (re-find #"didn't include an auction budget" html))
+    (is (= 1 (count (re-seq #":on-change" html))) "only the budget is editable")))
+
+(deftest an-import-in-flight-is-not-a-failure
+  ;; A red "not imported yet" with a Retry, on every league for the second
+  ;; before its first import answers, sent a duplicate import when pressed.
+  (league! nil)
+  (swap! rdb/app-db assoc :importing #{"sleeper:1"})
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/section-body :scoring)]
+    (is (re-find #"Importing" html))
+    (is (not (re-find #"Retry" html)))
+    (is (not (re-find #"scoring-warning" html))))
+  (is (not (re-find #"nav-dot" (render settings/settings-nav)))
+      "and the sidebar does not flag it either"))
+
+(deftest a-failed-retry-still-lists-what-the-last-import-could-not-apply
+  (league! {:status :failed :error "down" :unsupported ["fg_50p"] :bankroll? true})
+  (let [html (render settings/section-body :scoring)]
+    (is (re-find #"last imported settings" html) "the board is on this league's older settings")
+    (is (re-find #"rule-chip" html) "whose gaps are still listed")))
+
+(deftest a-league-whose-settings-never-arrived-is-flagged-everywhere
+  (league! {:status :failed :error "down"})
+  (let [nav (render settings/settings-nav)]
+    (is (= 2 (count (re-seq #"nav-dot" nav))) "on Scoring and on Roster & League"))
+  (is (re-find #"settings not imported" (card)) "and on the league's own row"))

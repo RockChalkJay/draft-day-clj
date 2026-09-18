@@ -48,7 +48,10 @@
       (is (seq (get-in raw [:settings :scoringSettings :scoringItems]))
           "the scoring rules still live under settings.scoringSettings.scoringItems")
       (is (seq (get-in raw [:settings :rosterSettings :lineupSlotCounts]))
-          "and the seats under settings.rosterSettings.lineupSlotCounts"))))
+          "and the seats under settings.rosterSettings.lineupSlotCounts")
+      (is (string? (get-in raw [:settings :draftSettings :type]))
+          "and the draft type under settings.draftSettings, which decides whether
+           auctionBudget is a budget anybody bids with"))))
 
 (deftest ^:integration espn-scoring-still-maps-onto-rules-this-league-set
   (with-league [req]

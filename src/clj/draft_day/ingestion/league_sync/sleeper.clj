@@ -8,11 +8,12 @@
   how much). `parallel/all` starts them at once — the same reason
   `pipeline/enrichment-tasks` exists, at a much smaller scale.
 
-  The league document is fetched through `league-import/fetch-raw-league` rather
-  than by building its URL again here. That is the one copy of both the endpoint
-  and its error handling — including Sleeper's habit of answering an unknown
-  league id with HTTP 200 and a JSON null body, which is a trap worth having in
-  exactly one place.
+  The league document is fetched through `league-import.sleeper/fetch-league`
+  rather than by building its URL again here. That is the one copy of both the
+  endpoint and its error handling — including Sleeper's habit of answering an
+  unknown league id with HTTP 200 and a JSON null body, which is a trap worth
+  having in exactly one place. Not through `fetch-raw-league`: that one also
+  fetches the draft for its auction budget, which a roster sync has no use for.
 
   ROSTER IDS ARE SLEEPER IDS. This namespace deliberately does not translate
   them: the crosswalk to the canonical GSIS ids the board is keyed by lives in
@@ -24,7 +25,6 @@
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.league-sync :as league-sync]
-            [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.sleeper :as import-sleeper]))
 
 (def ^:private base "https://api.sleeper.app/v1/")
@@ -68,11 +68,11 @@
 ;; `parallel/all` wrapped in an ExecutionException. `league-sync/unwrap-execution`
 ;; peels it where the status is read, so no provider has to remember to.
 (defmethod league-sync/fetch-raw-rosters :sleeper
-  [_ {:keys [league-id] :as req}]
+  [_ {:keys [league-id]}]
   (parallel/all
    {:rosters (fn [] (fetch-json league-id "rosters"))
     :users   (fn [] (fetch-json league-id "users"))
-    :league  (fn [] (league-import/fetch-raw-league :sleeper req))}))
+    :league  (fn [] (import-sleeper/fetch-league league-id))}))
 
 (defn normalize-user
   "Pure: Sleeper's user document -> `{:user-id :display-name :avatar}`.
