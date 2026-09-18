@@ -636,3 +636,18 @@
   ;; It crosses the wire as JSON; same fix as `waiver/faab?`.
   (is (= {"4034" "00-1"}
          (db/provider->player-id [{:player-id "00-1" :ids {:sleeper "4034"}}] "sleeper"))))
+
+(deftest a-league-owns-what-its-import-sets
+  (is (= #{} (db/league-owned-keys (db/default-db)))
+      "with no league, everything is the manager's")
+  (let [on (fn [rules] (-> (db/default-db)
+                           (assoc :active-league "sleeper:1")
+                           (assoc-in [:leagues "sleeper:1" :rules] rules)))]
+    (is (= #{:scoring :roster :num-teams} (db/league-owned-keys (on nil)))
+        "rules, roster and team count from the moment a league is active —
+         before its import answers, its board is still not the manager's to set")
+    (is (= #{:scoring :roster :num-teams} (db/league-owned-keys (on {:status :imported :bankroll? false})))
+        "a league with no auction budget leaves the bankroll alone")
+    (is (contains? (db/league-owned-keys (on {:status :imported :bankroll? true})) :starting-bankroll))
+    (is (contains? (db/league-owned-keys (on {:status :failed :bankroll? true})) :starting-bankroll)
+        "and a failed retry does not hand back one an earlier import set")))

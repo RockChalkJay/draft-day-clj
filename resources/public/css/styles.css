@@ -369,24 +369,56 @@ button.undo:hover { color: var(--warn); }
 .team-head { font-weight: 600; margin-bottom: 8px; }
 .team-head .you { color: var(--accent); }
 
-/* ---- settings ---- */
-.settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+/* ---- settings ----
+   A sidebar and one section at a time. The old single grid put every card in a
+   row with its neighbours, and a grid row stretches its items to the tallest:
+   opening the scoring editor or connecting a second account turned the small
+   cards beside it into tall empty boxes, and reflowed the whole page. Here each
+   section is a column of cards at their natural height, so content only ever
+   grows its own page. */
+.settings { display: grid; grid-template-columns: 200px minmax(0, 760px); gap: 28px;
+  align-items: start; justify-content: center; }
+.settings-nav { position: sticky; top: 72px; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav button { display: flex; align-items: center; gap: 8px; text-align: left;
+  background: transparent; border: 1px solid transparent; color: var(--muted);
+  border-radius: 8px; padding: 7px 10px; }
+.settings-nav button:hover { color: var(--text); }
+.settings-nav button.on { color: var(--text); background: var(--panel);
+  border-color: var(--border); box-shadow: inset 2px 0 0 var(--accent); }
+/* What is waiting inside a section, said from outside it. */
+.nav-badge { margin-left: auto; background: var(--warn-bg); color: var(--warn);
+  border-radius: 999px; font-size: 10px; font-weight: 700; padding: 1px 7px; }
+.nav-dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.settings-section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* `display: flex` above outranks the UA's rule for [hidden]. */
+.settings-section[hidden] { display: none; }
+.settings-section > h2 { margin: 0; font-size: 18px; }
+.settings-section > .lede { margin: -8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .settings-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
-.settings-card.accounts { border-color: var(--accent); grid-column: 1 / -1; }
 .settings-card.danger-zone { border-color: var(--warn); }
 .settings-card h3 { margin: 0 0 10px; font-size: 14px; }
-.settings-card.accounts h3 { color: var(--accent); }
-/* The account card owns identity for the whole app, so it spans the grid rather
-   than sharing a 280px column with the roster spinners: its rows are a league
-   name, a team dropdown and two buttons on one line, and at column width they
-   wrap into a stack of fragments. */
+.card-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.card-head h3 { margin: 0; }
+.card-head .link { margin-left: auto; }
+.settings button.link { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; }
+.settings button.link:hover { text-decoration: underline; }
+.settings button.plain { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 10px; font-size: 12px; }
+.settings button.plain:disabled { color: var(--muted); cursor: not-allowed; }
 .settings-card.accounts .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .settings-card.accounts .row input { flex: 0 1 260px; }
 .settings-card.danger-zone h3 { color: var(--warn); }
 .fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+/* A section column is ~730px, so a fixed two-up grid leaves each spinner half a
+   card wide. */
+.settings .fields { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.settings .field.preset { max-width: 220px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .field span { color: var(--muted); }
 .field input, .field select { width: 100%; }
+/* A value the league sets: shown, not typed into. Without this a locked field
+   is indistinguishable from the editable one beside it. */
+.field input:disabled { background: transparent; border-style: dashed; cursor: default; }
 .row { display: flex; gap: 8px; }
 .row input { flex: 1; }
 .budget-tally { margin-top: 10px; font-size: 12px; color: var(--muted); }
@@ -397,8 +429,16 @@ button.undo:hover { color: var(--warn); }
 .scoring-warning { margin: 10px 0 4px; padding: 10px 12px; border-radius: 6px;
                    background: rgba(240,85,95,.10); border: 1px solid rgba(240,85,95,.35); }
 .scoring-warning p { margin: 4px 0 6px; font-size: 12px; }
-.scoring-warning code { display: block; font-size: 11px; line-height: 1.5;
-                        color: var(--muted); word-break: break-word; }
+.rule-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.rule-chip { font-size: 11px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 1px 7px; color: var(--muted); }
+.scoring-groups { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.scoring-group h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); }
+/* Where a connected league's read-only settings came from. */
+.league-source { margin: -4px 0 0; font-size: 12px; }
+.field-note { margin: 8px 0 0; font-size: 12px; }
+.scoring-warning button.plain { margin-top: 2px; }
 .field.unprojected { opacity: .55; }
 .field.unprojected input { cursor: not-allowed; }
 .not-projected { margin-left: 6px; font-size: 9px; font-style: normal;
@@ -498,6 +538,7 @@ tr.upgrade .p-name { font-weight: 600; }
    there are rarely more than a handful, the choice is one click either way, and
    a select hides the league names behind a second interaction. */
 .league-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.league-rows + .league-choices { margin-top: 8px; }
 .league-choice { text-align: left; padding: 6px 10px; border-radius: 8px;
   background: var(--panel2); border: 1px solid var(--border); color: var(--text);
   cursor: pointer; font-size: 12px; }
@@ -517,21 +558,22 @@ tr.upgrade .p-name { font-weight: 600; }
   color: var(--accent); cursor: pointer; font: inherit; font-size: 12px; }
 
 /* One stored league. The active one is outlined rather than merely labelled:
-   which league is active decides what every number on the board means. */
+   which league is active decides what every number on the board means.
+   One grid row whose columns hold still, so a long league name truncates rather
+   than pushing the team picker onto a line of its own. */
 .league-rows { display: flex; flex-direction: column; gap: 6px; }
 .league-row { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
-  background: var(--panel2); display: flex; flex-direction: column; gap: 6px; }
+  background: var(--panel2); display: grid; grid-template-columns: 96px minmax(0, 1fr) 200px auto;
+  align-items: center; gap: 10px; }
 .league-row.on { border-color: var(--accent); background: var(--panel); }
-.league-row-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.league-row-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.league-row-actions select { background: var(--panel2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; font: inherit; }
-.league-row-actions select:disabled { color: var(--muted); cursor: not-allowed; }
-.league-pick { background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-  border-radius: 8px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.league-who { min-width: 0; white-space: nowrap; }
+.league-who b { display: block; overflow: hidden; text-overflow: ellipsis; }
+.league-who .muted { display: block; font-size: 11px; }
+.league-row select { width: 100%; }
+.league-row select:disabled { color: var(--muted); cursor: not-allowed; }
+.league-pick { justify-self: start; white-space: nowrap; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
 .league-pick.on { border-color: var(--accent); color: var(--accent); cursor: default; }
-.field.inline { display: flex; flex-direction: row; gap: 6px; align-items: center; }
-.field.inline span { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 /* Connecting an account. The picker is a row of toggle chips borrowed from the
    board's position filter, and the fields under it are rendered from
@@ -894,4 +936,17 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
   .mu-head, .mu-row, .mu-tot, .mu-opt { grid-template-columns: 1fr 56px 1fr; }
   .mu-side { grid-template-columns: 1fr 44px 44px; gap: 5px; }
   .mu-score { font-size: 22px; }
+}
+
+/* Settings on a narrow screen: a league row puts its name on a line of its own,
+   and the sidebar becomes a row of chips above the section. */
+@media (max-width: 640px) {
+  .league-row { grid-template-columns: 96px minmax(0, 1fr) auto; row-gap: 6px; }
+  .league-who { grid-column: 2 / -1; }
+  .league-who + * { grid-column-start: 2; }
+}
+@media (max-width: 960px) {
+  .settings { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .settings-nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .settings-nav button { border-color: var(--border); background: var(--panel); padding: 5px 10px; }
 }

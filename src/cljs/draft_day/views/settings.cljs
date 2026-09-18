@@ -48,51 +48,48 @@
    {:step "0.01" :parse js/parseFloat :on-change on-change}])
 
 (defn- league-row
-  "One league under its account: what it is, whose team is whose, and the two
-  buttons that act on it."
+  "One league under its account: what it is, whose team is whose, and the
+  button that refreshes it."
   [[k entry] active-key]
   (let [active? (= k active-key)
         teams   (vec (get-in entry [:sync :teams]))
         mine    (:my-roster-id entry)]
     [:div.league-row {:class (when active? "on")}
-     [:div.league-row-head
-      [:button.league-pick {:class (when active? "on")
-                            :disabled active?
-                            :on-click #(rf/dispatch [:set-active-league k])}
-       (if active? "Active" "Make active")]
+     [:button.league-pick {:class (when active? "on")
+                           :disabled active?
+                           :on-click #(rf/dispatch [:set-active-league k])}
+      (if active? "Active" "Make active")]
+     [:div.league-who
       [:b (or (:name entry) (:league-id entry))]
-      [:span.muted (str " · " (or (:season entry) "—")
-                        (when (seq teams) (str " · " (count teams) " teams")))]]
-     [:div.league-row-actions
-      (when (seq teams)
-        [:label.field.inline
-         [:span "My team"]
-         [:select {:value (str mine)
-                   :on-change (fn [e]
-                                (let [v (.. e -target -value)]
-                                  ;; The roster id round-trips through the DOM as
-                                  ;; a string; the synced league keys on the
-                                  ;; number the provider sent, so it has to go
-                                  ;; back as one or nothing matches and the board
-                                  ;; silently reports no drop and no budget.
-                                  (rf/dispatch [:set-my-roster-id
-                                                (when-not (str/blank? v)
-                                                  (js/parseInt v 10))])))
-                   ;; Only the active league's roster id is writable, because
-                   ;; `:set-my-roster-id` writes to whichever league is active.
-                   ;; A dropdown that silently retargeted another league is
-                   ;; worse than one that asks you to switch first.
-                   :disabled (not active?)}
-          [:option {:value ""} "— pick a team —"]
-          (for [t teams]
-            ^{:key (:roster-id t)}
-            [:option {:value (str (:roster-id t))} (:name t)])]])
-      ;; Rosters only, not the rules. `:league-choose` re-imports as well, which
-      ;; would silently overwrite a hand-edited scoring config every time the
-      ;; manager pressed a button labelled Re-sync.
-      [:button {:disabled (not active?)
-                :on-click #(rf/dispatch [:sync-league (select-keys entry [:provider :league-id])])}
-       "Re-sync"]]]))
+      [:span.muted (str (or (:season entry) "—")
+                        (when (seq teams) (str " · " (count teams) " teams")))
+       ;; On the row, not only on the status line: Re-sync runs the sync and the
+       ;; import together, and a sync that answers second overwrites the line.
+       (when (= :failed (get-in entry [:rules :status]))
+         [:span.warn {:title (get-in entry [:rules :error])} " · settings not imported"])]]
+     (if (seq teams)
+       [:select {:value (str mine)
+                 :aria-label "My team"
+                 :title "Which team is yours"
+                 :on-change (fn [e]
+                              (let [v (.. e -target -value)]
+                                ;; The roster id round-trips through the DOM as
+                                ;; a string; the synced league keys on the
+                                ;; number the provider sent, so it has to go
+                                ;; back as one or nothing matches and the board
+                                ;; silently reports no drop and no budget.
+                                (rf/dispatch [:set-my-roster-id
+                                              (when-not (str/blank? v)
+                                                (js/parseInt v 10))])))
+                 :disabled (not active?)}
+        [:option {:value ""} "— pick a team —"]
+        (for [t teams]
+          ^{:key (:roster-id t)}
+          [:option {:value (str (:roster-id t))} (:name t)])]
+       [:span])
+     [:button.plain {:disabled (not active?)
+                     :on-click #(rf/dispatch [:refresh-league (select-keys entry [:provider :league-id])])}
+      "Re-sync"]]))
 
 (defn- credential-field
   "One field of a provider's connect form, drawn from the catalog.
@@ -173,9 +170,9 @@
      [:input {:type "text" :placeholder (providers/league-id-label provider)
               :value v
               :on-change #(swap! typed assoc ak (.. % -target -value))}]
-     [:button {:disabled (some? bad)
-               :on-click #(do (rf/dispatch [:league-choose ak (str/trim v)])
-                              (swap! typed dissoc ak))}
+     [:button.plain {:disabled (some? bad)
+                     :on-click #(do (rf/dispatch [:league-choose ak (str/trim v)])
+                                    (swap! typed dissoc ak))}
       "Add league"]
      [:span.muted "For a league this account is not in."]]))
 
@@ -250,14 +247,12 @@
             reconnect! (fn [p] (reset! picked (keyword p)) (reset! draft {}) (reset! adding? true))
             open?      (or @adding? (not any?))]
         [:section.settings-card.accounts
-         [:h3 "Accounts"]
-         [:p.muted "Connect a fantasy account to pull its leagues. Everything on the
-                    board — scoring, rosters, waivers — follows whichever league is
-                    active. Credentials are kept in this browser and sent only to
-                    read your leagues."]
-         (if open?
-           [connect-form picked draft #(reset! adding? false)]
-           [:button.link {:on-click #(reset! adding? true)} "+ Add account"])
+         [:div.card-head
+          [:h3 "Accounts"]
+          (when-not open?
+            [:button.link {:on-click #(reset! adding? true)} "+ Add account"])]
+         (when open?
+           [connect-form picked draft #(reset! adding? false)])
 
          (when (seq groups)
            [:div.account-groups
@@ -269,13 +264,30 @@
            [:p.muted "No leagues yet — pick one above, or paste a league ID."])
          (when status [:div.sync-status status])]))))
 
+(defn- fixed-field
+  "A value the active league sets: shown, never edited — `db/league-owned-keys`."
+  [label value]
+  [:label.field
+   [:span label]
+   [:input {:type "number" :value (str value) :disabled true :read-only true}]])
+
 (defn- league-config []
-  (let [cfg @(rf/subscribe [:config])]
+  (let [cfg   @(rf/subscribe [:config])
+        owned @(rf/subscribe [:league-owned-keys])
+        rules @(rf/subscribe [:active-league-rules])
+        field (fn [k label]
+                (if (owned k)
+                  [fixed-field label (get cfg k)]
+                  [num-field label (get cfg k) #(rf/dispatch [:edit-config {k %}])]))]
     [:section.settings-card
      [:h3 "League"]
      [:div.fields
-      [num-field "Teams" (:num-teams cfg) #(rf/dispatch [:apply-config {:num-teams %}])]
-      [num-field "Budget $" (:starting-bankroll cfg) #(rf/dispatch [:apply-config {:starting-bankroll %}])]]]))
+      (field :num-teams "Teams")
+      (field :starting-bankroll "Budget $")]
+     ;; Worded for either reason the import brought none: a snake draft has no
+     ;; budget, and Sleeper's draft fetch is best-effort.
+     (when (and (= :imported (:status rules)) (not (:bankroll? rules)))
+       [:p.muted.field-note "Your league's import didn't include an auction budget, so this one is yours to set."])]))
 
 (defn- budget-config []
   (let [cfg      @(rf/subscribe [:config])
@@ -309,7 +321,7 @@
    [:span label [:i.not-projected "not projected"]]
    [:input {:type "number" :value (str value) :disabled true :read-only true}]])
 
-(defn- custom-scoring-editor [weights]
+(defn- custom-scoring-editor [weights read-only?]
   [:div.scoring-groups
    (map (fn [{:keys [group stats]}]
           ^{:key group}
@@ -320,25 +332,69 @@
             ;; on a special form is dropped at compile time, which left every row
             ;; keyless and reconciled by index.
             (map (fn [[stat-key label]]
-                   (if (contains? scoring/unprojected-stats stat-key)
+                   (cond
+                     (contains? scoring/unprojected-stats stat-key)
                      ^{:key stat-key} [unprojected-field label (get weights stat-key 0)]
+                     read-only?
+                     ^{:key stat-key} [fixed-field label (get weights stat-key 0)]
+                     :else
                      ^{:key stat-key} [weight-field label (get weights stat-key 0)
                                        #(rf/dispatch [:set-scoring-weight stat-key %])]))
                  stats)]])
         db/scoring-catalog)])
 
-(defn- import-warning
+(defn import-warning
   "What the last league import could not apply. An import that quietly drops most
   of a league's rules while reporting success is the failure this exists to
   prevent."
   []
-  (let [{:keys [unsupported-scoring]} @(rf/subscribe [:import-report])]
-    (when (seq unsupported-scoring)
+  (let [{:keys [unsupported]} @(rf/subscribe [:active-league-rules])]
+    (when (seq unsupported)
       [:div.scoring-warning
-       [:b (str (count unsupported-scoring) " scoring rules were not applied.")]
+       [:b (str (count unsupported) " scoring rules were not applied.")]
        [:p.muted "Draft Day scores a flat stat line, so these are not modelled and
                   your board will differ from your league where they matter:"]
-       [:code (str/join ", " unsupported-scoring)]])))
+       ;; Chips rather than one comma-joined run: rule keys have no spaces to
+       ;; break on, and a single long token pushed straight out of the card.
+       (into [:div.rule-chips]
+             (map (fn [rule] ^{:key rule} [:span.rule-chip rule]))
+             unsupported)])))
+
+(defn league-source
+  "Where a connected league's settings came from, and whether they came at all.
+
+  Heads every section that shows them. They are read-only, so a manager who
+  cannot change a number has to be able to tell whose it is — and when the
+  import failed, that the board is still on the settings it had before, which
+  for a newly added league are another league's."
+  []
+  (let [league     @(rf/subscribe [:active-league])
+        importing? @(rf/subscribe [:active-league-importing?])
+        {:keys [status error unsupported]} @(rf/subscribe [:active-league-rules])
+        named      [:b (or (:name league) (:league-id league))]]
+    (cond
+      (nil? league) nil
+
+      importing?
+      [:p.league-source.muted "Importing " named "'s settings…"]
+
+      (= :imported status)
+      [:p.league-source.muted "From " named
+       (when-let [season (:season league)] (str " (" season ")"))
+       ". Re-sync the league to refresh them."]
+
+      :else
+      [:div.scoring-warning
+       [:b (if (= :failed status)
+             (str "Couldn't import this league's settings: " error)
+             "This league's settings haven't been imported yet.")]
+       ;; An earlier good import leaves its `:unsupported` list behind, and the
+       ;; board is still on *those* settings — this league's, only older.
+       [:p.muted (if (some? unsupported)
+                   "The board is still using the last imported settings."
+                   "The board is still using the previous settings, which may be another league's.")]
+       [:button.plain {:on-click #(rf/dispatch [:import-league (select-keys league [:provider :league-id])])}
+        "Retry import"]])))
 
 (def vendor-gap-copy
   "What each missing FantasyPros half is called, and what the board actually
@@ -374,38 +430,51 @@
      [:b headline]
      [:p.muted detail]]))
 
+(defn- league-scoring
+  "A connected league's scoring, as imported. Shown, never edited: the league
+  sets its rules, and Re-sync is how they are refreshed."
+  [cfg]
+  (let [s (:scoring cfg)]
+    [:section.settings-card
+     [import-warning]
+     [vendor-gap-warning]
+     [custom-scoring-editor (if (map? s) s (scoring/resolve-config s)) true]]))
+
 (defn- scoring-config []
   (let [cfg    @(rf/subscribe [:config])
         mode   @(rf/subscribe [:scoring-mode])
         mode-s (name mode)]
-    [:section.settings-card
-     [:h3 "Scoring"]
-     [:label.field
-      [:span "Preset"]
-      [:select {:value mode-s
-                :on-change #(let [v (.. % -target -value)]
-                              (if (= v "custom")
-                                (rf/dispatch [:enable-custom-scoring])
-                                (rf/dispatch [:select-scoring-preset (keyword v)])))}
-       [:option {:value "standard"} "Standard"]
-       [:option {:value "half-ppr"} "Half PPR"]
-       [:option {:value "ppr"} "PPR"]
-       [:option {:value "custom"} "Custom"]]]
-     [import-warning]
-     [vendor-gap-warning]
-     (when (= mode :custom)
-       [custom-scoring-editor (:scoring cfg)])]))
+    (if (contains? @(rf/subscribe [:league-owned-keys]) :scoring)
+      [league-scoring cfg]
+      [:section.settings-card
+       [:label.field.preset
+        [:span "Preset"]
+        [:select {:value mode-s
+                  :on-change #(let [v (.. % -target -value)]
+                                (if (= v "custom")
+                                  (rf/dispatch [:enable-custom-scoring])
+                                  (rf/dispatch [:select-scoring-preset (keyword v)])))}
+         [:option {:value "standard"} "Standard"]
+         [:option {:value "half-ppr"} "Half PPR"]
+         [:option {:value "ppr"} "PPR"]
+         [:option {:value "custom"} "Custom"]]]
+       [vendor-gap-warning]
+       (when (= mode :custom)
+         [custom-scoring-editor (:scoring cfg) false])])))
 
 (defn- roster-config []
   (let [cfg    @(rf/subscribe [:config])
         roster (:roster cfg)
-        set-r  (fn [k v] (rf/dispatch [:apply-config {:roster (assoc roster k v)}]))]
+        fixed? (contains? @(rf/subscribe [:league-owned-keys]) :roster)
+        set-r  (fn [k v] (rf/dispatch [:edit-config {:roster (assoc roster k v)}]))]
     [:section.settings-card
      [:h3 "Roster"]
      [:div.fields
+      ;; The key rides on each branch — see `custom-scoring-editor`.
       (map (fn [[k label]]
-             ^{:key k}
-             [num-field label (get roster k 0) #(set-r k %)])
+             (if fixed?
+               ^{:key k} [fixed-field label (get roster k 0)]
+               ^{:key k} [num-field label (get roster k 0) #(set-r k %)]))
            [[:qb "QB"] [:rb "RB"] [:wr "WR"] [:te "TE"]
             [:flex "FLEX"] [:k "K"] [:dst "DST"] [:bench "Bench"]])]]))
 
@@ -450,12 +519,60 @@
    [:p.muted "Force the server to drop its cached player data and re-fetch live prices from Sleeper, FantasyPros and ESPN. Does not affect your draft or league settings."]
    [:button.danger {:on-click #(rf/dispatch [:show-modal {:kind :reset-cache}])} "Reset Player Cache"]])
 
-(defn settings []
-  [:div.settings
-   [connected-accounts]
-   [draft-archive]
-   [league-config]
-   [budget-config]
-   [scoring-config]
-   [roster-config]
-   [danger-zone]])
+(def section-ledes
+  "The sentence under each section's heading, where one earns its place."
+  {:leagues "Connect a fantasy account to pull its leagues. Everything on the board — scoring, rosters, waivers — follows whichever league is active. Credentials are kept in this browser and sent only to read your leagues."
+   :scoring "How the active league scores. A connected league's rules come from its import and are read-only."
+   :roster  "A connected league's team count, roster and auction budget come from its import and are read-only."
+   :draft   "Your auction budget plan, and the drafts already done."})
+
+(defn section-body [k]
+  (case k
+    :leagues [connected-accounts]
+    :scoring [:<> [league-source] [scoring-config]]
+    :roster  [:<> [league-source] [league-config] [roster-config]]
+    :draft   [:<> [budget-config] [draft-archive]]
+    :data    [danger-zone]
+    [connected-accounts]))
+
+(defn settings-nav
+  "The section list. Each entry carries what is waiting inside it, so an expired
+  session or a dropped scoring rule is visible without opening its section."
+  []
+  (let [on     @(rf/subscribe [:settings-section])
+        alerts @(rf/subscribe [:settings-alerts])]
+    [:nav.settings-nav
+     (for [[k label] db/settings-sections]
+       ^{:key k}
+       [:button {:class (when (= k on) "on")
+                 :on-click #(rf/dispatch [:set-settings-section k])}
+        label
+        (let [missing [:span.nav-dot {:title "This league's settings were not imported"}]]
+          (case k
+            :leagues (when (:leagues alerts)
+                       [:span.nav-dot {:title "An account needs reconnecting"}])
+            ;; Missing outranks the count: it asks for a Retry, and the count
+            ;; asks for nothing the manager can do.
+            :scoring (cond
+                       (:rules-missing? alerts) missing
+                       (pos? (:scoring alerts))
+                       [:span.nav-badge {:title "Scoring rules this board could not apply"}
+                        (:scoring alerts)])
+            :roster  (when (:rules-missing? alerts) missing)
+            nil))])]))
+
+(defn settings
+  "Every section stays mounted and only the chosen one is shown. Unmounting the
+  rest threw away whatever was typed into them — a half-pasted ESPN cookie gone
+  because the manager glanced at Scoring. Hidden sections are `display: none`,
+  so they are still not on the page for a card to be stretched against."
+  []
+  (let [on (or @(rf/subscribe [:settings-section]) :leagues)]
+    [:div.settings
+     [settings-nav]
+     (for [[k label] db/settings-sections]
+       ^{:key k}
+       [:div.settings-section {:hidden (not= k on)}
+        [:h2 label]
+        (when-let [lede (section-ledes k)] [:p.lede lede])
+        [section-body k]])]))

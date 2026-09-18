@@ -156,6 +156,21 @@
   [db f & args]
   (set-config db (apply f (:config db) args)))
 
+(defn league-owned-keys
+  "The config keys the active league sets, which the manager can see but not
+  edit: its import is the only writer. Every hand edit — Settings, the Start
+  Draft modal — drops these, and every view draws them read-only off this one
+  set, so the two cannot disagree about what is editable.
+
+  The bankroll is owned only once an import has actually supplied one. A snake
+  league publishes no auction budget, and locking the field there would leave a
+  number nobody can ever set."
+  [db]
+  (if-let [k (:active-league db)]
+    (cond-> #{:scoring :roster :num-teams}
+      (get-in db [:leagues k :rules :bankroll?]) (conj :starting-bankroll))
+    #{}))
+
 (defn rules-stamp
   "The half of a config a ranked board is only valid under.
 
@@ -505,9 +520,13 @@
 
 (def columns-by-key (into {} (map (juxt :key identity)) column-catalog))
 
-;; ---- scoring catalog ----
-;; Grouped presentational metadata for the custom scoring editor: each group is
-;; rendered as a section of numeric weight inputs, in this order.
+(def settings-sections
+  "Settings, one section at a time, in sidebar order."
+  [[:leagues "Leagues & Accounts"]
+   [:scoring "Scoring"]
+   [:roster  "Roster & League"]
+   [:draft   "Draft"]
+   [:data    "Data"]])
 
 (def scoring-catalog
   [{:group "Passing"   :stats [[:pass_yd "Pass Yd"] [:pass_td "Pass TD"]
@@ -525,8 +544,6 @@
   {:rank     :rank
    :name     :player-name
    :team     :team
-   ;; [position ordinal], not the "RB25" string the board renders: sorted as a
-   ;; string that reads RB1, RB10, RB2. Unranked rows sort last either way.
    :position pos-sort-key
    :worth    :worth
    :value    :value
@@ -806,7 +823,6 @@
      :universe-status nil       ; "N players · source", restored after a recompute error
      :universe    nil           ; /api/players provenance: season, fetched-at, per-source :ok?
      :recompute-error nil       ; the failure message, while it is still on :status
-     :import-report nil         ; {:name :season :unsupported-scoring [...]}
      :config      cfg
      :teams       (make-teams (:num-teams cfg) (:roster cfg) (:starting-bankroll cfg))
      :my-team-id  "t0"
@@ -822,9 +838,15 @@
      :accounts     {}
      ;; league-key -> {:provider :league-id :account-key :name :season :my-roster-id
      ;;                :config  — this league's scoring/roster/team count
-     ;;                :sync    — last /api/league/sync reply: who is rostered, and FAAB}
+     ;;                :sync    — last /api/league/sync reply: who is rostered, and FAAB
+     ;;                :rules   — what the last import did: {:status :imported
+     ;;                           :unsupported [...] :bankroll? bool}, or :failed
+     ;;                           with an :error beside what the last good one left}
      :leagues      {}
      :active-league nil         ; which league-key everything on screen is about
+     ;; league-keys with an import in flight. Transient, so a reload mid-import
+     ;; cannot leave a league reading as forever importing.
+     :importing    #{}
      ;; account-key -> the leagues that account plays in, and why the listing
      ;; failed when it did. Top-level rather than inside the account, because
      ;; `:accounts` is persisted and these are refetched, never stored. nil and
@@ -858,5 +880,8 @@
      :pos-filter  nil
      :search      ""
      :view        :board
+     ;; Transient: Settings reopens on the section most often needed, not the
+     ;; one last visited.
+     :settings-section :leagues
      :columns     (default-columns)
      :waiver-columns (default-waiver-columns)}))

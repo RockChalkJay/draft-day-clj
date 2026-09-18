@@ -30,7 +30,8 @@
                     {:statId 127 :points -0.01}]}
     :rosterSettings
     {:lineupSlotCounts {:0 1 :2 2 :3 0 :4 2 :6 1 :16 1 :17 1 :20 6 :21 1 :23 1}}
-    :acquisitionSettings {:isUsingAcquisitionBudget true :acquisitionBudget 100}}})
+    :acquisitionSettings {:isUsingAcquisitionBudget true :acquisitionBudget 100}
+    :draftSettings {:type "AUCTION" :auctionBudget 200}}})
 
 (defn- imported [] (league-import/normalize-league :espn raw))
 
@@ -130,3 +131,10 @@
     (is (= "The Big Show" (:name c)))
     (is (= "2026" (:season c)) "a string, as every other provider's season is")
     (is (= 12 (:num-teams c)))))
+
+(deftest an-auction-league-brings-its-budget
+  (is (= 200 (:starting-bankroll (imported))))
+  (testing "ESPN fills auctionBudget in a snake league too, so the type decides"
+    (is (nil? (espn/auction-budget
+               (assoc-in raw [:settings :draftSettings :type] "SNAKE")))))
+  (is (nil? (espn/auction-budget {})) "and a league that says nothing gets nil"))

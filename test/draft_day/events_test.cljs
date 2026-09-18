@@ -321,7 +321,7 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 8 fx/storage-version)
+  (is (= 9 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
   (is (= "espn:{SWID}" (db/account-key "espn" "{SWID}"))
@@ -499,3 +499,52 @@
   (is (= {:kind :player-detail :player-id "p1"} (:modal @rdb/app-db)))
   (rf/dispatch-sync [:close-modal])
   (is (nil? (:modal @rdb/app-db))))
+
+(deftest a-connected-league-s-scoring-cannot-be-edited
+  ;; The Scoring section draws it read-only; the events hold the same line, so
+  ;; nothing can write a league's rules behind the import's back.
+  (swap! rdb/app-db assoc :active-league "sleeper:1")
+  (let [before (get-in @rdb/app-db [:config :scoring])]
+    (rf/dispatch-sync [:enable-custom-scoring])
+    (rf/dispatch-sync [:set-scoring-weight :rec 0.25])
+    (rf/dispatch-sync [:select-scoring-preset :standard])
+    (is (= before (get-in @rdb/app-db [:config :scoring])))))
+
+(deftest a-connected-league-s-shape-cannot-be-edited-either
+  ;; Re-sync re-imports team count and roster too, so an edit to either was
+  ;; reverted on the next press without a word.
+  (swap! rdb/app-db assoc
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"
+                                :rules {:status :imported :bankroll? false}}}
+         :active-league "sleeper:1")
+  (let [before (:config @rdb/app-db)]
+    (rf/dispatch-sync [:edit-config {:num-teams 8 :roster (assoc (:roster before) :bench 9)}])
+    (is (= (select-keys before [:num-teams :roster])
+           (select-keys (:config @rdb/app-db) [:num-teams :roster])))
+    (is (empty? (:debounce @captured)) "and nothing left to apply re-ranks nothing"))
+  (testing "a budget the import did not bring stays the manager's"
+    (rf/dispatch-sync [:edit-config {:starting-bankroll 300}])
+    (is (= 300 (get-in @rdb/app-db [:config :starting-bankroll]))))
+  (testing "one it did bring does not"
+    (swap! rdb/app-db assoc-in [:leagues "sleeper:1" :rules :bankroll?] true)
+    (rf/dispatch-sync [:edit-config {:starting-bankroll 150}])
+    (is (= 300 (get-in @rdb/app-db [:config :starting-bankroll])))))
+
+(deftest with-no-league-every-setting-is-the-manager-s
+  (rf/dispatch-sync [:edit-config {:num-teams 10 :starting-bankroll 150}])
+  (is (= 10 (get-in @rdb/app-db [:config :num-teams])))
+  (is (= 150 (get-in @rdb/app-db [:config :starting-bankroll]))))
+
+(deftest start-draft-is-not-a-way-round-the-league-s-settings
+  ;; The modal draws them read-only; the event holds the same line.
+  (with-fake-storage
+    (fn [_]
+      (swap! rdb/app-db assoc
+             :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"
+                                    :rules {:status :imported :bankroll? true}}}
+             :active-league "sleeper:1")
+      (swap! rdb/app-db update :config assoc :num-teams 10 :starting-bankroll 300)
+      (rf/dispatch-sync [:start-draft {:num-teams 14 :starting-bankroll 100 :team-names []}])
+      (is (= 10 (get-in @rdb/app-db [:config :num-teams])))
+      (is (= 300 (get-in @rdb/app-db [:config :starting-bankroll])))
+      (is (= 10 (count (:teams @rdb/app-db))) "and the teams are the league's"))))

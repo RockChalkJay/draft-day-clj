@@ -1,27 +1,53 @@
 (ns draft-day.ingestion.league-import.sleeper
   "Sleeper provider for league import: fetch a league's settings and normalize
-  its scoring/roster config without collapsing scoring to a preset guess."
+  its scoring/roster config without collapsing scoring to a preset guess.
+
+  The auction budget is not on the league document. It is on the league's
+  *draft*, a second fetch, which is why `fetch-raw-league` is two requests and
+  `fetch-league` — the one `league-sync.sleeper` reads — is one."
   (:require [org.httpkit.client :as http]
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.scoring :as scoring]))
 
-(defn- league-url [league-id]
-  (str "https://api.sleeper.app/v1/league/" league-id))
+(def ^:private base "https://api.sleeper.app/v1/")
+
+(defn- get-doc
+  "Network: one Sleeper document, parsed. Sleeper answers an unknown id with
+  HTTP 200 and a JSON null body, so null is a 404 here."
+  [path what]
+  (let [{:keys [status body error]} @(http/get (str base path) {:timeout 30000})]
+    (cond
+      error             (throw (ex-info (str "Sleeper " what " fetch failed") {:status 502 :error error}))
+      (not= 200 status) (throw (ex-info (str "Sleeper " what " non-200") {:status 502 :sleeper-status status}))
+      :else
+      (let [parsed (json/read-value body mapper)]
+        (if (nil? parsed)
+          (throw (ex-info (str "Sleeper " what " not found") {:status 404}))
+          parsed)))))
+
+(defn fetch-league
+  "Network: the league document alone."
+  [league-id]
+  (get-doc (str "league/" league-id) "league"))
+
+(defn fetch-draft
+  "Network: one draft document — its `type` and, for an auction, its `settings.budget`."
+  [draft-id]
+  (get-doc (str "draft/" draft-id) "draft"))
+
+(defn draft-for
+  "The league's draft, or nil. Best-effort: a budget is not worth failing a
+  rules import over, and a league with no draft scheduled has no `draft_id`."
+  [raw]
+  (when-let [id (:draft_id raw)]
+    (try (fetch-draft id) (catch Exception _ nil))))
 
 (defmethod league-import/fetch-raw-league :sleeper
   [_ {:keys [league-id]}]
-  (let [{:keys [status body error]} @(http/get (league-url league-id) {:timeout 30000})]
-    (cond
-      error             (throw (ex-info "Sleeper league fetch failed" {:status 502 :error error}))
-      (not= 200 status) (throw (ex-info "Sleeper league non-200" {:status 502 :sleeper-status status}))
-      :else
-      (let [parsed (json/read-value body mapper)]
-        ;; Sleeper returns HTTP 200 with a JSON null body for an unknown league id.
-        (if (nil? parsed)
-          (throw (ex-info "Sleeper league not found" {:status 404}))
-          parsed)))))
+  (let [raw (fetch-league league-id)]
+    (assoc raw :draft (draft-for raw))))
 
 (defn- roster-config
   "Port of the frontend's sleeper->config roster-slot counting: FLEX/WRRB_FLEX/
@@ -91,11 +117,21 @@
   [raw]
   (get-in raw [:settings :playoff_week_start]))
 
+(defn auction-budget
+  "Pure: what each team starts the draft with, or nil for anything but an
+  auction. A snake draft's settings can still carry a `budget`, and pricing a
+  snake league's board off it would be a number nobody bids with."
+  [raw]
+  (let [d (:draft raw)]
+    (when (= "auction" (:type d))
+      (get-in d [:settings :budget]))))
+
 (defmethod league-import/normalize-league :sleeper
   [_ raw]
   {:scoring             (select-keys (:scoring_settings raw) scoring/stat-keys)
    :unsupported-scoring (unsupported-scoring (:scoring_settings raw))
    :roster              (roster-config (:roster_positions raw))
    :num-teams           (:total_rosters raw)
+   :starting-bankroll   (auction-budget raw)
    :name                (:name raw)
    :season              (:season raw)})

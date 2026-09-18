@@ -366,8 +366,8 @@
   (with-league! synced 1)
   (swap! rdb/app-db assoc :accounts {})
   (rf/clear-subscription-cache!)
-  (is (= [[:sync-league {:provider "sleeper" :league-id "987654"}]]
-         (press! waivers/sync-panel "Re-sync rosters"))))
+  (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
+         (press! waivers/sync-panel "Re-sync league"))))
 
 (deftest a-league-whose-sync-failed-still-offers-to-retry-it
   ;; It has no `:name` until a reply lands, and gating the strip on the name made
@@ -379,11 +379,11 @@
          :waivers {:my-roster nil})
   (rf/clear-subscription-cache!)
   (let [out (render waivers/sync-panel)]
-    (is (re-find #"Re-sync rosters" out))
+    (is (re-find #"Re-sync league" out))
     (is (re-find #"987654" out) "and names itself by its id until the sync answers")
     (is (not (re-find #"No league active" out))))
-  (is (= [[:sync-league {:provider "sleeper" :league-id "987654"}]]
-         (press! waivers/sync-panel "Re-sync rosters"))))
+  (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
+         (press! waivers/sync-panel "Re-sync league"))))
 
 (deftest the-roster-panel-splits-starters-from-bench-and-marks-the-seat-at-stake
   ;; The synced league knows the real lineup; the draft config's slot template
@@ -741,6 +741,82 @@
   (is (re-find #"import failed" (:status @rdb/app-db)))
   (is (re-find #"import failed" (:waiver-status @rdb/app-db))))
 
+(deftest a-failed-import-is-recorded-on-its-league
+  ;; The settings are read-only, so Settings has to be able to say the board is
+  ;; still on the ones it had before — after a reload, too.
+  (swap! rdb/app-db assoc :leagues {"sleeper:a" {:provider "sleeper" :league-id "a"}})
+  (rf/dispatch-sync [:league-import-failed "sleeper:a" "not found" 404])
+  (is (= {:status :failed :error "not found"}
+         (get-in @rdb/app-db [:leagues "sleeper:a" :rules]))))
+
+(deftest a-failed-retry-keeps-the-rules-the-board-is-still-using
+  ;; The last good import's settings are still in force, so the list of what
+  ;; they could not apply is still true. A 502 on a retry must not wipe it.
+  (swap! rdb/app-db assoc :leagues
+         {"sleeper:a" {:provider "sleeper" :league-id "a"
+                       :rules {:status :imported :unsupported ["fgm_50p"] :bankroll? true}}})
+  (rf/dispatch-sync [:league-import-failed "sleeper:a" "down" 502])
+  (is (= {:status :failed :error "down" :unsupported ["fgm_50p"] :bankroll? true}
+         (get-in @rdb/app-db [:leagues "sleeper:a" :rules])))
+  (testing "and the next good import clears the error"
+    (rf/dispatch-sync [:league-import-loaded "sleeper:a" {:scoring :ppr :unsupported-scoring []}])
+    (is (= {:status :imported :unsupported [] :bankroll? false}
+           (get-in @rdb/app-db [:leagues "sleeper:a" :rules])))))
+
+(deftest an-import-in-flight-is-known-until-it-answers
+  ;; "Not imported yet" offers Retry; "importing" must not, or the manager
+  ;; fires a second import at the one still running.
+  (swap! rdb/app-db assoc :leagues {"sleeper:a" {:provider "sleeper" :league-id "a"}})
+  (rf/dispatch-sync [:import-league {:provider "sleeper" :league-id "a"}])
+  (is (= #{"sleeper:a"} (:importing @rdb/app-db)))
+  (rf/dispatch-sync [:league-import-loaded "sleeper:a" {:scoring :ppr}])
+  (is (empty? (:importing @rdb/app-db)) "cleared by an answer")
+  (rf/dispatch-sync [:import-league {:provider "sleeper" :league-id "a"}])
+  (rf/dispatch-sync [:league-import-failed "sleeper:a" "down" 502])
+  (is (empty? (:importing @rdb/app-db)) "and by a failure"))
+
+(deftest an-import-that-changes-nothing-re-prices-nothing
+  ;; Re-sync re-imports on every press, and a league's rules almost never move
+  ;; between presses. Each re-apply was a full re-rank and a teams rebuild.
+  (swap! rdb/app-db assoc
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}}
+         :active-league "sleeper:a")
+  (rf/dispatch-sync [:league-import-loaded "sleeper:a"
+                     (select-keys db/default-config [:scoring :roster :num-teams])])
+  (let [evs (dispatched)]
+    (is (not (some #{:apply-config} evs)))
+    (is (not (some #{:fetch-waivers} evs)))
+    (is (some #{:set-status} evs) "though it still says it imported")))
+
+(deftest an-import-that-changes-the-rules-re-prices-every-board-on-them
+  ;; The sync that raced this import asked for the waiver board under the old
+  ;; rules; only the draft board used to be re-ranked.
+  (swap! rdb/app-db assoc
+         :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}}
+         :active-league "sleeper:a"
+         :view :matchup)
+  (rf/dispatch-sync [:league-import-loaded "sleeper:a" {:scoring :standard :starting-bankroll 300}])
+  (let [evs (dispatched)]
+    (is (some #{:apply-config} evs))
+    (is (some #{:fetch-waivers} evs))
+    (is (some #{:fetch-matchup} evs) "and the matchup board, when it is on screen"))
+  (is (true? (get-in @rdb/app-db [:leagues "sleeper:a" :rules :bankroll?]))
+      "an import that brought a budget owns it from now on"))
+
+(deftest re-sync-refreshes-rosters-and-rules-together
+  (rf/dispatch-sync [:refresh-league {:provider "sleeper" :league-id "a"}])
+  (is (= #{:sync-league :import-league} (set (dispatched)))))
+
+(deftest a-refresh-or-import-with-no-league-says-so-rather-than-throwing
+  ;; The same `(name nil)` trap `:sync-league` guards, reached from Re-sync and
+  ;; from Retry on a league entry that has gone missing.
+  (rf/dispatch-sync [:refresh-league {}])
+  (is (re-find #"no league" (:waiver-status @rdb/app-db)))
+  (is (empty? (dispatched)))
+  (rf/dispatch-sync [:import-league {:provider nil :league-id "123"}])
+  (is (re-find #"no league" (:status @rdb/app-db)))
+  (is (empty? (:http @captured)) "and nothing is sent"))
+
 (deftest a-sync-with-no-league-to-sync-says-so-rather-than-throwing
   ;; `db/league-key` calls `name` on the provider, and `(name nil)` throws in
   ;; ClojureScript — killing the event rather than reporting anything.
@@ -756,19 +832,19 @@
          :players [{:player-id "p1" :position "RB"}]
          :leagues {"sleeper:a" {:provider "sleeper" :league-id "a" :config db/default-config}
                    "sleeper:b" {:provider "sleeper" :league-id "b"
-                                :config (assoc db/default-config :scoring :standard)}}
+                                :config (assoc db/default-config :starting-bankroll 100)}}
          :active-league "sleeper:a")
-  (rf/dispatch-sync [:select-scoring-preset :half-ppr])
+  (rf/dispatch-sync [:apply-config {:starting-bankroll 150}])
   (rf/dispatch-sync [:set-active-league "sleeper:b"])
-  (is (= :standard (get-in @rdb/app-db [:config :scoring])))
+  (is (= 100 (get-in @rdb/app-db [:config :starting-bankroll])))
   (rf/dispatch-sync [:set-active-league "sleeper:a"])
-  (is (= :half-ppr (get-in @rdb/app-db [:config :scoring]))
+  (is (= 150 (get-in @rdb/app-db [:config :starting-bankroll]))
       "the edit is still there — it was written to the league, not only to the copy"))
 
 (deftest a-background-import-does-not-narrate-itself-as-the-league-on-screen
   ;; Choose two leagues in quick succession and the late reply would otherwise
-  ;; pop `✓ Imported "Old"` in the header and replace the Settings import report
-  ;; — describing the league you had already switched away from.
+  ;; pop `✓ Imported "Old"` in the header and re-price the board — describing
+  ;; the league you had already switched away from.
   ;; Asserted on what the handler *asks for* rather than on db: `:dispatch` is
   ;; stubbed in this namespace, so a follow-on event never reaches its handler
   ;; and a db assertion here would pass whatever the handler did.
@@ -781,15 +857,16 @@
                       :unsupported-scoring ["fgm_50p"]}])
   (let [evs (dispatched)]
     (is (not (some #{:set-status} evs)))
-    (is (not (some #{:set-import-report} evs)))
     (is (not (some #{:apply-config} evs))))
+  (is (= {:status :imported :unsupported ["fgm_50p"] :bankroll? false}
+         (get-in @rdb/app-db [:leagues "sleeper:a" :rules]))
+      "but what it could not apply is kept on its own league")
   (testing "while the league on screen still announces its own import"
     (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
     (rf/dispatch-sync [:league-import-loaded "sleeper:b"
-                       {:name "Mine" :season "2026" :scoring :ppr}])
+                       {:name "Mine" :season "2026" :scoring :standard}])
     (let [evs (dispatched)]
       (is (some #{:set-status} evs))
-      (is (some #{:set-import-report} evs))
       (is (some #{:apply-config} evs)))))
 
 (deftest an-import-for-a-league-you-are-no-longer-on-is-stored-not-applied

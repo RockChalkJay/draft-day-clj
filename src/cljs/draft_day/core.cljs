@@ -40,7 +40,7 @@
     [:div.league-switcher
      (cond
        (empty? leagues)
-       [:button.link {:on-click #(rf/dispatch [:set-view :settings])} "Connect a league"]
+       [:button.link {:on-click #(rf/dispatch [:set-view :settings :leagues])} "Connect a league"]
 
        (= 1 (count leagues))
        [:span.league-label [:b (or league-name "League")]]
