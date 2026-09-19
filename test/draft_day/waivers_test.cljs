@@ -199,8 +199,8 @@
   ;; A second full rank of the universe, so it is paid for by the manager who
   ;; asks for it — but only the first time, or every glance re-ranks the league.
   (rf/dispatch-sync [:set-view :waivers])
-  (is (= [:fetch-waivers] (dispatched)))
-  (swap! rdb/app-db assoc :waivers {:players []})
+  (is (= [:fetch-waivers :fetch-matchup] (dispatched)) "the matchup for the header's week")
+  (swap! rdb/app-db assoc :waivers {:players []} :matchup {:week 4})
   (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
   (rf/dispatch-sync [:set-view :board])
   (rf/dispatch-sync [:set-view :waivers])

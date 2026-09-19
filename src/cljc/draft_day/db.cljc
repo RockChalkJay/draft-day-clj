@@ -593,6 +593,19 @@
   (some (fn [[m vs]]
           (when (some #{view} vs) m)) mode-views))
 
+(def waiver-views
+  "The tabs drawn from the `/api/waivers` reply: My Team's rows, the board
+  itself, and on the League tab which of the manager's own players open the
+  detail modal. Opening one loads the board if it has not loaded."
+  #{:team :waivers :rosters})
+
+(defn matchup-view?
+  "Whether `view` needs this week's matchup reply. Every season tab does: the
+  header's Week is only ever that reply's, so a tab that did not ask left the
+  header without one until the manager happened past a tab that did."
+  [view]
+  (= :season (view-mode view)))
+
 (defn view-for
   "The view to show under phase `p` — the active league's by default: `view`
   when that phase has it as a tab or it belongs to no phase (Settings),
