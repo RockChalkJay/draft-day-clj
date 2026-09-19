@@ -8,10 +8,9 @@
   whether he is hurt. The panel stays on Waivers for that one question; this is
   the rest.
 
-  Rows are the waiver reply's full board rows for the players the manager holds
-  (`:my-roster-players`), ordered and flagged by `:my-roster` — which carries the
-  seat, the IR/taxi mark and the drop. Both come from the one `/api/waivers`
-  reply, so opening this tab loads that board."
+  The roster is `:my-roster` — the manager's own card off the League tab, so the
+  two cannot disagree about whom he holds — and its rows are the waiver reply's
+  full board rows, which is why opening this tab loads that board."
   (:require [re-frame.core :as rf]
             [draft-day.db :as db]
             [draft-day.views.board :as board]
@@ -22,18 +21,13 @@
    [:week "Week"] [:ros "ROS"] [:risk "Risk"] [:inj "Inj"]])
 
 (defn roster-groups
-  "The roster in its three blocks — starters, bench, IR and taxi — as
-  `[label rows]`, keeping the server's order inside each.
-
-  Each row is the full board row where the board has one, with the roster's
-  own flags laid over it; a player the board cannot value keeps his row with
-  only those flags, rather than vanishing from the roster he is on."
-  [roster players]
-  (let [by-id (into {} (map (juxt :player-id identity)) players)
-        rows  (map #(merge (get by-id (:player-id %)) %) roster)]
-    [["Starters"  (filterv :starter? rows)]
-     ["Bench"     (filterv #(not (or (:starter? %) (:parked? %))) rows)]
-     ["IR / Taxi" (filterv #(and (:parked? %) (not (:starter? %))) rows)]]))
+  "`:my-roster`'s three blocks as `[label rows]`, in its order, each row flagged
+  with its block for the cells that read it: the Slot cell's dash, BN or IR, and
+  the IR row's muted class."
+  [{:keys [starters bench parked]}]
+  [["Starters"  (mapv #(assoc % :starter? true) starters)]
+   ["Bench"     bench]
+   ["IR / Taxi" (mapv #(assoc % :parked? true) parked)]])
 
 (defn team-cell [k p week]
   (case k
@@ -44,7 +38,7 @@
                            (:parked? p)  "IR"
                            :else         "BN")]
     :name (if (:unvalued? p)
-            [:td.player [:span.muted {:title (str "No projection for id " (:player-id p))}
+            [:td.player [:span.muted {:title (str "No player for id " (:player-id p))}
                          (:player-id p)]]
             (cond-> (waivers/cell :name p week)
               (:drop? p) (conj [:span.drop-tag {:title "A claim would cost this seat"}
@@ -76,20 +70,33 @@
        [:span.strip-note {:title "Where your claims fall in the waiver order"}
         (str "Waiver priority " pos)])]))
 
+(defn empty-roster?
+  "Whether a `:my-roster` holds nobody — not whether there is one to read."
+  [roster]
+  (every? empty? (vals roster)))
+
 (defn team-view []
   (let [waivers @(rf/subscribe [:waivers])
-        roster  @(rf/subscribe [:my-waiver-roster])
+        roster  @(rf/subscribe [:my-roster])
         synced? @(rf/subscribe [:league-synced?])
+        team    @(rf/subscribe [:my-sync-team])
+        failed  @(rf/subscribe [:universe-error])
         week    (:week @(rf/subscribe [:waiver-meta]))]
     [:div.team-view
      [team-strip]
      (cond
        (not synced?)  [:p.muted "Sync a league under Settings to see your roster."]
+       (nil? team)    [:p.muted "Pick your team under Settings to see your roster."]
+       (nil? roster)  [:p.muted (if failed
+                                  (str "The player list failed to load (" failed
+                                       "). Reload to try again.")
+                                  "Loading your roster…")]
+       ;; The rows are the waiver reply's, so a roster without it has names and
+       ;; nothing else to read against them.
        (nil? waivers) [:p.muted "Loading your roster…"]
-       (nil? roster)  [:p.muted "Pick your team under Settings to see your roster."]
-       (empty? roster) [:p.muted "This team holds nobody yet."]
-       :else [roster-table (roster-groups roster (:my-roster-players waivers)) week])
-     (when-let [drop (some #(when (:drop? %) %) roster)]
+       (empty-roster? roster) [:p.muted "This team holds nobody yet."]
+       :else [roster-table (roster-groups roster) week])
+     (when-let [drop (and roster (:drop-candidate waivers))]
        [:div.drop-note
         "A claim costs a roster spot. Yours would come from "
         [:strong (:player-name drop)]

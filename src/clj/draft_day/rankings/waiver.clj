@@ -118,15 +118,13 @@
 
 ;; ---- who is available ----
 
-(defn held-ids
+(def held-ids
   "One team's roster ids in the *board's* id space — see the ns docstring, which
-  every roster reader is required to come through. `k` selects the list:
-  `:player-ids` for who is unavailable, `:active-ids` for who occupies a seat.
-
-  The implementation is `db/held-ids`, in cljc so the browser's League tab reads
-  a roster through the same translation rather than a second copy of it."
-  ([team xwalk] (db/held-ids team xwalk :player-ids))
-  ([team xwalk k] (db/held-ids team xwalk k)))
+  every roster reader is required to come through. `db/held-ids` under the name
+  this namespace's readers know it by; it lives in cljc so the browser reads a
+  roster through the same translation, and an alias rather than a wrapper so
+  there is one default arity rather than two that could drift."
+  db/held-ids)
 
 (defn rostered-index
   "`{canonical-player-id team-name}` over every team in the synced league."
@@ -337,56 +335,10 @@
      :players (mapv (fn [p] (-> p (assoc :ros-vorp (:vorp p)) (dissoc :vorp)))
                     (replacement/with-vorp board levels :ros-points))}))
 
-(defn roster-sort-key
-  "Starters in the league's own lineup order (`slot-idx` is `{id slot}` off
-  `:starter-ids`), so a WR starting at FLEX keeps that seat rather than sorting up
-  beside the other receivers. Everyone else follows by position, then points."
-  [slot-idx {:keys [starter? player-id position ros-points]}]
-  [(if starter? 0 1)
-   (get slot-idx player-id (count slot-idx))
-   (db/position-rank position)
-   (- (or ros-points 0.0))])
-
-(defn my-roster
-  "The manager's own roster for the panel beside the board and for My Team,
-  ordered; nil when no team is picked, since both say something different for
-  'pick your team' than for an empty one. Rows the board cannot value are kept
-  as placeholders.
-
-  A starter carries `:slot`, the seat he occupies, read off `seats` — a vector
-  in `:starter-ids`' order (`db/starter-seats`). That is the only thing that can say
-  a receiver is starting at FLEX. Absent when there is no such vector."
-  [my-team xwalk by-id drop seats]
-  (when my-team
-    (let [lineup   (held-ids my-team xwalk :starter-ids)
-          ;; An unfilled slot is "0" — an index matching nobody, which keeps
-          ;; the seats below it in their real places.
-          slot-idx (zipmap lineup (range))
-          seats    (vec seats)
-          starters (set lineup)
-          active   (set (held-ids my-team xwalk :active-ids))
-          drop-id  (:player-id drop)]
-      (->> (held-ids my-team xwalk :player-ids)
-           (map (fn [id]
-                  (let [flags (cond-> {:starter? (contains? starters id)
-                                       ;; IR and taxi: rostered, holding no seat.
-                                       :parked?  (not (contains? active id))
-                                       :drop?    (= id drop-id)}
-                                (contains? starters id)
-                                (assoc :slot (get seats (slot-idx id))))]
-                    (if-let [p (get by-id id)]
-                      ;; Exactly what the panel draws — a key nobody reads is a
-                      ;; claim that something uses it (see the PDM).
-                      (merge (select-keys p [:player-id :player-name
-                                             :position :ros-points])
-                             flags)
-                      (merge {:player-id id :unvalued? true} flags)))))
-           (sort-by #(roster-sort-key slot-idx %))
-           vec))))
-
 (defn my-roster-players
   "The manager's roster as full board rows, so a held player compares against a
-  free agent on the same columns and one renderer serves both. `:upgrade` and
+  free agent on the same columns and one renderer serves both — and the rows
+  the browser draws his roster from, split by `db/team-roster`. `:upgrade` and
   `:bid` are absent rather than zero — you cannot claim a man you already hold."
   [my-team xwalk by-id]
   (when my-team
@@ -422,7 +374,12 @@
                                drop starting-slots)
                              (with-bids waiver (:faab-left my-team) n)
                              with-trend)
-     :my-roster          (my-roster my-team xwalk by-id drop (db/starter-seats my-team league))
+     ;; The seat a claim would cost, for the browser to mark on the manager's
+     ;; roster — which it splits itself, through `db/team-roster`, the one
+     ;; reader the League tab uses too. On the envelope and not only on each
+     ;; free agent's row, or a board with no free agents would lose it.
+     :drop-candidate     (when drop (select-keys drop [:player-id :player-name
+                                                       :position :ros-points]))
      :my-roster-players  (my-roster-players my-team xwalk by-id)
      :rostered           rostered
      :replacement-levels levels

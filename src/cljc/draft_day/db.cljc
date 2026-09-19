@@ -825,21 +825,32 @@
       (when (= "sleeper" (some-> (:provider league) name))
         (:roster-positions league))))
 
-(defn team-roster
-  "One synced team as the League tab draws it: `{:starters :bench :parked}`,
-  each a vector of rows with `:player-id`, `:player-name`, `:position` and
-  `:team`, plus `:slot` on a starter whose seat is known.
+(defn roster-sort-key
+  "Below the starters a roster reads by position, then best first: rest-of-
+  season points where the row carries them (the manager's own, off the waiver
+  board), else name. A rival's rows carry none, so one rule serves both. A row
+  with no position — one nobody could resolve — sorts last in its block."
+  [p]
+  [(position-rank (:position p)) (- (or (:ros-points p) 0)) (str (:player-name p))])
 
-  Ids go through `held-ids`, and a row the universe has no player for keeps its
-  place as `{:player-id id :unvalued? true}` — a roster that silently skipped him
-  would show fewer players than the team holds, which is how a missing crosswalk
-  hides. An unfilled starting seat (Sleeper's \"0\") is dropped here: this is a
-  list of who a team holds, not of its seats."
+(defn team-roster
+  "One synced team as every season view draws it — the League tab's cards, My
+  Team and the Waivers panel alike: `{:starters :bench :parked}`, each a vector
+  of `by-id`'s rows, plus `:slot` on a starter whose seat is known.
+
+  The only place a roster is split. The server used to split the manager's own
+  as well, and the two disagreed: it took starters from `:player-ids`
+  membership and this took them from `:starter-ids`, so one starter could show
+  on the League tab and not on My Team.
+
+  Starters come in lineup order off `:starter-ids`, seated by `starter-seats`.
+  An unfilled seat (Sleeper's \"0\") consumes its index and is dropped: this is
+  a list of who a team holds, not of its seats. Ids go through `held-ids`, and
+  an id `by-id` cannot resolve keeps its place as `{:player-id id :unvalued?
+  true}` — a roster that silently skipped him would show fewer players than the
+  team holds, which is how a missing crosswalk hides."
   [team league xwalk by-id]
-  (let [row      (fn [id]
-                   (if-let [p (get by-id id)]
-                     (select-keys p [:player-id :player-name :position :team])
-                     {:player-id id :unvalued? true}))
+  (let [row      (fn [id] (or (get by-id id) {:player-id id :unvalued? true}))
         seats    (vec (starter-seats team league))
         lineup   (held-ids team xwalk :starter-ids)
         starters (into []
@@ -853,8 +864,7 @@
         others   (->> (held-ids team xwalk :player-ids)
                       (remove started)
                       (map row)
-                      (sort-by (juxt #(position-rank (:position %))
-                                     #(str (:player-name %)))))]
+                      (sort-by roster-sort-key))]
     {:starters starters
      :bench    (filterv #(contains? active (:player-id %)) others)
      :parked   (filterv #(not (contains? active (:player-id %))) others)}))

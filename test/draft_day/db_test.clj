@@ -771,6 +771,46 @@
                                              synced-xwalk synced-by-id)]
       (is (not-any? :slot starters)))))
 
+(deftest a-starter-is-listed-even-when-the-host-left-him-off-the-roster
+  ;; The server split the manager's own roster too, taking starters from
+  ;; `:player-ids`, so this one showed on the League tab and not on My Team.
+  (let [{:keys [starters bench]}
+        (db/team-roster {:player-ids ["22"] :active-ids ["22"] :starter-ids ["11"]}
+                        {:provider "sleeper" :roster-positions ["QB"]}
+                        synced-xwalk synced-by-id)]
+    (is (= [["00-qb" "QB"]] (mapv (juxt :player-id :slot) starters)))
+    (is (= ["00-wr"] (mapv :player-id bench)))))
+
+(deftest the-rest-of-a-roster-reads-by-position-then-best-first
+  ;; The manager's rows carry rest-of-season points off the waiver board and a
+  ;; rival's carry none, so one rule has to serve both.
+  (let [by-id {"a" {:player-id "a" :player-name "Zed" :position "WR" :ros-points 40.0}
+               "b" {:player-id "b" :player-name "Amy" :position "WR" :ros-points 90.0}
+               "c" {:player-id "c" :player-name "Bo" :position "QB"}
+               "d" {:player-id "d" :player-name "Al" :position "QB"}}
+        ids   ["a" "ghost" "b" "c" "d"]
+        {:keys [starters bench]} (db/team-roster {:player-ids ids :active-ids ids}
+                                                 {:provider "sleeper"} {} by-id)]
+    (is (empty? starters) "a league nobody has set a lineup in has no starters")
+    (is (= ["d" "c" "b" "a" "ghost"] (mapv :player-id bench))
+        "QB before WR, better points first, by name where there are none, the unresolvable last")
+    (is (= 90.0 (:ros-points (nth bench 2)))
+        "a row is by-id's own, so My Team draws the full board row")))
+
+(deftest a-lineup-that-is-not-positional-is-never-labelled-by-index
+  ;; ESPN names each starter's seat on his entry; its seat list is ordered by
+  ;; slot id. Indexing that list would call a FLEX receiver whatever sits at
+  ;; his index.
+  (let [espn {:provider "espn" :roster-positions ["QB" "RB" "RB" "WR" "FLEX"]}]
+    (is (= ["FLEX" "QB"]
+           (db/starter-seats {:starter-slots ["FLEX" "QB"]} espn))
+        "the seats a team names are read as they are")
+    (is (nil? (db/starter-seats {} espn))
+        "and an ESPN sync stored before it named them gets no label, not a guess")
+    (is (= ["QB" "RB"]
+           (db/starter-seats {} {:provider :sleeper :roster-positions ["QB" "RB"]}))
+        "while Sleeper's lineup is positional against its seats")))
+
 (deftest standings-order-is-wins-then-losses-then-name
   (is (= ["B" "A" "C" "D"]
          (mapv :name (db/record-order [{:name "A" :wins 2 :losses 1}

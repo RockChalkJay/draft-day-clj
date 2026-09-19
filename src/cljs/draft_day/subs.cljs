@@ -268,22 +268,51 @@
 (rf/reg-sub :mode-views :<- [:mode] :<- [:active-league]
   (fn [[mode league] _] (when mode (db/phase-views league mode))))
 
-;; Every synced team's roster in standings order, for the season League tab —
-;; read through `db/team-roster`, the same id translation the server uses.
+;; The synced league's provider ids -> board ids. Its own sub so the crosswalk is
+;; built once per universe or league, not again on every waiver reply.
+(rf/reg-sub :roster-xwalk :<- [:players] :<- [:league-sync]
+  (fn [[players ls] _] (db/provider->player-id players (:provider ls))))
+
+;; Every synced team's roster in standings order — the League tab's cards, and
+;; through `:my-roster` the manager's own everywhere else. Read through
+;; `db/team-roster`, the same id translation the server uses.
+;;
+;; The manager's players are the waiver reply's full rows where it has loaded,
+;; so his card carries what My Team draws; everyone else's are the universe's.
 ;;
 ;; nil until the universe has landed. Before then every id resolves to nobody,
 ;; and a card of raw ids reads exactly like the broken crosswalk that
 ;; `team-roster`'s unvalued rows exist to expose.
 (rf/reg-sub :league-rosters
-  :<- [:league-sync] :<- [:players] :<- [:universe-by-id] :<- [:my-roster-id]
-  (fn [[ls players by-id mine] _]
-    (when (and (seq (:teams ls)) (seq by-id))
-      (let [xwalk (db/provider->player-id players (:provider ls))]
+  :<- [:league-sync] :<- [:roster-xwalk] :<- [:universe-by-id] :<- [:my-roster-id]
+  :<- [:waivers]
+  (fn [[ls xwalk universe mine w] _]
+    (when (and (seq (:teams ls)) (seq universe))
+      (let [by-id (into universe (map (juxt :player-id identity)) (:my-roster-players w))]
         (mapv (fn [t]
                 (assoc (db/team-roster t ls xwalk by-id)
                        :team t
                        :mine? (= (:roster-id t) mine)))
               (db/record-order (:teams ls)))))))
+
+;; The manager's own roster, `{:starters :bench :parked}` — his card off
+;; `:league-rosters` rather than a second reading of the sync, so My Team, the
+;; Waivers panel and the League tab cannot disagree about whom he holds. The
+;; seat a claim would cost is flagged `:drop?`, off the waiver reply.
+;;
+;; nil while there is no card to read: no team picked, or no universe yet.
+(rf/reg-sub :my-roster :<- [:league-rosters] :<- [:waivers]
+  (fn [[rosters w] _]
+    (when-let [mine (some #(when (:mine? %) %) rosters)]
+      (let [drop-id (get-in w [:drop-candidate :player-id])
+            flag    (fn [rows]
+                      (mapv #(cond-> % (and drop-id (= drop-id (:player-id %)))
+                               (assoc :drop? true))
+                            rows))]
+        (-> (select-keys mine [:starters :bench :parked])
+            (update :starters flag)
+            (update :bench flag)
+            (update :parked flag))))))
 
 ;; The manager's own team as the sync reported it — record, FAAB, waiver order.
 (rf/reg-sub :my-sync-team :<- [:league-sync] :<- [:my-roster-id]
@@ -459,12 +488,6 @@
 
 (rf/reg-sub :waiver-meta :<- [:waivers]
   (fn [w _] (select-keys w [:through-week :season-games :week :week-fetched-at])))
-
-;; The manager's own seats. nil and [] mean different things here and the panel
-;; draws them differently — nil is "no team picked yet", [] is "this team holds
-;; nobody" — so this deliberately does not normalize one into the other.
-(rf/reg-sub :my-waiver-roster :<- [:waivers]
-  (fn [w _] (:my-roster w)))
 
 ;; Which week the board is showing, as one of three answers — and three, not
 ;; two, is the point. `:waivers` is nil before the first reply and stays nil
