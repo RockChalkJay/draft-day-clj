@@ -179,6 +179,16 @@
   [positions]
   (mapv #(get position-spellings % %) positions))
 
+(defn drafted?
+  "Pure: whether a league's `status` says its draft is over — nil for a status
+  this does not know, so an unfamiliar one reads as the host saying nothing
+  rather than as either answer."
+  [status]
+  (case status
+    ("pre_draft" "drafting") false
+    ("in_season" "complete") true
+    nil))
+
 (defmethod league-sync/normalize-rosters :sleeper
   [_ {:keys [rosters users league]}]
   (let [waiver (import-sleeper/waiver-settings league)
@@ -201,5 +211,8 @@
      ;; re-importing the rules should still get bids bounded by the right
      ;; number of runs.
      :playoff-week-start (import-sleeper/playoff-week-start league)
+     ;; The host's word on its own draft, which `db/derived-phase` reads so a
+     ;; league drafted here opens in season before a week has been played.
+     :drafted? (drafted? (:status league))
      :name   (:name league)
      :season (:season league)}))

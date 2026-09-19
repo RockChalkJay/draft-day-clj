@@ -89,6 +89,12 @@
   (is (= "{OWNER-1}" (:owner-id (mine))))
   (is (= "{OWNER-2}" (:owner-id (second (:teams (sync-of raw)))))))
 
+(deftest the-sync-says-whether-the-league-has-drafted
+  (is (true? (:drafted? (sync-of (assoc raw :draftDetail {:drafted true :inProgress false})))))
+  (is (false? (:drafted? (sync-of (assoc raw :draftDetail {:drafted false :inProgress true}))))
+      "a live draft is not over")
+  (is (nil? (:drafted? (sync-of raw))) "no draftDetail is ESPN saying nothing"))
+
 (deftest the-sync-carries-the-leagues-own-seats-and-their-count
   (let [s (sync-of raw)]
     (is (= ["QB" "RB" "DST" "BENCH" "BENCH" "IR"] (:roster-positions s)))

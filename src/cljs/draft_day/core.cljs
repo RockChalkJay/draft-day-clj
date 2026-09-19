@@ -52,6 +52,8 @@
           :settings [settings/settings]
           :waivers  [waivers/waivers-view]
           :matchup  [matchup/matchup-view]
+          ;; Not placed until the phase is known — `events/place-view`.
+          nil       [:p.muted "Loading…"]
           [board-view])]
        ;; Mounted here rather than inside the waivers view because it is
        ;; `position: fixed` and needs no place in that DOM — and because putting

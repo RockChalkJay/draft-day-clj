@@ -6,7 +6,6 @@
   Its own namespace rather than part of `core` so the node test build can reach
   it: `core` mounts a React root when it loads."
   (:require [re-frame.core :as rf]
-            [draft-day.db :as db]
             [draft-day.providers :as providers]
             [draft-day.views.waivers :as waivers]))
 
@@ -114,20 +113,27 @@
 
 (defn header []
   (let [mode   @(rf/subscribe [:mode])
+        tabs   @(rf/subscribe [:mode-views])
         view   @(rf/subscribe [:view])
         status @(rf/subscribe [:status])]
     [:header.top
      [:div.brand "🏈 Draft Day"]
-     [:span.mode-tag (if (= mode :season) "Season" "Draft")]
+     ;; No mode yet means the week is still loading: draw neither half rather
+     ;; than one that may be taken back.
+     (when mode
+       [:span.mode-tag (if (= mode :season) "Season" "Draft")])
      [:nav.views
-      (for [v (db/mode-views mode)]
+      (for [v tabs]
         ^{:key v}
         [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])}
          (view-labels v)])]
-     [mode-link]
+     (when mode [mode-link])
      [league-switcher]
      [:div.status status]
-     (if (= mode :season) [season-stats] [draft-stats])
+     (case mode
+       :season [season-stats]
+       :draft  [draft-stats]
+       nil)
      [:button.gear {:class    (when (= view :settings) "on")
                     :title    "Settings"
                     :on-click #(rf/dispatch [:set-view :settings])}

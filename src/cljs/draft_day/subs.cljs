@@ -259,9 +259,14 @@
 ;; The mode the header draws: the phase of the tab on screen, else the phase.
 ;; A draft whose last pick just landed is in season by the data, but the board
 ;; stays up — and its tabs with it — until the manager moves on, since the next
-;; thing he may want is to undo that pick.
+;; thing he may want is to undo that pick. nil while neither is known, when the
+;; header draws no half rather than one it may have to take back.
 (rf/reg-sub :mode :<- [:view] :<- [:phase]
   (fn [[view phase] _] (or (db/view-mode view) phase)))
+
+;; The tabs the header draws for that mode, for the league on screen.
+(rf/reg-sub :mode-views :<- [:mode] :<- [:active-league]
+  (fn [[mode league] _] (when mode (db/phase-views league mode))))
 
 ;; What the season header says about the league on screen: the week, FAAB and
 ;; when the rosters were fetched. FAAB off the sync rather than the waiver board,

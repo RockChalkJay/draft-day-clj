@@ -674,15 +674,60 @@
                               :active-league "k" :leagues {"k" {}}})))
     (is (= :draft (db/phase {:universe {:through-week 5} :phase :draft})))))
 
+(deftest the-phase-is-unknown-until-the-week-is
+  ;; Saying draft day before the universe lands drew the draft half for a
+  ;; mid-season manager, and "Go to season" then stored an override for it.
+  (is (nil? (db/phase {})))
+  (is (nil? (db/phase {:teams [(open-team)]})))
+  (is (= :draft (db/phase {:universe {}})) "a universe with no week is week 0")
+  (is (= :season (db/phase {:teams [(full-team)]}))
+      "evidence of season needs no week")
+  (is (= :draft (db/phase {:phase :draft})) "nor does an override"))
+
+(defn- league-db [drafted? & {:as more}]
+  (merge {:active-league "k" :leagues {"k" {:sync {:teams [] :drafted? drafted?}}}}
+         more))
+
+(deftest a-connected-league-s-draft-is-the-one-its-host-reports
+  (testing "drafted on the host is season before a week is played"
+    (is (= :season (db/phase (league-db true :universe {:through-week 0}))))
+    (is (= :season (db/phase (league-db true))) "and before the week is even known"))
+  (testing "the tracker's draft does not speak for a league whose host has"
+    (is (= :draft (db/phase (league-db false :universe {:through-week 0}
+                                       :teams [(full-team)])))))
+  (testing "one whose host said nothing falls back to the tracker"
+    (is (= :season (db/phase (league-db nil :universe {:through-week 0}
+                                        :teams [(full-team)]))))
+    (is (= :draft (db/phase (league-db nil :universe {:through-week 0}))))))
+
 (deftest a-view-outside-the-phase-falls-back-to-where-the-phase-opens
-  (is (= :board (db/view-for :draft :board)))
-  (is (= :matchup (db/view-for :season :board)))
-  (is (= :board (db/view-for :draft :waivers)))
-  (is (= :settings (db/view-for :season :settings)) "Settings belongs to neither")
-  (is (= :waivers (db/view-for :season :waivers))))
+  (is (= :board (db/view-for {} :draft :board)))
+  (is (= :matchup (db/view-for {} :season :board)))
+  (is (= :board (db/view-for {} :draft :waivers)))
+  (is (= :settings (db/view-for {} :season :settings)) "Settings belongs to neither")
+  (is (= :waivers (db/view-for {} :season :waivers)))
+  (testing "a view not yet placed opens where the phase does"
+    (is (= :matchup (db/view-for {} :season nil))))
+  (testing "an unknown phase decides nothing"
+    (is (nil? (db/view-for {} nil nil)))
+    (is (= :board (db/view-for {} nil :board)))))
+
+(deftest a-league-with-no-matchup-board-opens-its-season-on-waivers
+  ;; The matchup backend is Sleeper-only, and the tab it cannot fill was the
+  ;; one every ESPN league's season opened on.
+  (let [espn {:active-league "k" :leagues {"k" {:provider "espn" :league-id "1"}}}]
+    (is (= [:waivers] (db/phase-views {:provider "espn"} :season)))
+    (is (= [:matchup :waivers] (db/phase-views {:provider "sleeper"} :season)))
+    (is (= [:matchup :waivers] (db/phase-views nil :season)) "no league, no reason to hide it")
+    (is (= :waivers (db/view-for espn :season nil)))
+    (is (= :waivers (db/view-for espn :season :matchup)))))
 
 (deftest max-bid-leaves-a-dollar-for-every-other-open-seat
   (is (= 198 (db/max-bid {:bankroll 200 :roster [{:player-id nil} {:player-id nil}
                                                  {:player-id nil}]})))
-  (is (= 1 (db/max-bid {:bankroll 1 :roster [{:player-id nil} {:player-id nil}]})))
+  (is (= 0 (db/max-bid {:bankroll 1 :roster [{:player-id nil} {:player-id nil}]}))
+      "$1 and two seats to fill leaves nothing to bid with")
+  (is (= 0 (db/max-bid {:bankroll 0 :roster [{:player-id nil}]})))
+  (is (= 0 (db/max-bid {:bankroll 7 :roster [{:player-id "a"}]}))
+      "a full roster has no seat to bid for — it read $8, more than it had")
   (is (nil? (db/max-bid nil))))
