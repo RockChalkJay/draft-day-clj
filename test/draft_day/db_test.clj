@@ -778,6 +778,27 @@
                                        {:name "B" :wins 2 :losses 0}
                                        {:name "D"}])))))
 
+(deftest equal-records-are-split-by-points-scored-not-by-name
+  ;; After week 1 half the league is 1–0; alphabetical was nobody's standings.
+  (is (= ["Zed" "Amy"]
+         (mapv :name (db/record-order [{:name "Amy" :wins 1 :losses 0 :points-for 98.4}
+                                       {:name "Zed" :wins 1 :losses 0 :points-for 131.2}])))))
+
+(deftest a-tie-counts-half-a-win
+  ;; 1-1-2 and 2-2 are both .500, so points decide between them.
+  (is (= ["2-1-1" "1-1-2" "2-2"]
+         (mapv :name (db/record-order [{:name "2-2" :wins 2 :losses 2}
+                                       {:name "1-1-2" :wins 1 :losses 1 :ties 2 :points-for 999}
+                                       {:name "2-1-1" :wins 2 :losses 1 :ties 1}])))))
+
+(deftest a-record-is-said-only-when-the-league-reports-one
+  ;; A dash beside a team name reads as a score.
+  (is (= "5–3" (db/record-label {:wins 5 :losses 3})))
+  (is (= "5–3" (db/record-label {:wins 5 :losses 3 :ties 0})))
+  (is (= "2–1–1" (db/record-label {:wins 2 :losses 1 :ties 1})) "a tie is part of the record")
+  (is (nil? (db/record-label {})))
+  (is (nil? (db/record-label {:wins 5}))))
+
 (deftest each-half-has-its-own-league-tab
   (is (= :draft (db/view-mode :league)))
   (is (= :season (db/view-mode :rosters)))

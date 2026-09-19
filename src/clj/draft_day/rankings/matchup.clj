@@ -210,6 +210,7 @@
      :name      (:name team)
      :wins      (:wins team)
      :losses    (:losses team)
+     :ties      (:ties team)
      :starters  starters
      :bench     bench
      :projected (reported starters :week-points)

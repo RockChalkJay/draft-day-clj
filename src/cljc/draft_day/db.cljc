@@ -859,11 +859,26 @@
      :bench    (filterv #(contains? active (:player-id %)) others)
      :parked   (filterv #(not (contains? active (:player-id %))) others)}))
 
+(defn win-pct
+  "Wins over games played, a tie counting half a win; 0 before any game."
+  [{:keys [wins losses ties]}]
+  (let [w (or wins 0) g (+ w (or losses 0) (or ties 0))]
+    (if (pos? g) (/ (+ w (/ (or ties 0) 2)) g) 0)))
+
 (defn record-order
-  "Standings order: most wins first, then fewest losses, then name — a league
-  that reports no record at all falls back to plain name order."
+  "Standings order: win percentage, then points scored, then name. Points is
+  Sleeper's tiebreak; ESPN can break ties head to head, which a sync does not
+  carry. Without the tiebreak, week 1's six 1–0 teams listed alphabetically. A
+  league that reports no record at all falls back to plain name order."
   [teams]
-  (sort-by (juxt #(- (or (:wins %) 0)) #(or (:losses %) 0) #(str (:name %))) teams))
+  (sort-by (juxt #(- (win-pct %)) #(- (or (:points-for %) 0)) #(str (:name %))) teams))
+
+(defn record-label
+  "`5–3`, `5–3–1` once there is a tie, or nil when the league reports no
+  record: a dash beside a team name reads as a score."
+  [{:keys [wins losses ties]}]
+  (when (and wins losses)
+    (str wins "–" losses (when (and ties (pos? ties)) (str "–" ties)))))
 
 ;; ---- waiver board ----
 ;; The in-season board asks different questions than the draft board, so it gets

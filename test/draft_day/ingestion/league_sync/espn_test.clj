@@ -20,7 +20,7 @@
                                     :acquisitionBudget 100}}
    :teams [{:id 1 :name "Kansas Screamers" :owners ["{OWNER-1}"]
             :waiverRank 4
-            :record {:overall {:wins 5 :losses 3}}
+            :record {:overall {:wins 5 :losses 3 :ties 1 :pointsFor 1043.56}}
             :transactionCounter {:acquisitionBudgetSpent 30}
             :roster {:entries [(entry 4034 0)
                                (entry 6794 2)
@@ -114,6 +114,8 @@
 (deftest the-record-rides-along
   (is (= 5 (:wins (mine))))
   (is (= 3 (:losses (mine))))
+  (is (= 1 (:ties (mine))))
+  (is (= 1043.56 (:points-for (mine))) "what standings break a tie on")
   (is (= 4 (:waiver-position (mine)))))
 
 ;; ---- discovery ----

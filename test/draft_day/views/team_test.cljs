@@ -39,10 +39,6 @@
       (is (= "PHI" (:team (first starters))))
       (is (= "FLEX" (:slot (second starters))) "and the roster's own flags win"))))
 
-(deftest a-record-is-said-only-when-the-league-reports-one
-  (is (= "2–1" (team/record-label {:wins 2 :losses 1})))
-  (is (nil? (team/record-label {:wins 2}))))
-
 (deftest the-slot-cell-names-the-seat
   (is (= "FLEX" (last (team/team-cell :slot {:slot "FLEX"} 3))))
   (is (= "BN" (last (team/team-cell :slot {} 3))))

@@ -13,6 +13,7 @@
   seat, the IR/taxi mark and the drop. Both come from the one `/api/waivers`
   reply, so opening this tab loads that board."
   (:require [re-frame.core :as rf]
+            [draft-day.db :as db]
             [draft-day.views.board :as board]
             [draft-day.views.waivers :as waivers]))
 
@@ -33,12 +34,6 @@
     [["Starters"  (filterv :starter? rows)]
      ["Bench"     (filterv #(not (or (:starter? %) (:parked? %))) rows)]
      ["IR / Taxi" (filterv #(and (:parked? %) (not (:starter? %))) rows)]]))
-
-(defn record-label
-  "`2–1`, or nil when the league reports no record — a dash beside a team name
-  reads as a score."
-  [{:keys [wins losses]}]
-  (when (and wins losses) (str wins "–" losses)))
 
 (defn team-cell [k p week]
   (case k
@@ -76,7 +71,7 @@
         team @(rf/subscribe [:my-sync-team])]
     [:div.status-strip
      [:span.team-title (or my-team-name "My Team")]
-     (when-let [rec (record-label team)] [:span.strip-note [:b rec]])
+     (when-let [rec (db/record-label team)] [:span.strip-note [:b rec]])
      (when-let [pos (:waiver-position team)]
        [:span.strip-note {:title "Where your claims fall in the waiver order"}
         (str "Waiver priority " pos)])]))

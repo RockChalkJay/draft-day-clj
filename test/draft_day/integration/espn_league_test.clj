@@ -81,6 +81,8 @@
       (is (seq (:starter-ids mine))
           "starters come off lineupSlotId; none means the slot table moved")
       (is (<= (count (:active-ids mine)) (count (:player-ids mine))))
+      (is (every? #(and (number? (:wins %)) (number? (:points-for %))) teams)
+          "the League tab orders on these; nil means record.overall moved")
       (testing "every seat is one the lineup can actually fill"
         (doseq [s roster-positions]
           (is (or (db/held-slots s)

@@ -273,12 +273,6 @@
   (is (= "12.6" (matchup/fmt 12.64)))
   (is (= "8.4" (matchup/fmt 8.44))))
 
-(deftest a-league-that-reports-no-record-shows-none
-  ;; A dash beside a team name reads as a score.
-  (is (= "5–3" (matchup/record-label {:wins 5 :losses 3})))
-  (is (nil? (matchup/record-label {})))
-  (is (nil? (matchup/record-label {:wins 5}))))
-
 (deftest the-pending-class-is-what-keeps-the-two-apart
   ;; The muted, unbolded look is the only thing telling "not yet" from
   ;; "nothing", so it is rendered rather than asserted on a string.

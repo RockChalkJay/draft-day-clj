@@ -7,7 +7,7 @@
   synced rosters, through `db/team-roster`, so a player shows under the team
   the provider says holds him rather than the team that drafted him in August."
   (:require [re-frame.core :as rf]
-            [draft-day.views.team :as team]
+            [draft-day.db :as db]
             [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
@@ -42,7 +42,7 @@
    [:div.team-head.split
     (:name team)
     (when mine? [:span.you " (You)"])
-    (when-let [rec (team/record-label team)] [:span.rec rec])]
+    (when-let [rec (db/record-label team)] [:span.rec rec])]
    [:div.team-sub
     ;; A balance the host did not report is a dash, not $0: a rival read as
     ;; broke is one the manager thinks cannot outbid him.
