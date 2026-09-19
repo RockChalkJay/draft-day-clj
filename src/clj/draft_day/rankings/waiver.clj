@@ -344,25 +344,49 @@
    (db/position-rank position)
    (- (or ros-points 0.0))])
 
+(defn starter-seats
+  "Each starter's seat, in `:starter-ids`' order, or nil when that cannot be
+  known.
+
+  A team that names its starters' seats (`:starter-slots`, ESPN) is read as it
+  is. Otherwise the lineup is positional against the league's
+  `:roster-positions` — true of Sleeper, and of no provider known to be
+  otherwise — and anything else gets no label, because indexing the seat list
+  for a lineup that is not positional labels a FLEX receiver RB with nothing
+  on screen to say so. An ESPN sync stored before `:starter-slots` existed is
+  that case."
+  [team league]
+  (or (:starter-slots team)
+      (when (= "sleeper" (some-> (:provider league) name))
+        (:roster-positions league))))
+
 (defn my-roster
-  "The manager's own roster for the panel beside the board, ordered; nil when no
-  team is picked, since the panel says something different for 'pick your team'
-  than for an empty one. Rows the board cannot value are kept as placeholders."
-  [my-team xwalk by-id drop]
+  "The manager's own roster for the panel beside the board and for My Team,
+  ordered; nil when no team is picked, since both say something different for
+  'pick your team' than for an empty one. Rows the board cannot value are kept
+  as placeholders.
+
+  A starter carries `:slot`, the seat he occupies, read off `seats` — a vector
+  in `:starter-ids`' order (`starter-seats`). That is the only thing that can say
+  a receiver is starting at FLEX. Absent when there is no such vector."
+  [my-team xwalk by-id drop seats]
   (when my-team
     (let [lineup   (held-ids my-team xwalk :starter-ids)
           ;; An unfilled slot is "0" — an index matching nobody, which keeps
           ;; the seats below it in their real places.
           slot-idx (zipmap lineup (range))
+          seats    (vec seats)
           starters (set lineup)
           active   (set (held-ids my-team xwalk :active-ids))
           drop-id  (:player-id drop)]
       (->> (held-ids my-team xwalk :player-ids)
            (map (fn [id]
-                  (let [flags {:starter? (contains? starters id)
-                               ;; IR and taxi: rostered, holding no seat.
-                               :parked?  (not (contains? active id))
-                               :drop?    (= id drop-id)}]
+                  (let [flags (cond-> {:starter? (contains? starters id)
+                                       ;; IR and taxi: rostered, holding no seat.
+                                       :parked?  (not (contains? active id))
+                                       :drop?    (= id drop-id)}
+                                (contains? starters id)
+                                (assoc :slot (get seats (slot-idx id))))]
                     (if-let [p (get by-id id)]
                       ;; Exactly what the panel draws — a key nobody reads is a
                       ;; claim that something uses it (see the PDM).
@@ -411,7 +435,7 @@
                                drop starting-slots)
                              (with-bids waiver (:faab-left my-team) n)
                              with-trend)
-     :my-roster          (my-roster my-team xwalk by-id drop)
+     :my-roster          (my-roster my-team xwalk by-id drop (starter-seats my-team league))
      :my-roster-players  (my-roster-players my-team xwalk by-id)
      :rostered           rostered
      :replacement-levels levels

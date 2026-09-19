@@ -702,25 +702,25 @@
 
 (deftest a-view-outside-the-phase-falls-back-to-where-the-phase-opens
   (is (= :board (db/view-for {} :draft :board)))
-  (is (= :matchup (db/view-for {} :season :board)))
+  (is (= :team (db/view-for {} :season :board)) "the season opens on My Team")
   (is (= :board (db/view-for {} :draft :waivers)))
   (is (= :settings (db/view-for {} :season :settings)) "Settings belongs to neither")
   (is (= :waivers (db/view-for {} :season :waivers)))
   (testing "a view not yet placed opens where the phase does"
-    (is (= :matchup (db/view-for {} :season nil))))
+    (is (= :team (db/view-for {} :season nil))))
   (testing "an unknown phase decides nothing"
     (is (nil? (db/view-for {} nil nil)))
     (is (= :board (db/view-for {} nil :board)))))
 
-(deftest a-league-with-no-matchup-board-opens-its-season-on-waivers
+(deftest a-league-with-no-matchup-board-drops-the-matchup-tab
   ;; The matchup backend is Sleeper-only, and the tab it cannot fill was the
   ;; one every ESPN league's season opened on.
   (let [espn {:active-league "k" :leagues {"k" {:provider "espn" :league-id "1"}}}]
-    (is (= [:waivers] (db/phase-views {:provider "espn"} :season)))
-    (is (= [:matchup :waivers] (db/phase-views {:provider "sleeper"} :season)))
-    (is (= [:matchup :waivers] (db/phase-views nil :season)) "no league, no reason to hide it")
-    (is (= :waivers (db/view-for espn :season nil)))
-    (is (= :waivers (db/view-for espn :season :matchup)))))
+    (is (= [:team :waivers] (db/phase-views {:provider "espn"} :season)))
+    (is (= [:team :matchup :waivers] (db/phase-views {:provider "sleeper"} :season)))
+    (is (= [:team :matchup :waivers] (db/phase-views nil :season)) "no league, no reason to hide it")
+    (is (= :team (db/view-for espn :season nil)))
+    (is (= :team (db/view-for espn :season :matchup)))))
 
 (deftest max-bid-leaves-a-dollar-for-every-other-open-seat
   (is (= 198 (db/max-bid {:bankroll 200 :roster [{:player-id nil} {:player-id nil}
