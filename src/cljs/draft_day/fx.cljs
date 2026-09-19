@@ -53,8 +53,13 @@
 
   9: a league entry carries `:rules` — what its import could not apply, whether
   it brought an auction budget, or why it failed — because a connected league's
-  settings are read-only and the warning has to outlive a reload."
-  9)
+  settings are read-only and the warning has to outlive a reload.
+
+  10: a league entry may carry `:phase` — a manual Draft/Season override — and
+  `:synced-at`, when its rosters were last fetched; `:phase` is stored at the top
+  level too, for when no league is active. Its `:sync` carries `:drafted?`, the
+  host's word on whether the draft is over."
+  10)
 
 (def drafts-key "draft-day-drafts")
 

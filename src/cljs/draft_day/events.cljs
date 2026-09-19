@@ -45,13 +45,31 @@
 
 ;; ---- boot / data loading ----
 
+(defn place-view
+  "Put an unplaced view on the tab its phase opens on — through `:set-view`, so
+  that tab's board loads — once the phase is known, and only then: placing it
+  sooner drew one half and took it back. `fallback` stands in for a phase the
+  data will never settle. Once placed, only a league switch or a phase change
+  moves it; a later universe reload must not carry the manager off the board
+  he kept up to undo the last pick."
+  ([db] (place-view db nil))
+  ([db fallback]
+   (when (nil? (:view db))
+     (when-let [v (db/view-for db (or (db/phase db) fallback) nil)]
+       [:dispatch [:set-view v]]))))
+
 (rf/reg-event-fx
  :boot
  (fn [_ _]
    ;; Archived drafts are read separately — see the ns docstring.
-   {:db (assoc (merge (db/default-db) (fx/load-persisted))
-               :drafts (fx/read-drafts))
-    :fx [[:dispatch [:fetch-players]]]}))
+   (let [db    (assoc (merge (db/default-db) (fx/load-persisted))
+                      :drafts (fx/read-drafts))
+         ;; A stored override or a synced league's finished draft already says
+         ;; which half this is; otherwise the week does, when the universe lands.
+         place (place-view db)]
+     {:db db
+      :fx (cond-> [[:dispatch [:fetch-players]]]
+            place (conj place))})))
 
 ;; The archive is written by an effect; this is the one place it is read back
 ;; into db, so there is a single reader rather than two `conj`s that can drift.
@@ -70,15 +88,27 @@
 (rf/reg-event-fx
  :players-loaded
  (fn [{:keys [db]} [_ resp]]
-   (let [status (str (:count resp) " players · " (:source resp))]
-     {:db (assoc db
-                 :players (:players resp)
-                 :universe (:universe resp)
-                 :status status
-                 :universe-status status)
-      :fx [[:dispatch [:recompute]]]})))
+   (let [status (str (:count resp) " players · " (:source resp))
+         db'    (assoc db
+                       :players (:players resp)
+                       :universe (:universe resp)
+                       :status status
+                       :universe-status status)
+         ;; The universe carries `:through-week`, so this is the first moment
+         ;; the app is sure whether the season has started.
+         place  (place-view db')]
+     {:db db'
+      :fx (cond-> [[:dispatch [:recompute]]]
+            place (conj place))})))
 
-(rf/reg-event-db :load-failed (fn [db [_ err]] (assoc db :status (str "Load failed: " err))))
+(rf/reg-event-fx :load-failed
+  (fn [{:keys [db]} [_ err]]
+    ;; The week will not come now. Whatever else says season still does — a
+    ;; synced league's finished draft — and otherwise draft day, where this
+    ;; status line is read.
+    (let [place (place-view db :draft)]
+      (cond-> {:db (assoc db :status (str "Load failed: " err))}
+        place (assoc :fx [place])))))
 
 ;; ---- rankings recompute ----
 
@@ -138,13 +168,55 @@
     ;;
     ;; `section` deep-links into Settings — "Connect a league" means the
     ;; accounts section, not whichever one was open last.
-    (cond-> {:db (cond-> (assoc db :view v)
-                   section (assoc :settings-section section))}
-      (and (= v :waivers) (nil? (:waivers db)))
-      (assoc :fx [[:dispatch [:fetch-waivers]]])
-      ;; Mutually exclusive with the branch above, so this cannot clobber it.
-      (and (= v :matchup) (nil? (:matchup db)))
-      (assoc :fx [[:dispatch [:fetch-matchup]]]))))
+    (let [lg (db/active-league db)]
+      (cond-> {:db (cond-> (assoc db :view v)
+                     section (assoc :settings-section section))}
+        (and (= v :waivers) (nil? (:waivers db)))
+        (assoc :fx [[:dispatch [:fetch-waivers]]])
+        ;; Mutually exclusive with the branch above, so this cannot clobber it.
+        ;; A league whose rosters never arrived is synced first, as
+        ;; `:set-active-league` does; `:league-synced` asks for the matchup.
+        (and (= v :matchup) (nil? (:matchup db)))
+        (assoc :fx [(if (and lg (nil? (:sync lg)) (providers/matchups? (:provider lg)))
+                      [:dispatch [:sync-league (select-keys lg [:provider :league-id])]]
+                      [:dispatch [:fetch-matchup]])])))))
+;; ---- phase ----
+
+(defn with-phase
+  "Store `p` as the phase override for league `k` — or, with `k` nil, for when
+  no league is active. `p` is stored exactly: nil is automatic."
+  [db k p]
+  (if k (assoc-in db [:leagues k :phase] p) (assoc db :phase p)))
+
+(rf/reg-event-fx :set-phase [persist]
+  (fn [{:keys [db]} [_ k p]]
+    ;; Only a change to the league on screen moves the view, and only off a tab
+    ;; the new phase does not have.
+    (let [db' (with-phase db k p)
+          v   (db/view-for db' (:view db'))]
+      (cond-> {:db db'}
+        (and (= k (:active-league db)) (not= v (:view db')))
+        (assoc :fx [[:dispatch [:set-view v]]])))))
+
+(rf/reg-event-fx :switch-mode [persist]
+  (fn [{:keys [db]} [_ target]]
+    ;; The header's "Go to …" link. Choosing what the data already says stores
+    ;; no override, so a manager who went back to the board to fix a pick is
+    ;; returned to automatic by coming forward again. It always lands on a tab
+    ;; of the target mode — from Settings as well.
+    ;;
+    ;; The override is written here rather than through `:set-phase`, whose own
+    ;; view resolution would queue behind this one and keep Settings on screen.
+    ;;
+    ;; With the data still out there is nothing to disagree with, so nothing
+    ;; is stored; the header offers no link then anyway.
+    (let [derived  (db/derived-phase db)
+          override (when (and derived (not= target derived)) target)
+          tabs     (db/phase-views (db/active-league db) target)
+          view     (:view db)]
+      {:db (with-phase db (:active-league db) override)
+       :fx [[:dispatch [:set-view (if (some #{view} tabs) view (first tabs))]]]})))
+
 (rf/reg-event-db :set-settings-section (fn [db [_ k]] (assoc db :settings-section k)))
 (rf/reg-event-db :set-search    (fn [db [_ q]] (assoc db :search q)))
 (rf/reg-event-db :set-pos-filter (fn [db [_ p]] (assoc db :pos-filter (if (= p (:pos-filter db)) nil p))))
@@ -536,18 +608,23 @@
     ;; Both boards, because both are priced under this league's rules — a
     ;; switch that moved one would leave Worth priced under the league you left.
     (if-let [entry (get (:leagues db) k)]
-      {:db (activate db k)
-       :fx (cond-> [[:dispatch [:recompute]]
-                    [:dispatch [:fetch-waivers]]]
-             ;; A league added by pasted id has rosters nobody has fetched, and
-             ;; a waiver board built on no league says everyone is free.
-             (nil? (:sync entry))
-             (conj [:dispatch [:sync-league (select-keys entry [:provider :league-id])]])
-             ;; Only when it is the tab on screen; every other tab picks it up
-             ;; from `:set-view`'s first-open fetch, and this one is live. Not
-             ;; before a first sync, which asks for it once there are rosters.
-             (and (= :matchup (:view db)) (:sync entry))
-             (conj [:dispatch [:fetch-matchup]]))}
+      ;; Leagues can be in different phases, so the tab on screen may not exist
+      ;; in this one. Resolved here rather than through `:set-view`: both boards
+      ;; are already being fetched below.
+      (let [db'  (activate db k)
+            view (db/view-for db' (:view db'))]
+        {:db (assoc db' :view view)
+         :fx (cond-> [[:dispatch [:recompute]]
+                      [:dispatch [:fetch-waivers]]]
+               ;; A league added by pasted id has rosters nobody has fetched, and
+               ;; a waiver board built on no league says everyone is free.
+               (nil? (:sync entry))
+               (conj [:dispatch [:sync-league (select-keys entry [:provider :league-id])]])
+               ;; Only when it is the tab on screen; every other tab picks it up
+               ;; from `:set-view`'s first-open fetch, and this one is live. Not
+               ;; before a first sync, which asks for it once there are rosters.
+               (and (= :matchup view) (:sync entry))
+               (conj [:dispatch [:fetch-matchup]]))})
       {})))
 
 (rf/reg-event-fx :sync-league
@@ -600,7 +677,10 @@
                                          (:user-id (db/league-account db entry))))]
       {:db (-> db
                (update-in [:leagues k] merge
-                          (cond-> {:sync league :my-roster-id mine}
+                          ;; Client clock: it answers "how old is what I am
+                          ;; looking at", which is a question about this browser.
+                          (cond-> {:sync league :my-roster-id mine
+                                   :synced-at (.toISOString (js/Date.))}
                             ;; Name and season ride along so a league synced
                             ;; by pasted id still reads in the switcher.
                             (:name league)   (assoc :name (:name league))
@@ -802,10 +882,24 @@
 (rf/reg-event-fx :fetch-matchup
   (fn [{:keys [db]} _]
     (let [lg (db/active-league db)]
-      (if-not (and (:provider lg) (:league-id lg))
+      (cond
+        (not (and (:provider lg) (:league-id lg)))
         {:db (assoc db :matchup-status "No league connected — nothing to look up.")}
+
+        (not (providers/matchups? (:provider lg)))
+        {:db (assoc db :matchup-status (str "No matchup board for "
+                                            (providers/label (:provider lg))
+                                            " leagues yet."))}
+
+        ;; Asked with no rosters, every team comes back empty — a scoreboard
+        ;; of blank lineups rather than a reason.
+        (nil? (:sync lg))
+        {:db (assoc db :matchup-status
+                    "This league's rosters haven't been fetched — Re-sync to load them.")}
+
         ;; Stamped like the other two boards, and the worst race of the three
         ;; to lose: a stale scoreboard nothing on screen contradicts.
+        :else
         (let [n (inc (:matchup-seq db 0))]
           {:db   (assoc db :matchup-seq n :matchup-status "Loading this week's matchup…")
            :http {:method :post :url "/api/matchup"

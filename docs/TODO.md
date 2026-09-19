@@ -19,7 +19,10 @@ for the known gaps between a league's real rules and what the board can score.
   but keeps the draft that is on it. Fine while drafts are done — a manager who
   drafts in two leagues does so months apart — but it must be settled before the
   next preseason, and moving them into the league entry is another
-  `fx/storage-version` bump when it happens.
+  `fx/storage-version` bump when it happens. It reaches the phase too, though
+  only for a league whose host has not said whether it has drafted:
+  `db/derived-phase` falls back to the tracker's draft there, so finishing one
+  auction opens every such league in season until week 1 is played.
 
 - **Neither board is reachable from a keyboard.** Rows on the draft board
   (click to nominate) and the waiver board (click to compare) have no

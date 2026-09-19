@@ -14,6 +14,7 @@
             [draft-day.subs :as subs]
             [draft-day.test-render :refer [render press!]]
             [draft-day.views.board :as board]
+            [draft-day.views.header :as header]
             [draft-day.views.waivers :as waivers]
             [draft-day.events :as events]))
 
@@ -358,7 +359,7 @@
     (rf/clear-subscription-cache!)
     (is (re-find #"holds nobody" (text)))))
 
-(deftest the-strip-re-syncs-under-the-league-s-provider-not-the-account-s
+(deftest the-header-re-syncs-under-the-league-s-provider-not-the-account-s
   ;; Settings supports adding a league by pasting an id with no account
   ;; connected. Reading the provider off `:account` fell back to whichever
   ;; account happened to exist — nil in that case, which throws in
@@ -367,7 +368,7 @@
   (swap! rdb/app-db assoc :accounts {})
   (rf/clear-subscription-cache!)
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
-         (press! waivers/sync-panel "Re-sync league"))))
+         (press! header/season-stats "↻ Re-sync"))))
 
 (deftest a-league-whose-sync-failed-still-offers-to-retry-it
   ;; It has no `:name` until a reply lands, and gating the strip on the name made
@@ -378,12 +379,63 @@
          :active-league lk
          :waivers {:my-roster nil})
   (rf/clear-subscription-cache!)
-  (let [out (render waivers/sync-panel)]
-    (is (re-find #"Re-sync league" out))
-    (is (re-find #"987654" out) "and names itself by its id until the sync answers")
-    (is (not (re-find #"No league active" out))))
+  (let [out (render header/season-stats)]
+    (is (re-find #"Re-sync" out))
+    (is (re-find #"not synced yet" out) "and says the rosters have never arrived"))
+  (is (not (re-find #"No league active" (render waivers/status-line))))
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
-         (press! waivers/sync-panel "Re-sync league"))))
+         (press! header/season-stats "↻ Re-sync"))))
+
+(deftest the-status-line-says-only-the-week-and-when-it-was-fetched
+  ;; The budget, the rival's budget and the waiver runs left are gone from this
+  ;; board: FAAB is in the header and the other two only explained Bid.
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc :waivers {:through-week 3 :week 4 :claims-left 12
+                                    :faab {:left 74 :budget 100 :rival-max 96}
+                                    :week-fetched-at "2026-09-16T15:14:00Z"})
+  (rf/clear-subscription-cache!)
+  (let [out (render waivers/status-line)]
+    (is (re-find #"through week 3" out))
+    (is (re-find #"updated" out))
+    (is (not (re-find #"Rival|Runs left|Budget left" out)))))
+
+(deftest setup-note-says-what-is-missing-and-nothing-once-it-is-not
+  (is (re-find #"No league connected" (waivers/setup-note {:league? false})))
+  (is (re-find #"No league active" (waivers/setup-note {:league? false :connected? true})))
+  (is (re-find #"Pick your team" (waivers/setup-note {:league? true :synced? true})))
+  (is (nil? (waivers/setup-note {:league? true :synced? false}))
+      "before a sync there is no team list to pick from")
+  (is (nil? (waivers/setup-note {:league? true :synced? true :team? true}))))
+
+(deftest the-season-header-reads-faab-and-sync-time-off-the-league
+  ;; Off the sync, not the waiver board, so it is there on every season tab.
+  (swap! rdb/app-db assoc
+         :leagues {lk {:provider "sleeper" :league-id "987654" :my-roster-id 1
+                       :synced-at "2026-09-16T15:14:00Z"
+                       :sync {:waiver {:type "faab" :budget 100}
+                              :teams [{:roster-id 1 :faab-left 74}
+                                      {:roster-id 2 :faab-left 12}]}}}
+         :active-league lk
+         :universe {:through-week 2})
+  (rf/clear-subscription-cache!)
+  (let [{:keys [week faab synced-at]} (sub [:season-header])]
+    (is (nil? week)
+        "never derived from :through-week, which names next week while this one is played")
+    (is (= {:left 74 :budget 100} faab))
+    (is (some? synced-at)))
+  (testing "the week is the one the provider says is being played"
+    (swap! rdb/app-db assoc :matchup {:week 3} :waivers {:week 4})
+    (rf/clear-subscription-cache!)
+    (is (= 3 (:week (sub [:season-header])))))
+  (testing "a league on waiver priority has no budget to show"
+    (swap! rdb/app-db assoc-in [:leagues lk :sync :waiver :type] "rolling")
+    (rf/clear-subscription-cache!)
+    (is (nil? (:faab (sub [:season-header]))))))
+
+(deftest a-sync-stamps-when-the-rosters-were-fetched
+  (with-league!)
+  (rf/dispatch-sync [:league-synced lk {:provider "sleeper" :teams []}])
+  (is (string? (:synced-at (league-entry)))))
 
 (deftest the-roster-panel-splits-starters-from-bench-and-marks-the-seat-at-stake
   ;; The synced league knows the real lineup; the draft config's slot template

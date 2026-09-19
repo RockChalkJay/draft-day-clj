@@ -126,6 +126,12 @@
      ;; and `waiver/claims-left` degrades honestly on it — while a wrong week
      ;; mis-sizes every bid on the board and says nothing.
      :playoff-week-start nil
+     ;; Whether the draft is over, for `db/derived-phase`. Top-level on every
+     ;; view by ESPN's usual shape, but not yet read off a live payload —
+     ;; `integration/espn_league_test` checks it. Anything but a boolean is the
+     ;; host saying nothing.
+     :drafted?         (let [d (get-in raw [:draftDetail :drafted])]
+                         (when (boolean? d) d))
      :name             (get-in raw [:settings :name])
      :season           (str (:seasonId raw))}))
 

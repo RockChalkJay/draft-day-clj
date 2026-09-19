@@ -107,6 +107,18 @@
     (is (= 5 (count (:player-ids t1))) "still rostered, still unavailable")
     (is (= ["1234"] (:active-ids t2)) "a roster with neither list is all active")))
 
+(deftest the-sync-says-whether-the-league-has-drafted
+  ;; `db/derived-phase` reads it: a league drafted on Sleeper is in season
+  ;; before a week has been played.
+  (is (true? (:drafted? (sync-of (assoc-in raw [:league :status] "in_season")))))
+  (is (true? (:drafted? (sync-of (assoc-in raw [:league :status] "complete")))))
+  (is (false? (:drafted? (sync-of (assoc-in raw [:league :status] "pre_draft")))))
+  (is (false? (:drafted? (sync-of (assoc-in raw [:league :status] "drafting"))))
+      "a live draft is not over, or a reload mid-auction lands in season")
+  (is (nil? (:drafted? (sync-of raw))) "no status is the host saying nothing")
+  (is (nil? (:drafted? (sync-of (assoc-in raw [:league :status] "archived"))))
+      "and so is one this does not know"))
+
 (deftest the-leagues-own-seat-count-comes-back-with-it
   ;; Whether a claim costs a drop turns on this number, and the browser's
   ;; fallback is the draft config — which a manager who synced without importing

@@ -41,6 +41,7 @@
                  :pattern     #"[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}"
                  :forbidden   #{".."}}]
     :public?   true
+    :matchups? true
     :league-id {:label "Sleeper league ID" :pattern #"\d+"}
     :help      nil}
 
@@ -65,6 +66,8 @@
                  ;; token whose alphabet ESPN is free to change.
                  :pattern     #"\S{60,}"}]
     :public?   false
+    ;; `ingestion.matchups` has no ESPN method yet — see docs/TODO.md.
+    :matchups? false
     :league-id {:label "ESPN league ID" :pattern #"\d+"}
     :help      {:text "Sign in at fantasy.espn.com, then open DevTools → Application → Cookies and copy the SWID and espn_s2 values."
                 :url  "https://fantasy.espn.com/football/"}}})
@@ -116,6 +119,12 @@
   "Can a league on this host be read with no account at all?"
   [p]
   (boolean (:public? (entry p))))
+
+(defn matchups?
+  "Does this host have a matchup board? The browser asks before it offers the
+  tab, because asking the server is a 400 on the screen a season opens on."
+  [p]
+  (boolean (:matchups? (entry p))))
 
 (defn help [p] (:help (entry p)))
 

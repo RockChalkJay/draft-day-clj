@@ -1,7 +1,8 @@
 (ns draft-day.db
   "app-db shape, the column catalog, and roster/league helpers. No reagent here —
   pure data + functions so it can be required from events and views alike."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [draft-day.providers :as providers]))
 
 ;; ---- roster / teams ----
 
@@ -89,7 +90,7 @@
   the nested shapes: a key under `:config`, a slot in `default-roster`, a field
   on a team, a pick, or a synced league."
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
-   :accounts :leagues :active-league :waiver-columns])
+   :accounts :leagues :active-league :waiver-columns :phase])
 
 ;; ---- accounts and leagues ----
 
@@ -520,6 +521,105 @@
 
 (def columns-by-key (into {} (map (juxt :key identity)) column-catalog))
 
+;; ---- phase: the draft, or the season after it ----
+
+(def mode-views
+  "The tabs each phase shows, in order; the first is where the phase opens.
+
+  Draft Day is two apps. The board is the whole of draft night and dead weight
+  the morning after, and the in-season screens have nothing to say before a
+  league has rosters. Settings belongs to neither and is always reachable."
+  {:draft  [:board :league]
+   :season [:matchup :waivers]})
+
+(defn draft-complete?
+  "Every seat on every team filled. False for no teams at all: a draft that has
+  not started is not over."
+  [teams]
+  (boolean (and (seq teams)
+                (every? (fn [t] (every? :player-id (:roster t))) teams))))
+
+(defn derived-phase
+  "What the data says, or nil while it is still out.
+
+  In season once a week has been played or the draft is done, and on draft day
+  only once the week is known to be zero — the universe carries it, so until
+  that lands a mid-season manager would be told it is August.
+
+  Whose draft is the active league's own, as its host reports it on the sync.
+  The tracker's `:teams` is one draft for the whole app (see docs/TODO.md), so
+  reading it for a connected league moved every league into season on the
+  strength of one auction, and missed a draft held on the host entirely. It
+  still speaks for a league whose host has said nothing, and for no league."
+  [db]
+  (let [week    (when-let [u (:universe db)] (or (:through-week u) 0))
+        host    (get-in (active-league db) [:sync :drafted?])
+        drafted (if (some? host) host (draft-complete? (:teams db)))]
+    (cond
+      (or (pos? (or week 0)) drafted) :season
+      week                            :draft)))
+
+(defn phase
+  "The active league's phase: its manual override, else the data's — nil while
+  the data is still out.
+
+  Per league, because a manager drafting a second league in September is in
+  draft mode there and in season mode everywhere else. The top-level `:phase`
+  only speaks when no league is active."
+  [db]
+  (let [k (:active-league db)]
+    (or (if k
+          (get-in db [:leagues k :phase])
+          (:phase db))
+        (derived-phase db))))
+
+(defn phase-views
+  "The tabs `league` shows in `phase`: `mode-views`, less a Matchup its host has
+  no board for. A tab that can only ever answer with an error is worse than no
+  tab, and it would be the one an ESPN league's season opened on."
+  [league phase]
+  (let [p (:provider league)]
+    (cond->> (mode-views phase)
+      (and p (not (providers/matchups? p))) (filterv #(not= :matchup %)))))
+
+(defn view-mode
+  "Which phase a view belongs to, or nil for one that belongs to neither."
+  [view]
+  (some (fn [[m vs]]
+          (when (some #{view} vs) m)) mode-views))
+
+(defn view-for
+  "The view to show under phase `p` — the active league's by default: `view`
+  when that phase has it as a tab or it belongs to no phase (Settings),
+  otherwise where the phase opens. A nil `view` has not been placed yet and
+  opens there too; a nil phase decides nothing and returns `view` as it is."
+  ([db view] (view-for db (phase db) view))
+  ([db p view]
+   (let [tabs (phase-views (active-league db) p)]
+     (cond
+       (nil? p)                                       view
+       (and view (or (nil? (view-mode view))
+                     (some #{view} tabs)))            view
+       :else                                          (first tabs)))))
+
+(defn open-slots [team] (count (filter #(nil? (:player-id %)) (:roster team))))
+
+(defn max-bid
+  "The most `team` can bid and still fill every other open seat at $1 — so $0
+  once it cannot, and $0 for a full roster, which has no seat to bid for.
+
+  One copy, because the header reads it for the manager's team and the League
+  tab for every team, and two formulas for the same number is how they came to
+  disagree."
+  [team]
+  (when team
+    (let [open (open-slots team)]
+      (if (pos? open)
+        (max 0 (- (:bankroll team) (dec open)))
+        0))))
+
+;; ---- settings sections ----
+
 (def settings-sections
   "Settings, one section at a time, in sidebar order."
   [[:leagues "Leagues & Accounts"]
@@ -879,7 +979,12 @@
      :sort        {:key :worth :dir -1}
      :pos-filter  nil
      :search      ""
-     :view        :board
+     ;; nil until the phase is known, so neither half is drawn and then taken
+     ;; back — see `:boot` and `:players-loaded`.
+     :view        nil
+     ;; The manual phase override for when no league is active; a league's own
+     ;; lives on its entry. nil is automatic — see `phase`.
+     :phase       nil
      ;; Transient: Settings reopens on the section most often needed, not the
      ;; one last visited.
      :settings-section :leagues

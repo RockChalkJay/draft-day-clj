@@ -69,11 +69,14 @@
 
 (deftest ^:integration espn-rosters-still-name-their-seats-and-their-players
   (with-league [req]
-    (let [{:keys [teams roster-positions]} (:league (league-sync/sync-league req))
+    (let [{:keys [teams roster-positions drafted?]} (:league (league-sync/sync-league req))
           mine (first teams)]
       (is (seq teams))
       (is (every? #(seq (:player-ids %)) teams)
           "a team holding nobody reaches the board as a league everyone has left")
+      (is (true? drafted?)
+          "rosters this full were drafted; nil means draftDetail moved, and the
+           league opens on draft day until a week has been played")
       (is (every? string? (mapcat :player-ids teams)))
       (is (seq (:starter-ids mine))
           "starters come off lineupSlotId; none means the slot table moved")

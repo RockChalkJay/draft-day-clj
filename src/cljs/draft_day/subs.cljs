@@ -245,10 +245,50 @@
 (rf/reg-sub :my-uncovered-starters :<- [:my-bye-exposure]
   (fn [exposure _] (db/uncovered-starter-ids exposure)))
 
-(defn- open-slots [team] (count (filter #(nil? (:player-id %)) (:roster team))))
+;; ---- phase ----
+
+(rf/reg-sub :phase (fn [db _] (db/phase db)))
+
+;; Whether the phase is the data's call rather than a manual override.
+(rf/reg-sub :phase-auto?
+  (fn [db _]
+    (nil? (if-let [k (:active-league db)]
+            (get-in db [:leagues k :phase])
+            (:phase db)))))
+
+;; The mode the header draws: the phase of the tab on screen, else the phase.
+;; A draft whose last pick just landed is in season by the data, but the board
+;; stays up — and its tabs with it — until the manager moves on, since the next
+;; thing he may want is to undo that pick. nil while neither is known, when the
+;; header draws no half rather than one it may have to take back.
+(rf/reg-sub :mode :<- [:view] :<- [:phase]
+  (fn [[view phase] _] (or (db/view-mode view) phase)))
+
+;; The tabs the header draws for that mode, for the league on screen.
+(rf/reg-sub :mode-views :<- [:mode] :<- [:active-league]
+  (fn [[mode league] _] (when mode (db/phase-views league mode))))
+
+;; What the season header says about the league on screen: the week, FAAB and
+;; when the rosters were fetched. FAAB off the sync rather than the waiver board,
+;; so it is there on every season tab and not only once Waivers has loaded.
+;;
+;; The week only off the matchup reply, which asks the provider. `:through-week`
+;; advances as games finish, so `(inc through-week)` — which is also what the
+;; waiver reply's `:week` is — names next week while this one is still being
+;; played. Nothing is better than that in the one place every tab shares.
+(rf/reg-sub :season-header
+  :<- [:active-league] :<- [:matchup]
+  (fn [[lg matchup] _]
+    (let [ls   (:sync lg)
+          mine (:my-roster-id lg)
+          team (some #(when (= (:roster-id %) mine) %) (:teams ls))]
+      {:week      (:week matchup)
+       :faab      (when (and team (= "faab" (some-> ls :waiver :type name)))
+                    {:left (:faab-left team) :budget (get-in ls [:waiver :budget])})
+       :synced-at (:synced-at lg)})))
 
 (rf/reg-sub :my-max-bid :<- [:my-team]
-  (fn [team _] (when team (max 1 (- (:bankroll team) (dec (open-slots team)))))))
+  (fn [team _] (db/max-bid team)))
 
 ;; Pooled per-bucket availability for MY ROSTER open slots: each open slot in a
 ;; budget bucket shows (plan − spent) ÷ open slots, floored. Spend counts against
@@ -394,16 +434,8 @@
 (rf/reg-sub :visible-waiver-columns :<- [:waiver-columns]
   (fn [cols _] (filterv :visible? cols)))
 
-;; What the manager has left to spend, and what it would take to be sure of a
-;; claim. Straight from the server rather than recomposed here: `:faab-left`
-;; needs the league's budget and the roster's spend, which arrive in different
-;; documents, and `rankings.waiver` already joined them once.
-(rf/reg-sub :my-faab :<- [:waivers]
-  (fn [w _] (:faab w)))
-
 (rf/reg-sub :waiver-meta :<- [:waivers]
-  (fn [w _] (select-keys w [:through-week :season-games :claims-left
-                            :week :week-fetched-at])))
+  (fn [w _] (select-keys w [:through-week :season-games :week :week-fetched-at])))
 
 ;; The manager's own seats. nil and [] mean different things here and the panel
 ;; draws them differently — nil is "no team picked yet", [] is "this team holds
