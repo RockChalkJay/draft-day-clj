@@ -130,7 +130,8 @@
          (view-labels v)])]
      (when mode [mode-link])
      [league-switcher]
-     [:div.status status]
+     ;; Truncated on a crowded header, so the whole text rides on hover.
+     [:div.status {:title status} status]
      (case mode
        :season [season-stats]
        :draft  [draft-stats]

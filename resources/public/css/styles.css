@@ -986,6 +986,9 @@ table.roster tr.roster-group td { color: var(--muted); font-size: 10px; text-tra
 
 /* The status text gives way first. With a half's tabs, the mode link, the league
    and that half's numbers on one line, a wrapping header pushed the gear onto a
-   row of its own at laptop widths; a truncated status keeps it on one. */
-header.top .status { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+   row of its own at laptop widths; a truncated status keeps it on one. It never
+   goes to zero, though: squeezed to nothing it took a failure message with it,
+   and the floor keeps an ellipsis to hover for the `title`. A wider floor puts
+   the gear back on its own row. */
+header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
