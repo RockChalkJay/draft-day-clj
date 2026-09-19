@@ -8,6 +8,7 @@
   the provider says holds him rather than the team that drafted him in August."
   (:require [re-frame.core :as rf]
             [draft-day.views.team :as team]
+            [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
 (defn player-row
@@ -43,7 +44,12 @@
     (when mine? [:span.you " (You)"])
     (when-let [rec (team/record-label team)] [:span.rec rec])]
    [:div.team-sub
-    (when faab? [:span "FAAB " [:b (str "$" (or (:faab-left team) 0))] " left"])
+    ;; A balance the host did not report is a dash, not $0: a rival read as
+    ;; broke is one the manager thinks cannot outbid him.
+    (when faab?
+      (if (number? (:faab-left team))
+        [:span "FAAB " [:b (util/faab (:faab-left team))] " left"]
+        [:span.muted {:title "The host did not report this team's FAAB"} "FAAB –"]))
     (when-let [pos (:waiver-position team)] [:span (str "Waiver #" pos)])]
    [:table.roster
     [:tbody
@@ -56,13 +62,25 @@
         (map #(player-row % true (openable (:player-id %))) parked)])]]])
 
 (defn season-view []
-  (let [rosters  @(rf/subscribe [:league-rosters])
+  (let [synced?  @(rf/subscribe [:league-synced?])
+        rosters  @(rf/subscribe [:league-rosters])
+        failed   @(rf/subscribe [:universe-error])
         ls       @(rf/subscribe [:league-sync])
         openable @(rf/subscribe [:comparable-by-id])
         faab?   (= "faab" (some-> ls :waiver :type name))]
-    (if (seq rosters)
+    (cond
+      (not synced?)
+      [:p.muted "Sync a league under Settings to see every team's roster."]
+
+      ;; Synced, but the universe that names the players is not here.
+      (nil? rosters)
+      [:p.muted (if failed
+                  (str "The player list failed to load (" failed "), so there is"
+                       " nobody to name on these rosters. Reload to try again.")
+                  "Loading players…")]
+
+      :else
       [:div.league-grid
        (for [r rosters]
          ^{:key (get-in r [:team :roster-id])}
-         [team-card r faab? openable])]
-      [:p.muted "Sync a league under Settings to see every team's roster."])))
+         [team-card r faab? openable])])))

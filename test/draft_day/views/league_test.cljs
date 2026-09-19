@@ -1,5 +1,5 @@
 (ns draft-day.views.league-test
-  (:require [cljs.test :refer [deftest is use-fixtures]]
+  (:require [cljs.test :refer [deftest is testing use-fixtures]]
             [re-frame.core :as rf]
             [re-frame.db :as rdb]
             [draft-day.db :as db]
@@ -62,3 +62,25 @@
 
 (deftest a-league-with-no-sync-says-where-to-get-one
   (is (re-find #"Sync a league" (render league/season-view))))
+
+(deftest rosters-wait-for-the-players-that-name-them
+  ;; Every id resolved to nobody before the universe landed, and a card of raw
+  ;; ids reads exactly like a broken crosswalk.
+  (synced!)
+  (swap! rdb/app-db assoc :players [])
+  (rf/clear-subscription-cache!)
+  (let [html (render league/season-view)]
+    (is (re-find #"Loading players" html))
+    (is (not (re-find #"No player for id" html))))
+  (testing "and say so when it is not coming"
+    (swap! rdb/app-db assoc :universe-error "502")
+    (is (re-find #"failed to load \(502\)" (render league/season-view)))))
+
+(deftest a-balance-the-host-did-not-report-is-not-zero
+  (let [sub-line (fn [left] (render (fn [] (league/team-card
+                                            {:team {:name "T" :faab-left left}
+                                             :starters [] :bench [] :parked []}
+                                            true {}))))]
+    (is (re-find #"\$0" (sub-line 0)) "a spent budget is a real $0")
+    (is (not (re-find #"\$" (sub-line nil))))
+    (is (re-find #"did not report" (sub-line nil)))))

@@ -79,7 +79,7 @@
 (rf/reg-event-fx
  :fetch-players
  (fn [{:keys [db]} [_ refresh?]]
-   {:db   (assoc db :status "Loading players…")
+   {:db   (assoc db :status "Loading players…" :universe-error nil)
     :http {:method :get
            :url (str "/api/players" (when refresh? "?refresh=true"))
            :on-success [:players-loaded]
@@ -106,8 +106,11 @@
     ;; The week will not come now. Whatever else says season still does — a
     ;; synced league's finished draft — and otherwise draft day, where this
     ;; status line is read.
+    ;;
+    ;; `:universe-error` beside it, because the status line is shared: a tab
+    ;; that waits on the universe must be able to tell failed from still coming.
     (let [place (place-view db :draft)]
-      (cond-> {:db (assoc db :status (str "Load failed: " err))}
+      (cond-> {:db (assoc db :status (str "Load failed: " err) :universe-error err)}
         place (assoc :fx [place])))))
 
 ;; ---- rankings recompute ----

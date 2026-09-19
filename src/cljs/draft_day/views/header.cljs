@@ -7,6 +7,7 @@
   it: `core` mounts a React root when it loads."
   (:require [re-frame.core :as rf]
             [draft-day.providers :as providers]
+            [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
@@ -103,7 +104,7 @@
      (when faab
        [:div.stat {:title "FAAB left of this season's budget"}
         [:span.stat-label "FAAB"]
-        [:span.stat-val.good (str "$" (or (:left faab) 0) " / $" (or (:budget faab) 0))]])
+        [:span.stat-val.good (str (util/faab (:left faab)) " / " (util/faab (:budget faab)))]])
      (when league
        [:button.sync-btn {:on-click #(rf/dispatch [:refresh-league
                                                    (select-keys league [:provider :league-id])])}

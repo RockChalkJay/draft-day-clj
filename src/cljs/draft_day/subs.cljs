@@ -7,7 +7,7 @@
 ;; ---- simple extracts ----
 (doseq [k [:view :status :config :teams :my-team-id :players
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
-           :watchlist :importing :universe
+           :watchlist :importing :universe :universe-error
            :accounts :leagues :waivers :waiver-sort :waiver-status
            :league-choices :league-choices-error
            :waiver-columns :compare
@@ -270,12 +270,15 @@
 
 ;; Every synced team's roster in standings order, for the season League tab —
 ;; read through `db/team-roster`, the same id translation the server uses.
+;;
+;; nil until the universe has landed. Before then every id resolves to nobody,
+;; and a card of raw ids reads exactly like the broken crosswalk that
+;; `team-roster`'s unvalued rows exist to expose.
 (rf/reg-sub :league-rosters
-  :<- [:league-sync] :<- [:players] :<- [:my-roster-id]
-  (fn [[ls players mine] _]
-    (when (seq (:teams ls))
-      (let [xwalk (db/provider->player-id players (:provider ls))
-            by-id (db/index-by-id players)]
+  :<- [:league-sync] :<- [:players] :<- [:universe-by-id] :<- [:my-roster-id]
+  (fn [[ls players by-id mine] _]
+    (when (and (seq (:teams ls)) (seq by-id))
+      (let [xwalk (db/provider->player-id players (:provider ls))]
         (mapv (fn [t]
                 (assoc (db/team-roster t ls xwalk by-id)
                        :team t
