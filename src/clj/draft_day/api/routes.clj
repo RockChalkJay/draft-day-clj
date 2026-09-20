@@ -17,6 +17,7 @@
             [draft-day.ingestion.league-sync.espn]
             [draft-day.ingestion.league-sync.sleeper]
             [draft-day.ingestion.matchups :as matchups]
+            [draft-day.ingestion.matchups.espn]
             [draft-day.ingestion.matchups.sleeper]
             [draft-day.rankings.engine :as engine]
             [draft-day.rankings.model :as model]
@@ -346,12 +347,14 @@
 (defn matchup-slots
   "The seats this league actually plays, for the lineup and the optimizer.
 
-  The synced league's `:roster-positions` wins: it is the only thing that knows
-  this league's shape *and its order*. The draft config is a fallback for a sync
-  persisted before that key existed, and only a guess — it cannot even express a
-  SUPER_FLEX seat."
-  [league roster]
-  (or (some-> (seq (:roster-positions league)) vec db/scoring-slots)
+  The provider's own `:slots` wins: a lineup is read by position, so only the
+  list it was aligned to can label its seats. Then the synced league's
+  `:roster-positions`, then the draft config — a last resort for a sync
+  persisted before that key existed, and `db/roster-order`'s order, not a
+  host's."
+  [slots league roster]
+  (or (some-> (seq slots) vec)
+      (some-> (seq (:roster-positions league)) vec db/scoring-slots)
       (some-> roster db/starting-slots)))
 
 (defn live-kickoffs
@@ -381,7 +384,8 @@
         ;; The other two boards' guard: an all-zero config projects every
         ;; player 0.0, and that is a lie rather than a matchup.
         (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
-        (let [{:keys [ok week matchups scores status error]}
+        (let [{:keys [ok week matchups scores status error]
+               provider-slots :slots}
               (matchups/fetch-matchups {:provider    provider
                                         :league-id   league-id
                                         :season      season*
@@ -405,7 +409,7 @@
                             :matchups matchups
                             :scores   scores
                             :provider provider
-                            :slots    (matchup-slots league roster)})]
+                            :slots    (matchup-slots provider-slots league roster)})]
               (json-response 200 (assoc out
                                         :week            week
                                         :week-fetched-at (:fetched-at weekly)

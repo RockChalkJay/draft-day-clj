@@ -722,14 +722,15 @@
     (is (= :board (db/view-for {} nil :board)))))
 
 (deftest a-league-with-no-matchup-board-drops-the-matchup-tab
-  ;; The matchup backend is Sleeper-only, and the tab it cannot fill was the
-  ;; one every ESPN league's season opened on.
-  (let [espn {:active-league "k" :leagues {"k" {:provider "espn" :league-id "1"}}}]
-    (is (= [:team :waivers :rosters] (db/phase-views {:provider "espn"} :season)))
+  ;; Both hosts in the catalog have a board, so the rule is checked against a
+  ;; name it has never heard of, which `providers/matchups?` answers false for.
+  (let [other {:active-league "k" :leagues {"k" {:provider "yahoo" :league-id "1"}}}]
+    (is (= [:team :waivers :rosters] (db/phase-views {:provider "yahoo"} :season)))
+    (is (= [:team :matchup :waivers :rosters] (db/phase-views {:provider "espn"} :season)))
     (is (= [:team :matchup :waivers :rosters] (db/phase-views {:provider "sleeper"} :season)))
     (is (= [:team :matchup :waivers :rosters] (db/phase-views nil :season)) "no league, no reason to hide it")
-    (is (= :team (db/view-for espn :season nil)))
-    (is (= :team (db/view-for espn :season :matchup)))))
+    (is (= :team (db/view-for other :season nil)))
+    (is (= :team (db/view-for other :season :matchup)))))
 
 (deftest max-bid-leaves-a-dollar-for-every-other-open-seat
   (is (= 198 (db/max-bid {:bankroll 200 :roster [{:player-id nil} {:player-id nil}

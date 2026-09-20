@@ -50,9 +50,16 @@
                  "; espn_s2=" (some-> espn-s2 str str/trim))
    "Accept" "application/json"})
 
-(defn league-url [season league-id views]
-  (str base season "/segments/0/leagues/" league-id
-       "?" (str/join "&" (map #(str "view=" %) views))))
+(defn league-url
+  "The league document's URL: its views, plus whatever `params` addresses it by.
+
+  A view names a slice of the document; a param names which document —
+  `scoringPeriodId` is how the boxscore asks for one week rather than today's."
+  ([season league-id views] (league-url season league-id views nil))
+  ([season league-id views params]
+   (str base season "/segments/0/leagues/" league-id
+        "?" (str/join "&" (concat (map #(str "view=" %) views)
+                                  (map (fn [[k v]] (str (name k) "=" v)) params))))))
 
 (defn status-error
   "What an ESPN status means to the manager, as `[status message]`.
@@ -73,8 +80,8 @@
   `:require-key` is the guard against a 200 that is not the document asked for
   — a login page, or a league the account cannot read. Absent it, an empty map
   would flow on as a league nobody is rostered in."
-  [{:keys [season league-id credentials views require-key]}]
-  (let [url (league-url season league-id views)
+  [{:keys [season league-id credentials views require-key params]}]
+  (let [url (league-url season league-id views params)
         {:keys [status body error]} @(http/get url {:headers (cookie-header credentials)
                                                     :timeout 30000})]
     (cond

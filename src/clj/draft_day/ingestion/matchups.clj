@@ -17,6 +17,7 @@
   The normalized shape, carrying no provider's vocabulary:
 
       {:week 3
+       :slots    [\"QB\" \"RB\" ...]                    ; optional
        :matchups [{:matchup-id 1 :roster-ids [1 5]} ...]
        :scores   {roster-id {:official      96.1
                              :starter-ids   [\"4034\" ...]
@@ -24,7 +25,12 @@
                              :player-points {\"4034\" 18.4}}}}
 
   `:roster-ids` holds one id for a roster with no opponent rather than being
-  absent: a team with nobody to play still has a lineup and still scores."
+  absent: a team with nobody to play still has a lineup and still scores.
+
+  `:slots` is for a provider that puts its starters in an order of its own
+  making rather than the league's: a lineup is read by position, so the list it
+  was aligned to has to travel with it. A provider whose lineup is positional
+  against the synced league omits it, and `routes/matchup-slots` reads the sync."
   (:require [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.season :as season]
             [draft-day.providers :as providers]))
@@ -41,7 +47,8 @@
   (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
 
 (defmulti normalize-matchups
-  "Pure: a provider's raw matchup payload -> `{:matchups [...] :scores {...}}`.
+  "Pure: a provider's raw matchup payload -> `{:matchups [...] :scores {...}}`,
+  and `:slots` where its lineups are not positional against the synced league.
 
   `:player-points` covers the whole roster, not only the starters, or the
   optimal-lineup half of the board cannot say what a bench player scored. A

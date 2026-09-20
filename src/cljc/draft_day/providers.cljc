@@ -66,8 +66,7 @@
                  ;; token whose alphabet ESPN is free to change.
                  :pattern     #"\S{60,}"}]
     :public?   false
-    ;; `ingestion.matchups` has no ESPN method yet — see docs/TODO.md.
-    :matchups? false
+    :matchups? true
     :league-id {:label "ESPN league ID" :pattern #"\d+"}
     :help      {:text "Sign in at fantasy.espn.com, then open DevTools → Application → Cookies and copy the SWID and espn_s2 values."
                 :url  "https://fantasy.espn.com/football/"}}})
