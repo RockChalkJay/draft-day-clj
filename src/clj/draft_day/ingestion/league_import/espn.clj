@@ -117,7 +117,13 @@
   them would be a number nobody set. It is reported unsupported instead.
 
   Every defensive id here is also in `defense-only-stats`, which is what lets
-  its per-position override be read; adding one here means adding it there."
+  its per-position override be read; adding one here means adding it there.
+
+  A value may be a *vector*, for a rule whose grid is coarser than the stat
+  line's: one ESPN weight for every kick under forty covers three buckets, and
+  its total-FG-missed rule covers both miss buckets. The kicking ids were read
+  off a live league's scoring page; 201 (FG 60+) is unmapped on purpose, since
+  folding it into `:fgm_50p` pays a fifty-yarder at the sixty-yard rate."
   {3   :pass_yd
    4   :pass_td
    19  :pass_2pt
@@ -130,25 +136,32 @@
    44  :rec_2pt
    53  :rec
    72  :fum_lost
+   77  :fgm_40_49
+   80  [:fgm_0_19 :fgm_20_29 :fgm_30_39]
    83  :fgm
+   85  [:fgmiss_40_49 :fgmiss_50p]
    86  :xpm
+   88  :xpmiss
    95  :int
    96  :fum_rec
    97  :blk_kick
    98  :safe
-   99  :sack})
+   99  :sack
+   198 :fgm_50p})
 
 (def stat-labels
   "What to call an ESPN rule the app cannot score.
 
   Reporting a bare integer to a manager comparing this against his league's
   settings page is no report at all. Only the ids a real league actually sets
-  are named; anything else falls back to its number."
+  are named; anything else falls back to its number.
+
+  The kicking labels that used to sit here named the wrong rules, and a wrong
+  name is worse than a number: a live league puts those bands on 77, 198 and
+  201, and its misses on 85."
   {23  "rushing attempts"    58  "targets"
-   68  "fumbles"             80  "field goals 0-39"
-   81  "field goals 40-49"   82  "field goals 50+"
-   84  "field goals missed"  87  "extra points attempted"
-   88  "extra points missed" 89  "points allowed 0"
+   68  "fumbles"             201 "field goals 60+"
+   89  "points allowed 0"
    90  "points allowed 1-6"  91  "points allowed 7-13"
    92  "points allowed 14-17" 93 "points allowed 18-21"
    94  "points allowed 22-27" 101 "kickoff return TD"
@@ -200,12 +213,14 @@
 
 (defn scoring-config
   "Pure: ESPN's scoring items -> `{stat-key weight}` over the keys the app
-  scores, each weighted by `stat-weight`."
+  scores, each weighted by `stat-weight`. One id may carry several keys — see
+  `stat-ids`."
   [items]
   (into {}
-        (keep (fn [{:keys [statId] :as item}]
-                (when-let [k (stat-ids statId)]
-                  [k (stat-weight item)])))
+        (mapcat (fn [{:keys [statId] :as item}]
+                  (when-let [k (stat-ids statId)]
+                    (let [w (stat-weight item)]
+                      (map (fn [k] [k w]) (if (vector? k) k [k]))))))
         items))
 
 (defn dropped-overrides

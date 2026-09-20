@@ -60,8 +60,13 @@
   level too, for when no league is active. Its `:sync` carries `:drafted?`, the
   host's word on whether the draft is over, and an ESPN sync's teams carry
   `:starter-slots`, each starter's own seat; a sync stored without it labels
-  no seats rather than guessing them."
-  10)
+  no seats rather than guessing them.
+
+  11: a scoring config states its field goals by distance — `:fgm_0_19` through
+  `:fgm_50p`, plus `:fgmiss_40_49`, `:fgmiss_50p` and `:xpmiss`. Every host
+  scores a kick by how far it was kicked, and one flat `:fgm` weight could hold
+  none of it."
+  11)
 
 (def drafts-key "draft-day-drafts")
 

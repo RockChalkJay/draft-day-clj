@@ -17,15 +17,20 @@
   ;; and every team-defense key among them. A key that drifted from Sleeper's
   ;; spelling would score silently as zero, which is indistinguishable on the
   ;; board from a player who simply does not accumulate that stat.
+  ;; `:fgm` is the exception and has its own test below: a config stating its
+  ;; field goals by distance drops the flat weight rather than counting the
+  ;; same kick twice.
   (let [all-ones (zipmap scoring/stat-keys (repeat 1.0))]
-    (doseq [k scoring/stat-keys]
+    (doseq [k (remove #{:fgm} scoring/stat-keys)]
       (is (= 3.0 (scoring/player-points {:stats {k 3.0}} all-ones))
           (str k " does not reach :points")))))
 
 (deftest every-preset-weight-is-applied-as-written
   (doseq [[fmt preset] scoring/presets
           [k w] preset
-          :when (not (zero? w))]
+          ;; Every preset states its field goals by distance, so the flat
+          ;; weight is superseded — `a-flat-field-goal-weight-yields-to-the-buckets`.
+          :when (and (not (zero? w)) (not= :fgm k))]
     (is (= (* 2.0 w) (scoring/player-points {:stats {k 2.0}} preset))
         (str fmt " " k))))
 
@@ -101,7 +106,8 @@
     ;; the preset set. They cannot move a single player's points. `:fgm` left
     ;; this set when kickers got a projected total.
     (let [only-unprojected (select-keys (:ppr scoring/presets) scoring/unprojected-stats)]
-      (is (= 3 (count only-unprojected)))
+      (is (= (count scoring/unprojected-stats) (count only-unprojected))
+          "every unprojected key is one a preset prices, or this proves nothing")
       (is (every? pos? (vals only-unprojected)))
       (is (not (scoring/scores-anything? only-unprojected)))
       (is (not (scoring/scores-anything?
@@ -120,5 +126,23 @@
   (is (not (contains? scoring/unprojected-stats :fgm)))
   (is (scoring/scores-anything? {:fgm 3.0})
       "a config that can only move kickers is still a config")
+  (testing "every distance bucket is projected on one line or the other"
+    ;; The weekly line carries every make under fifty, the season line the two
+    ;; over forty. A bucket listed as unprojected would be locked in the editor
+    ;; for a league that really does score it.
+    (is (not-any? scoring/unprojected-stats
+                  [:fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p
+                   :fgmiss_40_49 :fgmiss_50p :xpmiss])))
   ;; Team defenses genuinely have none of these, so they stay.
-  (is (= #{:ff :def_td :safe} scoring/unprojected-stats)))
+  (is (every? scoring/unprojected-stats [:ff :def_td :safe])))
+
+(deftest a-flat-field-goal-weight-yields-to-the-buckets
+  ;; `sleeper/scored-stats` publishes :fgm *and* the buckets it is summed from,
+  ;; so a config holding both weights would pay for the same kick twice.
+  (let [line {:stats {:fgm 5.0 :fgm_40_49 3.0 :fgm_50p 2.0}}]
+    (is (= 22.0 (scoring/player-points line {:fgm 3.0 :fgm_40_49 4.0 :fgm_50p 5.0}))
+        "3x4 + 2x5, with the flat weight dropped rather than added to it")
+    (is (= 15.0 (scoring/player-points line {:fgm 3.0}))
+        "a league that scores every kick the same still uses the summed total")
+    (is (= 15.0 (scoring/player-points line {:fgm 3.0 :fgm_40_49 0.0}))
+        "a bucket set to zero is not a league stating its distances")))

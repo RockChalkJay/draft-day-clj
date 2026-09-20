@@ -20,8 +20,7 @@
 ;; Stat keys carried into :stats for the scoring engine (skill + kicking/defense).
 ;; NOT the whole payload: Sleeper also projects first downs (:rec_fd on 474 players,
 ;; :rush_fd on 376, :pass_fd on 77), position reception premiums (:bonus_rec_te/_wr/_rb),
-;; the FG distance buckets that exist (:fgm_40_49 :fgm_50p :fgm_yds :fgmiss_40_49
-;; :fgmiss_50p :xpmiss), :pass_int_td, :pr_td, :def_kr_td, :pts_allow_0 and
+;; :fgm_yds, :pass_int_td, :pr_td, :def_kr_td, :pts_allow_0 and
 ;; :yds_allow_0_100. Dropping them is why a PPFD or TE-premium league imports lossy —
 ;; see docs/scoring-coverage.md.
 (def ^:private stat-keys
@@ -30,6 +29,10 @@
    :rec :rec_yd :rec_td :rec_2pt
    :fum_lost
    :fgm :xpm
+   ;; The two lines publish different buckets, so both sets are carried and each
+   ;; line scores what it has. See `summed-fgm`.
+   :fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p
+   :fgmiss_40_49 :fgmiss_50p :xpmiss
    :sack :int :fum_rec :ff :def_td :safe :blk_kick])
 
 (def adp-keys
@@ -58,10 +61,13 @@
   "A kicker's made field goals, when Sleeper did not publish the total.
 
   Its season projections carry no `:fgm` at all — 0 of 45 kickers — only these
-  distance buckets and a yardage total, so the presets' 3.0 weight multiplied
-  nothing and every kicker scored on extra points alone. Aubrey came out at 42
-  against Sleeper's own 116, and the position compressed into a 39-42 band with
-  no spread in it.
+  distance buckets and a yardage total, so a flat weight multiplied nothing and
+  every kicker scored on extra points alone. Aubrey came out at 42 against
+  Sleeper's own 116, and the position compressed into a 39-42 band with no
+  spread in it.
+
+  A league stating its field goals by distance never needs this: it scores the
+  buckets, which reconcile to Sleeper's own total (Aubrey 118 against 116).
 
   Summing what *is* published recovers most of that (Aubrey 93) and keeps the
   whole line one vendor's opinion. ESPN publishes a real total and was the

@@ -151,19 +151,23 @@
 ;; ---- kickers get their field goals back ----
 
 (deftest a-kicker-without-a-published-total-gets-one-from-the-buckets
-  ;; Sleeper's season line carries no :fgm at all — 0 of 45 kickers — so the
-  ;; presets' 3.0 weight multiplied nothing and every kicker scored on extra
-  ;; points alone.
+  ;; Sleeper's season line carries no :fgm at all — 0 of 45 kickers — so a flat
+  ;; weight multiplied nothing and every kicker scored on extra points alone.
+  ;; The buckets are carried through as well, for a league that prices them.
   (let [entry {:player_id "K1" :team "DAL"
                :player {:first_name "Brandon" :last_name "Aubrey" :position "K"}
                :stats {:fgm_40_49 9.0 :fgm_50p 8.0 :fgm_yds 841.0 :xpm 42.0
                        :pts_ppr 116.0}}
         st    (:stats (sleeper/normalize-entry entry))]
     (is (= 17.0 (:fgm st)) "the two published buckets, summed")
+    (is (= 9.0 (:fgm_40_49 st)))
+    (is (= 8.0 (:fgm_50p st)))
     (is (= 42.0 (:xpm st)))
-    ;; 3*17 + 42 = 93 against the 42 it scored before, and Sleeper's own 116.
-    (is (< (abs (- 93.0 (scoring/player-points {:stats st}
-                                               (scoring/resolve-config :half-ppr))))
+    ;; 9*4 + 8*5 + 42 = 118, against 42 before any of this and Sleeper's own
+    ;; 116. The distance grid is what closes that gap: a flat 3.0 underpaid
+    ;; every kick these two buckets hold.
+    (is (< (abs (- 118.0 (scoring/player-points {:stats st}
+                                                (scoring/resolve-config :half-ppr))))
            1e-9))))
 
 (deftest a-published-total-is-never-overruled
