@@ -67,6 +67,11 @@
       (testing "what could not be applied is named, not numbered"
         (is (not-any? #(re-find #"^ESPN stat \d+$" %) unsupported-scoring)
             "an unnamed id means this league sets a rule stat-labels has not met"))
+      (testing "a defense is scored from the override ESPN files its rules under"
+        (is (pos? (double (or (:sack scoring) 0)))
+            "zero here is the whole league's defenses projecting nothing, which
+             is what reading the base weight of an override does")
+        (is (pos? (double (or (:int scoring) 0)))))
       (testing "the seats add up to a roster somebody could field"
         (is (pos? (:qb roster)))
         (is (pos? (+ (:rb roster) (:wr roster) (:flex roster))))))))
