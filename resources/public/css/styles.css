@@ -856,9 +856,6 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
   color: var(--muted); font-size: 12px; }
 .mu-strip .grow { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .mu-status { color: var(--muted); }
-.mu-basis { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.mu-basis button { background: transparent; color: var(--muted); border: 0; padding: 4px 12px; font-size: 12px; }
-.mu-basis button.on { background: var(--accent); color: #fff; }
 .mu-pick { background: var(--panel); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; padding: 4px 8px; font-size: 12px; max-width: 320px; }
 
@@ -875,7 +872,7 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
 .mu-vs { text-align: center; color: var(--muted); font-size: 11px;
   text-transform: uppercase; letter-spacing: .06em; }
 
-.mu-hdr, .mu-row, .mu-tot, .mu-opt { display: grid; grid-template-columns: 1fr 64px 1fr; gap: 12px; }
+.mu-hdr, .mu-row, .mu-tot { display: grid; grid-template-columns: 1fr 64px 1fr; gap: 12px; }
 .mu-hdr { padding: 10px 0 4px; border-bottom: 1px solid var(--border); align-items: end; }
 .mu-hdr .mu-who, .mu-hdr .mu-p, .mu-hdr .mu-a, .mu-hdr .mu-slot { font-size: 10px; font-weight: 400;
   text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -913,17 +910,27 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
    is not advice if the reader cannot see what he did. */
 .mu-view .mu-sep ~ .mu-row { opacity: .62; }
 
-.mu-opt { margin-top: 12px; }
-.mu-optbox { background: var(--panel2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 9px 11px; font-size: 12px; }
-.mu-optbox.r { text-align: right; }
-.mu-optline { color: var(--muted); }
-.mu-swap { margin: 5px 0; }
-.mu-in { color: var(--good); }
-.mu-out { color: var(--warn); }
+/* Each side's own Set lineup | Best by projection | Best by actual. */
+.mu-lineup { display: inline-flex; border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; margin-top: 8px; }
+.mu-lineup button { background: transparent; color: var(--muted); border: 0; padding: 4px 10px;
+  font-size: 11px; }
+.mu-lineup button + button { border-left: 1px solid var(--border); }
+.mu-lineup button.on { background: var(--panel2); color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent); }
+.mu-lineup button:disabled { opacity: .45; cursor: not-allowed; }
+.mu-lock { display: block; font-size: 10px; color: var(--muted); margin-top: 4px; }
+/* A best lineup drawn in place: who it moves in, who it benches. */
+.mu-mv { font-size: 10px; margin: 0 4px; }
+.mu-mv.in { color: var(--good); }
+.mu-mv.out { color: var(--warn); }
+.mu-side.l.moved-in { box-shadow: inset 3px 0 0 var(--good); padding-left: 6px; }
+.mu-side.r.moved-in { box-shadow: inset -3px 0 0 var(--good); padding-right: 6px; }
+.mu-optnote { color: var(--muted); font-size: 11px; font-weight: 400; }
+.mu-gain { color: var(--good); font-size: 11px; font-weight: 600; margin-left: 4px; }
 
 @media (max-width: 900px) {
-  .mu-head, .mu-hdr, .mu-row, .mu-tot, .mu-opt { grid-template-columns: 1fr 48px 1fr; }
+  .mu-head, .mu-hdr, .mu-row, .mu-tot { grid-template-columns: 1fr 48px 1fr; }
   .mu-side { gap: 5px; }
   .mu-side.l { grid-template-columns: minmax(0, 1fr) 44px 44px; }
   .mu-side.r { grid-template-columns: 44px 44px minmax(0, 1fr); }

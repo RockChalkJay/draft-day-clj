@@ -22,9 +22,16 @@
   did nothing. Rendering the first as the second would turn a Sunday morning
   into nine bad performances.
 
-  THE BENCH IS DRAWN, dimmed, under the starters. Without it the optimal-lineup
-  panel names players who are nowhere on screen, and \"start T. Hill\" is not
-  advice if the reader cannot see what T. Hill did.
+  THE BENCH IS DRAWN, dimmed, under the starters, so a best lineup that benches
+  somebody still shows what he did.
+
+  EACH SIDE SHOWS ITS SET LINEUP OR ITS BEST ONE, on its own control: the lineup
+  that scores, the best one still possible by projection (moving only players
+  whose games have not started), or the best one by what was scored (once every
+  game is final). The best lineup is drawn in place of the set one rather than
+  described in a box beside it — a player moved in is marked ▲, a starter who
+  loses his seat leads the bench marked ▼ — because \"start T. Hill\" is easier
+  to weigh with T. Hill in the row he would take.
 
   IT DOES NOT REFETCH TO SWITCH GAMES. The server values every roster in the
   league in one reply, so the picker is a filter over data already in hand —
@@ -51,10 +58,13 @@
   shared seat label to say it. The name opens the detail modal by dispatching
   rather than by requiring it — the require cycle `core/app` warns about."
   [p side week]
-  (let [nums [^{:key :p} [:div.mu-p (fmt (:week-points p))]
+  (let [mark (cond (:moved-in? p)  [:span.mu-mv.in {:title "Moved in by the best lineup"} "▲"]
+                   (:moved-out? p) [:span.mu-mv.out {:title "Benched by the best lineup"} "▼"])
+        nums [^{:key :p} [:div.mu-p (fmt (:week-points p))]
               ^{:key :a} [:div {:class (str "mu-a" (when-not (number? (:actual p)) " pending"))}
                           (fmt (:actual p))]]
         who  [:div.mu-who {:key :who}
+              (when (= side :l) mark)
               (if (:unvalued? p)
                 [:span.muted {:title (str "No projection for id " (:player-id p))}
                  (:player-id p)]
@@ -67,8 +77,9 @@
               (when (:parked? p) [:span.mu-meta {:title "IR or taxi"} "IR"])
               [:span.mu-meta (str (when (and (nil? (:slot p)) (:position p))
                                     (str (:position p) " · "))
-                                  (waivers/week-matchup p week))]]]
-    (into [:div {:class (str "mu-side " (name side))}]
+                                  (waivers/week-matchup p week))]
+              (when (= side :r) mark)]]
+    (into [:div {:class (str "mu-side " (name side) (when (:moved-in? p) " moved-in"))}]
           (if (= side :l) (cons who nums) (conj (vec (reverse nums)) who)))))
 
 (defn column-head
@@ -98,12 +109,73 @@
   [slot l r week seat? key-part]
   ^{:key key-part}
   [:div.mu-row
-   (if l [player-cell l :l week] [empty-cell :l seat?])
+   (if (and l (not (:empty? l))) [player-cell l :l week] [empty-cell :l seat?])
    [:div.mu-slot slot]
-   (if r [player-cell r :r week] [empty-cell :r seat?])])
+   (if (and r (not (:empty? r))) [player-cell r :r week] [empty-cell :r seat?])])
 
 
-(defn team-head [t side]
+(def lineup-views
+  [[:set "Set lineup"] [:projected "Best by projection"] [:actual "Best by actual"]])
+
+(defn lineup-hint
+  "One line under a side's control saying what its best lineup would change,
+  by the basis that can currently be believed: by what was scored once every
+  game is final, by projection before that."
+  [t]
+  (let [{:keys [projected actual]} (:optimal t)]
+    (cond
+      actual                         (str "Best by actual: " (fmt (:gain actual))
+                                          " left on the bench")
+      (:seats-locked? projected)     "Lineup locked"
+      (and projected (pos? (:gain projected)))
+      (str "Best by projection: +" (fmt (:gain projected)) " still possible")
+      projected                      "Best by projection: no better lineup")))
+
+(defn side-lineup
+  "What a side draws under view `v`: its rows, and what its totals row says.
+  A best lineup that is not available — Actual before the week is final — draws
+  the set lineup, so a view cannot strand a side on nothing."
+  [t v]
+  (if-let [o (when (not= v :set) (get-in t [:optimal v]))]
+    (let [seated (remove :empty? (:starters o))
+          sum    (fn [k] (when (some #(number? (k %)) seated)
+                           (reduce + 0 (keep k seated))))]
+      {:starters  (:starters o)
+       :bench     (:bench o)
+       :basis     v
+       :gain      (:gain o)
+       :projected (sum :week-points)
+       :actual    (sum :actual)})
+    {:starters  (:starters t)
+     :bench     (:bench t)
+     :projected (:projected t)
+     :actual    (:actual t)}))
+
+(defn shown-view
+  "The view a side actually draws: the one picked, unless that basis is gone.
+
+  The actual basis vanishes with the scoreboard `week-final?` needs, so the rows
+  and the control resolve it here once rather than disagreeing — a highlighted
+  button over the set lineup."
+  [t v]
+  (if (and v (not= v :set) (get-in t [:optimal v])) v :set))
+
+(defn lineup-control
+  "Set lineup | Best by projection | Best by actual, for one side."
+  [t v]
+  (let [actual? (some? (get-in t [:optimal :actual]))]
+    [:div.mu-lineup
+     (map (fn [[k label]]
+            (let [off? (and (= k :actual) (not actual?))]
+              ^{:key k}
+              [:button {:class    (when (= v k) "on")
+                        :disabled off?
+                        :title    (when off? "Available once all games are final")
+                        :on-click #(rf/dispatch [:set-lineup-view (:roster-id t) k])}
+               label]))
+          lineup-views)]))
+
+(defn team-head [t side v]
   (let [mine? (= side :l)]
     [:div {:class (str "mu-team" (when-not mine? " r"))}
      [:div.mu-name
@@ -112,52 +184,9 @@
         [:<> [:span.mu-rec (db/record-label t)] (:name t)])]
      [:div {:class (str "mu-score" (when-not (number? (:actual t)) " pending"))}
       (fmt (or (:official t) (:actual t)))]
-     [:div.mu-proj (str "projected " (fmt (:projected t)))]]))
-
-(defn optimal-panel
-  "What the best legal lineup would have been, on whichever basis is selected.
-
-  It says nothing at all when there is nothing to say — a lineup that is already
-  optimal gets a sentence, not an empty list of swaps."
-  [t basis side]
-  (let [o     (get-in t [:optimal basis])
-        label (if (= basis :actual) "actual points" "projection")]
-    [:div {:class (str "mu-optbox" (when (= side :r) " r"))}
-     [:div.mu-optline "Best legal lineup by " label ": "
-      [:b (fmt (:total o))]]
-     (if (seq (:in o))
-       [:<>
-        [:div.mu-swap
-         (map (fn [x]
-                ^{:key (str "in" (:player-id x))}
-                [:div [:span.mu-in "▲ Start " (:player-name x)]
-                 " (" (:position x) ", " (fmt (:points x)) ")"])
-              (:in o))
-         (map (fn [x]
-                ^{:key (str "out" (:player-id x))}
-                [:div [:span.mu-out "▼ Sit " (:player-name x)]
-                 " (" (:position x) ", " (fmt (:points x)) ")"])
-              (:out o))]
-        [:div.mu-optline
-         (if (= basis :actual)
-           (str (fmt (:gain o)) " left on the bench.")
-           (str "This lineup is " (fmt (:gain o)) " short of its best."))]]
-       [:div.mu-swap "Nothing on the bench would help."])]))
-
-(def bases
-  [[:projected "Projected" "What the best lineup would be, by this week's projection — the version you can still act on"]
-   [:actual "Actual" "What the best lineup would have been, by what was actually scored"]])
-
-(defn basis-toggle []
-  (let [basis @(rf/subscribe [:optimal-basis])]
-    [:span.mu-basis
-     (map (fn [[k label tip]]
-            ^{:key k}
-            [:button {:class (when (= basis k) "on")
-                      :title tip
-                      :on-click #(rf/dispatch [:set-optimal-basis k])}
-             label])
-          bases)]))
+     [:div.mu-proj (str "projected " (fmt (:projected t)))]
+     [lineup-control t v]
+     (when-let [hint (lineup-hint t)] [:span.mu-lock hint])]))
 
 (defn game-picker
   "Every game in the league, the manager's own first. A game with one team in it
@@ -191,11 +220,21 @@
         (str " · projection updated " at))]
      [:span.grow
       [game-picker]
-      [:span.muted "Optimal by"]
-      [basis-toggle]
       [:button.secondary {:on-click #(rf/dispatch [:fetch-matchup])} "Refresh"]]
      (when status [:span.mu-status status])]))
 
+
+(defn totals-label
+  "\"Starters\" under a set lineup; under a best one, which basis and what it
+  gains over the lineup that is set."
+  [{:keys [basis gain]}]
+  [:div.mu-who
+   (if basis
+     [:<> "Best lineup "
+      [:span.mu-optnote (if (= basis :actual) "by actual" "by projection")]
+      (when (and (number? gain) (pos? gain))
+        [:span.mu-gain (str "+" (fmt gain) " over set")])]
+     "Starters")])
 
 (defn rows
   "Starters as seats, then a bench divider, then the bench.
@@ -204,6 +243,7 @@
   seat for seat — the shorter side draws an empty cell rather than shifting
   everybody up."
   [l r week]
+  ;; `l` and `r` here are `side-lineup`s, not teams.
   (let [seat-rows (fn [ls rs seat? tag]
                     (map-indexed
                      (fn [i _]
@@ -219,18 +259,18 @@
      ;; Child order mirrors `player-cell`, or the totals do not line up with
      ;; the columns they are totalling.
      [:div.mu-tot
-      [:div.mu-side.l [:div.mu-who "Starters"] [:div.mu-p (fmt (:projected l))]
+      [:div.mu-side.l [totals-label l] [:div.mu-p (fmt (:projected l))]
        [:div.mu-a (fmt (:actual l))]]
       [:div.mu-slot]
       [:div.mu-side.r [:div.mu-a (fmt (:actual r))] [:div.mu-p (fmt (:projected r))]
-       [:div.mu-who "Starters"]]]
+       [totals-label r]]]
      [:div.mu-sep "Bench"]
      (seat-rows (:bench l) (:bench r) false "b")]))
 
 (defn matchup-view []
   (let [m      @(rf/subscribe [:matchup])
         [l r]  @(rf/subscribe [:matchup-sides])
-        basis  @(rf/subscribe [:optimal-basis])
+        views  @(rf/subscribe [:lineup-view])
         status @(rf/subscribe [:matchup-status])
         week   (:week m)]
     [:div.mu-view
@@ -244,12 +284,11 @@
                                "Settings, or check that your team is picked."]]
        :else
        [:div.mu-card
-        [:div.mu-head
-         [team-head l :l]
-         [:div.mu-vs (if week (str "Week " week) "–")]
-         (if r [team-head r :r] [:div.mu-team.r [:div.mu-name.muted "No opponent"]])]
-        [rows l (or r {}) week]
-        [:div.mu-opt
-         [optimal-panel l basis :l]
-         [:div.mu-slot]
-         (when r [optimal-panel r basis :r])]])]))
+        (let [lv (shown-view l (get views (:roster-id l) :set))
+              rv (when r (shown-view r (get views (:roster-id r) :set)))]
+          [:<>
+           [:div.mu-head
+            [team-head l :l lv]
+            [:div.mu-vs (if week (str "Week " week) "–")]
+            (if r [team-head r :r rv] [:div.mu-team.r [:div.mu-name.muted "No opponent"]])]
+           [rows (side-lineup l lv) (if r (side-lineup r rv) {}) week]])])]))
