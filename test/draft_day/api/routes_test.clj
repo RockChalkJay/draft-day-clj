@@ -614,6 +614,27 @@
     (is (= 12 (:week b)))
     (is (= 8 (:through-week in-season)) "which is deliberately not what was used")))
 
+(deftest matchup-endpoint-reads-one-season-for-the-whole-request
+  ;; The scoreboard and the weekly line it is scored against have to be the same
+  ;; year. The universe carries a `:season` of its own — a fact about the last
+  ;; ingestion — and reading the week under that one puts every projected point
+  ;; in a different season than the actual beside it.
+  (let [asked (atom {})]
+    (routes/reset-universe!)
+    (with-redefs [pipeline/load-universe       (fn [& _] in-season)
+                  pipeline/load-weekly         (fn [s w & _]
+                                                 (swap! asked assoc :weekly s)
+                                                 (stub-weekly s w))
+                  matchups/current-week        (fn [_ _] 9)
+                  matchups/fetch-raw-matchups  (fn [_ req]
+                                                 (swap! asked assoc :scoreboard (:season req))
+                                                 raw-matchups)
+                  espn-schedule/fetch          (fn [s _] (swap! asked assoc :kickoffs s) nil)]
+      (routes/matchup-handler
+       {:body (input-stream (json/write-value-as-string (assoc matchup-req :season "2025")))}))
+    (is (= {:scoreboard "2025" :weekly "2025" :kickoffs "2025"} @asked))
+    (is (= 2026 (:season in-season)) "and deliberately not the universe's")))
+
 (deftest matchup-endpoint-seats-the-lineup-in-the-leagues-own-order
   ;; `:roster-positions` on the synced league beats the request's roster config.
   (let [league (assoc synced :roster-positions ["RB" "FLEX" "BENCH"])

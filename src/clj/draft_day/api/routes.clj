@@ -370,12 +370,19 @@
 
   Stateless on the same terms as the other two boards, but unlike them it takes
   a live fetch every request: a scoreboard changes while you are looking at it.
-  The week is the provider's, never `(inc through-week)`."
+  The week is the provider's, never `(inc through-week)`.
+
+  One season answers the whole request. The scoreboard and the weekly line it is
+  read against have to be the same year or every projected point belongs to a
+  different season than the actual beside it — so the request's season is
+  resolved once, here, rather than asked of the provider and then of the
+  universe, whose own `:season` is a fact about the last ingestion."
   [req]
   (try
     (let [{:keys [provider league-id season credentials scoring league roster my-roster-id]}
           (read-json-body req)
-          scoring* (resolve-scoring scoring)]
+          scoring* (resolve-scoring scoring)
+          season*  (season/resolve-season season)]
       (if-not (scoring/scores-anything? scoring*)
         ;; The other two boards' guard: an all-zero config projects every
         ;; player 0.0, and that is a lie rather than a matchup.
@@ -383,12 +390,11 @@
         (let [{:keys [ok week matchups scores status error]}
               (matchups/fetch-matchups {:provider    provider
                                         :league-id   league-id
-                                        :season      season
+                                        :season      season*
                                         :credentials credentials})]
           (if-not ok
             (json-response (or status 502) {:error error})
-            (let [{:keys [players season]} (universe false)
-                  season* (season/resolve-season season)
+            (let [{:keys [players]} (universe false)
                   weekly  (pipeline/load-weekly season* week
                                                 {:path pipeline/matchup-weekly-cache-path})
                   ;; Leaner than the waiver board's pipeline — no VBD, no

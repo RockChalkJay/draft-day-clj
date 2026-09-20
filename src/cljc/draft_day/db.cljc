@@ -60,6 +60,16 @@
   claim would look like an upgrade."
   #{"BENCH" "IR" "TAXI"})
 
+(def empty-seat
+  "The id a lineup carries where nobody is starting. Sleeper's own spelling,
+  which `league-sync/string-ids` normalizes a nil to across every provider.
+
+  A seat, not a gap, because `:starter-ids` is read by *position*: the seat a
+  starter holds is `:starter-slots` or `:roster-positions` at his index, so
+  dropping an unfilled one moves every seat below it up by one and labels a
+  FLEX receiver RB. Every reader of a lineup skips it by this name."
+  "0")
+
 (defn scoring-slots
   "A concrete slot list minus the seats that hold without scoring.
 
@@ -844,7 +854,7 @@
   on the League tab and not on My Team.
 
   Starters come in lineup order off `:starter-ids`, seated by `starter-seats`.
-  An unfilled seat (Sleeper's \"0\") consumes its index and is dropped: this is
+  An unfilled seat (`empty-seat`) consumes its index and is dropped: this is
   a list of who a team holds, not of its seats. Ids go through `held-ids`, and
   an id `by-id` cannot resolve keeps its place as `{:player-id id :unvalued?
   true}` — a roster that silently skipped him would show fewer players than the
@@ -855,7 +865,7 @@
         lineup   (held-ids team xwalk :starter-ids)
         starters (into []
                        (keep-indexed (fn [i id]
-                                       (when (and id (not= "0" id))
+                                       (when (and id (not= empty-seat id))
                                          (cond-> (row id)
                                            (get seats i) (assoc :slot (get seats i))))))
                        lineup)
@@ -980,6 +990,30 @@
 
 (defn default-waiver-columns [] (default-columns waiver-column-catalog))
 
+(defn repair-lineup
+  "One team's `:starter-ids`, kept in step with its seats.
+
+  The other two id lists are asked about by membership, so a nil in them is
+  dropped. This one is asked about by *position* — `starter-seats` reads the
+  seat at a starter's index — so a nil becomes `empty-seat` instead: dropping it
+  would slide every seat below it up one and label the wrong men with the wrong
+  seats, silently, which is the failure `:starter-slots` was paired with
+  `:starter-ids` to prevent."
+  [ids]
+  (mapv #(if (nil? %) empty-seat %) ids))
+
+(defn repair-team
+  "One synced team's id lists, to the shape the waiver board reads.
+
+  `:active-ids` is repaired alongside `:player-ids` because it decides the
+  *other* question — whether a claim needs a drop at all. See
+  `waiver/drop-candidate`."
+  [t]
+  (-> (reduce (fn [t k] (update t k #(vec (filter some? %))))
+              t
+              [:player-ids :active-ids])
+      (update :starter-ids repair-lineup)))
+
 (defn reconcile-league-sync
   "Accept a synced league only if it has the shape the waiver board reads, or
   drop it.
@@ -1001,24 +1035,16 @@
   A sync with teams but no `:provider` is dropped for the same reason: it names
   no id space, so `waiver/waiver-board` can resolve nobody and the whole league
   comes back available. It is the shape a sync stored before providers were
-  named has, and one click re-fetches it."
+  named has, and one click re-fetches it.
+
+  `:starter-ids` is repaired the other way round — see `repair-lineup`."
   [stored]
   (when (and (map? stored)
              (sequential? (:teams stored))
              (or (empty? (:teams stored)) (some? (:provider stored))))
     (-> stored
         (update :teams (fn [ts]
-                         (into [] (comp (filter map?)
-                                        (map (fn [t]
-                                               (reduce (fn [t k]
-                                                         (update t k #(vec (filter some? %))))
-                                                       t
-                                                       ;; :active-ids is the one a
-                                                       ;; claim is actually priced
-                                                       ;; against — see
-                                                       ;; `waiver/drop-candidate`.
-                                                       [:player-ids :active-ids :starter-ids]))))
-                               ts)))
+                         (into [] (comp (filter map?) (map repair-team)) ts)))
         (update :waiver #(when (map? %) %)))))
 
 ;; ---- initial db ----

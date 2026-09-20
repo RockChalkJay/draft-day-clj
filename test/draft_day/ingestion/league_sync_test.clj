@@ -1,5 +1,6 @@
 (ns draft-day.ingestion.league-sync-test
   (:require [clojure.test :refer [deftest is testing]]
+            [draft-day.db :as db]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-sync.sleeper :as sync-sleeper]
@@ -330,6 +331,24 @@
            integer id resolves nothing and the whole league reads as free agents")
       (is (= ["4034"] (:active-ids team)))
       (is (= ["4034"] (:starter-ids team))))))
+
+(deftest a-lineup-keeps-its-empty-seats-rather-than-closing-the-gap
+  ;; `:starter-ids` is read by position — `db/starter-seats` takes the seat at a
+  ;; starter's index — so dropping a nil slides every seat below it up one and
+  ;; labels a FLEX receiver RB, which is the failure `:starter-slots` was paired
+  ;; with `:starter-ids` to prevent.
+  (with-redefs [league-sync/normalize-rosters
+                (fn [_ _] {:teams [{:roster-id 1
+                                    :player-ids [4034 6794]
+                                    :starter-ids [4034 nil 6794]
+                                    :starter-slots ["QB" "RB" "FLEX"]}]})
+                league-sync/fetch-raw-rosters (fn [_ _] {})]
+    (let [team (first (:teams (:league (league-sync/sync-league
+                                        {:provider "sleeper" :league-id "1"}))))]
+      (is (= ["4034" "0" "6794"] (:starter-ids team)))
+      (is (= (count (:starter-slots team)) (count (:starter-ids team)))
+          "the two vectors are pairs, and a repair may not desynchronize them")
+      (is (= "FLEX" (get (db/starter-seats team {}) 2))))))
 
 (deftest a-provider-that-returns-no-teams-is-not-a-league-everyone-has-left
   (with-redefs [league-sync/normalize-rosters (fn [_ _] {:waiver {:type :faab}})

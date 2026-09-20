@@ -79,10 +79,9 @@
   (waiver/held-ids (if (seq (:starter-ids score)) score team) xwalk :starter-ids))
 
 (defn filled?
-  "Is this lineup entry a player rather than an empty seat? Sleeper writes `\"0\"`
-  for a seat nobody is starting in."
+  "Is this lineup entry a player rather than an empty seat? See `db/empty-seat`."
   [id]
-  (and id (not= "0" id)))
+  (and id (not= db/empty-seat id)))
 
 (defn starter-rows
   "One row per seat, in the league's own lineup order, including the empty ones —

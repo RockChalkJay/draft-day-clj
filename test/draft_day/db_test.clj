@@ -447,6 +447,16 @@
     (is (= [] (:player-ids (first (:teams out)))))
     (is (= ["a" "b"] (:player-ids (second (:teams out)))) "nils inside are dropped")
     (is (every? vector? (map :starter-ids (:teams out))))
+    (testing "but a lineup is repaired by position, not by membership"
+      ;; Dropping a nil there slides every seat below it up one, which the seat
+      ;; labels have no way to notice — see `db/repair-lineup`.
+      (let [team (first (:teams (db/reconcile-league-sync
+                                 {:provider "espn"
+                                  :teams [{:roster-id 1 :player-ids ["a" "b"]
+                                           :starter-ids ["a" nil "b"]
+                                           :starter-slots ["QB" "RB" "FLEX"]}]})))]
+        (is (= ["a" "0" "b"] (:starter-ids team)))
+        (is (= "FLEX" (get (db/starter-seats team {}) 2)))))
     (testing ":active-ids is repaired too — it decides whether a claim needs a drop"
       (is (= [] (:active-ids (first (:teams out)))))
       (is (= ["a"] (:active-ids (second (:teams out))))))))
