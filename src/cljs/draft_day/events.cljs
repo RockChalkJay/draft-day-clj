@@ -79,7 +79,7 @@
 (rf/reg-event-fx
  :fetch-players
  (fn [{:keys [db]} [_ refresh?]]
-   {:db   (assoc db :status "Loading players…")
+   {:db   (assoc db :status "Loading players…" :universe-error nil)
     :http {:method :get
            :url (str "/api/players" (when refresh? "?refresh=true"))
            :on-success [:players-loaded]
@@ -106,8 +106,11 @@
     ;; The week will not come now. Whatever else says season still does — a
     ;; synced league's finished draft — and otherwise draft day, where this
     ;; status line is read.
+    ;;
+    ;; `:universe-error` beside it, because the status line is shared: a tab
+    ;; that waits on the universe must be able to tell failed from still coming.
     (let [place (place-view db :draft)]
-      (cond-> {:db (assoc db :status (str "Load failed: " err))}
+      (cond-> {:db (assoc db :status (str "Load failed: " err) :universe-error err)}
         place (assoc :fx [place])))))
 
 ;; ---- rankings recompute ----
@@ -169,17 +172,17 @@
     ;; `section` deep-links into Settings — "Connect a league" means the
     ;; accounts section, not whichever one was open last.
     ;;
-    ;; My Team reads the waiver reply for its rows and the matchup's week for
-    ;; the header, so opening it — which is where the season half opens — loads
-    ;; both. A league whose rosters never arrived is synced first, as
-    ;; `:set-active-league` does; `:league-synced` asks for both boards.
+    ;; Which boards a tab loads is `db/waiver-views` and `db/matchup-view?` —
+    ;; every season tab needs the matchup, for the header's week. A league
+    ;; whose rosters never arrived is synced first, as `:set-active-league`
+    ;; does; `:league-synced` asks for both boards.
     (let [lg       (db/active-league db)
-          matchup? (and (#{:matchup :team} v) (nil? (:matchup db)))
+          matchup? (and (db/matchup-view? v) (nil? (:matchup db)))
           fx       (if (and matchup? lg (nil? (:sync lg))
                             (providers/matchups? (:provider lg)))
                      [[:dispatch [:sync-league (select-keys lg [:provider :league-id])]]]
                      (cond-> []
-                       (and (#{:waivers :team} v) (nil? (:waivers db)))
+                       (and (db/waiver-views v) (nil? (:waivers db)))
                        (conj [:dispatch [:fetch-waivers]])
                        matchup? (conj [:dispatch [:fetch-matchup]])))]
       (cond-> {:db (cond-> (assoc db :view v)
@@ -625,11 +628,11 @@
                ;; a waiver board built on no league says everyone is free.
                (nil? (:sync entry))
                (conj [:dispatch [:sync-league (select-keys entry [:provider :league-id])]])
-               ;; Only when it is the tab on screen; every other tab picks it up
-               ;; from `:set-view`'s first-open fetch, and this one is live. Not
-               ;; before a first sync, which asks for it once there are rosters.
-               ;; My Team shows the matchup's week in the header.
-               (and (#{:matchup :team} view) (:sync entry))
+               ;; Only while a season tab is on screen, since the header's week
+               ;; is the matchup's; anywhere else `:set-view`'s first-open fetch
+               ;; picks it up, and this one is live. Not before a first sync,
+               ;; which asks for it once there are rosters.
+               (and (db/matchup-view? view) (:sync entry))
                (conj [:dispatch [:fetch-matchup]]))})
       {})))
 
@@ -696,7 +699,7 @@
                                        "Sync returned nothing usable")))
        :fx (cond-> [[:dispatch [:fetch-waivers]]]
              ;; The matchup board asked with no rosters is every team empty.
-             (and (#{:matchup :team} (:view db)) (= k (:active-league db)))
+             (and (db/matchup-view? (:view db)) (= k (:active-league db)))
              (conj [:dispatch [:fetch-matchup]]))})))
 
 (rf/reg-event-fx :connect-account

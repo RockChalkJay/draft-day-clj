@@ -28,6 +28,7 @@
   `rankings.matchup/matchup-board` explains why that is affordable."
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
+            [draft-day.db :as db]
             [draft-day.views.waivers :as waivers]))
 
 
@@ -36,13 +37,6 @@
   numbers would collapse 8.4 and 12.6 into a comparison nobody can make."
   [v]
   (if (number? v) (.toFixed v 1) "–"))
-
-(defn record-label
-  "`5–3`, or nothing. A league that reports no record must not render a dash
-  where a record goes — an em dash beside a team name reads as a score."
-  [t]
-  (when (and (:wins t) (:losses t))
-    (str (:wins t) "\u2013" (:losses t))))
 
 (defn player-cell
   "A player's name, his NFL game, and the two numbers.
@@ -96,8 +90,8 @@
     [:div {:class (str "mu-team" (when-not mine? " r"))}
      [:div.mu-name
       (if mine?
-        [:<> (:name t) [:span.mu-rec (record-label t)]]
-        [:<> [:span.mu-rec (record-label t)] (:name t)])]
+        [:<> (:name t) [:span.mu-rec (db/record-label t)]]
+        [:<> [:span.mu-rec (db/record-label t)] (:name t)])]
      [:div {:class (str "mu-score" (when-not (number? (:actual t)) " pending"))}
       (fmt (or (:official t) (:actual t)))]
      [:div.mu-proj (str "projected " (fmt (:projected t)))]]))

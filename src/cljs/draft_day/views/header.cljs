@@ -7,6 +7,7 @@
   it: `core` mounts a React root when it loads."
   (:require [re-frame.core :as rf]
             [draft-day.providers :as providers]
+            [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
@@ -51,7 +52,8 @@
      (when my-team-name [:span.league-team my-team-name])]))
 
 (def view-labels
-  {:board "Board" :league "League" :team "My Team" :matchup "Matchup" :waivers "Waivers"})
+  {:board "Board" :league "League" :team "My Team" :matchup "Matchup" :waivers "Waivers"
+   :rosters "League"})
 
 (defn mode-link
   "The way to the other half of the app. Quiet on purpose: it is used a couple
@@ -102,7 +104,7 @@
      (when faab
        [:div.stat {:title "FAAB left of this season's budget"}
         [:span.stat-label "FAAB"]
-        [:span.stat-val.good (str "$" (or (:left faab) 0) " / $" (or (:budget faab) 0))]])
+        [:span.stat-val.good (str (util/faab (:left faab)) " / " (util/faab (:budget faab)))]])
      (when league
        [:button.sync-btn {:on-click #(rf/dispatch [:refresh-league
                                                    (select-keys league [:provider :league-id])])}
@@ -129,7 +131,8 @@
          (view-labels v)])]
      (when mode [mode-link])
      [league-switcher]
-     [:div.status status]
+     ;; Truncated on a crowded header, so the whole text rides on hover.
+     [:div.status {:title status} status]
      (case mode
        :season [season-stats]
        :draft  [draft-stats]

@@ -111,7 +111,9 @@
      :faab-left       (when (= :faab type) (max 0 (- (or budget 0) used)))
      :waiver-position (:waiverRank team)
      :wins            (get-in team [:record :overall :wins])
-     :losses          (get-in team [:record :overall :losses])}))
+     :losses          (get-in team [:record :overall :losses])
+     :ties            (get-in team [:record :overall :ties])
+     :points-for      (get-in team [:record :overall :pointsFor])}))
 
 (defmethod league-sync/fetch-raw-rosters :espn
   [_ {:keys [league-id season credentials]}]

@@ -197,13 +197,15 @@
   elsewhere on the screen; this is the part that visibly answers 'which team am
   I'.
 
-  Starters above bench, in the league's own lineup order, because the synced
-  league knows the real lineup and the draft config's slot template does not.
-  A row the board could not value keeps its seat and says so rather than
-  vanishing — see `waiver/my-roster`."
+  The roster is `:my-roster`, the same one My Team and the League tab draw:
+  starters in the league's own lineup order, because the synced league knows
+  the real lineup and the draft config's slot template does not. A row nobody
+  could resolve keeps its seat and says so rather than vanishing."
   []
-  (let [roster    @(rf/subscribe [:my-waiver-roster])
+  (let [roster    @(rf/subscribe [:my-roster])
         synced?   @(rf/subscribe [:league-synced?])
+        team      @(rf/subscribe [:my-sync-team])
+        pickable  @(rf/subscribe [:comparable-by-id])
         comparing (set @(rf/subscribe [:compare]))]
     [:div.roster-panel.waiver-roster
      [:div.roster-head [:h3 "My Roster"]]
@@ -211,21 +213,22 @@
        (not synced?)
        [:p.muted "Sync a league to see your roster."]
 
-       ;; nil, not empty: no team is picked. This is the line that was missing —
-       ;; it says what the dropdown is for.
-       (nil? roster)
+       ;; This is the line that was missing — it says what the dropdown is for.
+       (nil? team)
        [:p.muted "Pick your team under Settings to see your roster and what a claim would cost."]
 
-       (empty? roster)
+       (nil? roster)
+       [:p.muted "Loading your roster…"]
+
+       (every? empty? (vals roster))
        [:p.muted "This team holds nobody yet."]
 
        :else
        (let [row (fn [p]
-                   ;; A row the board could not value has no entry in
-                   ;; `:my-roster-players`, so selecting it would put an id in
-                   ;; `:compare` that never resolves — a click that does
-                   ;; nothing, silently. It keeps its seat and stays inert.
-                   (let [pick? (not (:unvalued? p))]
+                   ;; Only a player the waiver board has a row for can be
+                   ;; compared: any other id in `:compare` never resolves, and
+                   ;; the click would silently do nothing. He keeps his seat.
+                   (let [pick? (contains? pickable (:player-id p))]
                      ^{:key (:player-id p)}
                      [:tr {:class (->> [(when (:drop? p) "drop-seat")
                                         (when (:parked? p) "parked")
@@ -240,7 +243,7 @@
                       [:td.slot (or (:position p) "–")]
                       [:td.slot-player
                        (if (:unvalued? p)
-                         [:span.muted {:title (str "No projection for id " (:player-id p))}
+                         [:span.muted {:title (str "No player for id " (:player-id p))}
                           (:player-id p)]
                          ;; A real tab stop here, unlike the board's six hundred:
                          ;; a roster is a dozen rows and walking them is useful.
@@ -248,18 +251,18 @@
                           {:on-click #(open-detail! % p)
                            :title "Player detail"}
                           (:player-name p)])
-                      (when (:parked? p) [:span.parked-tag {:title "IR or taxi"} " IR"])
                       (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
                       [:td.num (board/format-whole (:ros-points p))]]))
-             ;; `group-by` keeps the server's order — `waiver/roster-sort-key`.
-             {starters true bench false} (group-by (comp boolean :starter?) roster)]
+             group (fn [label rows]
+                     (when (seq rows)
+                       [:<> [:tr.roster-group [:td {:col-span 3} label]] (map row rows)]))
+             {:keys [starters bench parked]} roster]
          [:table.roster
           [:thead [:tr [:th.slot "Pos"] [:th "Player"] [:th.num "ROS"]]]
           [:tbody
-           (when (seq starters)
-             [:<> [:tr.roster-group [:td {:col-span 3} "Starters"]] (map row starters)])
-           (when (seq bench)
-             [:<> [:tr.roster-group [:td {:col-span 3} "Bench"]] (map row bench)])]]))]))
+           (group "Starters" starters)
+           (group "Bench" bench)
+           (group "IR / Taxi" (mapv #(assoc % :parked? true) parked))]]))]))
 
 (defn fetched-at-label
   "An ISO timestamp as a local wall-clock time, dated once it is not today.

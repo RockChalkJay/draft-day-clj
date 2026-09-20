@@ -976,3 +976,19 @@ table.board tr.parked td { color: var(--muted); }
 /* The seat a claim would take — the same man the drop note names. */
 table.board tr.drop-seat td { background: color-mix(in oklab, var(--warn) 10%, transparent); }
 .team-view .drop-tag { color: var(--warn); font-weight: 600; }
+
+/* ---- League (season) ----
+   Reuses the draft League's cards; the record sits opposite the name. */
+.team-head.split .rec { margin-left: auto; font-variant-numeric: tabular-nums; }
+table.roster tr.bench td { color: var(--muted); }
+table.roster tr.roster-group td { color: var(--muted); font-size: 10px; text-transform: uppercase;
+  letter-spacing: .04em; padding-top: 8px; }
+
+/* The status text gives way first. With a half's tabs, the mode link, the league
+   and that half's numbers on one line, a wrapping header pushed the gear onto a
+   row of its own at laptop widths; a truncated status keeps it on one. It never
+   goes to zero, though: squeezed to nothing it took a failure message with it,
+   and the floor keeps an ellipsis to hover for the `title`. A wider floor puts
+   the gear back on its own row. */
+header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }

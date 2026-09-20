@@ -126,6 +126,13 @@
                           (not-empty (:display_name u)))]))
         users))
 
+(defn points-for
+  "Points scored this season, or nil before Sleeper reports any. Sleeper splits
+  the figure in two, whole points and hundredths (`fpts`, `fpts_decimal`)."
+  [settings]
+  (when-let [whole (:fpts settings)]
+    (+ whole (/ (or (:fpts_decimal settings) 0) 100.0))))
+
 (defn normalize-roster
   "Pure: one raw Sleeper roster + the name index + the league's waiver settings
   -> one normalized team.
@@ -160,7 +167,9 @@
      :faab-left       (when (= :faab type) (max 0 (- (or budget 0) used)))
      :waiver-position (:waiver_position s)
      :wins            (:wins s)
-     :losses          (:losses s)}))
+     :losses          (:losses s)
+     :ties            (:ties s)
+     :points-for      (points-for s)}))
 
 (def position-spellings
   "Sleeper's seat names in the app's vocabulary; anything absent passes through.

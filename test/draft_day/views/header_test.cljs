@@ -34,3 +34,17 @@
   (let [html (render header/header)]
     (is (re-find #"Waivers" html))
     (is (not (re-find #"Matchup" html)))))
+
+(deftest a-truncated-status-can-still-be-read
+  ;; The header squeezes the status first, so a failure has to survive on hover.
+  (swap! rdb/app-db assoc :status "Rankings update failed: 502")
+  (is (re-find #"\[:div.status \{:title \"Rankings update failed: 502\"\}"
+               (render header/header))))
+
+(deftest an-unreported-budget-is-a-dash-not-zero
+  (swap! rdb/app-db assoc :universe {:through-week 3} :view :team
+         :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :my-roster-id 1
+                                :sync {:waiver {:type "faab" :budget 100}
+                                       :teams [{:roster-id 1 :name "Mine"}]}}})
+  (is (re-find #"– / \$100" (render header/header))))

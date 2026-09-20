@@ -528,9 +528,14 @@
 
   Draft Day is two apps. The board is the whole of draft night and dead weight
   the morning after, and the in-season screens have nothing to say before a
-  league has rosters. Settings belongs to neither and is always reachable."
+  league has rosters. Settings belongs to neither and is always reachable.
+
+  Every key belongs to one half only, because a view's half is read off its key
+  (`view-mode`). Both halves have a League tab, and they are different screens:
+  `:league` is the auction room's picks and bankrolls, `:rosters` the synced
+  league's rosters, records and FAAB."
   {:draft  [:board :league]
-   :season [:team :matchup :waivers]})
+   :season [:team :matchup :waivers :rosters]})
 
 (defn draft-complete?
   "Every seat on every team filled. False for no teams at all: a draft that has
@@ -587,6 +592,19 @@
   [view]
   (some (fn [[m vs]]
           (when (some #{view} vs) m)) mode-views))
+
+(def waiver-views
+  "The tabs drawn from the `/api/waivers` reply: My Team's rows, the board
+  itself, and on the League tab which of the manager's own players open the
+  detail modal. Opening one loads the board if it has not loaded."
+  #{:team :waivers :rosters})
+
+(defn matchup-view?
+  "Whether `view` needs this week's matchup reply. Every season tab does: the
+  header's Week is only ever that reply's, so a tab that did not ask left the
+  header without one until the manager happened past a tab that did."
+  [view]
+  (= :season (view-mode view)))
 
 (defn view-for
   "The view to show under phase `p` — the active league's by default: `view`
@@ -780,6 +798,97 @@
           (keep (fn [p] (when-let [s (get-in p [:ids k])]
                           [s (:player-id p)])))
           players)))
+
+(defn held-ids
+  "One team's roster ids in the board's id space: each provider id through
+  `xwalk` (`provider->player-id`), or itself where the crosswalk has no entry —
+  which carries team defenses, keyed by abbreviation in both spaces. `k` selects
+  the list: `:player-ids` (everyone rostered), `:active-ids` (holding a seat) or
+  `:starter-ids`. See `rankings.waiver`'s ns docstring for why every roster
+  reader, server and browser, comes through this one function."
+  ([team xwalk] (held-ids team xwalk :player-ids))
+  ([team xwalk k] (mapv (fn [id] (get xwalk id id)) (get team k))))
+
+(defn starter-seats
+  "Each starter's seat, in `:starter-ids`' order, or nil when that cannot be
+  known.
+
+  A team that names its starters' seats (`:starter-slots`, ESPN) is read as it
+  is. Otherwise the lineup is positional against the league's
+  `:roster-positions` — true of Sleeper, and of no provider known to be
+  otherwise — and anything else gets no label, because indexing the seat list
+  for a lineup that is not positional labels a FLEX receiver RB with nothing
+  on screen to say so. An ESPN sync stored before `:starter-slots` existed is
+  that case."
+  [team league]
+  (or (:starter-slots team)
+      (when (= "sleeper" (some-> (:provider league) name))
+        (:roster-positions league))))
+
+(defn roster-sort-key
+  "Below the starters a roster reads by position, then best first: rest-of-
+  season points where the row carries them (the manager's own, off the waiver
+  board), else name. A rival's rows carry none, so one rule serves both. A row
+  with no position — one nobody could resolve — sorts last in its block."
+  [p]
+  [(position-rank (:position p)) (- (or (:ros-points p) 0)) (str (:player-name p))])
+
+(defn team-roster
+  "One synced team as every season view draws it — the League tab's cards, My
+  Team and the Waivers panel alike: `{:starters :bench :parked}`, each a vector
+  of `by-id`'s rows, plus `:slot` on a starter whose seat is known.
+
+  The only place a roster is split. The server used to split the manager's own
+  as well, and the two disagreed: it took starters from `:player-ids`
+  membership and this took them from `:starter-ids`, so one starter could show
+  on the League tab and not on My Team.
+
+  Starters come in lineup order off `:starter-ids`, seated by `starter-seats`.
+  An unfilled seat (Sleeper's \"0\") consumes its index and is dropped: this is
+  a list of who a team holds, not of its seats. Ids go through `held-ids`, and
+  an id `by-id` cannot resolve keeps its place as `{:player-id id :unvalued?
+  true}` — a roster that silently skipped him would show fewer players than the
+  team holds, which is how a missing crosswalk hides."
+  [team league xwalk by-id]
+  (let [row      (fn [id] (or (get by-id id) {:player-id id :unvalued? true}))
+        seats    (vec (starter-seats team league))
+        lineup   (held-ids team xwalk :starter-ids)
+        starters (into []
+                       (keep-indexed (fn [i id]
+                                       (when (and id (not= "0" id))
+                                         (cond-> (row id)
+                                           (get seats i) (assoc :slot (get seats i))))))
+                       lineup)
+        started  (set lineup)
+        active   (set (held-ids team xwalk :active-ids))
+        others   (->> (held-ids team xwalk :player-ids)
+                      (remove started)
+                      (map row)
+                      (sort-by roster-sort-key))]
+    {:starters starters
+     :bench    (filterv #(contains? active (:player-id %)) others)
+     :parked   (filterv #(not (contains? active (:player-id %))) others)}))
+
+(defn win-pct
+  "Wins over games played, a tie counting half a win; 0 before any game."
+  [{:keys [wins losses ties]}]
+  (let [w (or wins 0) g (+ w (or losses 0) (or ties 0))]
+    (if (pos? g) (/ (+ w (/ (or ties 0) 2)) g) 0)))
+
+(defn record-order
+  "Standings order: win percentage, then points scored, then name. Points is
+  Sleeper's tiebreak; ESPN can break ties head to head, which a sync does not
+  carry. Without the tiebreak, week 1's six 1–0 teams listed alphabetically. A
+  league that reports no record at all falls back to plain name order."
+  [teams]
+  (sort-by (juxt #(- (win-pct %)) #(- (or (:points-for %) 0)) #(str (:name %))) teams))
+
+(defn record-label
+  "`5–3`, `5–3–1` once there is a tie, or nil when the league reports no
+  record: a dash beside a team name reads as a score."
+  [{:keys [wins losses ties]}]
+  (when (and wins losses)
+    (str wins "–" losses (when (and ties (pos? ties)) (str "–" ties)))))
 
 ;; ---- waiver board ----
 ;; The in-season board asks different questions than the draft board, so it gets

@@ -329,9 +329,8 @@
                                     ;; Same strip as :players — these are full
                                     ;; rows and carry the same working state.
                                     ;; `some->` so nil survives: it means no team
-                                    ;; picked, which `mapv` would flatten to the
-                                    ;; empty roster its sibling :my-roster is
-                                    ;; careful to keep distinct.
+                                    ;; picked, which `mapv` would flatten to an
+                                    ;; empty roster.
                                     :my-roster-players
                                     (some-> (:my-roster-players out)
                                             without-projection-internals)

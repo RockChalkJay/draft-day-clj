@@ -63,6 +63,12 @@
    :waiver {:type "faab" :budget 100}
    :roster-size 15 :league-id "987654" :provider "sleeper"})
 
+;; The universe behind `synced`: provider ids "a" and "b" resolve, through the
+;; crosswalk, to board ids that are deliberately not the same strings.
+(def ^:private universe
+  [{:player-id "A" :player-name "Starter A" :position "RB" :ids {:sleeper "a"}}
+   {:player-id "B" :player-name "Bench B" :position "WR" :ids {:sleeper "b"}}])
+
 (def ^:private lk (db/league-key "sleeper" "987654"))
 (def ^:private ak (db/account-key "sleeper" "u1"))
 
@@ -199,8 +205,8 @@
   ;; A second full rank of the universe, so it is paid for by the manager who
   ;; asks for it — but only the first time, or every glance re-ranks the league.
   (rf/dispatch-sync [:set-view :waivers])
-  (is (= [:fetch-waivers] (dispatched)))
-  (swap! rdb/app-db assoc :waivers {:players []})
+  (is (= [:fetch-waivers :fetch-matchup] (dispatched)) "the matchup for the header's week")
+  (swap! rdb/app-db assoc :waivers {:players []} :matchup {:week 4})
   (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
   (rf/dispatch-sync [:set-view :board])
   (rf/dispatch-sync [:set-view :waivers])
@@ -333,30 +339,34 @@
 (deftest no-team-picked-reads-differently-from-an-empty-roster
   ;; The whole reason the panel exists: the free-agent board never shows what the
   ;; manager already has, so a dropdown whose only job is to identify that roster
-  ;; looked inert. nil has to reach the view as nil — normalizing it to [] would
-  ;; make "pick your team" indistinguishable from "you hold nobody".
-  (swap! rdb/app-db assoc :waivers {:players [] :my-roster nil})
+  ;; looked inert. "Pick your team" and "you hold nobody" must not read alike.
+  (with-league! synced nil)
+  (swap! rdb/app-db assoc :players universe)
   (rf/clear-subscription-cache!)
-  (is (nil? (sub [:my-waiver-roster])))
-  (swap! rdb/app-db assoc :waivers {:players [] :my-roster []})
+  (is (nil? (sub [:my-roster])))
+  (with-league! (update synced :teams assoc 0
+                        {:roster-id 1 :name "Mine" :player-ids [] :active-ids []})
+    1)
   (rf/clear-subscription-cache!)
-  (is (= [] (sub [:my-waiver-roster])) "picked, but holding nobody"))
+  (is (= {:starters [] :bench [] :parked []} (sub [:my-roster]))
+      "picked, but holding nobody"))
 
 (deftest the-roster-panel-says-which-state-it-is-in
-  (let [text (fn [] (render waivers/my-roster-panel))]
-    (swap! rdb/app-db assoc :leagues {} :active-league nil :waivers {:my-roster nil})
-    (rf/clear-subscription-cache!)
+  (let [text (fn [] (rf/clear-subscription-cache!) (render waivers/my-roster-panel))
+        none (update synced :teams assoc 0
+                     {:roster-id 1 :name "Mine" :player-ids [] :active-ids []})]
+    (swap! rdb/app-db assoc :leagues {} :active-league nil)
     (is (re-find #"Sync a league" (text)) "no league connected at all")
 
     (with-league! synced nil)
-    (swap! rdb/app-db assoc :waivers {:my-roster nil})
-    (rf/clear-subscription-cache!)
     (is (re-find #"Pick your team" (text))
         "synced but no team chosen — the line that was missing")
 
-    (with-league! synced nil)
-    (swap! rdb/app-db assoc :waivers {:my-roster []})
-    (rf/clear-subscription-cache!)
+    (with-league! none 1)
+    (is (re-find #"Loading your roster" (text))
+        "a team, but no players yet to name on it")
+
+    (swap! rdb/app-db assoc :players universe)
     (is (re-find #"holds nobody" (text)))))
 
 (deftest the-header-re-syncs-under-the-league-s-provider-not-the-account-s
@@ -377,7 +387,7 @@
   (swap! rdb/app-db assoc
          :leagues {lk {:provider "sleeper" :league-id "987654"}}
          :active-league lk
-         :waivers {:my-roster nil})
+         :waivers {})
   (rf/clear-subscription-cache!)
   (let [out (render header/season-stats)]
     (is (re-find #"Re-sync" out))
@@ -440,20 +450,29 @@
 (deftest the-roster-panel-splits-starters-from-bench-and-marks-the-seat-at-stake
   ;; The synced league knows the real lineup; the draft config's slot template
   ;; does not. And the marked seat is the same man the drop note names.
-  (with-league! synced 1)
+  (with-league! (update synced :teams assoc 0
+                        {:roster-id 1 :name "Mine" :player-ids ["a" "b" "s-ghost"]
+                         :active-ids ["a" "b"] :starter-ids ["a"]})
+    1)
   (swap! rdb/app-db assoc
-         :waivers {:my-roster [{:player-id "a" :player-name "Starter A" :position "RB"
-                                :ros-points 180.0 :starter? true}
-                               {:player-id "b" :player-name "Bench B" :position "WR"
-                                :ros-points 40.0 :starter? false :drop? true}
-                               {:player-id "s-ghost" :unvalued? true :parked? true}]})
+         :players universe
+         :waivers {:drop-candidate {:player-id "B"}
+                   :my-roster-players [{:player-id "A" :player-name "Starter A"
+                                        :position "RB" :ros-points 180.0}
+                                       {:player-id "B" :player-name "Bench B"
+                                        :position "WR" :ros-points 40.0}]})
   (rf/clear-subscription-cache!)
+  (let [{:keys [starters bench parked]} (sub [:my-roster])]
+    (is (= ["A"] (mapv :player-id starters)) "provider ids read through the crosswalk")
+    (is (= [["B" true]] (mapv (juxt :player-id :drop?) bench)))
+    (is (= ["s-ghost"] (mapv :player-id parked))))
   (let [out (render waivers/my-roster-panel)]
     (is (re-find #"Starters" out))
     (is (re-find #"Bench" out))
+    (is (re-find #"IR / Taxi" out))
     (is (re-find #"drop-seat" out) "the seat a claim would cost is marked")
     (is (re-find #"s-ghost" out)
-        "a row the board could not value keeps its seat and shows its id")))
+        "a row nobody could resolve keeps its seat and shows its id")))
 
 ;; ---- connecting an account ----
 
@@ -1097,7 +1116,6 @@
   ;; usually weighed against exactly that man — so the roster rows select too.
   (swap! rdb/app-db assoc
          :waivers {:players [{:player-id "fa" :player-name "Free Agent"}]
-                   :my-roster [{:player-id "mine" :player-name "My Guy" :ros-points 90.0}]
                    :my-roster-players [{:player-id "mine" :player-name "My Guy"
                                         :ros-points 90.0}]})
   (rf/dispatch-sync [:compare-toggle "mine"])
@@ -1109,12 +1127,14 @@
   ;; It has no row in :my-roster-players, so picking it would put an id in
   ;; :compare that never resolves — a click that silently does nothing.
   (swap! rdb/app-db assoc
+         :players [{:player-id "mine" :player-name "My Guy" :ids {:sleeper "m"}}]
          :waivers {:players []
-                   :my-roster [{:player-id "ghost" :unvalued? true}
-                               {:player-id "mine" :player-name "My Guy"
-                                :ros-points 90.0}]
-                   :my-roster-players [{:player-id "mine" :player-name "My Guy"}]}
-         :leagues {"sleeper:1" {:sync {:teams [{:roster-id 1}]}}}
+                   :my-roster-players [{:player-id "mine" :player-name "My Guy"
+                                        :ros-points 90.0}]}
+         :leagues {"sleeper:1" {:my-roster-id 1
+                                :sync {:provider "sleeper"
+                                       :teams [{:roster-id 1 :player-ids ["ghost" "m"]
+                                                :active-ids ["ghost" "m"]}]}}}
          :active-league "sleeper:1")
   (rf/clear-subscription-cache!)
   (let [html (render waivers/my-roster-panel)]

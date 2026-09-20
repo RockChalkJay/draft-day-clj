@@ -1,5 +1,6 @@
 (ns draft-day.rankings.waiver-test
   (:require [clojure.test :refer [deftest is testing]]
+            [draft-day.db :as db]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]))
 
@@ -151,153 +152,17 @@
         "the drop stays a player the manager can check")))
 
 ;; ---- my own roster ----
+;; Split in the browser, by `db/team-roster` — see db_test. What the reply owes
+;; it is the rows and the seat a claim would cost.
 
-(deftest my-roster-is-my-own-seats-valued
-  ;; `:players` is free agents only and `:rostered` carries names, not numbers,
-  ;; so nothing else in the reply can answer "what do I already have".
-  (let [{:keys [my-roster]} (run)]
-    (is (= ["star" "meh"] (mapv :player-id my-roster))
-        "in the board's id space, not the provider's")
-    (is (= ["Pstar" "Pmeh"] (mapv :player-name my-roster)))
-    (is (= [180.0 40.0] (mapv :ros-points my-roster))
-        "the line the browser cannot compute for itself")))
-
-(deftest my-roster-marks-starters-and-parked-players
-  (let [lg (-> league
-               (assoc-in [:teams 0 :player-ids] (held "star" "meh" "bad"))
-               (assoc-in [:teams 0 :active-ids] (held "star" "meh"))
-               (assoc-in [:teams 0 :starter-ids] (held "star")))
-        {:keys [my-roster]} (run :league lg :roster-size 3)
-        by (into {} (map (juxt :player-id identity)) my-roster)]
-    (is (:starter? (by "star")))
-    (is (not (:starter? (by "meh"))) "held, but not in the lineup")
-    (is (:parked? (by "bad")) "on IR: rostered, holding no seat a claim could take")
-    (is (not (:parked? (by "star"))))))
-
-(def ^:private ordering-board
-  "Wide enough for a wrong order to show: two QBs, a K, a DST, and WRs on both
-  sides of the lineup."
-  (into board [(p "qb1" "QB" 300.0) (p "qb2" "QB" 250.0)
-               (p "wr-flex" "WR" 130.0) (p "te1" "TE" 110.0)
-               (p "k1" "K" 120.0) (p "dst1" "DST" 100.0)
-               (p "rb-bench" "RB" 60.0)
-               (p "wr-b1" "WR" 80.0) (p "wr-b2" "WR" 95.0)]))
-
-(defn- ordered-roster
-  "`:player-ids` shuffled against both orderings: a fixture already in the right
-  order proves nothing."
-  [& {:keys [starter-ids held-extra positions]}]
-  (let [ids (into (held "k1" "wr-flex" "rb-bench" "qb1" "te1" "star"
-                        "dst1" "qb2" "ok" "wr-b1" "wr-b2")
-                  (or held-extra []))
-        lg  {:teams [{:roster-id 1 :name "Mine" :player-ids ids :active-ids ids
-                      :starter-ids (or starter-ids []) :faab-left 60}]
-             :provider :sleeper
-             :waiver {:type :faab :budget 100}
-             :roster-positions positions}]
-    (:my-roster
-     (waiver/waiver-board ordering-board
-                          {:league lg :my-roster-id 1 :roster-size 20
-                           :num-teams 12 :through-week 8 :season-games 17}))))
-
-(deftest my-roster-starters-come-back-in-the-leagues-lineup-order
-  ;; Sleeper's `starters` array *is* the lineup, slot by slot, and the "0" it
-  ;; writes into an unfilled slot must consume an index without moving anyone.
-  (let [lineup (-> (held "qb1" "star" "ok" "te1")
-                   (conj "0")
-                   (into (held "wr-flex" "k1" "dst1")))
-        roster (ordered-roster :starter-ids lineup)
-        names  (->> roster (filter :starter?) (mapv :player-id))]
-    (is (= ["qb1" "star" "ok" "te1" "wr-flex" "k1" "dst1"] names)
-        "the FLEX receiver keeps his seat between the TE and the K")
-    (is (every? :starter? (take 7 roster)) "starters lead the vector")))
-
-(deftest a-starter-is-labelled-with-the-seat-he-occupies
-  ;; The count of starters can never name which seat one is in; the league's
-  ;; ordered seats can, including the unfilled "0" between them.
-  (let [lineup (-> (held "qb1" "star" "ok" "te1")
-                   (conj "0")
-                   (into (held "wr-flex" "k1" "dst1")))
-        roster (ordered-roster :starter-ids lineup
-                               :positions ["QB" "RB" "WR" "TE" "RB" "FLEX" "K" "DST"
-                                           "BENCH" "BENCH"])
-        by-id  (into {} (map (juxt :player-id identity)) roster)]
-    (is (= "FLEX" (:slot (by-id "wr-flex"))) "the receiver starting at FLEX says so")
-    (is (= "TE" (:slot (by-id "te1"))))
-    (is (nil? (:slot (by-id "qb2"))) "the bench holds no seat")
-    (testing "a league that sent no seats labels nobody"
-      (is (not-any? :slot (ordered-roster :starter-ids lineup))))))
-
-(deftest a-lineup-that-is-not-positional-is-never-labelled-by-index
-  ;; ESPN names each starter's seat on his entry; its seat list is ordered by
-  ;; slot id. Indexing that list would call a FLEX receiver whatever sits at
-  ;; his index.
-  (let [espn {:provider "espn" :roster-positions ["QB" "RB" "RB" "WR" "FLEX"]}]
-    (is (= ["FLEX" "QB"]
-           (waiver/starter-seats {:starter-slots ["FLEX" "QB"]} espn))
-        "the seats a team names are read as they are")
-    (is (nil? (waiver/starter-seats {} espn))
-        "and an ESPN sync stored before it named them gets no label, not a guess")
-    (is (= ["QB" "RB"]
-           (waiver/starter-seats {} {:provider :sleeper :roster-positions ["QB" "RB"]}))
-        "while Sleeper's lineup is positional against its seats")))
-
-(deftest my-roster-bench-is-ordered-by-position-then-by-points
-  (let [roster (ordered-roster :starter-ids (held "qb1" "star" "ok" "te1"
-                                                  "wr-flex" "k1" "dst1")
-                               :held-extra [(sleeper-id "ghost")])
-        bench  (->> roster (remove :starter?) (mapv :player-id))]
-    (is (= ["qb2" "rb-bench" "wr-b2" "wr-b1" (sleeper-id "ghost")] bench)
-        "QB before RB before WR, better points first inside a position")
-    (is (:unvalued? (last roster))
-        "a row the board cannot value keeps its seat, at the bottom of its block")))
-
-(deftest a-league-with-no-lineup-set-falls-back-to-position-order
-  ;; `starters` is null for a league nobody has set a lineup in. Nothing is a
-  ;; starter, and the whole roster is one positionally ordered block.
-  (let [roster (ordered-roster)]
-    (is (not-any? :starter? roster))
-    (is (= ["qb1" "qb2" "star" "rb-bench" "wr-flex" "wr-b2" "ok" "wr-b1"
-            "te1" "k1" "dst1"]
-           (mapv :player-id roster)))))
-
-(deftest my-roster-marks-the-seat-a-claim-would-cost
-  (let [{:keys [my-roster players]} (run)
-        dropped (first (filter :drop? my-roster))
-        good    (first (filter #(= "good" (:player-id %)) players))]
-    (is (= "meh" (:player-id dropped)))
-    (is (= (get-in good [:drop-candidate :player-id]) (:player-id dropped))
-        "the panel marks the same man the drop note names")
-    (is (= 1 (count (filter :drop? my-roster))) "exactly one seat is at stake"))
-  (let [{:keys [my-roster]} (run :roster-size 6)]
-    (is (not-any? :drop? my-roster) "with a seat open, nothing is at stake")))
-
-(deftest a-roster-player-the-board-cannot-value-still-holds-a-seat
-  ;; `drop-candidate` skips him on purpose — "no projection" is not "projected to
-  ;; score nothing". But a *roster* that skips him shows fewer seats than the
-  ;; manager has, with nothing saying why, which is how a missing crosswalk hides.
-  (let [lg (-> league
-               (assoc-in [:teams 0 :player-ids] (held "star" "meh" "ghost"))
-               (assoc-in [:teams 0 :active-ids] (held "star" "meh" "ghost")))
-        {:keys [my-roster]} (run :league lg :roster-size 3)
-        ghost (first (filter :unvalued? my-roster))]
-    (is (= 3 (count my-roster)) "every seat is accounted for")
-    (is (= (sleeper-id "ghost") (:player-id ghost))
-        "carrying the id, so the row is at least checkable")
-    (is (nil? (:ros-points ghost)) "and not faked as zero")))
-
-(deftest no-team-picked-is-not-the-same-as-an-empty-roster
-  ;; The panel says "pick your team to see your roster" for one, and draws an
-  ;; empty table for the other.
-  (is (nil? (:my-roster (run :my-roster-id nil))))
-  (is (nil? (:my-roster (waiver/waiver-board board {:league nil :num-teams 12
-                                                    :through-week 8 :season-games 17})))
-      "no league synced at all")
-  (let [lg (-> league
-               (assoc-in [:teams 0 :player-ids] [])
-               (assoc-in [:teams 0 :active-ids] []))]
-    (is (= [] (:my-roster (run :league lg)))
-        "a picked team holding nobody is empty, not absent")))
+(deftest the-seat-a-claim-would-cost-rides-on-the-envelope
+  ;; The browser marks it on the roster it splits itself; carried on the free
+  ;; agents' rows alone, it vanished from a board that had none.
+  (let [{:keys [drop-candidate players]} (run)
+        good (first (filter #(= "good" (:player-id %)) players))]
+    (is (= "meh" (:player-id drop-candidate)) "in the board's id space")
+    (is (= drop-candidate (:drop-candidate good)) "the same man the drop note names"))
+  (is (nil? (:drop-candidate (run :roster-size 6))) "with a seat open, nothing is at stake"))
 
 (deftest upgrade-can-be-negative-and-says-so
   ;; A free agent worse than my worst player is not an add. Clamping that to
@@ -456,18 +321,15 @@
 
 (deftest my-roster-players-are-full-rows-not-the-panel-shape
   ;; The comparison tile reads the same keys on both sides, so one shape means
-  ;; one renderer. `:my-roster` is trimmed to what the panel draws and cannot
-  ;; serve that.
-  (let [{:keys [my-roster my-roster-players]} (run)
+  ;; one renderer.
+  (let [{:keys [my-roster-players]} (run)
         by-id (into {} (map (juxt :player-id identity)) my-roster-players)]
     (is (= #{"star" "meh"} (set (keys by-id)))
         "the manager's own seats, in the board's id space")
     (is (= 180.0 (:ros-points (by-id "star"))))
     ;; Full rows carry what the panel shape drops — the id envelope among it.
     (is (contains? (by-id "star") :ids))
-    (is (contains? (by-id "star") :ros-vorp))
-    (is (not (contains? (first my-roster) :ids))
-        "the panel shape stays trimmed")))
+    (is (contains? (by-id "star") :ros-vorp))))
 
 (deftest my-roster-players-cannot-be-claimed
   ;; You cannot claim a man you already hold, and a 0 would read as a claim
@@ -479,8 +341,8 @@
     (is (every? #(contains? % :trend) my-roster-players))))
 
 (deftest my-roster-players-are-absent-without-a-team
-  ;; nil, not [] — the same distinction `:my-roster` keeps, so a caller cannot
-  ;; read "no team picked" as "this roster is empty".
+  ;; nil, not [], so a caller cannot read "no team picked" as "this roster is
+  ;; empty".
   (is (nil? (:my-roster-players (run :my-roster-id nil))))
   (is (nil? (:my-roster-players (waiver/waiver-board board {:league nil :num-teams 12
                                                             :through-week 8
@@ -499,7 +361,7 @@
                 :my-roster-id nil :num-teams 12 :through-week 8
                 :season-games 17 :starting-slots slots})
         row   (first (:players out))]
-    (is (nil? (:my-roster out)) "precondition: no team picked")
+    (is (nil? (:my-roster-players out)) "precondition: no team picked")
     (is (not (contains? row :lineup-upgrade))
         "absent, not zero and not his whole line")))
 

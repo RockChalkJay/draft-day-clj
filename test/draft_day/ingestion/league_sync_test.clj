@@ -9,7 +9,8 @@
   {:rosters [{:roster_id 1 :owner_id "u1"
               :players ["4034" "6794" "SF" "9001" "9002"] :starters ["4034" "6794"]
               :reserve ["9001"] :taxi ["9002"]
-              :settings {:waiver_budget_used 30 :waiver_position 4 :wins 5 :losses 3}}
+              :settings {:waiver_budget_used 30 :waiver_position 4 :wins 5 :losses 3
+                         :ties 1 :fpts 1043 :fpts_decimal 56}}
              {:roster_id 2 :owner_id "u2"
               :players ["1234"] :starters nil
               :settings {:waiver_budget_used 0 :waiver_position 1 :wins 8 :losses 0}}
@@ -68,6 +69,14 @@
     (is (= 70 (:faab-left t1)) "budget minus spend, derived once")
     (is (= 100 (:faab-left t2)))
     (is (= 88 (:faab-left t3)))))
+
+(deftest the-record-carries-what-standings-are-ordered-by
+  (let [[t1 t2 t3] (:teams (sync-of raw))]
+    (is (= [5 3 1] ((juxt :wins :losses :ties) t1)))
+    (is (< (abs (- 1043.56 (:points-for t1))) 1e-9)
+        "whole points and hundredths arrive as two fields")
+    (is (nil? (:points-for t2)) "nothing scored yet is unknown, not zero")
+    (is (nil? (:points-for t3)))))
 
 (deftest a-managers-own-team-name-wins-over-his-account-name
   ;; It is what everyone in the league calls his team.

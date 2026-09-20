@@ -53,8 +53,8 @@
   A provider that omits it does not degrade gracefully. `waiver/drop-candidate`
   reads an empty roster, never finds it full and so names no drop at all — the
   upgrade floor falls to 0 and every row on the board is overstated by the
-  dropped player's whole rest-of-season line — while `waiver/my-roster` marks
-  every player on the panel as parked. Spelled out here because that first
+  dropped player's whole rest-of-season line — while `db/team-roster` puts
+  every player on the roster under IR / Taxi. Spelled out here because that first
   failure is silent, and it is the same one `waiver/held-ids` was written to
   memorialise."
   (fn [provider _raw] provider))

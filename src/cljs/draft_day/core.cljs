@@ -8,6 +8,7 @@
             [draft-day.subs]
             [draft-day.views.board :as board]
             [draft-day.views.header :as header]
+            [draft-day.views.league :as league]
             [draft-day.views.controls :as controls]
             [draft-day.views.roster :as roster]
             [draft-day.views.watchlist :as watchlist]
@@ -53,6 +54,7 @@
           :settings [settings/settings]
           :waivers  [waivers/waivers-view]
           :team     [team/team-view]
+          :rosters  [league/season-view]
           :matchup  [matchup/matchup-view]
           ;; Not placed until the phase is known — `events/place-view`.
           nil       [:p.muted "Loading…"]

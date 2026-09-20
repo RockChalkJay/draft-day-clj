@@ -716,9 +716,9 @@
   ;; The matchup backend is Sleeper-only, and the tab it cannot fill was the
   ;; one every ESPN league's season opened on.
   (let [espn {:active-league "k" :leagues {"k" {:provider "espn" :league-id "1"}}}]
-    (is (= [:team :waivers] (db/phase-views {:provider "espn"} :season)))
-    (is (= [:team :matchup :waivers] (db/phase-views {:provider "sleeper"} :season)))
-    (is (= [:team :matchup :waivers] (db/phase-views nil :season)) "no league, no reason to hide it")
+    (is (= [:team :waivers :rosters] (db/phase-views {:provider "espn"} :season)))
+    (is (= [:team :matchup :waivers :rosters] (db/phase-views {:provider "sleeper"} :season)))
+    (is (= [:team :matchup :waivers :rosters] (db/phase-views nil :season)) "no league, no reason to hide it")
     (is (= :team (db/view-for espn :season nil)))
     (is (= :team (db/view-for espn :season :matchup)))))
 
@@ -731,3 +731,116 @@
   (is (= 0 (db/max-bid {:bankroll 7 :roster [{:player-id "a"}]}))
       "a full roster has no seat to bid for — it read $8, more than it had")
   (is (nil? (db/max-bid nil))))
+
+;; ---- synced rosters ----
+
+(def ^:private synced-by-id
+  {"00-qb" {:player-id "00-qb" :player-name "Jalen Hurts" :position "QB" :team "PHI"}
+   "00-wr" {:player-id "00-wr" :player-name "DeVonta Smith" :position "WR" :team "PHI"}
+   "00-rb" {:player-id "00-rb" :player-name "Tony Pollard" :position "RB" :team "TEN"}
+   "00-ir" {:player-id "00-ir" :player-name "Nico Collins" :position "WR" :team "HOU"}
+   "PHI"   {:player-id "PHI" :player-name "Eagles" :position "DST" :team "PHI"}})
+
+(def ^:private synced-xwalk {"11" "00-qb" "22" "00-wr" "33" "00-rb" "44" "00-ir"})
+
+(deftest a-synced-roster-reads-through-the-crosswalk-into-three-blocks
+  (let [team   {:player-ids ["11" "22" "33" "44" "PHI" "99"]
+                :active-ids ["11" "22" "33" "PHI" "99"]
+                :starter-ids ["11" "0" "22" "PHI"]}
+        league {:provider "sleeper" :roster-positions ["QB" "RB" "FLEX" "DST" "BENCH"]}
+        {:keys [starters bench parked]} (db/team-roster team league synced-xwalk synced-by-id)]
+    (is (= ["00-qb" "00-wr" "PHI"] (mapv :player-id starters))
+        "provider ids become board ids; a defense keeps its abbreviation; an empty seat is no one")
+    (is (= ["QB" "FLEX" "DST"] (mapv :slot starters))
+        "the empty seat still consumes its index, so FLEX stays FLEX")
+    (is (= ["00-rb" "99"] (mapv :player-id bench)))
+    (is (:unvalued? (second bench)) "an id nobody resolves keeps its row")
+    (is (= ["00-ir"] (mapv :player-id parked)))))
+
+(deftest an-espn-team-is-labelled-by-the-seats-it-names
+  (let [team {:player-ids ["11" "22"] :active-ids ["11" "22"]
+              :starter-ids ["22" "11"] :starter-slots ["FLEX" "QB"]}
+        {:keys [starters]} (db/team-roster team {:provider "espn"
+                                                  :roster-positions ["QB" "RB" "FLEX"]}
+                                           synced-xwalk synced-by-id)]
+    (is (= [["00-wr" "FLEX"] ["00-qb" "QB"]] (mapv (juxt :player-id :slot) starters))))
+  (testing "and a stored ESPN sync that names none gets no label rather than a guess"
+    (let [{:keys [starters]} (db/team-roster {:player-ids ["11"] :active-ids ["11"]
+                                              :starter-ids ["11"]}
+                                             {:provider "espn" :roster-positions ["RB"]}
+                                             synced-xwalk synced-by-id)]
+      (is (not-any? :slot starters)))))
+
+(deftest a-starter-is-listed-even-when-the-host-left-him-off-the-roster
+  ;; The server split the manager's own roster too, taking starters from
+  ;; `:player-ids`, so this one showed on the League tab and not on My Team.
+  (let [{:keys [starters bench]}
+        (db/team-roster {:player-ids ["22"] :active-ids ["22"] :starter-ids ["11"]}
+                        {:provider "sleeper" :roster-positions ["QB"]}
+                        synced-xwalk synced-by-id)]
+    (is (= [["00-qb" "QB"]] (mapv (juxt :player-id :slot) starters)))
+    (is (= ["00-wr"] (mapv :player-id bench)))))
+
+(deftest the-rest-of-a-roster-reads-by-position-then-best-first
+  ;; The manager's rows carry rest-of-season points off the waiver board and a
+  ;; rival's carry none, so one rule has to serve both.
+  (let [by-id {"a" {:player-id "a" :player-name "Zed" :position "WR" :ros-points 40.0}
+               "b" {:player-id "b" :player-name "Amy" :position "WR" :ros-points 90.0}
+               "c" {:player-id "c" :player-name "Bo" :position "QB"}
+               "d" {:player-id "d" :player-name "Al" :position "QB"}}
+        ids   ["a" "ghost" "b" "c" "d"]
+        {:keys [starters bench]} (db/team-roster {:player-ids ids :active-ids ids}
+                                                 {:provider "sleeper"} {} by-id)]
+    (is (empty? starters) "a league nobody has set a lineup in has no starters")
+    (is (= ["d" "c" "b" "a" "ghost"] (mapv :player-id bench))
+        "QB before WR, better points first, by name where there are none, the unresolvable last")
+    (is (= 90.0 (:ros-points (nth bench 2)))
+        "a row is by-id's own, so My Team draws the full board row")))
+
+(deftest a-lineup-that-is-not-positional-is-never-labelled-by-index
+  ;; ESPN names each starter's seat on his entry; its seat list is ordered by
+  ;; slot id. Indexing that list would call a FLEX receiver whatever sits at
+  ;; his index.
+  (let [espn {:provider "espn" :roster-positions ["QB" "RB" "RB" "WR" "FLEX"]}]
+    (is (= ["FLEX" "QB"]
+           (db/starter-seats {:starter-slots ["FLEX" "QB"]} espn))
+        "the seats a team names are read as they are")
+    (is (nil? (db/starter-seats {} espn))
+        "and an ESPN sync stored before it named them gets no label, not a guess")
+    (is (= ["QB" "RB"]
+           (db/starter-seats {} {:provider :sleeper :roster-positions ["QB" "RB"]}))
+        "while Sleeper's lineup is positional against its seats")))
+
+(deftest standings-order-is-wins-then-losses-then-name
+  (is (= ["B" "A" "C" "D"]
+         (mapv :name (db/record-order [{:name "A" :wins 2 :losses 1}
+                                       {:name "C" :wins 1 :losses 2}
+                                       {:name "B" :wins 2 :losses 0}
+                                       {:name "D"}])))))
+
+(deftest equal-records-are-split-by-points-scored-not-by-name
+  ;; After week 1 half the league is 1–0; alphabetical was nobody's standings.
+  (is (= ["Zed" "Amy"]
+         (mapv :name (db/record-order [{:name "Amy" :wins 1 :losses 0 :points-for 98.4}
+                                       {:name "Zed" :wins 1 :losses 0 :points-for 131.2}])))))
+
+(deftest a-tie-counts-half-a-win
+  ;; 1-1-2 and 2-2 are both .500, so points decide between them.
+  (is (= ["2-1-1" "1-1-2" "2-2"]
+         (mapv :name (db/record-order [{:name "2-2" :wins 2 :losses 2}
+                                       {:name "1-1-2" :wins 1 :losses 1 :ties 2 :points-for 999}
+                                       {:name "2-1-1" :wins 2 :losses 1 :ties 1}])))))
+
+(deftest a-record-is-said-only-when-the-league-reports-one
+  ;; A dash beside a team name reads as a score.
+  (is (= "5–3" (db/record-label {:wins 5 :losses 3})))
+  (is (= "5–3" (db/record-label {:wins 5 :losses 3 :ties 0})))
+  (is (= "2–1–1" (db/record-label {:wins 2 :losses 1 :ties 1})) "a tie is part of the record")
+  (is (nil? (db/record-label {})))
+  (is (nil? (db/record-label {:wins 5}))))
+
+(deftest each-half-has-its-own-league-tab
+  (is (= :draft (db/view-mode :league)))
+  (is (= :season (db/view-mode :rosters)))
+  (is (= :team (db/view-for {} :season :league)))
+  (is (= :board (db/view-for {} :draft :rosters))))

@@ -5,6 +5,13 @@
     (str "$" n) 
     "–"))
 
+(defn faab
+  "A FAAB balance, or a dash when the host did not report one. Not `money`,
+  which dashes $0: a team that has spent its budget has $0, and saying it does
+  not know would be as wrong as saying $0 about a balance nobody reported."
+  [n]
+  (if (number? n) (str "$" n) "–"))
+
 (defn pos-label
   "\"RB7\", or the bare position for a player the engine could not rank.
 

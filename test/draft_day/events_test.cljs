@@ -676,3 +676,21 @@
     (try (rf/dispatch-sync [:set-view :team])
          (finally (swap-fx! {:dispatch real})))
     (is (= #{:fetch-waivers :fetch-matchup} (set (map first @seen))))))
+
+(deftest opening-the-league-tab-first-loads-what-it-reads
+  ;; Reached from Settings after a phase change, nothing else had loaded them:
+  ;; the manager's own players drew as plain text and the header had no week.
+  (swap! rdb/app-db assoc :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :sync {:teams []}}})
+  (is (= #{:fetch-waivers :fetch-matchup}
+         (set (map first (dispatched #(rf/dispatch-sync [:set-view :rosters])))))))
+
+(deftest a-league-switch-on-any-season-tab-refetches-the-week
+  ;; The switch drops the matchup, and the header's week is only ever its.
+  (swap! rdb/app-db assoc :view :rosters :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :phase :season
+                                :sync {:teams []}}
+                   "sleeper:2" {:provider "sleeper" :league-id "2" :phase :season
+                                :sync {:teams []}}})
+  (is (some #{:fetch-matchup}
+            (map first (dispatched #(rf/dispatch-sync [:set-active-league "sleeper:2"]))))))
