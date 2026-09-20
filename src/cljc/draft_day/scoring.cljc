@@ -138,14 +138,23 @@
   [scoring]
   (boolean (some #(not (zero? (usable-weight (get scoring %)))) fg-buckets)))
 
+(defn resolve-buckets
+  "A config with the flat `:fgm` weight removed when it states its distances.
+
+  Hoisted out of `player-points`: the answer is the config's, not a player's,
+  and `with-points` runs six hundred rows through it on every recompute."
+  [scoring]
+  (cond-> scoring (scores-by-distance? scoring) (dissoc :fgm)))
+
 (defn player-points
   "Σ over the scoring map of (stat weight * player's projected stat), defaulting
   missing stats to 0.
 
-  A config that states its field goals by distance drops the flat `:fgm` weight,
-  or the buckets it is summed from would be counted twice — see `fg-buckets`."
+  Resolves `:fgm` against the buckets itself, so a lone caller is correct; a
+  caller scoring a whole board should hoist `resolve-buckets` — `with-points`
+  does."
   [player scoring]
-  (let [scoring (cond-> scoring (scores-by-distance? scoring) (dissoc :fgm))
+  (let [scoring (resolve-buckets scoring)
         stats (:stats player)]
     (reduce-kv (fn [acc stat weight]
                  (let [w (usable-weight weight)]
@@ -157,4 +166,5 @@
 (defn with-points
   "Return board with a :points value on each player."
   [board scoring]
-  (mapv #(assoc % :points (player-points % scoring)) board))
+  (let [scoring (resolve-buckets scoring)]
+    (mapv #(assoc % :points (player-points % scoring)) board)))

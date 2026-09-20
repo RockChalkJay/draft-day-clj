@@ -60,6 +60,26 @@
     (is (= 189.0 (:rec_yd stats)))
     (is (= 3.0 (:rec_td stats)))))
 
+(deftest a-kickers-realized-field-goals-arrive-by-distance
+  ;; A league scoring by distance reads a flat `fg_made` as nothing, and
+  ;; `ros/blend` shrinks toward what it reads — so without these columns every
+  ;; kicker decays to worthless as the season runs on, silently.
+  (let [rows [(row "00-K" 1 "position" "K"
+                   "fg_made" "3" "fg_made_20_29" "1" "fg_made_40_49" "1"
+                   "fg_made_50_59" "1" "pat_made" "4" "pat_missed" "1")
+              (row "00-K" 2 "position" "K"
+                   "fg_made" "2" "fg_made_30_39" "1" "fg_made_60_" "1"
+                   "fg_missed_40_49" "1" "pat_made" "2")]
+        stats (:stats (:nflverse/season-to-date (get (acc-of rows) "00-K")))]
+    (is (= 1.0 (:fgm_20_29 stats)))
+    (is (= 1.0 (:fgm_30_39 stats)))
+    (is (= 1.0 (:fgm_40_49 stats)))
+    (is (= 2.0 (:fgm_50p stats))
+        "50-59 and 60+ are two columns and one key — the app holds no band above fifty")
+    (is (= 1.0 (:fgmiss_40_49 stats)))
+    (is (= 1.0 (:xpmiss stats)))
+    (is (= 5.0 (:fgm stats)) "the flat total still arrives for a league that scores one")))
+
 (deftest games-counts-appearances-so-a-missed-game-is-not-charged-twice
   ;; Four weeks have been played; he appeared in two. Dividing his totals by
   ;; four would depress his per-game rate by exactly the games he was never on
