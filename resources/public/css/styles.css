@@ -1008,3 +1008,18 @@ table.roster tr.roster-group td { color: var(--muted); font-size: 10px; text-tra
    the gear back on its own row. */
 header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
+
+/* My Team's side cards: this week, lineup check, best claims. Each answers one
+   question from a board already fetched and links to the tab that says more. */
+.team-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: start; }
+.side-cards { display: flex; flex-direction: column; gap: 12px; }
+.side-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.side-card h3 { margin: 0 0 8px; font-size: 14px; }
+.side-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 4px 0;
+  border-bottom: 1px solid var(--border); }
+.side-line:last-child { border-bottom: 0; }
+.side-card button.link { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; }
+.side-card button.link:hover { text-decoration: underline; }
+@media (max-width: 1100px) {
+  .team-body { grid-template-columns: minmax(0, 1fr); }
+}

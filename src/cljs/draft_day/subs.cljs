@@ -610,6 +610,19 @@
         (first games))))
 
 
+;; `[mine theirs]` for the manager's own game this week, whichever game the
+;; Matchup tab has picked — My Team is about his team, not the one on screen
+;; over there. nil before the reply, or with no team picked.
+(rf/reg-sub :my-matchup
+  :<- [:matchup-games]
+  :<- [:matchup-teams]
+  :<- [:active-league]
+  (fn [[games by-id lg] _]
+    (let [mine (:my-roster-id lg)]
+      (when-let [g (first (filter :mine? games))]
+        [(get by-id mine)
+         (get by-id (first (remove #(= mine %) (:roster-ids g))))]))))
+
 ;; `[left right]` for the selected game, the manager's own team on the left. A
 ;; nil right side is kept rather than collapsed, so the view can say so.
 (rf/reg-sub :matchup-sides
