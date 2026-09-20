@@ -110,11 +110,14 @@
   reading the band 23/24/25 in the wrong order prices every back on carries at
   roughly a tenth of what he is worth, and nothing fails.
 
-  The defensive ids are ESPN's documented numbering and are NOT verified here;
-  `draft-day.integration` is where a real league's settings page confirms them.
+  The defensive ids came from ESPN's documented numbering rather than a payload;
+  `draft-day.integration` is what confirms them against a real league.
   `:def_td` is deliberately absent: ESPN splits return, interception and fumble
   touchdowns across several ids and the app holds one flat weight, so summing
-  them would be a number nobody set. It is reported unsupported instead."
+  them would be a number nobody set. It is reported unsupported instead.
+
+  Every defensive id here is also in `defense-only-stats`, which is what lets
+  its per-position override be read; adding one here means adding it there."
   {3   :pass_yd
    4   :pass_td
    19  :pass_2pt
@@ -179,7 +182,10 @@
   ESPN files their weights as a D/ST override on a rule whose base is 0.0, so
   here the override is the entire rule rather than a premium over one. Kept
   narrow on purpose: a rule a skill player can earn too needs two weights, and
-  belongs in `unsupported-scoring` beside the reception premium."
+  belongs in `unsupported-scoring` beside the reception premium.
+
+  Every defense-only id `stat-ids` maps belongs here. One that does not imports
+  at 0.0 with nothing failing to say so, which is the bug this set exists for."
   #{95 96 97 98 99})
 
 (defn stat-weight
