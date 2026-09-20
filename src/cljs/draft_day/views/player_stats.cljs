@@ -27,20 +27,20 @@
       [:thead
        [:tr
         [:th.lbl]
-        (for [s seasons] ^{:key s} [:th.num s])
+        (map (fn [s] ^{:key s} [:th.num s]) seasons)
         ;; The projection is the one column here that is not a fact, so it is
         ;; labelled as a claim rather than as just the newest year.
         [:th.num.proj (str proj-season " proj")]]]
       [:tbody
-       (for [{:keys [label values proj]} rows]
-         ^{:key label}
-         [:tr
-          [:th.lbl label]
-          ;; Zipped against `seasons` positionally — `stat-lines` guarantees one
-          ;; value per column, including the nils.
-          (for [[s v] (map vector seasons values)]
-            ^{:key s} [:td.num (cell v)])
-          [:td.num.proj (cell proj)]])]]]))
+       (map (fn [{:keys [label values proj]}]
+              ^{:key label}
+              [:tr
+               [:th.lbl label]
+               ;; Zipped against `seasons` positionally — `stat-lines` guarantees one
+               ;; value per column, including the nils.
+               (map (fn [s v] ^{:key s} [:td.num (cell v)]) seasons values)
+               [:td.num.proj (cell proj)]])
+            rows)]]]))
 
 (defn nominated-stats
   "The table for whoever is on the block, read from the universe rather than the

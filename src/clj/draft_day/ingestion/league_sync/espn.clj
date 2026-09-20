@@ -180,11 +180,12 @@
                    (comp (keep #(get-in % [:metaData :entry]))
                          (filter #(= "FFL" (:abbrev %)))
                          (mapcat (fn [{:keys [seasonId groups]}]
-                                   (for [{:keys [groupId groupName]} groups
-                                         :when groupId]
-                                     (cond-> {:league-id (str groupId)
-                                              :name      (or (not-empty groupName) (str groupId))}
-                                       seasonId (assoc :season (str seasonId)))))))
+                                   (keep (fn [{:keys [groupId groupName]}]
+                                           (when groupId
+                                             (cond-> {:league-id (str groupId)
+                                                      :name      (or (not-empty groupName) (str groupId))}
+                                               seasonId (assoc :season (str seasonId)))))
+                                         groups))))
                    (:preferences raw))
         rank (fn [{s :season}]
                [(if (= (str season) (str s)) 0 1)

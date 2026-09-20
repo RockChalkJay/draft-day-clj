@@ -113,12 +113,14 @@
   (let [idx (fn [rs] (into {} (map (juxt :season :metrics)) (remove :skipped? rs)))
         a   (idx results-a)
         b   (idx results-b)]
-    (->> (for [season (sort (filter (set (keys b)) (keys a)))
-               pos    (sort (distinct (concat (keys (a season)) (keys (b season)))))
-               :let   [ra (get-in a [season pos :spearman])
-                       rb (get-in b [season pos :spearman])]
-               :when  (and ra rb)]
-           {:position pos :season season :a ra :b rb :diff (- ra rb)})
+    (->> (sort (filter (set (keys b)) (keys a)))
+         (mapcat (fn [season]
+                   (keep (fn [pos]
+                           (let [ra (get-in a [season pos :spearman])
+                                 rb (get-in b [season pos :spearman])]
+                             (when (and ra rb)
+                               {:position pos :season season :a ra :b rb :diff (- ra rb)})))
+                         (sort (distinct (concat (keys (a season)) (keys (b season))))))))
          (group-by :position)
          (into (sorted-map)))))
 
@@ -147,12 +149,13 @@
                   (group-by :position players)))
           (idx [rs] (into {} (map (juxt :season (comp ranks :players))) (remove :skipped? rs)))]
     (let [a (idx results-a) b (idx results-b)]
-      (->> (for [season (sort (filter (set (keys b)) (keys a)))
-                 [pid ea] (get a season)
-                 :let [eb (get-in b [season pid])]
-                 :when eb]
-             {:position (:position ea) :season season :player-id pid
-              :diff (- (:err ea) (:err eb))})
+      (->> (sort (filter (set (keys b)) (keys a)))
+           (mapcat (fn [season]
+                     (keep (fn [[pid ea]]
+                             (when-let [eb (get-in b [season pid])]
+                               {:position (:position ea) :season season :player-id pid
+                                :diff (- (:err ea) (:err eb))}))
+                           (get a season))))
            (group-by :position)
            (into (sorted-map))))))
 

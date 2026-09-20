@@ -865,7 +865,8 @@
                        (keep-indexed (fn [i id]
                                        (when (and id (not= empty-seat id))
                                          (cond-> (row id)
-                                           (get seats i) (assoc :slot (get seats i))))))
+                                                 (get seats i)
+                                                 (assoc :slot (get seats i))))))
                        lineup)
         started  (set lineup)
         active   (set (held-ids team xwalk :active-ids))

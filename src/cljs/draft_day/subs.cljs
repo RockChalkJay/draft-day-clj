@@ -415,8 +415,8 @@
   :<- [:accounts] :<- [:league-list]
   (fn [[accounts leagues] _]
     (let [grouped (group-by (fn [[_ e]] (:account-key e)) leagues)
-          named   (for [[ak acct] (sort-by key accounts)]
-                    [ak acct (vec (get grouped ak []))])
+          named   (map (fn [[ak acct]] [ak acct (vec (get grouped ak []))])
+                       (sort-by key accounts))
           orphans (vec (get grouped nil []))]
       (cond-> (vec named)
         (seq orphans) (conj [nil nil orphans])))))

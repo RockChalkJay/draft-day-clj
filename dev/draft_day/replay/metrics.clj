@@ -47,8 +47,10 @@
   (audit finding #3)."
   [rows pred-key]
   (let [g (group-by (comp phase :filled-frac) rows)]
-    (into {} (for [ph [:early :mid :late] :when (g ph)]
-               [ph (metric (g ph) pred-key)]))))
+    (->> [:early :mid :late]
+         (filter g)
+         (map (fn [ph] [ph (metric (g ph) pred-key)]))
+         (into {}))))
 
 (defn by-position [rows pred-key]
   (->> (remove #(#{"K" "DST"} (:position %)) rows)

@@ -125,9 +125,12 @@
                              ;; positions so the player is findable, but marked
                              ;; inexact so it can never displace a real match.
                              poss   (if exact? [pos] ["QB" "RB" "WR" "TE"])]
-                         (for [n names, p poss]
-                           [(match/key-for n p)
-                            {:gsis-id gsis :draft-year (year r) :exact? exact?}]))))))
+                         (mapcat (fn [n]
+                                   (map (fn [p]
+                                          [(match/key-for n p)
+                                           {:gsis-id gsis :draft-year (year r) :exact? exact?}])
+                                        poss))
+                                 names))))))
          (reduce (fn [m [k c]] (update m k (fnil conj []) c)) {}))))
 
 (defn pick-candidate

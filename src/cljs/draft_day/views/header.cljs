@@ -39,15 +39,17 @@
        [:select {:value (str active)
                  :title "Switch league — the board, the prices and the waiver wire all follow"
                  :on-change #(rf/dispatch [:set-active-league (.. % -target -value)])}
-        (for [[ak acct ls] groups
-              :when (seq ls)]
-          ^{:key (or ak "orphans")}
-          [:optgroup {:label (if ak
-                               (str (providers/label (:provider acct))
-                                    (when (:username acct) (str " · " (:username acct))))
-                               "No account")}
-           (for [[k e] ls]
-             ^{:key k} [:option {:value k} (or (:name e) (:league-id e))])])])
+        (->> groups
+             (filter (fn [[_ _ ls]] (seq ls)))
+             (map (fn [[ak acct ls]]
+                    ^{:key (or ak "orphans")}
+                    [:optgroup {:label (if ak
+                                         (str (providers/label (:provider acct))
+                                              (when (:username acct) (str " · " (:username acct))))
+                                         "No account")}
+                     (map (fn [[k e]]
+                            ^{:key k} [:option {:value k} (or (:name e) (:league-id e))])
+                          ls)])))])
      (when my-team-name [:span.league-team my-team-name])]))
 
 (def view-labels
@@ -129,10 +131,11 @@
      (when mode
        [:span.mode-tag (if (= mode :season) "Season" "Draft")])
      [:nav.views
-      (for [v tabs]
-        ^{:key v}
-        [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])}
-         (view-labels v)])]
+      (map (fn [v]
+             ^{:key v}
+             [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])}
+              (view-labels v)])
+           tabs)]
      (when mode [mode-link])
      [league-switcher]
      ;; Truncated on a crowded header, so the whole text rides on hover.

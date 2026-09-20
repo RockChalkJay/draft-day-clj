@@ -57,8 +57,8 @@
   ;; Rows inside a season share a common shock. Resampling rows independently
   ;; would shrink the interval and manufacture significance, so the block count
   ;; must equal the number of SEASONS, not the number of rows.
-  (let [rows (concat (for [i (range 20)] {:season 2021 :diff 1.0})
-                     (for [i (range 20)] {:season 2022 :diff -1.0}))
+  (let [rows (concat (repeat 20 {:season 2021 :diff 1.0})
+                     (repeat 20 {:season 2022 :diff -1.0}))
         ci   (metrics/block-bootstrap-ci rows (metrics/mean-of :diff))]
     (is (= 2 (:n-blocks ci)))
     (is (= 40 (:n-rows ci)))
@@ -68,7 +68,9 @@
       (is (>= (:hi ci) 0.9)))))
 
 (deftest bootstrap-is-deterministic-for-a-given-seed
-  (let [rows (for [s [2021 2022 2023] i (range 5)] {:season s :diff (+ 0.1 (* 0.01 i))})]
+  (let [rows (mapcat (fn [s]
+                       (map (fn [i] {:season s :diff (+ 0.1 (* 0.01 i))}) (range 5)))
+                     [2021 2022 2023])]
     (is (= (metrics/block-bootstrap-ci rows (metrics/mean-of :diff))
            (metrics/block-bootstrap-ci rows (metrics/mean-of :diff))))))
 

@@ -84,7 +84,7 @@
     ;; rows inside are a seq and carry their own.
     [:div.pd-band
      [:h4.pd-band-label (band-labels k)]
-     (for [r rs] ^{:key (:label r)} [metric-row r p])]))
+     (map (fn [r] ^{:key (:label r)} [metric-row r p]) rs)]))
 
 (defn face
   "The large headshot. Silhouette underneath, image on top, so a missing *or
@@ -154,20 +154,20 @@
     [:table.pd-log
      [:thead
       [:tr [:th.lbl "Wk"] [:th.lbl "Opp"]
-       (for [[label _] columns] ^{:key label} [:th.num label])
+       (map (fn [[label _]] ^{:key label} [:th.num label]) columns)
        [:th.num.pts "Pts"]]]
      [:tbody
-      (for [{:keys [week opponent played? values points]} rows]
-        ^{:key week}
-        [:tr {:class (when-not played? "out")}
-         [:th.lbl week]
-         [:td.opp (or opponent "–")]
-         (if played?
-           [:<>
-            (for [[i v] (map-indexed vector values)]
-              ^{:key i} [:td.num (player-stats/cell v)])
-            [:td.num.pts (board/format-one-decimal points)]]
-           [:td.num.out-note {:col-span (inc (count columns))} "Out"])])]]))
+      (map (fn [{:keys [week opponent played? values points]}]
+             ^{:key week}
+             [:tr {:class (when-not played? "out")}
+              [:th.lbl week]
+              [:td.opp (or opponent "–")]
+              (if played?
+                [:<>
+                 (map-indexed (fn [i v] ^{:key i} [:td.num (player-stats/cell v)]) values)
+                 [:td.num.pts (board/format-one-decimal points)]]
+                [:td.num.out-note {:col-span (inc (count columns))} "Out"])])
+           rows)]]))
 
 (defn player-detail-modal
   "The modal for `id`, or nothing when the board has no row for him.

@@ -83,9 +83,10 @@
                                                 (js/parseInt v 10))])))
                  :disabled (not active?)}
         [:option {:value ""} "— pick a team —"]
-        (for [t teams]
-          ^{:key (:roster-id t)}
-          [:option {:value (str (:roster-id t))} (:name t)])]
+        (map (fn [t]
+               ^{:key (:roster-id t)}
+               [:option {:value (str (:roster-id t))} (:name t)])
+             teams)]
        [:span])
      ;; Writable for any league, unlike the team picker: it is a fact about
      ;; that league, and `:set-phase` names the league it writes to.
@@ -136,14 +137,15 @@
         bad   (providers/credential-errors p creds)]
     [:<>
      [:div.provider-tabs
-      (for [x (providers/providers)]
-        ^{:key x}
-        [:button.provider-tab {:class (when (= x p) "on")
-                               :on-click #(do (reset! picked x) (reset! draft {}))}
-         (providers/label x)])]
+      (map (fn [x]
+             ^{:key x}
+             [:button.provider-tab {:class (when (= x p) "on")
+                                    :on-click #(do (reset! picked x) (reset! draft {}))}
+              (providers/label x)])
+           (providers/providers))]
      [:div.connect-form
-      (for [f (providers/fields p)]
-        ^{:key (:key f)} [credential-field f draft])]
+      (map (fn [f] ^{:key (:key f)} [credential-field f draft])
+           (providers/fields p))]
      [:div.connect-actions
       [:button.primary {:disabled (some? bad)
                         :on-click #(do (rf/dispatch [:connect-account p creds])
@@ -218,19 +220,20 @@
 
      (if (seq leagues)
        [:div.league-rows
-        (for [[k _ :as row] leagues] ^{:key k} [league-row row active-key])]
+        (map (fn [[k _ :as row]] ^{:key k} [league-row row active-key]) leagues)]
        (when-not (seq choices)
          [:p.muted "No leagues from this account yet."]))
 
      (when-let [unadded (seq (unadded-choices provider choices leagues))]
        [:div.league-choices
-        (for [{:keys [league-id name num-teams status] :as choice} unadded]
-          ^{:key league-id}
-          [:button.league-choice {:on-click #(rf/dispatch [:league-choose ak choice])}
-           [:span.league-choice-name name]
-           [:span.muted (str/join " · " (cons "" (remove nil? [(when num-teams (str num-teams "-team"))
-                                                               status])))]
-           [:span.league-choice-add "Add"]])])
+        (map (fn [{:keys [league-id name num-teams status] :as choice}]
+               ^{:key league-id}
+               [:button.league-choice {:on-click #(rf/dispatch [:league-choose ak choice])}
+                [:span.league-choice-name name]
+                [:span.muted (str/join " · " (cons "" (remove nil? [(when num-teams (str num-teams "-team"))
+                                                                    status])))]
+                [:span.league-choice-add "Add"]])
+             unadded)])
 
      (when (and ak (= [] choices) (empty? leagues) (not error))
        [:div.sync-empty "That account plays in no leagues this season."])
@@ -266,10 +269,11 @@
 
          (when (seq groups)
            [:div.account-groups
-            (for [[ak acct leagues] groups]
-              ^{:key (or ak "orphans")}
-              [account-group [ak acct leagues]
-               {:active-key active-key :reconnect! reconnect! :typed-id typed-id}])])
+            (map (fn [[ak acct leagues]]
+                   ^{:key (or ak "orphans")}
+                   [account-group [ak acct leagues]
+                    {:active-key active-key :reconnect! reconnect! :typed-id typed-id}])
+                 groups)])
          (when (and (empty? groups) any?)
            [:p.muted "No leagues yet — pick one above, or paste a league ID."])
          (when status [:div.sync-status status])]))))
@@ -506,16 +510,17 @@
                 update cannot discard them."]
      (if (seq drafts)
        [:ul.archive-list
-        (for [{:keys [archived-at season league picks teams config]} drafts]
-          ^{:key archived-at}
-          [:li.archive-entry
-           [:div.archive-head
-            [:b (or league "Draft")]
-            (when season [:span.muted (str " \u00b7 " season)])]
-           [:div.muted
-            (str (count picks) " picks \u00b7 " (count teams) " teams \u00b7 $"
-                 (:starting-bankroll config) " each \u00b7 "
-                 (subs (str archived-at) 0 10))]])]
+        (map (fn [{:keys [archived-at season league picks teams config]}]
+               ^{:key archived-at}
+               [:li.archive-entry
+                [:div.archive-head
+                 [:b (or league "Draft")]
+                 (when season [:span.muted (str " \u00b7 " season)])]
+                [:div.muted
+                 (str (count picks) " picks \u00b7 " (count teams) " teams \u00b7 $"
+                      (:starting-bankroll config) " each \u00b7 "
+                      (subs (str archived-at) 0 10))]])
+             drafts)]
        [:p.muted "No drafts archived yet."])
      (when live?
        [:div.row
@@ -552,24 +557,25 @@
   (let [on     @(rf/subscribe [:settings-section])
         alerts @(rf/subscribe [:settings-alerts])]
     [:nav.settings-nav
-     (for [[k label] db/settings-sections]
-       ^{:key k}
-       [:button {:class (when (= k on) "on")
-                 :on-click #(rf/dispatch [:set-settings-section k])}
-        label
-        (let [missing [:span.nav-dot {:title "This league's settings were not imported"}]]
-          (case k
-            :leagues (when (:leagues alerts)
-                       [:span.nav-dot {:title "An account needs reconnecting"}])
-            ;; Missing outranks the count: it asks for a Retry, and the count
-            ;; asks for nothing the manager can do.
-            :scoring (cond
-                       (:rules-missing? alerts) missing
-                       (pos? (:scoring alerts))
-                       [:span.nav-badge {:title "Scoring rules this board could not apply"}
-                        (:scoring alerts)])
-            :roster  (when (:rules-missing? alerts) missing)
-            nil))])]))
+     (map (fn [[k label]]
+            ^{:key k}
+            [:button {:class (when (= k on) "on")
+                      :on-click #(rf/dispatch [:set-settings-section k])}
+             label
+             (let [missing [:span.nav-dot {:title "This league's settings were not imported"}]]
+               (case k
+                 :leagues (when (:leagues alerts)
+                            [:span.nav-dot {:title "An account needs reconnecting"}])
+                 ;; Missing outranks the count: it asks for a Retry, and the count
+                 ;; asks for nothing the manager can do.
+                 :scoring (cond
+                            (:rules-missing? alerts) missing
+                            (pos? (:scoring alerts))
+                            [:span.nav-badge {:title "Scoring rules this board could not apply"}
+                             (:scoring alerts)])
+                 :roster  (when (:rules-missing? alerts) missing)
+                 nil))])
+          db/settings-sections)]))
 
 (defn settings
   "Every section stays mounted and only the chosen one is shown. Unmounting the
@@ -580,9 +586,10 @@
   (let [on (or @(rf/subscribe [:settings-section]) :leagues)]
     [:div.settings
      [settings-nav]
-     (for [[k label] db/settings-sections]
-       ^{:key k}
-       [:div.settings-section {:hidden (not= k on)}
-        [:h2 label]
-        (when-let [lede (section-ledes k)] [:p.lede lede])
-        [section-body k]])]))
+     (map (fn [[k label]]
+            ^{:key k}
+            [:div.settings-section {:hidden (not= k on)}
+             [:h2 label]
+             (when-let [lede (section-ledes k)] [:p.lede lede])
+             [section-body k]])
+          db/settings-sections)]))

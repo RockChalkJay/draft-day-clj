@@ -128,31 +128,36 @@
      (if (seq (:in o))
        [:<>
         [:div.mu-swap
-         (for [x (:in o)]
-           ^{:key (str "in" (:player-id x))}
-           [:div [:span.mu-in "▲ Start " (:player-name x)]
-            " (" (:position x) ", " (fmt (:points x)) ")"])
-         (for [x (:out o)]
-           ^{:key (str "out" (:player-id x))}
-           [:div [:span.mu-out "▼ Sit " (:player-name x)]
-            " (" (:position x) ", " (fmt (:points x)) ")"])]
+         (map (fn [x]
+                ^{:key (str "in" (:player-id x))}
+                [:div [:span.mu-in "▲ Start " (:player-name x)]
+                 " (" (:position x) ", " (fmt (:points x)) ")"])
+              (:in o))
+         (map (fn [x]
+                ^{:key (str "out" (:player-id x))}
+                [:div [:span.mu-out "▼ Sit " (:player-name x)]
+                 " (" (:position x) ", " (fmt (:points x)) ")"])
+              (:out o))]
         [:div.mu-optline
          (if (= basis :actual)
            (str (fmt (:gain o)) " left on the bench.")
            (str "This lineup is " (fmt (:gain o)) " short of its best."))]]
        [:div.mu-swap "Nothing on the bench would help."])]))
 
+(def bases
+  [[:projected "Projected" "What the best lineup would be, by this week's projection — the version you can still act on"]
+   [:actual "Actual" "What the best lineup would have been, by what was actually scored"]])
+
 (defn basis-toggle []
   (let [basis @(rf/subscribe [:optimal-basis])]
     [:span.mu-basis
-     (for [[k label tip]
-           [[:projected "Projected" "What the best lineup would be, by this week's projection — the version you can still act on"]
-            [:actual "Actual" "What the best lineup would have been, by what was actually scored"]]]
-       ^{:key k}
-       [:button {:class (when (= basis k) "on")
-                 :title tip
-                 :on-click #(rf/dispatch [:set-optimal-basis k])}
-        label])]))
+     (map (fn [[k label tip]]
+            ^{:key k}
+            [:button {:class (when (= basis k) "on")
+                      :title tip
+                      :on-click #(rf/dispatch [:set-optimal-basis k])}
+             label])
+          bases)]))
 
 (defn game-picker
   "Every game in the league, the manager's own first. A game with one team in it
@@ -167,12 +172,13 @@
        {:value (str (first (:roster-ids selected)))
         :title "Which game to show"
         :on-change #(rf/dispatch [:set-matchup-pick (.. % -target -value)])}
-       (for [g (sort-by (complement :mine?) games)]
-         ^{:key (first (:roster-ids g))}
-         [:option {:value (str (first (:roster-ids g)))}
-          (str (str/join " vs " (:names g))
-               (when (= 1 (count (:names g))) " — no opponent this week")
-               (when (:mine? g) " (yours)"))])])))
+       (map (fn [g]
+              ^{:key (first (:roster-ids g))}
+              [:option {:value (str (first (:roster-ids g)))}
+               (str (str/join " vs " (:names g))
+                    (when (= 1 (count (:names g))) " — no opponent this week")
+                    (when (:mine? g) " (yours)"))])
+            (sort-by (complement :mine?) games))])))
 
 (defn week-strip []
   (let [m      @(rf/subscribe [:matchup])

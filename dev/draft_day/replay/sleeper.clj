@@ -410,26 +410,27 @@
     (if (unreadable? resp)
       [{:draft-id nil :league-id lid :auction? false :superflex? sf
         :decision {:ok? false :reason :throttled :meta {}}}]
-      (for [d  (or (body resp) [])
-            :let  [did (:draft_id d)]
-            :when (not (and skip? (skip? did)))
-            :let  [shape (draft-shape d)]]
-        (if shape
-          {:draft-id did :league-id lid
-           :auction?   (= "auction" (:type d))
-           :superflex? sf
-           :decision {:ok? false :reason shape :meta {}}}
-          (let [presp (draft-picks did)]
-            (if (unreadable? presp)
-              {:draft-id did :league-id lid :auction? true :superflex? sf
-               :decision {:ok? false :reason :throttled :meta {}}}
-              {:draft-id did :league-id lid
-               :auction?   true
-               :superflex? sf
-               :decision (auction-decision d (or (body presp) []) l)
-               :draft    d
-               :picks    (body presp)
-               :league   l})))))))
+      (->> (or (body resp) [])
+           (remove #(and skip? (skip? (:draft_id %))))
+           (map (fn [d]
+                  (let [did   (:draft_id d)
+                        shape (draft-shape d)]
+                    (if shape
+                      {:draft-id did :league-id lid
+                       :auction?   (= "auction" (:type d))
+                       :superflex? sf
+                       :decision {:ok? false :reason shape :meta {}}}
+                      (let [presp (draft-picks did)]
+                        (if (unreadable? presp)
+                          {:draft-id did :league-id lid :auction? true :superflex? sf
+                           :decision {:ok? false :reason :throttled :meta {}}}
+                          {:draft-id did :league-id lid
+                           :auction?   true
+                           :superflex? sf
+                           :decision (auction-decision d (or (body presp) []) l)
+                           :draft    d
+                           :picks    (body presp)
+                           :league   l}))))))))))
 
 (defn undecided?
   "Was this probe a non-answer? Such a probe must not reach `seen-drafts` — that

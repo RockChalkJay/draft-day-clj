@@ -38,10 +38,10 @@
   [entries]
   (let [grouped (group-by :matchup_id entries)
         byes    (get grouped nil)]
-    (into (vec (for [[mid es] (sort-by key (dissoc grouped nil))]
-                 {:matchup-id mid :roster-ids (mapv :roster_id es)}))
-          (for [e byes]
-            {:matchup-id nil :roster-ids [(:roster_id e)]}))))
+    (into (mapv (fn [[mid es]] {:matchup-id mid :roster-ids (mapv :roster_id es)})
+                (sort-by key (dissoc grouped nil)))
+          (map (fn [e] {:matchup-id nil :roster-ids [(:roster_id e)]}))
+          byes)))
 
 (defn player-points
   "Pure: one entry's `players_points` with string player ids.

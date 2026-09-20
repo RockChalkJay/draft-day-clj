@@ -54,12 +54,13 @@
    "\n"
    (concat [(format "season %s, captured %s, %d players" season captured-at
                     (count players))]
-           (for [label pipeline/enrichment-source-labels
-                 :let [{:keys [ok? rows matched]} (get sources label)]]
-             (format "  %-24s %s" label
-                     (if ok?
-                       (format "%s rows, %s matched" rows (or matched "n/a"))
-                       "UNAVAILABLE")))
+           (map (fn [label]
+                  (let [{:keys [ok? rows matched]} (get sources label)]
+                    (format "  %-24s %s" label
+                            (if ok?
+                              (format "%s rows, %s matched" rows (or matched "n/a"))
+                              "UNAVAILABLE"))))
+                pipeline/enrichment-source-labels)
            (when-let [m (seq (missing-sources snap))]
              [(str "\nmissing: " (str/join ", " m))]))))
 
