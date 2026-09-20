@@ -115,8 +115,9 @@
         (is (seq games)
             "no game carries a filled roster: rosterForCurrentScoringPeriod moved,
              and every lineup on the board would draw empty")
-        (is (= #{week} (set (map :matchupPeriodId games)))
-            "the filled-roster filter picked up a week nobody asked for")
+        (is (= 1 (count (distinct (map :matchupPeriodId games))))
+            "the filled-roster filter picked up more than one period. Not
+             compared to the week itself: a playoff period spans two of them")
         (is (every? #(number? (m-espn/official % week)) sides)
             "a side with no figure for this week means pointsByScoringPeriod moved")
         (testing "every entry names a seat and carries its applied total"

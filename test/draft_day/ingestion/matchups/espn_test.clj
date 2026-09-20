@@ -80,6 +80,14 @@
     (is (= {:matchup-id 9 :roster-ids [7]} lone)
         "one id, not a pair of one — dropping it would read as a sync failure")))
 
+(deftest a-side-the-provider-did-not-fill-has-no-lineup-rather-than-empty-seats
+  (is (= [] (:starter-ids (second (m-espn/roster-score {:teamId 4} 2 (m-espn/seats raw)))))
+      "a vector of empty seats is seq, and would defeat week-lineup's fallback to the roster"))
+
+(deftest the-seats-the-lineup-was-aligned-to-travel-with-it
+  (is (= (m-espn/seats raw) (:slots (normalized)))
+      "a board drawing this lineup against another order mislabels every seat past the disagreement"))
+
 (deftest the-lineup-is-seated-against-the-leagues-own-seats
   (is (= ["QB" "RB" "RB" "WR" "WR" "TE" "DST" "K" "FLEX"] (m-espn/seats raw))
       "the same vector routes/matchup-slots builds from the sync, bench and IR dropped")
@@ -96,6 +104,8 @@
 (deftest player-points-cover-the-whole-roster-with-string-ids
   (let [pp (get-in (normalized) [:scores 11 :player-points])]
     (is (= 9 (count pp)) "the bench too, or the optimal lineup cannot be scored")
+    (is (not (contains? (m-espn/player-points [(entry 2 999 2 nil)]) "999"))
+        "a player ESPN gives no number for reads as unknown, not as a zero")
     (is (every? string? (keys pp)) "the crosswalk db/provider->player-id builds is string-keyed")
     (is (= 22.5 (get pp "4385690"))
         "read off the playerPoolEntry; the roster entry's own total is nil")))

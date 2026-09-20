@@ -90,12 +90,14 @@
   "Pure: one side's entries -> `{player-id points}` in the board's id space.
 
   The applied total is on the `playerPoolEntry`; the roster entry's own
-  `appliedStatTotal` is nil, and reading it publishes a board of blanks."
+  `appliedStatTotal` is nil, and reading it publishes a board of blanks. A
+  player ESPN gives no number for is left out, so he reads as unknown."
   [entries]
   (into {}
         (keep (fn [en]
                 (when-let [id (sync-espn/entry-player-id en)]
-                  [id (or (get-in en [:playerPoolEntry :appliedStatTotal]) 0.0)])))
+                  (let [pts (get-in en [:playerPoolEntry :appliedStatTotal])]
+                    (when (number? pts) [id pts])))))
         entries))
 
 (defn slot-name
@@ -126,8 +128,11 @@
            seats)))
 
 (defn seats
-  "Pure: the seats that score, in the order a lineup is read in — the same
-  vector `routes/matchup-slots` builds from the synced league."
+  "Pure: the seats that score, in the order a lineup is read in.
+
+  Shipped as `:slots` rather than left for the caller to rebuild: `starter-ids`
+  aligns to this list, and a board reading that lineup against another order
+  mislabels every seat past the disagreement."
   [raw]
   (db/scoring-slots
    (import-espn/roster-positions (get-in raw [:settings :rosterSettings :lineupSlotCounts]))))
@@ -142,16 +147,21 @@
   (let [entries (side-entries side)]
     [(:teamId side)
      {:official      (official side week)
-      :starter-ids   (starter-ids entries seat-list)
+      ;; No entries is no lineup, not a lineup of empty seats — a vector of
+      ;; `db/empty-seat` defeats `matchup/week-lineup`'s fallback to the roster.
+      :starter-ids   (if (seq entries) (starter-ids entries seat-list) [])
       :player-ids    (into [] (keep sync-espn/entry-player-id) entries)
       :player-points (player-points entries)}]))
 
 (defmethod matchups/normalize-matchups :espn
   [_ raw]
+  ;; The week ESPN echoes, which is what its own `pointsByScoringPeriod` is
+  ;; keyed by — `fetch-matchups` stamps the week it asked for on the reply.
   (let [week  (:scoringPeriodId raw)
         seat-list (seats raw)
         games (this-week (:schedule raw))]
-    {:matchups (mapv (fn [game]
+    {:slots    seat-list
+     :matchups (mapv (fn [game]
                        {:matchup-id (:id game)
                         :roster-ids (mapv :teamId (sides game))})
                      (sort-by :id games))
