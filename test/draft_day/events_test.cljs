@@ -615,7 +615,7 @@
       "while a league that has drafted is still in season"))
 
 (deftest an-espn-league-s-season-opens-on-my-team
-  ;; There is no ESPN matchup board; opening on one was a 400 every boot.
+  ;; Whichever host it is on: the season's first tab is My Team.
   (swap! rdb/app-db assoc :active-league "espn:1"
          :leagues {"espn:1" {:provider "espn" :league-id "1"}})
   (is (= [:team] (dispatched-views #(rf/dispatch-sync (universe-at 3))))))
@@ -640,11 +640,19 @@
            (dispatched #(rf/dispatch-sync [:set-view :matchup]))))))
 
 (deftest a-host-with-no-matchup-board-is-not-asked-for-one
+  ;; Checked against a host the catalog does not name: asking a host with no
+  ;; board is a 400 on the screen a season opens on.
+  (swap! rdb/app-db assoc :active-league "yahoo:1"
+         :leagues {"yahoo:1" {:provider "yahoo" :league-id "1" :sync {:teams []}}})
+  (rf/dispatch-sync [:fetch-matchup])
+  (is (empty? (:http @captured)))
+  (is (re-find #"Yahoo|yahoo" (:matchup-status @rdb/app-db))))
+
+(deftest an-espn-league-is-asked-for-its-matchup
   (swap! rdb/app-db assoc :active-league "espn:1"
          :leagues {"espn:1" {:provider "espn" :league-id "1" :sync {:teams []}}})
   (rf/dispatch-sync [:fetch-matchup])
-  (is (empty? (:http @captured)))
-  (is (re-find #"ESPN" (:matchup-status @rdb/app-db))))
+  (is (= ["/api/matchup"] (mapv :url (:http @captured)))))
 
 (deftest switching-mode-lands-on-that-mode-and-stores-only-a-disagreement
   (swap! rdb/app-db assoc :active-league "sleeper:1" :view :settings

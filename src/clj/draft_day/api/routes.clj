@@ -17,6 +17,7 @@
             [draft-day.ingestion.league-sync.espn]
             [draft-day.ingestion.league-sync.sleeper]
             [draft-day.ingestion.matchups :as matchups]
+            [draft-day.ingestion.matchups.espn]
             [draft-day.ingestion.matchups.sleeper]
             [draft-day.rankings.engine :as engine]
             [draft-day.rankings.model :as model]

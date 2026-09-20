@@ -28,12 +28,17 @@
     (is (re-find #"Start Draft" html))
     (is (re-find #"Go to season" html))))
 
-(deftest an-espn-league-s-season-has-no-matchup-tab
+(deftest a-league-on-a-host-with-no-matchup-board-has-no-matchup-tab
   (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
-         :active-league "espn:1" :leagues {"espn:1" {:provider "espn" :league-id "1"}})
+         :active-league "yahoo:1" :leagues {"yahoo:1" {:provider "yahoo" :league-id "1"}})
   (let [html (render header/header)]
     (is (re-find #"Waivers" html))
     (is (not (re-find #"Matchup" html)))))
+
+(deftest an-espn-league-s-season-has-one
+  (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
+         :active-league "espn:1" :leagues {"espn:1" {:provider "espn" :league-id "1"}})
+  (is (re-find #"Matchup" (render header/header))))
 
 (deftest a-truncated-status-can-still-be-read
   ;; The header squeezes the status first, so a failure has to survive on hover.
