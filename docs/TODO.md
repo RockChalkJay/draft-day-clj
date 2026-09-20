@@ -122,7 +122,11 @@ for the known gaps between a league's real rules and what the board can score.
   played — and says the same bug is tracked here against the waiver board. It
   was not; this entry is that reference. For a matchup it is the wrong game, and
   for a price it is a stale one. `matchups` asks the provider; the waiver board
-  should too.
+  should too. My Team is where the cost is now visible rather than merely
+  wrong: its Opp and Week columns come from the waiver reply while the season
+  header above them shows the matchup's week, so one screen states two weeks
+  while a week is being played. Relabelling the columns would be a lie — the
+  data really is next week's — so the fix is the one named here.
 
 - **Audit error handling across the application.** The app runs three error
   protocols at once and converts between them ad hoc:
