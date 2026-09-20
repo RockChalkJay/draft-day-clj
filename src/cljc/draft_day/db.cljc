@@ -1094,7 +1094,14 @@
      :waivers      nil          ; last /api/waivers reply
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}
-     :waiver-status nil         ; what the sync/refresh is doing, or why it failed
+     :waiver-status nil         ; what the waiver board is doing, or why it failed
+     ;; What the *rosters* are doing, which is a different question and read in a
+     ;; different place: Re-sync is in the season header, on every season tab,
+     ;; and only two of those tabs render `:waiver-status`. It cannot ride on
+     ;; that key anyway — `:league-synced` dispatches `:fetch-waivers`, which
+     ;; overwrites it in the same turn. nil is "nothing to report", which leaves
+     ;; the button showing how old the rosters are.
+     :sync-status  nil
      ;; The matchup board. A fixed two-sided layout, not a board of toggleable
      ;; columns, so it has no column catalog and nothing persisted.
      :matchup      nil          ; last /api/matchup reply

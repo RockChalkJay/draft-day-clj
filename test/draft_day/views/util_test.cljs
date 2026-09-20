@@ -99,3 +99,17 @@
   ;; played, and a manager who reads Final stops considering the claim.
   (is (nil? (util/kickoff-status-label "STATUS_FINAL" nil)))
   (is (nil? (util/kickoff-status-label "STATUS_IN_PROGRESS" nil))))
+
+(deftest projection-timestamp-cannot-rot
+  ;; Absolute, not relative: this label exists to expose staleness and is
+  ;; rendered once, so an age computed at render would go stale in exactly the
+  ;; case it is for — a tab left open on a Sunday morning.
+  (let [ago #(.toISOString (js/Date. (- (js/Date.now) (* % 60000))))]
+    ;; Same instant, read twice an hour apart, reads the same both times.
+    (is (= (util/fetched-at-label (ago 5))
+           (util/fetched-at-label (ago 5))))
+    ;; Today is a bare clock time; older carries the date so it cannot be read
+    ;; as this morning.
+    (is (not (re-find #"," (util/fetched-at-label (ago 1)))))
+    (is (re-find #"," (util/fetched-at-label (ago (* 60 48)))))
+    (is (nil? (util/fetched-at-label nil)))))

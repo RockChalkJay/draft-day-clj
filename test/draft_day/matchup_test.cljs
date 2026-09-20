@@ -115,6 +115,9 @@
   (is (= [:fetch-matchup] (dispatched)))
   (testing "and not again once it has a board"
     (rf/dispatch-sync [:matchup-loaded (:matchup-seq @rdb/app-db) reply])
+    ;; The draft board has never been ranked in this db, and leaving for it is
+    ;; that board's own first open — which is not this tab's business.
+    (swap! rdb/app-db assoc :ranked {:players []})
     (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
     (rf/dispatch-sync [:set-view :board])
     (rf/dispatch-sync [:set-view :matchup])
@@ -131,18 +134,29 @@
   (is (nil? (:matchup @rdb/app-db)))
   (is (nil? (:matchup-pick @rdb/app-db)) "and the picked game goes with it"))
 
-(deftest a-league-switch-refetches-only-when-the-tab-is-on-screen
-  ;; Every other tab picks it up from the first-open fetch.
+(deftest a-league-switch-refetches-the-matchup-for-every-season-tab
+  ;; Not only for the two that draw a board from it: the season header shows the
+  ;; week on all four, that week is the matchup reply's, and `activate` drops the
+  ;; league you left. The draft half picks it up from the first-open fetch.
   (connect!)
   (swap! rdb/app-db assoc-in [:leagues "sleeper:100"] {:provider "sleeper" :league-id "100"})
-  (testing "on another tab"
+  (testing "a league with no rosters yet syncs first"
     (rf/dispatch-sync [:set-active-league "sleeper:100"])
-    (is (not (some #{:fetch-matchup} (dispatched)))))
-  (testing "on the matchup tab"
+    (is (not (some #{:fetch-matchup} (dispatched))))
+    (is (some #{:sync-league} (dispatched))))
+  (doseq [v [:matchup :waivers]]
+    (testing (str "on " v)
+      (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
+      (swap! rdb/app-db assoc :view v)
+      (rf/dispatch-sync [:set-active-league "sleeper:99"])
+      (is (some #{:fetch-matchup} (dispatched)))))
+  (testing "and not from the draft half, which has no week to show"
     (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
-    (swap! rdb/app-db assoc :view :matchup)
+    (swap! rdb/app-db (fn [db] (-> db
+                                   (assoc :view :board)
+                                   (assoc-in [:leagues "sleeper:99" :phase] :draft))))
     (rf/dispatch-sync [:set-active-league "sleeper:99"])
-    (is (some #{:fetch-matchup} (dispatched)))))
+    (is (not (some #{:fetch-matchup} (dispatched))))))
 
 (deftest a-reply-about-the-league-you-left-cannot-land-under-this-one
   ;; Asked on the matchup tab, then a switch from another tab, which does not

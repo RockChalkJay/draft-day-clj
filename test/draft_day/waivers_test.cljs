@@ -380,6 +380,25 @@
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
          (press! header/season-stats "↻ Re-sync"))))
 
+(deftest a-re-sync-reports-itself-on-the-button-that-started-it
+  ;; Re-sync is in the season header, on all four season tabs, and two of them
+  ;; render neither the waiver board's status line nor the matchup's — so a
+  ;; failure that only reached `:waiver-status` left month-old rosters on screen
+  ;; with nothing to say so.
+  (with-league! synced 1)
+  (rf/dispatch-sync [:sync-league {:provider "sleeper" :league-id "987654"}])
+  (rf/clear-subscription-cache!)
+  (is (re-find #"Syncing" (render header/season-stats)))
+  (rf/dispatch-sync [:league-sync-failed lk "401 from the host" 401])
+  (rf/clear-subscription-cache!)
+  (is (re-find #"Sync failed" (render header/season-stats)))
+  (testing "and goes quiet again once rosters arrive, which is the fresher fact"
+    (rf/dispatch-sync [:league-synced lk synced])
+    (rf/clear-subscription-cache!)
+    (let [out (render header/season-stats)]
+      (is (not (re-find #"Sync failed" out)))
+      (is (re-find #"synced" out)))))
+
 (deftest a-league-whose-sync-failed-still-offers-to-retry-it
   ;; It has no `:name` until a reply lands, and gating the strip on the name made
   ;; it read as no league at all — hiding the retry on the one screen that
@@ -998,20 +1017,6 @@
     (is (= 12 (txt {:week-points 11.6})))
     (is (= [:span.muted "–"] (txt {})))
     (is (= 0 (txt {:week-points 0.2})))))
-
-(deftest projection-timestamp-cannot-rot
-  ;; Absolute, not relative: this label exists to expose staleness and is
-  ;; rendered once, so an age computed at render would go stale in exactly the
-  ;; case it is for — a tab left open on a Sunday morning.
-  (let [ago #(.toISOString (js/Date. (- (js/Date.now) (* % 60000))))]
-    ;; Same instant, read twice an hour apart, reads the same both times.
-    (is (= (waivers/fetched-at-label (ago 5))
-           (waivers/fetched-at-label (ago 5))))
-    ;; Today is a bare clock time; older carries the date so it cannot be read
-    ;; as this morning.
-    (is (not (re-find #"," (waivers/fetched-at-label (ago 1)))))
-    (is (re-find #"," (waivers/fetched-at-label (ago (* 60 48)))))
-    (is (nil? (waivers/fetched-at-label nil)))))
 
 (deftest week-cell-names-the-bye-it-cannot-project
   ;; A bye is the common reason this cell is empty, and Opp — the column that

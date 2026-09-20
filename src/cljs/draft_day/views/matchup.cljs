@@ -32,6 +32,7 @@
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
             [draft-day.db :as db]
+            [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
 
@@ -178,7 +179,7 @@
      [:span
       (if (:week m) (str "Week " (:week m)) "No week to show")
       ;; Dated for `waivers/week-note`'s reason: it revises through the week.
-      (when-let [at (waivers/fetched-at-label (:week-fetched-at m))]
+      (when-let [at (util/fetched-at-label (:week-fetched-at m))]
         (str " · projection updated " at))]
      [:span.grow
       [game-picker]

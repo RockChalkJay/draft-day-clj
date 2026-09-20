@@ -7,8 +7,7 @@
   it: `core` mounts a React root when it loads."
   (:require [re-frame.core :as rf]
             [draft-day.providers :as providers]
-            [draft-day.views.util :as util]
-            [draft-day.views.waivers :as waivers]))
+            [draft-day.views.util :as util]))
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
 
@@ -97,7 +96,8 @@
   every season tab is a view of the same synced rosters."
   []
   (let [{:keys [week faab synced-at]} @(rf/subscribe [:season-header])
-        league @(rf/subscribe [:active-league])]
+        league @(rf/subscribe [:active-league])
+        status @(rf/subscribe [:sync-status])]
     [:div.stats.season-meta
      (when week
        [:div.stat [:span.stat-label "Week"] [:span.stat-val week]])
@@ -106,12 +106,15 @@
         [:span.stat-label "FAAB"]
         [:span.stat-val.good (str (util/faab (:left faab)) " / " (util/faab (:budget faab)))]])
      (when league
+       ;; The button reports its own work: it is on all four season tabs, and
+       ;; two of them render no status line of their own.
        [:button.sync-btn {:on-click #(rf/dispatch [:refresh-league
                                                    (select-keys league [:provider :league-id])])}
         "↻ Re-sync"
-        [:small (if-let [at (waivers/fetched-at-label synced-at)]
-                  (str "synced " at)
-                  "not synced yet")]])]))
+        [:small (or status
+                    (if-let [at (util/fetched-at-label synced-at)]
+                      (str "synced " at)
+                      "not synced yet"))]])]))
 
 (defn header []
   (let [mode   @(rf/subscribe [:mode])

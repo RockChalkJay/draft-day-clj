@@ -264,25 +264,6 @@
            (group "Bench" bench)
            (group "IR / Taxi" (mapv #(assoc % :parked? true) parked))]]))]))
 
-(defn fetched-at-label
-  "An ISO timestamp as a local wall-clock time, dated once it is not today.
-
-  Deliberately absolute rather than \"8 minutes ago\": this element is only here
-  to expose staleness, it is rendered once and not on a timer, and a relative age
-  computed at render silently rots in exactly the case it exists for — a tab left
-  open on a Sunday morning. A clock time cannot go stale, and it is also what the
-  question actually compares against, since inactives drop at a time of day."
-  [iso]
-  (when iso
-    (let [d     (js/Date. iso)
-          today (= (.toDateString d) (.toDateString (js/Date.)))
-          time  (.toLocaleTimeString d js/undefined
-                                     #js {:hour "numeric" :minute "2-digit"})]
-      (if today
-        time
-        (str (.toLocaleDateString d js/undefined #js {:month "short" :day "numeric"})
-             ", " time)))))
-
 (defn week-note
   "How old this week's projection is.
 
@@ -291,7 +272,7 @@
   difference between a projection and a wrong answer."
   [{:keys [week week-fetched-at]}]
   (when week
-    (let [at (fetched-at-label week-fetched-at)]
+    (let [at (util/fetched-at-label week-fetched-at)]
       [:span.week-age (str "Week " week " projection"
                            (when at (str ", updated " at)))])))
 
