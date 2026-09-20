@@ -332,7 +332,7 @@
    :starters [{:player-id "a" :slot "RB" :week-points 10.0 :actual 4.0}]
    :bench    [{:player-id "b" :week-points 14.0 :actual nil}]
    :projected 10.0 :actual 4.0
-   :optimal {:projected {:gain 4.0 :locked? false
+   :optimal {:projected {:gain 4.0 :seats-locked? false
                          :starters [{:player-id "b" :slot "RB" :week-points 14.0 :moved-in? true}]
                          :bench    [{:player-id "a" :week-points 10.0 :actual 4.0 :moved-out? true}]}
              :actual nil}})
@@ -350,7 +350,7 @@
 (deftest the-hint-says-what-can-still-be-done-or-what-was-left
   (is (= "Best by projection: +4.0 still possible" (matchup/lineup-hint team-t)))
   (is (= "Lineup locked"
-         (matchup/lineup-hint (assoc-in team-t [:optimal :projected :locked?] true))))
+         (matchup/lineup-hint (assoc-in team-t [:optimal :projected :seats-locked?] true))))
   (is (= "Best by actual: 9.5 left on the bench"
          (matchup/lineup-hint (assoc-in team-t [:optimal :actual] {:gain 9.5})))
       "once the week is final, regret outranks advice"))
@@ -368,6 +368,12 @@
   (is (= {1 :projected 2 :actual} (:lineup-view @rdb/app-db)))
   (rf/dispatch-sync [:set-matchup-pick "3"])
   (is (= {} (:lineup-view @rdb/app-db))))
+
+(deftest a-view-whose-basis-is-gone-falls-back-with-its-button
+  (is (= :projected (matchup/shown-view team-t :projected)))
+  (is (= :set (matchup/shown-view team-t :actual))
+      "the actual basis goes with the scoreboard; a lit button over the set lineup is worse")
+  (is (= :set (matchup/shown-view team-t :set))))
 
 (deftest a-best-lineup-marks-who-it-moves
   (is (re-find #"moved-in" (pr-str (matchup/player-cell {:player-id "b" :player-name "B"

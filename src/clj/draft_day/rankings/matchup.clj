@@ -194,9 +194,14 @@
 
   `pinned` are starters who keep their seats whatever the optimizer thinks —
   on the projected basis, everyone whose game has started; they come out of the
-  seat list and out of the candidates. `:locked?` says there was no seat left
-  to fill. `:gain` is measured against the current lineup on the same key, so
-  both sides sum the same thing. `:in`/`:out` are set differences, not pairs.
+  seat list and out of the candidates. An unvalued starter is the hole in that
+  rule: `current` keeps only rows with a `:position`, so his seat stays open
+  however locked he is, which `placeable` argues is the lesser wrong.
+
+  `:seats-locked?` says no seat was left to fill; a row's `:locked?` is one
+  player's game having started, and the two sit in one reply. `:gain` is
+  measured against the current lineup on the same key, so both sides sum the
+  same thing. `:in`/`:out` are set differences, not pairs.
 
   `:starters` and `:bench` are that lineup as rows: every seat in league order,
   a player who moves in flagged `:moved-in?`, and a starter who loses his seat
@@ -213,15 +218,15 @@
         now        (set (map :player-id current))
         held       (remove :empty? starters)
         best'      (total seated score-key)]
-    {:total    best'
-     :gain     (- best' (total current score-key))
-     :in       (mapv #(brief score-key %) (remove #(now (:player-id %)) seated))
-     :out      (mapv #(brief score-key %) (remove #(ids (:player-id %)) current))
-     :locked?  (boolean (and (seq slots) (empty? open)))
-     :starters (seat-rows slots pairs (set (map :player-id held)))
-     :bench    (into (mapv #(assoc % :slot nil :moved-out? true)
-                           (remove #(ids (:player-id %)) held))
-                     (remove #(ids (:player-id %)) bench))}))
+    {:total         best'
+     :gain          (- best' (total current score-key))
+     :in            (mapv #(brief score-key %) (remove #(now (:player-id %)) seated))
+     :out           (mapv #(brief score-key %) (remove #(ids (:player-id %)) current))
+     :seats-locked? (boolean (and (seq slots) (empty? open)))
+     :starters      (seat-rows slots pairs (set (map :player-id held)))
+     :bench         (into (mapv #(assoc % :slot nil :moved-out? true)
+                                (remove #(ids (:player-id %)) held))
+                          (remove #(ids (:player-id %)) bench))}))
 
 (defn team-board
   "One team's whole side of a matchup.

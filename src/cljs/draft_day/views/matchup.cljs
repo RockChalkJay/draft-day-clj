@@ -126,7 +126,7 @@
     (cond
       actual                         (str "Best by actual: " (fmt (:gain actual))
                                           " left on the bench")
-      (:locked? projected)           "Lineup locked"
+      (:seats-locked? projected)     "Lineup locked"
       (and projected (pos? (:gain projected)))
       (str "Best by projection: +" (fmt (:gain projected)) " still possible")
       projected                      "Best by projection: no better lineup")))
@@ -150,6 +150,15 @@
      :bench     (:bench t)
      :projected (:projected t)
      :actual    (:actual t)}))
+
+(defn shown-view
+  "The view a side actually draws: the one picked, unless that basis is gone.
+
+  The actual basis vanishes with the scoreboard `week-final?` needs, so the rows
+  and the control resolve it here once rather than disagreeing — a highlighted
+  button over the set lineup."
+  [t v]
+  (if (and v (not= v :set) (get-in t [:optimal v])) v :set))
 
 (defn lineup-control
   "Set lineup | Best by projection | Best by actual, for one side."
@@ -275,8 +284,8 @@
                                "Settings, or check that your team is picked."]]
        :else
        [:div.mu-card
-        (let [lv (get views (:roster-id l) :set)
-              rv (when r (get views (:roster-id r) :set))]
+        (let [lv (shown-view l (get views (:roster-id l) :set))
+              rv (when r (shown-view r (get views (:roster-id r) :set)))]
           [:<>
            [:div.mu-head
             [team-head l :l lv]

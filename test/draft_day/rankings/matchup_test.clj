@@ -212,11 +212,11 @@
         (is (= ["wr3"] (mapv :player-id (:in o))))
         (is (= ["rb3"] (mapv :player-id (:out o))))
         (is (= 3.0 (:gain o)))
-        (is (false? (:locked? o)))))
+        (is (false? (:seats-locked? o)))))
     (testing "the starter already playing keeps his seat"
       (let [o (get-in (side :board (wr3up (open #{"wr3"}))) [:optimal :projected])]
         (is (= [] (:in o)))
-        (is (true? (:locked? o)) "every seat's starter has kicked off")))
+        (is (true? (:seats-locked? o)) "every seat's starter has kicked off")))
     (testing "a bench player already playing cannot come in"
       (let [o (get-in (side :board (wr3up (open #{"rb3"}))) [:optimal :projected])]
         (is (= [] (:in o)))
