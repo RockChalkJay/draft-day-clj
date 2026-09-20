@@ -305,6 +305,18 @@
     (is (= ["mu-who" "mu-p" "mu-a"] (classes :l)))
     (is (= ["mu-a" "mu-p" "mu-who"] (classes :r)))))
 
+(deftest an-unfilled-seat-mirrors-too
+  ;; It is the same three grid tracks, so a lone name cell on the right lands in
+  ;; the narrow Actual column and the word is clipped under the wrong header.
+  (let [classes (fn [side]
+                  (->> (matchup/empty-cell side true)
+                       (drop 2)
+                       (mapv (fn [child] (re-find #"mu-who|mu-p|mu-a" (pr-str child))))))]
+    (is (= ["mu-who" "mu-p" "mu-a"] (classes :l)))
+    (is (= ["mu-a" "mu-p" "mu-who"] (classes :r))))
+  (testing "and a bench that is merely shorter still names no seat"
+    (is (not (re-find #"empty" (pr-str (matchup/empty-cell :r false)))))))
+
 (deftest a-bench-player-names-his-own-position-in-his-meta
   ;; A bench row has no shared seat label down the middle to say it.
   (is (re-find #"RB · " (pr-str (matchup/player-cell {:player-id "a" :player-name "A"

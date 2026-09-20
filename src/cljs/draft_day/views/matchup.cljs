@@ -85,10 +85,17 @@
   `seat?` is the whole distinction: an unfilled *seat* is a fact about a lineup
   and is said out loud, while one bench being shorter than the other is not — a
   bench is a list, not a set of positions, so labelling the shorter one's tail
-  \"empty\" would invent a seat nobody has."
+  \"empty\" would invent a seat nobody has.
+
+  Mirrored on `side` exactly as `player-cell` is, and for the same reason: the
+  side's grid has three tracks in mirror order, so a lone name cell on the right
+  lands in the 56px Actual column and the word is clipped under the wrong
+  header."
   [side seat?]
-  [:div {:class (str "mu-side " (name side))}
-   [:div.mu-who (when seat? [:span.mu-empty "empty"])]])
+  (let [nums [^{:key :p} [:div.mu-p] ^{:key :a} [:div.mu-a]]
+        who  [:div.mu-who {:key :who} (when seat? [:span.mu-empty "empty"])]]
+    (into [:div {:class (str "mu-side " (name side))}]
+          (if (= side :l) (cons who nums) (conj (vec (reverse nums)) who)))))
 
 (defn seat-row
   "One row, both sides. `l` and `r` may be nil — a bench shorter than the other,
