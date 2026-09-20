@@ -135,9 +135,7 @@
   (is (nil? (:matchup-pick @rdb/app-db)) "and the picked game goes with it"))
 
 (deftest a-league-switch-refetches-the-matchup-for-every-season-tab
-  ;; Not only for the two that draw a board from it: the season header shows the
-  ;; week on all four, that week is the matchup reply's, and `activate` drops the
-  ;; league you left. The draft half picks it up from the first-open fetch.
+  ;; `activate` drops the league you left, and the header's week is this reply's.
   (connect!)
   (swap! rdb/app-db assoc-in [:leagues "sleeper:100"] {:provider "sleeper" :league-id "100"})
   (testing "a league with no rosters yet syncs first"
@@ -149,14 +147,16 @@
       (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
       (swap! rdb/app-db assoc :view v)
       (rf/dispatch-sync [:set-active-league "sleeper:99"])
-      (is (some #{:fetch-matchup} (dispatched)))))
+      (is (some #{:fetch-matchup} (dispatched))
+          "every season tab shows the week, not only the two with a board")))
   (testing "and not from the draft half, which has no week to show"
     (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
     (swap! rdb/app-db (fn [db] (-> db
                                    (assoc :view :board)
                                    (assoc-in [:leagues "sleeper:99" :phase] :draft))))
     (rf/dispatch-sync [:set-active-league "sleeper:99"])
-    (is (not (some #{:fetch-matchup} (dispatched))))))
+    (is (not (some #{:fetch-matchup} (dispatched)))
+        "the draft half picks it up from `:set-view`'s first-open fetch")))
 
 (deftest a-reply-about-the-league-you-left-cannot-land-under-this-one
   ;; Asked on the matchup tab, then a switch from another tab, which does not
@@ -306,8 +306,8 @@
     (is (= ["mu-a" "mu-p" "mu-who"] (classes :r)))))
 
 (deftest an-unfilled-seat-mirrors-too
-  ;; It is the same three grid tracks, so a lone name cell on the right lands in
-  ;; the narrow Actual column and the word is clipped under the wrong header.
+  ;; Three grid tracks either way, so a lone cell on the right lands under the
+  ;; narrow Actual column and the word is clipped there.
   (let [classes (fn [side]
                   (->> (matchup/empty-cell side true)
                        (drop 2)

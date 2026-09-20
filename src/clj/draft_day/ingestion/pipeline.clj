@@ -592,7 +592,7 @@
   ;; wherever one resolves, and these lines arrive in Sleeper's space. Joining
   ;; the two directly matches only the players who have no crosswalk entry (38
   ;; of 628 on a live board), which looks like a thin vendor rather than a bug.
-  ;; Same trap, and the same fix, as `waiver/held-ids`. The fallback covers team
+  ;; Same trap, and the same fix, as `db/held-ids`. The fallback covers team
   ;; defenses, whose id is the team abbrev in both spaces.
   (mapv (fn [p]
           (let [k (or (get-in p [:ids :sleeper]) (:player-id p))]

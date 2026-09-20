@@ -61,13 +61,11 @@
   #{"BENCH" "IR" "TAXI"})
 
 (def empty-seat
-  "The id a lineup carries where nobody is starting. Sleeper's own spelling,
-  which `league-sync/string-ids` normalizes a nil to across every provider.
+  "The id a lineup carries where nobody is starting, in Sleeper's spelling.
 
-  A seat, not a gap, because `:starter-ids` is read by *position*: the seat a
-  starter holds is `:starter-slots` or `:roster-positions` at his index, so
-  dropping an unfilled one moves every seat below it up by one and labels a
-  FLEX receiver RB. Every reader of a lineup skips it by this name."
+  A seat and not a gap, because `:starter-ids` is read by position: dropping an
+  unfilled one moves every seat below it up one, and `starter-seats` then labels
+  a FLEX receiver RB with nothing on screen to say so."
   "0")
 
 (defn scoring-slots
@@ -798,9 +796,9 @@
   "{provider-id canonical-player-id} from a loaded universe, for one provider.
 
   A live translation between the two id spaces that coexist at runtime, not a
-  migration — see `waiver/held-ids`. Ids with no entry map to themselves at the
-  call site, so a provider whose `[:ids <provider>]` column is not ingested yet
-  resolves nothing rather than resolving wrongly."
+  migration — see `rankings.waiver`'s ns docstring. Ids with no entry map to
+  themselves at the call site, so a provider whose `[:ids <provider>]` column is
+  not ingested yet resolves nothing rather than resolving wrongly."
   [players provider]
   ;; Keyed once, not per player: ~600 rows on every in-season request.
   (let [k (keyword provider)]
@@ -991,14 +989,9 @@
 (defn default-waiver-columns [] (default-columns waiver-column-catalog))
 
 (defn repair-lineup
-  "One team's `:starter-ids`, kept in step with its seats.
+  "One team's `:starter-ids`, with each nil kept in place as `empty-seat`.
 
-  The other two id lists are asked about by membership, so a nil in them is
-  dropped. This one is asked about by *position* — `starter-seats` reads the
-  seat at a starter's index — so a nil becomes `empty-seat` instead: dropping it
-  would slide every seat below it up one and label the wrong men with the wrong
-  seats, silently, which is the failure `:starter-slots` was paired with
-  `:starter-ids` to prevent."
+  The other two id lists drop their nils; a lineup cannot — see `empty-seat`."
   [ids]
   (mapv #(if (nil? %) empty-seat %) ids))
 
@@ -1095,12 +1088,8 @@
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}
      :waiver-status nil         ; what the waiver board is doing, or why it failed
-     ;; What the *rosters* are doing, which is a different question and read in a
-     ;; different place: Re-sync is in the season header, on every season tab,
-     ;; and only two of those tabs render `:waiver-status`. It cannot ride on
-     ;; that key anyway — `:league-synced` dispatches `:fetch-waivers`, which
-     ;; overwrites it in the same turn. nil is "nothing to report", which leaves
-     ;; the button showing how old the rosters are.
+     ;; What the rosters are doing, which is a different question read in a
+     ;; different place — the season header's Re-sync. nil is nothing to report.
      :sync-status  nil
      ;; The matchup board. A fixed two-sided layout, not a board of toggleable
      ;; columns, so it has no column catalog and nothing persisted.

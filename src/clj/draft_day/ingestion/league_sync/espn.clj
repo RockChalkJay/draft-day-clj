@@ -18,7 +18,7 @@
   defense keyed by its ESPN id resolves to nobody and every league's defenses
   sit on the free-agent board while their owners hold them. A roster entry at
   ESPN's D/ST position is keyed by its team abbreviation instead, which is the
-  id space the board already uses, and `waiver/held-ids`' identity fallback
+  id space the board already uses, and `db/held-ids`' identity fallback
   carries it the rest of the way.
 
   Discovery is deliberately the weak half. ESPN's fan endpoint is undocumented

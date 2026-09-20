@@ -166,7 +166,7 @@
 
 (rf/reg-event-fx :set-view
   (fn [{:keys [db]} [_ v section]]
-    ;; A second full rank of the universe, so each board loads on first open
+    ;; Each board is a full rank of the universe, so it loads on first open
     ;; only: after that a refresh is a button, not a side effect of navigation.
     ;;
     ;; `section` deep-links into Settings — "Connect a league" means the
@@ -642,9 +642,8 @@
     ;; ClojureScript — killing the event rather than reporting anything.
     (if-not (and provider league-id)
       {:db (assoc db :waiver-status "Nothing to sync — no league is selected.")}
-      ;; `:sync-status` as well as `:waiver-status`, because Re-sync is in the
-      ;; season header and two of the four tabs under it render neither the
-      ;; waiver board's status line nor the matchup's — see `db/default-db`.
+      ;; Both keys: the board's status line is on two of the four season tabs,
+      ;; and `:sync-status` is what the header's Re-sync shows on all of them.
       {:db   (assoc db :waiver-status "Syncing rosters…" :sync-status "Syncing rosters…")
        :http {:method :post :url "/api/league/sync"
               :body (league-request db league)

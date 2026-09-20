@@ -368,15 +368,9 @@
 (defn matchup-handler
   "This week's head-to-head, every roster in the league valued.
 
-  Stateless on the same terms as the other two boards, but unlike them it takes
-  a live fetch every request: a scoreboard changes while you are looking at it.
-  The week is the provider's, never `(inc through-week)`.
-
-  One season answers the whole request. The scoreboard and the weekly line it is
-  read against have to be the same year or every projected point belongs to a
-  different season than the actual beside it — so the request's season is
-  resolved once, here, rather than asked of the provider and then of the
-  universe, whose own `:season` is a fact about the last ingestion."
+  A live fetch every request, unlike the other two boards: a scoreboard changes
+  while you look at it. The week is the provider's, never `(inc through-week)`;
+  the season is the request's, never the universe's, which dates an ingestion."
   [req]
   (try
     (let [{:keys [provider league-id season credentials scoring league roster my-roster-id]}

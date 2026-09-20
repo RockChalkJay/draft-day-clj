@@ -21,7 +21,7 @@
   `unwrap-execution`'s reason: the season is defaulted, the reply names the
   provider it came from, and every roster id is a string. That last one is not
   cosmetic. `db/provider->player-id` builds a string-keyed crosswalk from the
-  id files, and `waiver/held-ids` maps an id it cannot find to itself — so a
+  id files, and `db/held-ids` maps an id it cannot find to itself — so a
   host that publishes integer ids would resolve none of them, every rostered
   player would read as a free agent, and no drop would ever be named."
   (:require [draft-day.db :as db]
@@ -119,15 +119,9 @@
 (defn string-ids
   "One team's roster id lists as strings.
 
-  Nils first: `(str nil)` is `\"\"`, which is a worse id than no id at all — it
-  resolves to nothing and occupies a seat. `:player-ids` and `:active-ids` are
-  asked about by membership, so theirs are simply dropped.
-
-  `:starter-ids` is asked about by *position* — it is paired with
-  `:starter-slots` and indexed against `:roster-positions` — so a nil there
-  becomes `db/empty-seat`, which every reader of a lineup already skips.
-  Dropping it instead would move every seat below it up one and seat a FLEX
-  receiver at RB, with nothing on screen to say so."
+  `:player-ids` and `:active-ids` drop their nils: `(str nil)` is `\"\"`, an id
+  that resolves to nothing and occupies a seat. `:starter-ids` is read by
+  position, so a nil there becomes `db/empty-seat` instead — see it."
   [team]
   (-> (reduce (fn [t k] (update t k #(into [] (comp (remove nil?) (map str)) %)))
               team

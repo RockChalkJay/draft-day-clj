@@ -615,10 +615,8 @@
     (is (= 8 (:through-week in-season)) "which is deliberately not what was used")))
 
 (deftest matchup-endpoint-reads-one-season-for-the-whole-request
-  ;; The scoreboard and the weekly line it is scored against have to be the same
-  ;; year. The universe carries a `:season` of its own — a fact about the last
-  ;; ingestion — and reading the week under that one puts every projected point
-  ;; in a different season than the actual beside it.
+  ;; The universe carries a `:season` of its own, dating the last ingestion, so
+  ;; letting it answer scores one year's week against another year's line.
   (let [asked (atom {})]
     (routes/reset-universe!)
     (with-redefs [pipeline/load-universe       (fn [& _] in-season)

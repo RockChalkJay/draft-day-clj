@@ -91,9 +91,10 @@
      [:button.start-draft {:on-click #(rf/dispatch [:show-modal {:kind :start-draft}])} "Start Draft"]]))
 
 (defn season-stats
-  "The week, the budget and how old the rosters are — the three things every
-  season tab is read against. Re-sync lives here rather than on one tab because
-  every season tab is a view of the same synced rosters."
+  "The week, the budget and how old the rosters are, on every season tab.
+
+  Re-sync lives here and reports itself here: all four tabs read the same synced
+  rosters, and two of them render no status line of their own."
   []
   (let [{:keys [week faab synced-at]} @(rf/subscribe [:season-header])
         league @(rf/subscribe [:active-league])

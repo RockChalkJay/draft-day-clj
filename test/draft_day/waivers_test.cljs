@@ -381,10 +381,8 @@
          (press! header/season-stats "↻ Re-sync"))))
 
 (deftest a-re-sync-reports-itself-on-the-button-that-started-it
-  ;; Re-sync is in the season header, on all four season tabs, and two of them
-  ;; render neither the waiver board's status line nor the matchup's — so a
-  ;; failure that only reached `:waiver-status` left month-old rosters on screen
-  ;; with nothing to say so.
+  ;; Two of the four season tabs render no status line, so a failure reported
+  ;; only on `:waiver-status` leaves month-old rosters up with nothing said.
   (with-league! synced 1)
   (rf/dispatch-sync [:sync-league {:provider "sleeper" :league-id "987654"}])
   (rf/clear-subscription-cache!)

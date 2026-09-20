@@ -145,8 +145,6 @@
               (when (= size :thumb) "thumb/")
               sleeper-id ".jpg"))))))
 
-;; ---- when something was fetched ----
-
 (defn fetched-at-label
   "An ISO timestamp as a local wall-clock time, dated once it is not today.
 
