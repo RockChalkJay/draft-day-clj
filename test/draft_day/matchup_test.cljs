@@ -115,6 +115,9 @@
   (is (= [:fetch-matchup] (dispatched)))
   (testing "and not again once it has a board"
     (rf/dispatch-sync [:matchup-loaded (:matchup-seq @rdb/app-db) reply])
+    ;; The draft board has never been ranked in this db, and leaving for it is
+    ;; that board's own first open — which is not this tab's business.
+    (swap! rdb/app-db assoc :ranked {:players []})
     (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
     (rf/dispatch-sync [:set-view :board])
     (rf/dispatch-sync [:set-view :matchup])
@@ -131,18 +134,29 @@
   (is (nil? (:matchup @rdb/app-db)))
   (is (nil? (:matchup-pick @rdb/app-db)) "and the picked game goes with it"))
 
-(deftest a-league-switch-refetches-only-when-the-tab-is-on-screen
-  ;; Every other tab picks it up from the first-open fetch.
+(deftest a-league-switch-refetches-the-matchup-for-every-season-tab
+  ;; `activate` drops the league you left, and the header's week is this reply's.
   (connect!)
   (swap! rdb/app-db assoc-in [:leagues "sleeper:100"] {:provider "sleeper" :league-id "100"})
-  (testing "on another tab"
+  (testing "a league with no rosters yet syncs first"
     (rf/dispatch-sync [:set-active-league "sleeper:100"])
-    (is (not (some #{:fetch-matchup} (dispatched)))))
-  (testing "on the matchup tab"
+    (is (not (some #{:fetch-matchup} (dispatched))))
+    (is (some #{:sync-league} (dispatched))))
+  (doseq [v [:matchup :waivers]]
+    (testing (str "on " v)
+      (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
+      (swap! rdb/app-db assoc :view v)
+      (rf/dispatch-sync [:set-active-league "sleeper:99"])
+      (is (some #{:fetch-matchup} (dispatched))
+          "every season tab shows the week, not only the two with a board")))
+  (testing "and not from the draft half, which has no week to show"
     (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
-    (swap! rdb/app-db assoc :view :matchup)
+    (swap! rdb/app-db (fn [db] (-> db
+                                   (assoc :view :board)
+                                   (assoc-in [:leagues "sleeper:99" :phase] :draft))))
     (rf/dispatch-sync [:set-active-league "sleeper:99"])
-    (is (some #{:fetch-matchup} (dispatched)))))
+    (is (not (some #{:fetch-matchup} (dispatched)))
+        "the draft half picks it up from `:set-view`'s first-open fetch")))
 
 (deftest a-reply-about-the-league-you-left-cannot-land-under-this-one
   ;; Asked on the matchup tab, then a switch from another tab, which does not
@@ -280,3 +294,33 @@
         scored  (pr-str (matchup/player-cell {:player-id "a" :player-name "A" :actual 0.0} :l 3))]
     (is (re-find #"mu-a pending" pending))
     (is (not (re-find #"pending" scored)))))
+
+(deftest the-two-sides-mirror-so-the-actuals-meet-at-the-centre
+  ;; Player · Proj · Actual | seat | Actual · Proj · Player.
+  (let [classes (fn [side]
+                  (->> (matchup/player-cell {:player-id "a" :player-name "A" :slot "QB"
+                                             :week-points 20.0 :actual 18.0} side 3)
+                       (drop 2)
+                       (mapv (fn [child] (re-find #"mu-who|mu-p|mu-a" (pr-str child))))))]
+    (is (= ["mu-who" "mu-p" "mu-a"] (classes :l)))
+    (is (= ["mu-a" "mu-p" "mu-who"] (classes :r)))))
+
+(deftest an-unfilled-seat-mirrors-too
+  ;; Three grid tracks either way, so a lone cell on the right lands under the
+  ;; narrow Actual column and the word is clipped there.
+  (let [classes (fn [side]
+                  (->> (matchup/empty-cell side true)
+                       (drop 2)
+                       (mapv (fn [child] (re-find #"mu-who|mu-p|mu-a" (pr-str child))))))]
+    (is (= ["mu-who" "mu-p" "mu-a"] (classes :l)))
+    (is (= ["mu-a" "mu-p" "mu-who"] (classes :r))))
+  (testing "and a bench that is merely shorter still names no seat"
+    (is (not (re-find #"empty" (pr-str (matchup/empty-cell :r false)))))))
+
+(deftest a-bench-player-names-his-own-position-in-his-meta
+  ;; A bench row has no shared seat label down the middle to say it.
+  (is (re-find #"RB · " (pr-str (matchup/player-cell {:player-id "a" :player-name "A"
+                                                      :position "RB"} :l 3))))
+  (is (not (re-find #"RB · " (pr-str (matchup/player-cell {:player-id "a" :player-name "A"
+                                                           :position "RB" :slot "RB"} :l 3))))
+      "a starter's seat is already down the middle"))

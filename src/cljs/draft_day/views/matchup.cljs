@@ -2,8 +2,11 @@
   "Your team against your opponent's, for the week being played.
 
   ONE ROW PER SEAT, FACING. The seat label runs down the middle and each side
-  fans out from it, so a reader compares two quarterbacks by looking across one
-  line rather than by holding a number in his head between two tables. It is the
+  mirrors the other — Player · Proj · Actual | seat | Actual · Proj · Player —
+  so the two teams' numbers meet at the centre and a reader compares two
+  quarterbacks by looking across a few inches of one line, rather than holding
+  a number in his head between two tables. Names sit at the outer edges, where
+  a long one has room to run. It is the
   arrangement `views.compare` already uses for two players, one scale up — and
   the reason the alternative (two independent tables) was not taken is that the
   comparison is the whole point of the screen.
@@ -29,6 +32,7 @@
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
             [draft-day.db :as db]
+            [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
 
@@ -41,9 +45,11 @@
 (defn player-cell
   "A player's name, his NFL game, and the two numbers.
 
-  `side` mirrors the layout: the left team reads outward from the centre. The
-  name opens the detail modal by dispatching rather than by requiring it — the
-  require cycle `core/app` warns about."
+  `side` mirrors the layout: name, projection, actual on the left; actual,
+  projection, name on the right, so both actuals sit against the centre. A
+  bench player's meta leads with his own position, because a bench row has no
+  shared seat label to say it. The name opens the detail modal by dispatching
+  rather than by requiring it — the require cycle `core/app` warns about."
   [p side week]
   (let [nums [^{:key :p} [:div.mu-p (fmt (:week-points p))]
               ^{:key :a} [:div {:class (str "mu-a" (when-not (number? (:actual p)) " pending"))}
@@ -59,20 +65,32 @@
                   :title "Player detail"}
                  (:player-name p)])
               (when (:parked? p) [:span.mu-meta {:title "IR or taxi"} "IR"])
-              [:span.mu-meta (waivers/week-matchup p week)]]]
+              [:span.mu-meta (str (when (and (nil? (:slot p)) (:position p))
+                                    (str (:position p) " · "))
+                                  (waivers/week-matchup p week))]]]
     (into [:div {:class (str "mu-side " (name side))}]
-          (if (= side :l) (conj (vec (reverse nums)) who) (cons who nums)))))
+          (if (= side :l) (cons who nums) (conj (vec (reverse nums)) who)))))
+
+(defn column-head
+  "The labels over both sides, in the same mirrored order as every row."
+  []
+  [:div.mu-hdr
+   [:div.mu-side.l [:div.mu-who "Player"] [:div.mu-p "Proj"] [:div.mu-a "Actual"]]
+   [:div.mu-slot "Pos"]
+   [:div.mu-side.r [:div.mu-a "Actual"] [:div.mu-p "Proj"] [:div.mu-who "Player"]]])
 
 (defn empty-cell
   "The other side of a row this team has nobody for.
 
-  `seat?` is the whole distinction: an unfilled *seat* is a fact about a lineup
-  and is said out loud, while one bench being shorter than the other is not — a
-  bench is a list, not a set of positions, so labelling the shorter one's tail
-  \"empty\" would invent a seat nobody has."
+  `seat?` is the whole distinction: an unfilled seat is a fact about a lineup,
+  while labelling the shorter bench's tail would invent a seat nobody has.
+
+  Mirrored on `side` exactly as `player-cell` is, and for the same reason."
   [side seat?]
-  [:div {:class (str "mu-side " (name side))}
-   [:div.mu-who (when seat? [:span.mu-empty "empty"])]])
+  (let [nums [^{:key :p} [:div.mu-p] ^{:key :a} [:div.mu-a]]
+        who  [:div.mu-who {:key :who} (when seat? [:span.mu-empty "empty"])]]
+    (into [:div {:class (str "mu-side " (name side))}]
+          (if (= side :l) (cons who nums) (conj (vec (reverse nums)) who)))))
 
 (defn seat-row
   "One row, both sides. `l` and `r` may be nil — a bench shorter than the other,
@@ -110,31 +128,36 @@
      (if (seq (:in o))
        [:<>
         [:div.mu-swap
-         (for [x (:in o)]
-           ^{:key (str "in" (:player-id x))}
-           [:div [:span.mu-in "▲ Start " (:player-name x)]
-            " (" (:position x) ", " (fmt (:points x)) ")"])
-         (for [x (:out o)]
-           ^{:key (str "out" (:player-id x))}
-           [:div [:span.mu-out "▼ Sit " (:player-name x)]
-            " (" (:position x) ", " (fmt (:points x)) ")"])]
+         (map (fn [x]
+                ^{:key (str "in" (:player-id x))}
+                [:div [:span.mu-in "▲ Start " (:player-name x)]
+                 " (" (:position x) ", " (fmt (:points x)) ")"])
+              (:in o))
+         (map (fn [x]
+                ^{:key (str "out" (:player-id x))}
+                [:div [:span.mu-out "▼ Sit " (:player-name x)]
+                 " (" (:position x) ", " (fmt (:points x)) ")"])
+              (:out o))]
         [:div.mu-optline
          (if (= basis :actual)
            (str (fmt (:gain o)) " left on the bench.")
            (str "This lineup is " (fmt (:gain o)) " short of its best."))]]
        [:div.mu-swap "Nothing on the bench would help."])]))
 
+(def bases
+  [[:projected "Projected" "What the best lineup would be, by this week's projection — the version you can still act on"]
+   [:actual "Actual" "What the best lineup would have been, by what was actually scored"]])
+
 (defn basis-toggle []
   (let [basis @(rf/subscribe [:optimal-basis])]
     [:span.mu-basis
-     (for [[k label tip]
-           [[:projected "Projected" "What the best lineup would be, by this week's projection — the version you can still act on"]
-            [:actual "Actual" "What the best lineup would have been, by what was actually scored"]]]
-       ^{:key k}
-       [:button {:class (when (= basis k) "on")
-                 :title tip
-                 :on-click #(rf/dispatch [:set-optimal-basis k])}
-        label])]))
+     (map (fn [[k label tip]]
+            ^{:key k}
+            [:button {:class (when (= basis k) "on")
+                      :title tip
+                      :on-click #(rf/dispatch [:set-optimal-basis k])}
+             label])
+          bases)]))
 
 (defn game-picker
   "Every game in the league, the manager's own first. A game with one team in it
@@ -149,12 +172,13 @@
        {:value (str (first (:roster-ids selected)))
         :title "Which game to show"
         :on-change #(rf/dispatch [:set-matchup-pick (.. % -target -value)])}
-       (for [g (sort-by (complement :mine?) games)]
-         ^{:key (first (:roster-ids g))}
-         [:option {:value (str (first (:roster-ids g)))}
-          (str (str/join " vs " (:names g))
-               (when (= 1 (count (:names g))) " — no opponent this week")
-               (when (:mine? g) " (yours)"))])])))
+       (map (fn [g]
+              ^{:key (first (:roster-ids g))}
+              [:option {:value (str (first (:roster-ids g)))}
+               (str (str/join " vs " (:names g))
+                    (when (= 1 (count (:names g))) " — no opponent this week")
+                    (when (:mine? g) " (yours)"))])
+            (sort-by (complement :mine?) games))])))
 
 (defn week-strip []
   (let [m      @(rf/subscribe [:matchup])
@@ -163,7 +187,7 @@
      [:span
       (if (:week m) (str "Week " (:week m)) "No week to show")
       ;; Dated for `waivers/week-note`'s reason: it revises through the week.
-      (when-let [at (waivers/fetched-at-label (:week-fetched-at m))]
+      (when-let [at (util/fetched-at-label (:week-fetched-at m))]
         (str " · projection updated " at))]
      [:span.grow
       [game-picker]
@@ -190,15 +214,16 @@
                                    a b week seat? (str tag i))))
                      (range (max (count ls) (count rs)))))]
     [:<>
+     [column-head]
      (seat-rows (:starters l) (:starters r) true "s")
      ;; Child order mirrors `player-cell`, or the totals do not line up with
      ;; the columns they are totalling.
      [:div.mu-tot
-      [:div.mu-side.l [:div.mu-a (fmt (:actual l))] [:div.mu-p (fmt (:projected l))]
-       [:div.mu-who "Starters"]]
+      [:div.mu-side.l [:div.mu-who "Starters"] [:div.mu-p (fmt (:projected l))]
+       [:div.mu-a (fmt (:actual l))]]
       [:div.mu-slot]
-      [:div.mu-side.r [:div.mu-who "Starters"] [:div.mu-p (fmt (:projected r))]
-       [:div.mu-a (fmt (:actual r))]]]
+      [:div.mu-side.r [:div.mu-a (fmt (:actual r))] [:div.mu-p (fmt (:projected r))]
+       [:div.mu-who "Starters"]]]
      [:div.mu-sep "Bench"]
      (seat-rows (:bench l) (:bench r) false "b")]))
 

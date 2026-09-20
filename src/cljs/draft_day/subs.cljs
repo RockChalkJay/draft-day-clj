@@ -8,7 +8,7 @@
 (doseq [k [:view :status :config :teams :my-team-id :players
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
            :watchlist :importing :universe :universe-error
-           :accounts :leagues :waivers :waiver-sort :waiver-status
+           :accounts :leagues :waivers :waiver-sort :waiver-status :sync-status
            :league-choices :league-choices-error
            :waiver-columns :compare
            :matchup :matchup-status :matchup-pick :optimal-basis :settings-section]]
@@ -415,8 +415,8 @@
   :<- [:accounts] :<- [:league-list]
   (fn [[accounts leagues] _]
     (let [grouped (group-by (fn [[_ e]] (:account-key e)) leagues)
-          named   (for [[ak acct] (sort-by key accounts)]
-                    [ak acct (vec (get grouped ak []))])
+          named   (map (fn [[ak acct]] [ak acct (vec (get grouped ak []))])
+                       (sort-by key accounts))
           orphans (vec (get grouped nil []))]
       (cond-> (vec named)
         (seq orphans) (conj [nil nil orphans])))))

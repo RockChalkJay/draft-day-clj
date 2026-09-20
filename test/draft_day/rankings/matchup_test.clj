@@ -100,7 +100,7 @@
 
 (deftest roster-ids-go-through-the-crosswalk
   ;; The fixture's sleeper ids are deliberately unequal to its player ids, so a
-  ;; reader that forgot to translate resolves nobody — `waiver/held-ids`' bug.
+  ;; reader that forgot to translate resolves nobody — `db/held-ids`' bug.
   (let [t (side)]
     (is (every? :player-name (remove :empty? (:starters t)))
         "every seat resolved to a real player")

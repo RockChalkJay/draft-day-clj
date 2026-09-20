@@ -71,11 +71,12 @@
   []
   [:div.w-sort
    [:span.w-sort-label "Sort"]
-   (for [{:keys [key label title]} sort-buttons]
-     ^{:key key}
-     [:button {:title    (str title " — you can still drag rows afterwards")
-               :on-click #(rf/dispatch [:watch-sort key])}
-      label])])
+   (map (fn [{:keys [key label title]}]
+          ^{:key key}
+          [:button {:title    (str title " — you can still drag rows afterwards")
+                    :on-click #(rf/dispatch [:watch-sort key])}
+           label])
+        sort-buttons)])
 
 (defn watchlist-panel []
   ;; Owns the transient drag state in a local atom — it is pointer state, not app

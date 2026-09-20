@@ -7,8 +7,7 @@
   it: `core` mounts a React root when it loads."
   (:require [re-frame.core :as rf]
             [draft-day.providers :as providers]
-            [draft-day.views.util :as util]
-            [draft-day.views.waivers :as waivers]))
+            [draft-day.views.util :as util]))
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
 
@@ -40,15 +39,17 @@
        [:select {:value (str active)
                  :title "Switch league — the board, the prices and the waiver wire all follow"
                  :on-change #(rf/dispatch [:set-active-league (.. % -target -value)])}
-        (for [[ak acct ls] groups
-              :when (seq ls)]
-          ^{:key (or ak "orphans")}
-          [:optgroup {:label (if ak
-                               (str (providers/label (:provider acct))
-                                    (when (:username acct) (str " · " (:username acct))))
-                               "No account")}
-           (for [[k e] ls]
-             ^{:key k} [:option {:value k} (or (:name e) (:league-id e))])])])
+        (->> groups
+             (filter (fn [[_ _ ls]] (seq ls)))
+             (map (fn [[ak acct ls]]
+                    ^{:key (or ak "orphans")}
+                    [:optgroup {:label (if ak
+                                         (str (providers/label (:provider acct))
+                                              (when (:username acct) (str " · " (:username acct))))
+                                         "No account")}
+                     (map (fn [[k e]]
+                            ^{:key k} [:option {:value k} (or (:name e) (:league-id e))])
+                          ls)])))])
      (when my-team-name [:span.league-team my-team-name])]))
 
 (def view-labels
@@ -92,12 +93,14 @@
      [:button.start-draft {:on-click #(rf/dispatch [:show-modal {:kind :start-draft}])} "Start Draft"]]))
 
 (defn season-stats
-  "The week, the budget and how old the rosters are — the three things every
-  season tab is read against. Re-sync lives here rather than on one tab because
-  every season tab is a view of the same synced rosters."
+  "The week, the budget and how old the rosters are, on every season tab.
+
+  Re-sync lives here and reports itself here: all four tabs read the same synced
+  rosters, and two of them render no status line of their own."
   []
   (let [{:keys [week faab synced-at]} @(rf/subscribe [:season-header])
-        league @(rf/subscribe [:active-league])]
+        league @(rf/subscribe [:active-league])
+        status @(rf/subscribe [:sync-status])]
     [:div.stats.season-meta
      (when week
        [:div.stat [:span.stat-label "Week"] [:span.stat-val week]])
@@ -106,12 +109,15 @@
         [:span.stat-label "FAAB"]
         [:span.stat-val.good (str (util/faab (:left faab)) " / " (util/faab (:budget faab)))]])
      (when league
+       ;; The button reports its own work: it is on all four season tabs, and
+       ;; two of them render no status line of their own.
        [:button.sync-btn {:on-click #(rf/dispatch [:refresh-league
                                                    (select-keys league [:provider :league-id])])}
         "↻ Re-sync"
-        [:small (if-let [at (waivers/fetched-at-label synced-at)]
-                  (str "synced " at)
-                  "not synced yet")]])]))
+        [:small (or status
+                    (if-let [at (util/fetched-at-label synced-at)]
+                      (str "synced " at)
+                      "not synced yet"))]])]))
 
 (defn header []
   (let [mode   @(rf/subscribe [:mode])
@@ -125,10 +131,11 @@
      (when mode
        [:span.mode-tag (if (= mode :season) "Season" "Draft")])
      [:nav.views
-      (for [v tabs]
-        ^{:key v}
-        [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])}
-         (view-labels v)])]
+      (map (fn [v]
+             ^{:key v}
+             [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])}
+              (view-labels v)])
+           tabs)]
      (when mode [mode-link])
      [league-switcher]
      ;; Truncated on a crowded header, so the whole text rides on hover.

@@ -15,10 +15,11 @@
 (defn- input-stream [s] (java.io.ByteArrayInputStream. (.getBytes ^String s "UTF-8")))
 
 (def ^:private fixture
-  {:players (-> (vec (for [i (range 40)]
-                       {:player-id (str "rb" i) :player-name (str "RB" i) :position "RB"
-                        :stats {:rush_yd (- 2000 (* i 40)) :rush_td (- 12 (* i 0.2))
-                                :rec 40 :rec_yd 300 :rec_td 2}}))
+  {:players (-> (mapv (fn [i]
+                        {:player-id (str "rb" i) :player-name (str "RB" i) :position "RB"
+                         :stats {:rush_yd (- 2000 (* i 40)) :rush_td (- 12 (* i 0.2))
+                                 :rec 40 :rec_yd 300 :rec_td 2}})
+                      (range 40))
                 ;; market sources on the top two RBs; rest have none
                 (assoc-in [0 :espn/auction-value] 40.0)   ; + FP below -> consensus
                 (assoc-in [0 :fantasypros/aav] 60.0)
@@ -88,9 +89,10 @@
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe (fn [& _] fixture)]
     (let [roster (into ["RB" "RB" "FLEX"] (repeat 3 "BENCH"))
-          ls     {:teams (vec (for [i (range 12)]
-                                {:team-id (str "t" i) :bankroll 200
-                                 :roster (mapv (fn [p] {:pos p :player-id nil}) roster)}))
+          ls     {:teams (mapv (fn [i]
+                                 {:team-id (str "t" i) :bankroll 200
+                                  :roster (mapv (fn [p] {:pos p :player-id nil}) roster)})
+                               (range 12))
                   :drafted-player-ids [] :starting-bankroll 200 :picks []}
           req    {:body (input-stream
                          (json/write-value-as-string
@@ -178,10 +180,11 @@
   ;; Reception volume has to *vary* for reception scoring to move dollars — see
   ;; the test below for why the shared fixture cannot show this.
   (let [u (assoc fixture :players
-                 (vec (for [i (range 40)]
-                        {:player-id (str "rb" i) :player-name (str "RB" i) :position "RB"
-                         :stats {:rush_yd (- 1500 (* i 30)) :rush_td (- 12 (* i 0.2))
-                                 :rec (* i 3) :rec_yd (* i 25) :rec_td 1}})))]
+                 (mapv (fn [i]
+                         {:player-id (str "rb" i) :player-name (str "RB" i) :position "RB"
+                          :stats {:rush_yd (- 1500 (* i 30)) :rush_td (- 12 (* i 0.2))
+                                  :rec (* i 3) :rec_yd (* i 25) :rec_td 1}})
+                       (range 40)))]
     (with-redefs [pipeline/load-universe (fn [& _] u)]
       (is (not= (worth-of "standard") (worth-of "ppr"))))))
 
@@ -282,10 +285,11 @@
                                                     [{:week 1 :opponent "SEA" :stats {:rush_yd 80.0}}])
                                             ps)))]
     (with-redefs [pipeline/load-universe (fn [& _] with-history)]
-      (let [ls   {:teams (vec (for [i (range 12)]
-                                {:team-id (str "t" i) :bankroll 200
-                                 :roster (mapv (fn [p] {:pos p :player-id nil})
-                                               (into ["RB" "RB" "FLEX"] (repeat 3 "BENCH")))}))
+      (let [ls   {:teams (mapv (fn [i]
+                                 {:team-id (str "t" i) :bankroll 200
+                                  :roster (mapv (fn [p] {:pos p :player-id nil})
+                                                (into ["RB" "RB" "FLEX"] (repeat 3 "BENCH")))})
+                               (range 12))
                   :drafted-player-ids [] :starting-bankroll 200 :picks []}
             req  #(hash-map :body (input-stream
                                    (json/write-value-as-string
@@ -591,8 +595,8 @@
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe       (fn [& _] in-season)
                 pipeline/load-weekly         stub-weekly
-                matchups/current-week        (fn [_] week)
-                matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                matchups/current-week        (fn [_ _] week)
+                matchups/fetch-raw-matchups  (fn [_ _] raw-matchups)
                 espn-schedule/fetch          (fn [_ _] nil)]
     (routes/matchup-handler {:body (input-stream (json/write-value-as-string body))})))
 
@@ -613,6 +617,25 @@
   (let [b (parse (matchup matchup-req :week 12))]
     (is (= 12 (:week b)))
     (is (= 8 (:through-week in-season)) "which is deliberately not what was used")))
+
+(deftest matchup-endpoint-reads-one-season-for-the-whole-request
+  ;; The universe carries a `:season` of its own, dating the last ingestion, so
+  ;; letting it answer scores one year's week against another year's line.
+  (let [asked (atom {})]
+    (routes/reset-universe!)
+    (with-redefs [pipeline/load-universe       (fn [& _] in-season)
+                  pipeline/load-weekly         (fn [s w & _]
+                                                 (swap! asked assoc :weekly s)
+                                                 (stub-weekly s w))
+                  matchups/current-week        (fn [_ _] 9)
+                  matchups/fetch-raw-matchups  (fn [_ req]
+                                                 (swap! asked assoc :scoreboard (:season req))
+                                                 raw-matchups)
+                  espn-schedule/fetch          (fn [s _] (swap! asked assoc :kickoffs s) nil)]
+      (routes/matchup-handler
+       {:body (input-stream (json/write-value-as-string (assoc matchup-req :season "2025")))}))
+    (is (= {:scoreboard "2025" :weekly "2025" :kickoffs "2025"} @asked))
+    (is (= 2026 (:season in-season)) "and deliberately not the universe's")))
 
 (deftest matchup-endpoint-seats-the-lineup-in-the-leagues-own-order
   ;; `:roster-positions` on the synced league beats the request's roster config.
@@ -641,8 +664,8 @@
     (routes/reset-universe!)
     (with-redefs [pipeline/load-universe       (fn [& _] in-season)
                   pipeline/load-weekly         stub-weekly
-                  matchups/current-week        (fn [_] 9)
-                  matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                  matchups/current-week        (fn [_ _] 9)
+                  matchups/fetch-raw-matchups  (fn [_ _] raw-matchups)
                   espn-schedule/fetch          (fn [s w] (swap! seen conj [s w]) {})]
       (routes/matchup-handler {:body (input-stream (json/write-value-as-string matchup-req))}))
     (is (= 9 (second (first @seen))) "fetched, for the provider's week")))
@@ -654,8 +677,8 @@
     (routes/reset-universe!)
     (with-redefs [pipeline/load-universe       (fn [& _] in-season)
                   pipeline/load-weekly         (fn [s w & [opts]] (swap! paths conj (:path opts)) (stub-weekly s w))
-                  matchups/current-week        (fn [_] 9)
-                  matchups/fetch-raw-matchups  (fn [_ _ _] raw-matchups)
+                  matchups/current-week        (fn [_ _] 9)
+                  matchups/fetch-raw-matchups  (fn [_ _] raw-matchups)
                   espn-schedule/fetch          (fn [_ _] nil)]
       (routes/matchup-handler {:body (input-stream (json/write-value-as-string matchup-req))}))
     (is (= [pipeline/matchup-weekly-cache-path] @paths))
@@ -670,8 +693,8 @@
   ;; Flattening it to 502 would report an unknown league as an outage.
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe      (fn [& _] in-season)
-                matchups/current-week       (fn [_] 9)
-                matchups/fetch-raw-matchups (fn [_ _ _] (throw (ex-info "no league" {:status 404})))]
+                matchups/current-week       (fn [_ _] 9)
+                matchups/fetch-raw-matchups (fn [_ _] (throw (ex-info "no league" {:status 404})))]
     (let [resp (routes/matchup-handler
                 {:body (input-stream (json/write-value-as-string matchup-req))})]
       (is (= 404 (:status resp)))

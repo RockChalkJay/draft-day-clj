@@ -94,9 +94,9 @@
   (let [fire  (fn [f] (let [seen (atom [])]
                         (with-redefs [rf/dispatch #(swap! seen conj %)] (f))
                         (first @seen)))
-        fired (for [[t f] (render/buttons settings/connected-accounts)
-                    :when (= "Disconnect" t)]
-                (fire f))]
+        fired (->> (render/buttons settings/connected-accounts)
+                   (filter (fn [[t _]] (= "Disconnect" t)))
+                   (map (fn [[_ f]] (fire f))))]
     (is (= #{[:disconnect-account sleeper-ak] [:disconnect-account espn-ak]}
            (set fired)))))
 
@@ -181,9 +181,8 @@
 
 (deftest every-section-is-reachable-from-the-sidebar
   (is (= (set (map (fn [[k _]] [:set-settings-section k]) db/settings-sections))
-         (set (for [[_ label] db/settings-sections
-                    ev (press! settings/settings-nav label)]
-                ev)))))
+         (set (mapcat (fn [[_ label]] (press! settings/settings-nav label))
+                      db/settings-sections)))))
 
 (deftest the-sidebar-says-what-is-waiting-inside-a-section
   (is (not (re-find #"nav-badge|nav-dot" (render settings/settings-nav)))

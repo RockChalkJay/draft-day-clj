@@ -18,7 +18,7 @@
   defense keyed by its ESPN id resolves to nobody and every league's defenses
   sit on the free-agent board while their owners hold them. A roster entry at
   ESPN's D/ST position is keyed by its team abbreviation instead, which is the
-  id space the board already uses, and `waiver/held-ids`' identity fallback
+  id space the board already uses, and `db/held-ids`' identity fallback
   carries it the rest of the way.
 
   Discovery is deliberately the weak half. ESPN's fan endpoint is undocumented
@@ -180,11 +180,12 @@
                    (comp (keep #(get-in % [:metaData :entry]))
                          (filter #(= "FFL" (:abbrev %)))
                          (mapcat (fn [{:keys [seasonId groups]}]
-                                   (for [{:keys [groupId groupName]} groups
-                                         :when groupId]
-                                     (cond-> {:league-id (str groupId)
-                                              :name      (or (not-empty groupName) (str groupId))}
-                                       seasonId (assoc :season (str seasonId)))))))
+                                   (keep (fn [{:keys [groupId groupName]}]
+                                           (when groupId
+                                             (cond-> {:league-id (str groupId)
+                                                      :name      (or (not-empty groupName) (str groupId))}
+                                               seasonId (assoc :season (str seasonId)))))
+                                         groups))))
                    (:preferences raw))
         rank (fn [{s :season}]
                [(if (= (str season) (str s)) 0 1)

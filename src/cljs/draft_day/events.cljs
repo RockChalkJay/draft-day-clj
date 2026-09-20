@@ -166,8 +166,8 @@
 
 (rf/reg-event-fx :set-view
   (fn [{:keys [db]} [_ v section]]
-    ;; A second full rank of the universe, so it loads on first open only:
-    ;; after that a refresh is a button, not a side effect of navigation.
+    ;; Each board is a full rank of the universe, so it loads on first open
+    ;; only: after that a refresh is a button, not a side effect of navigation.
     ;;
     ;; `section` deep-links into Settings — "Connect a league" means the
     ;; accounts section, not whichever one was open last.
@@ -642,7 +642,9 @@
     ;; ClojureScript — killing the event rather than reporting anything.
     (if-not (and provider league-id)
       {:db (assoc db :waiver-status "Nothing to sync — no league is selected.")}
-      {:db   (assoc db :waiver-status "Syncing rosters…")
+      ;; Both keys: the board's status line is on two of the four season tabs,
+      ;; and `:sync-status` is what the header's Re-sync shows on all of them.
+      {:db   (assoc db :waiver-status "Syncing rosters…" :sync-status "Syncing rosters…")
        :http {:method :post :url "/api/league/sync"
               :body (league-request db league)
               :on-success [:league-synced (db/league-key provider league-id)]
@@ -696,7 +698,10 @@
                             (:season league) (assoc :season (:season league))))
                (assoc :waiver-status (if league
                                        (str "✓ Synced " (count (:teams league)) " rosters")
-                                       "Sync returned nothing usable")))
+                                       "Sync returned nothing usable")
+                      ;; Quiet again on success: the header's button then says
+                      ;; how old the rosters are, which is the fresher fact.
+                      :sync-status (when-not league "Sync returned nothing usable")))
        :fx (cond-> [[:dispatch [:fetch-waivers]]]
              ;; The matchup board asked with no rosters is every team empty.
              (and (db/matchup-view? (:view db)) (= k (:active-league db)))
@@ -823,7 +828,11 @@
   (fn [db [_ k err status]]
     ;; A 401 is not an outage, it is an instruction: the host refused the
     ;; credentials and the card must offer a reconnect rather than a retry.
-    (cond-> (assoc db :waiver-status (str "League sync failed: " err))
+    (cond-> (assoc db
+                   :waiver-status (str "League sync failed: " err)
+                   ;; On the button that started it, so a re-sync from My Team
+                   ;; or the season League tab is not silently month-old.
+                   :sync-status (str "Sync failed: " err))
       ;; A matchup on a never-synced league waits for this sync, so it is the
       ;; one place that can say why the board never arrived.
       (= k (:active-league db)) (assoc :matchup-status (str "League sync failed: " err))
@@ -875,18 +884,18 @@
 (defn- matchup-request
   "The body of an /api/matchup call.
 
-  `:provider` and `:league-id` ride along because unlike the other two boards
-  this one takes a *live* fetch server-side, so it needs to know whose
-  scoreboard to read. Everything else is the same active-league copy the waiver
-  request uses."
+  Unlike the waiver board this one takes a *live* fetch server-side, so it
+  carries what a sync carries — whose scoreboard, which season, and the league's
+  own credentials (`league-request`); an ESPN scoreboard cannot be read without
+  them. Everything else is the same active-league copy the waiver request uses."
   [db]
   (let [lg (db/active-league db)]
-    {:provider  (:provider lg)
-     :league-id (:league-id lg)
-     :scoring   (get-in db [:config :scoring])
+    (merge
+     (league-request db (select-keys lg [:provider :league-id]))
+     {:scoring   (get-in db [:config :scoring])
      :league    (:sync lg)
      :roster    (get-in db [:config :roster])
-     :my-roster-id (:my-roster-id lg)}))
+     :my-roster-id (:my-roster-id lg)})))
 
 (rf/reg-event-fx :fetch-matchup
   (fn [{:keys [db]} _]

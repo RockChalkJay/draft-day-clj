@@ -368,24 +368,27 @@
 (defn matchup-handler
   "This week's head-to-head, every roster in the league valued.
 
-  Stateless on the same terms as the other two boards, but unlike them it takes
-  a live fetch every request: a scoreboard changes while you are looking at it.
-  The week is the provider's, never `(inc through-week)`."
+  A live fetch every request, unlike the other two boards: a scoreboard changes
+  while you look at it. The week is the provider's, never `(inc through-week)`;
+  the season is the request's, never the universe's, which dates an ingestion."
   [req]
   (try
-    (let [{:keys [provider league-id scoring league roster my-roster-id]}
+    (let [{:keys [provider league-id season credentials scoring league roster my-roster-id]}
           (read-json-body req)
-          scoring* (resolve-scoring scoring)]
+          scoring* (resolve-scoring scoring)
+          season*  (season/resolve-season season)]
       (if-not (scoring/scores-anything? scoring*)
         ;; The other two boards' guard: an all-zero config projects every
         ;; player 0.0, and that is a lie rather than a matchup.
         (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
         (let [{:keys [ok week matchups scores status error]}
-              (matchups/fetch-matchups {:provider provider :league-id league-id})]
+              (matchups/fetch-matchups {:provider    provider
+                                        :league-id   league-id
+                                        :season      season*
+                                        :credentials credentials})]
           (if-not ok
             (json-response (or status 502) {:error error})
-            (let [{:keys [players season]} (universe false)
-                  season* (season/resolve-season season)
+            (let [{:keys [players]} (universe false)
                   weekly  (pipeline/load-weekly season* week
                                                 {:path pipeline/matchup-weekly-cache-path})
                   ;; Leaner than the waiver board's pipeline — no VBD, no

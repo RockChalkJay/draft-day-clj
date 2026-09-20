@@ -231,7 +231,7 @@
   a band with nothing to show — see the claim band in `compare-tile`."
   [k a b sep]
   (when-let [rs (seq (filter #(row-has-value? % a b) (metrics/rows-by-band k)))]
-    (for [r rs] ^{:key (:label r)} [metric-row r a b sep])))
+    (map (fn [r] ^{:key (:label r)} [metric-row r a b sep]) rs)))
 
 (defn status-label
   "The designation as it is drawn. Abbreviated past three characters, because

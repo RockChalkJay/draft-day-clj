@@ -81,6 +81,7 @@
 
       :else
       [:div.league-grid
-       (for [r rosters]
-         ^{:key (get-in r [:team :roster-id])}
-         [team-card r faab? openable])])))
+       (map (fn [r]
+              ^{:key (get-in r [:team :roster-id])}
+              [team-card r faab? openable])
+            rosters)])))

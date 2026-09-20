@@ -17,8 +17,8 @@
   (is (= 48 (get-in core/default-opts [:slices "RB"]))))
 
 (deftest slice-keeps-the-top-n-per-position-by-draft-order
-  (let [players (concat (for [i (range 60)] (p (str "rb" i) "RB" (inc i)))
-                        (for [i (range 80)] (p (str "wr" i) "WR" (inc i))))
+  (let [players (concat (map (fn [i] (p (str "rb" i) "RB" (inc i))) (range 60))
+                        (map (fn [i] (p (str "wr" i) "WR" (inc i))) (range 80)))
         out     (core/apply-position-slice players {"RB" 48 "WR" 60})
         by-pos  (group-by :position out)]
     (is (= 48 (count (by-pos "RB"))))
@@ -28,7 +28,7 @@
              (set (map :player-id (by-pos "RB"))))))))
 
 (deftest slice-falls-back-to-ecr-when-there-is-no-adp
-  (let [players (for [i (range 40)] (p (str "te" i) "TE" nil (inc i)))
+  (let [players (map (fn [i] (p (str "te" i) "TE" nil (inc i))) (range 40))
         out     (core/apply-position-slice players {"TE" 24})]
     (is (= 24 (count out)))
     (is (= (set (map #(str "te" %) (range 24))) (set (map :player-id out))))))
@@ -36,15 +36,15 @@
 (deftest slice-leaves-the-pool-alone-when-draft-order-is-unknown
   ;; FFToday reaches 2008 but vintage ADP starts in 2010. Slicing on nothing
   ;; would silently pick an arbitrary subset and present it as "the top 48".
-  (let [players (for [i (range 60)] (p (str "rb" i) "RB" nil))]
+  (let [players (map (fn [i] (p (str "rb" i) "RB" nil)) (range 60))]
     (is (= 60 (count (core/apply-position-slice players {"RB" 48}))))))
 
 (deftest slice-is-a-no-op-when-the-pool-is-already-smaller
-  (let [players (for [i (range 10)] (p (str "te" i) "TE" (inc i)))]
+  (let [players (map (fn [i] (p (str "te" i) "TE" (inc i))) (range 10))]
     (is (= 10 (count (core/apply-position-slice players {"TE" 24}))))))
 
 (deftest slice-can-be-disabled
-  (let [players (for [i (range 60)] (p (str "rb" i) "RB" (inc i)))]
+  (let [players (map (fn [i] (p (str "rb" i) "RB" (inc i))) (range 60))]
     (is (= 60 (count (core/apply-position-slice players nil))))))
 
 (deftest common-pool-intersects-per-season

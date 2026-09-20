@@ -18,7 +18,7 @@
             [draft-day.ingestion.matchups :as matchups]))
 
 (defmethod matchups/current-week :sleeper
-  [_]
+  [_ _req]
   (let [state (sync-sleeper/get-json "state/nfl"
                                      {:empty-is-missing? true
                                       :not-found-msg "Sleeper season state unavailable"})]
@@ -26,7 +26,7 @@
       (when (and (number? wk) (pos? wk)) wk))))
 
 (defmethod matchups/fetch-raw-matchups :sleeper
-  [_ league-id week]
+  [_ {:keys [league-id week]}]
   (sync-sleeper/get-json (str "league/" league-id "/matchups/" week)
                          {:empty-is-missing? false}))
 
@@ -38,10 +38,10 @@
   [entries]
   (let [grouped (group-by :matchup_id entries)
         byes    (get grouped nil)]
-    (into (vec (for [[mid es] (sort-by key (dissoc grouped nil))]
-                 {:matchup-id mid :roster-ids (mapv :roster_id es)}))
-          (for [e byes]
-            {:matchup-id nil :roster-ids [(:roster_id e)]}))))
+    (into (mapv (fn [[mid es]] {:matchup-id mid :roster-ids (mapv :roster_id es)})
+                (sort-by key (dissoc grouped nil)))
+          (map (fn [e] {:matchup-id nil :roster-ids [(:roster_id e)]}))
+          byes)))
 
 (defn player-points
   "Pure: one entry's `players_points` with string player ids.

@@ -25,15 +25,19 @@
 
   `:roster-ids` holds one id for a roster with no opponent rather than being
   absent: a team with nobody to play still has a lineup and still scores."
-  (:require [draft-day.ingestion.league-sync :as league-sync]))
+  (:require [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.season :as season]
+            [draft-day.providers :as providers]))
 
 (defmulti fetch-raw-matchups
-  "Network: raw provider-specific matchup payload for one league and week.
-  Throws ex-info with :status on failure, as the other two pairs do."
-  (fn [provider _league-id _week] provider))
+  "Network: raw provider-specific matchup payload, from a request map of
+  `{:league-id :season :credentials :week}` — the other two pairs' map plus the
+  week the scoreboard is addressed by. Throws ex-info with :status on failure,
+  as they do."
+  (fn [provider _req] provider))
 
 (defmethod fetch-raw-matchups :default
-  [provider _league-id _week]
+  [provider _req]
   (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
 
 (defmulti normalize-matchups
@@ -46,38 +50,47 @@
   (fn [provider _raw] provider))
 
 (defmulti current-week
-  "Network: which week this provider is currently showing.
+  "Network: which week this provider is currently showing, from the same
+  `{:league-id :season :credentials}` map — Sleeper needs none of it, but a host
+  that puts the current week on the league document (ESPN) needs all three.
 
   Throws ex-info with :status on failure. nil means a provider between seasons
   has no week to name — 'no matchup to show', never week zero."
-  (fn [provider] provider))
+  (fn [provider _req] provider))
 
 (defmethod current-week :default
-  [provider]
+  [provider _req]
   (throw (ex-info "Unknown league provider" {:status 400 :provider provider})))
 
 (defn fetch-matchups
-  "{:provider :league-id :week} -> {:ok true :week n :matchups [...] :scores {...}}
-  or {:ok false :status :error}.
+  "{:provider :league-id :season :credentials :week} -> {:ok true :week n
+  :matchups [...] :scores {...}} or {:ok false :status :error}.
 
-  The same envelope `sync-league` and `import-league` return. Sequential because
+  The same envelope, and the same dispatcher's contract, as `sync-league` and
+  `import-league`: the season is defaulted and access validated here, so no
+  provider has to remember to. Sequential because
   the matchup document is addressed *by* week, so there is nothing to overlap;
   an explicit `:week` skips the first call. The unwrap still matters though
   nothing here derefs a future: a provider is free to fetch concurrently, and an
   `ExecutionException` would cost every 404 its status."
-  [{:keys [provider league-id week]}]
-  (let [provider (keyword provider)]
-    (try
-      (let [wk (or week (current-week provider))]
-        (if-not wk
-          {:ok false :status 404 :error "No current week for this provider"}
-          ;; `:ok` and `:week` go on last: they are this dispatcher's
-          ;; guarantee, not a provider's to set.
-          (merge (normalize-matchups provider
-                                     (fetch-raw-matchups provider league-id wk))
-                 {:ok true :week wk})))
-      (catch Exception e
-        (let [cause (league-sync/unwrap-execution e)]
-          {:ok false
-           :status (or (:status (ex-data cause)) 502)
-           :error  (ex-message cause)})))))
+  [{:keys [provider league-id season credentials week]}]
+  (let [provider (keyword provider)
+        req      {:league-id   league-id
+                  :season      (season/resolve-season season)
+                  :credentials credentials}]
+    (if-let [bad (providers/league-access-error provider league-id credentials)]
+      {:ok false :status 400 :error (:error bad)}
+      (try
+        (let [wk (or week (current-week provider req))]
+          (if-not wk
+            {:ok false :status 404 :error "No current week for this provider"}
+            ;; `:ok` and `:week` go on last: they are this dispatcher's
+            ;; guarantee, not a provider's to set.
+            (merge (normalize-matchups provider
+                                       (fetch-raw-matchups provider (assoc req :week wk)))
+                   {:ok true :week wk})))
+        (catch Exception e
+          (let [cause (league-sync/unwrap-execution e)]
+            {:ok false
+             :status (or (:status (ex-data cause)) 502)
+             :error  (ex-message cause)}))))))

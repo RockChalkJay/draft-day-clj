@@ -373,7 +373,7 @@
   ;; The lines arrive in Sleeper's id space; :player-id is the GSIS id wherever
   ;; one resolves. Joining them directly matches only the players who have no
   ;; crosswalk entry, which reads as a thin vendor rather than as a bug — the
-  ;; same failure `waiver/held-ids` exists to prevent.
+  ;; same failure `db/held-ids` exists to prevent.
   (let [players [{:player-id "00-0036223" :ids {:sleeper "9509"}}    ; crosswalked
                  {:player-id "ARI"}                                  ; DST: same in both
                  {:player-id "00-0031234" :ids {:sleeper "4034"}}]   ; not projected

@@ -48,17 +48,19 @@
 (defn roster-table [groups week]
   [:div.table-scroll
    [:table.board
-    [:thead [:tr (for [[k label] columns] ^{:key k} [:th label])]]
+    [:thead [:tr (map (fn [[k label]] ^{:key k} [:th label]) columns)]]
     [:tbody
-     (for [[label rows] groups
-           :when (seq rows)]
-       ^{:key label}
-       [:<>
-        [:tr.group-row [:td {:col-span (count columns)} label]]
-        (for [p rows]
-          ^{:key (:player-id p)}
-          [:tr {:class (cond (:drop? p) "drop-seat" (:parked? p) "parked")}
-           (for [[k _] columns] ^{:key k} [team-cell k p week])])])]]])
+     (->> groups
+          (filter (fn [[_ rows]] (seq rows)))
+          (map (fn [[label rows]]
+                 ^{:key label}
+                 [:<>
+                  [:tr.group-row [:td {:col-span (count columns)} label]]
+                  (map (fn [p]
+                         ^{:key (:player-id p)}
+                         [:tr {:class (cond (:drop? p) "drop-seat" (:parked? p) "parked")}
+                          (map (fn [[k _]] ^{:key k} [team-cell k p week]) columns)])
+                       rows)])))]]])
 
 (defn team-strip []
   (let [{:keys [my-team-name]} @(rf/subscribe [:account])

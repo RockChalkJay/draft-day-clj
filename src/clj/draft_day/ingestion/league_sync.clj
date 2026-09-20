@@ -21,10 +21,11 @@
   `unwrap-execution`'s reason: the season is defaulted, the reply names the
   provider it came from, and every roster id is a string. That last one is not
   cosmetic. `db/provider->player-id` builds a string-keyed crosswalk from the
-  id files, and `waiver/held-ids` maps an id it cannot find to itself — so a
+  id files, and `db/held-ids` maps an id it cannot find to itself — so a
   host that publishes integer ids would resolve none of them, every rostered
   player would read as a free agent, and no drop would ever be named."
-  (:require [draft-day.ingestion.season :as season]
+  (:require [draft-day.db :as db]
+            [draft-day.ingestion.season :as season]
             [draft-day.providers :as providers]))
 
 (defmulti fetch-raw-rosters
@@ -116,14 +117,17 @@
     e))
 
 (defn string-ids
-  "One team's roster id lists as strings, with nils dropped.
+  "One team's roster id lists as strings.
 
-  Nils first: `(str nil)` is `\"\"`, which is a worse id than no id at all —
-  it resolves to nothing and occupies a seat."
+  `:player-ids` and `:active-ids` drop their nils: `(str nil)` is `\"\"`, an id
+  that resolves to nothing and occupies a seat. `:starter-ids` is read by
+  position, so a nil there becomes `db/empty-seat` instead — see it."
   [team]
-  (reduce (fn [t k] (update t k #(into [] (comp (remove nil?) (map str)) %)))
-          team
-          [:player-ids :active-ids :starter-ids]))
+  (-> (reduce (fn [t k] (update t k #(into [] (comp (remove nil?) (map str)) %)))
+              team
+              [:player-ids :active-ids])
+      (update :starter-ids
+              #(into [] (map (fn [id] (if (nil? id) db/empty-seat (str id)))) %))))
 
 (defn normalized
   "A provider's normalized league, made to keep this namespace's promises: it

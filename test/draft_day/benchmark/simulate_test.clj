@@ -103,9 +103,10 @@
   ;; so it drafts best-first. The field drafts by ADP ascending, and ADP here is
   ;; (inc i) while realized points are also (inc i) — so the field takes the
   ;; WORST player first. Model should win handily.
-  (let [ps (for [i (range 24)]
-             (let [pos (nth ["QB" "RB" "WR" "TE"] (mod i 4))]
-               (p (str "p" i) pos (inc i) (double (inc i)) (double (inc i)))))
+  (let [ps (map (fn [i]
+                  (let [pos (nth ["QB" "RB" "WR" "TE"] (mod i 4))]
+                    (p (str "p" i) pos (inc i) (double (inc i)) (double (inc i)))))
+                (range 24))
         cfg (assoc sim/default-config :teams 4 :rounds 4
                    :caps {"QB" 2 "RB" 4 "WR" 4 "TE" 2})
         out (sim/simulate-season (vec ps) 0 cfg :actual/points)]
@@ -115,9 +116,10 @@
   ;; Here ADP is (24 - i) while points are (inc i), so ADP-ascending and
   ;; points-descending produce the SAME order: the model's board is the
   ;; consensus. Averaged over every seat its edge must be exactly zero.
-  (let [ps (for [i (range 24)]
-             (let [pos (nth ["QB" "RB" "WR" "TE"] (mod i 4))]
-               (p (str "p" i) pos (- 24 i) (double (inc i)) (double (inc i)))))
+  (let [ps (map (fn [i]
+                  (let [pos (nth ["QB" "RB" "WR" "TE"] (mod i 4))]
+                    (p (str "p" i) pos (- 24 i) (double (inc i)) (double (inc i)))))
+                (range 24))
         cfg (assoc sim/default-config :teams 4 :rounds 4
                    :caps {"QB" 2 "RB" 4 "WR" 4 "TE" 2})
         out (sim/simulate-all-seats (vec ps) cfg :actual/points)]

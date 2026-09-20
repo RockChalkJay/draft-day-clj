@@ -78,10 +78,11 @@
   {weight-key (fn [group] -> seq of raw values)}; a weight of 0 (or absent)
   skips the signal entirely."
   [group w signals]
-  (let [cols (for [[k f] signals
-                   :let [weight (double (get w k 0.0))]
-                   :when (not (zero? weight))]
-               (mapv #(* weight %) (model/zscores (vec (f group)))))]
+  (let [cols (keep (fn [[k f]]
+                     (let [weight (double (get w k 0.0))]
+                       (when-not (zero? weight)
+                         (mapv #(* weight %) (model/zscores (vec (f group)))))))
+                   signals)]
     (if (seq cols)
       (apply mapv + cols)
       (vec (repeat (count group) 0.0)))))

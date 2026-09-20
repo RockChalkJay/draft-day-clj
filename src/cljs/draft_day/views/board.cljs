@@ -100,10 +100,11 @@
   and not a gradient — length and hue then say one thing, twice."
   [level]
   [:span.risk-bar
-   (for [i (range 1 (inc risk-levels))]
-     ^{:key i}
-     [:span.risk-seg {:class (when (<= i level) "on")
-                      :style (when (<= i level) {:background (risk-color level)})}])])
+   (map (fn [i]
+          ^{:key i}
+          [:span.risk-seg {:class (when (<= i level) "on")
+                           :style (when (<= i level) {:background (risk-color level)})}])
+        (range 1 (inc risk-levels)))])
 
 ;; ---- cell formatting ----
 
