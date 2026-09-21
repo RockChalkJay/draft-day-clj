@@ -85,7 +85,7 @@ for the known gaps between a league's real rules and what the board can score.
   guess: `unsupported-scoring` reports two dozen of that league's rules as bare
   `ESPN stat 123`, so a manager comparing the import against his settings page
   is handed numbers rather than names. `stat-labels` is what needs the entries —
-  the ids cluster in the IDP and defensive-points bands (63, 77, 85, 95-99,
+  the ids cluster in the kicking and defensive-points bands (63, 77, 85,
   123-136, 198, 201, 206, 209).
 
 - **ESPN's `:playoff-week-start` is deliberately unread.** `nil` is already the

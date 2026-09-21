@@ -34,10 +34,6 @@
             [draft-day.ingestion.teams :as teams]
             [draft-day.json :refer [mapper]]))
 
-(def dst-position-id
-  "ESPN's `defaultPositionId` for a team defense."
-  16)
-
 (def bench-slot 20)
 
 (def pro-team-abbrev
@@ -61,7 +57,7 @@
   See the ns docstring for why the two cannot share a spelling."
   [entry]
   (let [p (get-in entry [:playerPoolEntry :player])]
-    (if (= dst-position-id (:defaultPositionId p))
+    (if (= import-espn/dst-position-id (:defaultPositionId p))
       (teams/normalize :espn (pro-team-abbrev (:proTeamId p)))
       (some-> (:playerId entry) str not-empty))))
 

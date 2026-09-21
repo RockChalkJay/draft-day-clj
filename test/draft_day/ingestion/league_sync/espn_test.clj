@@ -1,6 +1,7 @@
 (ns draft-day.ingestion.league-sync.espn-test
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.league-import.espn :as import-espn]
             [draft-day.ingestion.league-sync.espn :as espn]
             [draft-day.ingestion.teams :as teams]))
 
@@ -25,7 +26,7 @@
             :roster {:entries [(entry 4034 0)
                                (entry 6794 2)
                                ;; a defense: keyed by team, never by ESPN id
-                               (entry -16022 16 espn/dst-position-id)
+                               (entry -16022 16 import-espn/dst-position-id)
                                (entry 9001 espn/bench-slot)
                                (entry 9002 21)]}}
            ;; Location + nickname, the way a long-running league still sends it.
@@ -51,7 +52,7 @@
   (testing "and ESPN's own spelling is normalized on the way"
     (is (= "WAS" (espn/entry-player-id
                   {:playerId -16028
-                   :playerPoolEntry {:player {:defaultPositionId espn/dst-position-id
+                   :playerPoolEntry {:player {:defaultPositionId import-espn/dst-position-id
                                               :proTeamId 28}}})))))
 
 (deftest roster-ids-are-strings-because-the-crosswalk-is-string-keyed

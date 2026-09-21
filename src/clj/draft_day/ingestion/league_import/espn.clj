@@ -110,11 +110,14 @@
   reading the band 23/24/25 in the wrong order prices every back on carries at
   roughly a tenth of what he is worth, and nothing fails.
 
-  The defensive ids are ESPN's documented numbering and are NOT verified here;
-  `draft-day.integration` is where a real league's settings page confirms them.
+  The defensive ids came from ESPN's documented numbering rather than a payload;
+  `draft-day.integration` is what confirms them against a real league.
   `:def_td` is deliberately absent: ESPN splits return, interception and fumble
   touchdowns across several ids and the app holds one flat weight, so summing
-  them would be a number nobody set. It is reported unsupported instead."
+  them would be a number nobody set. It is reported unsupported instead.
+
+  Every defensive id here is also in `defense-only-stats`, which is what lets
+  its per-position override be read; adding one here means adding it there."
   {3   :pass_yd
    4   :pass_td
    19  :pass_2pt
@@ -162,31 +165,73 @@
   (or (and (number? points) (not (zero? points)))
       (seq pointsOverrides)))
 
+(def dst-position-id
+  "ESPN's `defaultPositionId` for a team defense, and the key its per-position
+  scoring overrides are filed under. `league-sync.espn` reads it from here so
+  the number has one home."
+  16)
+
+(def ^:private dst-override-key
+  "The same id as `pointsOverrides` carries it: `draft-day.json/mapper`
+  keywordizes every decoded key, and these keys are position ids."
+  (keyword (str dst-position-id)))
+
+(def defense-only-stats
+  "The stat ids nobody but a team defense can accrue.
+
+  ESPN files their weights as a D/ST override on a rule whose base is 0.0, so
+  here the override is the entire rule rather than a premium over one. Kept
+  narrow on purpose: a rule a skill player can earn too needs two weights, and
+  belongs in `unsupported-scoring` beside the reception premium.
+
+  Every defense-only id `stat-ids` maps belongs here. One that does not imports
+  at 0.0 with nothing failing to say so, which is the bug this set exists for."
+  #{95 96 97 98 99})
+
+(defn stat-weight
+  "Pure: one scoring item -> the weight the app scores it at. The D/ST override
+  wins for a defense-only stat, being the only weight ESPN states for it;
+  everything else takes the base a premium would be a premium over."
+  [{:keys [statId points pointsOverrides]}]
+  (double (or (when (defense-only-stats statId)
+                (get pointsOverrides dst-override-key))
+              points
+              0)))
+
 (defn scoring-config
   "Pure: ESPN's scoring items -> `{stat-key weight}` over the keys the app
-  scores. A rule carrying `pointsOverrides` contributes its base weight; the
-  override itself is reported unsupported."
+  scores, each weighted by `stat-weight`."
   [items]
   (into {}
-        (keep (fn [{:keys [statId points]}]
+        (keep (fn [{:keys [statId] :as item}]
                 (when-let [k (stat-ids statId)]
-                  [k (double (or points 0))])))
+                  [k (stat-weight item)])))
         items))
+
+(defn dropped-overrides
+  "Pure: the per-position overrides on one item the import could not apply.
+
+  Empty for a defense-only stat whose sole override `stat-weight` took, so
+  Settings stops warning about scoring it imported correctly. A second position
+  on one of those still reports: one weight cannot hold both."
+  [{:keys [statId pointsOverrides]}]
+  (cond-> pointsOverrides
+    (defense-only-stats statId) (dissoc dst-override-key)))
 
 (defn unsupported-scoring
   "The league's own rules a flat stat-line model cannot score, sorted.
 
-  A `pointsOverrides` rule is reported even when its statId maps, which is the
-  case a `select-keys` would miss: ESPN writes a TE reception premium as a
-  per-position override on an ordinary receptions rule, so taking the base
-  weight and dropping the override yields a config that looks complete and
-  scores differently from the league it came from."
+  An override is reported even when its statId maps, the case a `select-keys`
+  would miss: ESPN writes a TE reception premium as a per-position override on
+  an ordinary receptions rule, so keeping the base alone yields a config that
+  looks complete and scores differently. `dropped-overrides` separates that from
+  an override the import does apply."
   [items]
   (->> items
        (filter scored?)
-       (keep (fn [{:keys [statId pointsOverrides]}]
+       (keep (fn [{:keys [statId] :as item}]
                (cond
-                 (seq pointsOverrides) (str (stat-label statId) " (position-specific)")
+                 (seq (dropped-overrides item)) (str (stat-label statId) " (position-specific)")
                  (nil? (stat-ids statId)) (stat-label statId))))
        distinct sort vec))
 

@@ -26,6 +26,13 @@
                     {:statId 72 :points -2.0}
                     {:statId 23 :points 0.0}
                     {:statId 89 :points 5.0}
+                    ;; How ESPN states a defense's scoring: nothing on the base,
+                    ;; the whole rule on the D/ST override.
+                    {:statId 95 :points 0.0 :pointsOverrides {:16 2.0}}
+                    {:statId 96 :points 0.0 :pointsOverrides {:16 2.0}}
+                    {:statId 99 :points 0.0 :pointsOverrides {:16 1.0}}
+                    ;; An IDP league scoring sacks for linebackers as well.
+                    {:statId 98 :points 0.0 :pointsOverrides {:16 2.0 :10 1.0}}
                     {:statId 101 :points 6.0}
                     {:statId 127 :points -0.01}]}
     :rosterSettings
@@ -71,6 +78,23 @@
     (is (contains? u "yards allowed"))
     (is (not (contains? u "rushing attempts"))
         "a rule set to zero costs the league nothing and is not worth reporting")))
+
+(deftest a-defense-is-scored-from-its-own-override-not-from-an-empty-base
+  ;; Nobody but a defense records a sack, so the D/ST override is the whole
+  ;; rule. Reading the base imports a league whose defenses all score zero.
+  (let [s (:scoring (imported))]
+    (is (= 2.0 (:int s)))
+    (is (= 2.0 (:fum_rec s)))
+    (is (= 1.0 (:sack s))))
+  (let [u (set (:unsupported-scoring (imported)))]
+    (is (not-any? #(re-find #"ESPN stat 95|ESPN stat 96|ESPN stat 99" %) u)
+        "warning about scoring it just imported correctly sends a manager hunting")))
+
+(deftest a-defensive-rule-an-idp-league-also-pays-still-reports
+  ;; One weight cannot hold both, so the linebacker half is genuinely dropped.
+  (is (= 2.0 (:safe (:scoring (imported))))
+      "the D/ST half is still taken — reporting is not a reason to score nothing")
+  (is (some #(re-find #"position-specific" %) (:unsupported-scoring (imported)))))
 
 (deftest an-unnamed-rule-still-says-which-one-it-was
   (is (= ["ESPN stat 991"] (espn/unsupported-scoring [{:statId 991 :points 3.0}]))))
