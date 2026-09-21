@@ -661,7 +661,13 @@
    {:group "Receiving" :stats [[:rec "Reception"] [:rec_yd "Rec Yd"]
                                [:rec_td "Rec TD"] [:rec_2pt "Rec 2PT"]]}
    {:group "Misc"      :stats [[:fum_lost "Fumble Lost"]]}
-   {:group "Kicking"   :stats [[:fgm "FG Made"] [:xpm "XP Made"] [:blk_kick "Blocked Kick"]]}
+   {:group "Kicking"   :stats [[:fgm "FG Made"]
+                               [:fgm_0_19 "FG 0-19"] [:fgm_20_29 "FG 20-29"]
+                               [:fgm_30_39 "FG 30-39"] [:fgm_40_49 "FG 40-49"]
+                               [:fgm_50p "FG 50+"]
+                               [:fgmiss_40_49 "FG Miss 40-49"] [:fgmiss_50p "FG Miss 50+"]
+                               [:xpm "XP Made"] [:xpmiss "XP Miss"]
+                               [:blk_kick "Blocked Kick"]]}
    {:group "Defense"   :stats [[:sack "Sack"] [:int "INT"] [:fum_rec "Fumble Rec"]
                                [:ff "Forced Fumble"] [:def_td "Def/ST TD"] [:safe "Safety"]]}])
 

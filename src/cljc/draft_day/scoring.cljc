@@ -19,8 +19,13 @@
    :rush_yd 0.1 :rush_td 6.0 :rush_2pt 0.0
    :rec reception-pts :rec_yd 0.1 :rec_td 6.0 :rec_2pt 0.0
    :fum_lost -2.0
-   ;; kicking
-   :fgm 3.0 :xpm 1.0 :blk_kick 0.0
+   ;; Every host scores a field goal by how far it was kicked, so the
+   ;; near-universal 3/4/5 grid is what a preset means by "field goals".
+   :fgm 3.0 :fgm_0_19 3.0 :fgm_20_29 3.0 :fgm_30_39 3.0
+   :fgm_40_49 4.0 :fgm_50p 5.0
+   ;; A miss costs nothing unless a league says otherwise.
+   :fgmiss_40_49 0.0 :fgmiss_50p 0.0 :xpmiss 0.0
+   :xpm 1.0 :blk_kick 0.0
    ;; team defense (linear stats only)
    :sack 1.0 :int 2.0 :fum_rec 2.0 :ff 1.0 :def_td 6.0 :safe 2.0})
 
@@ -103,11 +108,18 @@
   player's points, so the editor shows them but will not pretend they are
   editable.
 
-  `:fgm` was here too, and is not any more: kickers now carry one, summed from
-  the distance buckets Sleeper does publish (`sleeper/scored-stats`). Leaving it
-  would have locked FG Made in the scoring editor for the one position that fix
-  exists for, and made `scores-anything?` reject a config that scores kickers."
+  No field-goal key is here. Each bucket is projected on one line or the other —
+  the weekly carries every make under fifty, the season the two over forty — and
+  `:fgm` is summed from them (`sleeper/scored-stats`)."
   #{:ff :def_td :safe})
+
+(def fg-buckets
+  "The made-field-goal keys that supersede the flat `:fgm` weight.
+
+  A stat line carries `:fgm` *and* the buckets it was summed from, so a config
+  weighting both would pay for one kick twice. `player-points` lets any non-zero
+  bucket win."
+  [:fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p])
 
 (defn scores-anything?
   "True when at least one weight can actually move a player's points. An empty
@@ -121,9 +133,25 @@
   (boolean (some #(not (zero? (usable-weight %)))
                  (vals (apply dissoc scoring unprojected-stats)))))
 
-(defn player-points
-  "Σ over the scoring map of (stat weight * player's projected stat), defaulting
-  missing stats to 0."
+(defn scores-by-distance?
+  "Does this config state its field goals by distance? See `fg-buckets`."
+  [scoring]
+  (boolean (some #(not (zero? (usable-weight (get scoring %)))) fg-buckets)))
+
+(defn resolve-buckets
+  "A config with the flat `:fgm` weight removed when it states its distances.
+
+  Hoisted out of `player-points`: the answer is the config's, not a player's,
+  and `with-points` runs six hundred rows through it on every recompute."
+  [scoring]
+  (cond-> scoring (scores-by-distance? scoring) (dissoc :fgm)))
+
+(defn resolved-points
+  "Σ over an *already resolved* config (stat weight * player's projected stat).
+
+  For a caller scoring a whole board, which resolves once with `resolve-buckets`
+  and then runs several hundred rows through this. `player-points` is the one to
+  reach for otherwise."
   [player scoring]
   (let [stats (:stats player)]
     (reduce-kv (fn [acc stat weight]
@@ -133,7 +161,14 @@
                      (+ acc (* w (usable-weight (get stats stat 0)))))))
                0.0 scoring)))
 
+(defn player-points
+  "Σ over the scoring map of (stat weight * player's projected stat), defaulting
+  missing stats to 0. Resolves the config, so a lone caller is always correct."
+  [player scoring]
+  (resolved-points player (resolve-buckets scoring)))
+
 (defn with-points
   "Return board with a :points value on each player."
   [board scoring]
-  (mapv #(assoc % :points (player-points % scoring)) board))
+  (let [scoring (resolve-buckets scoring)]
+    (mapv #(assoc % :points (resolved-points % scoring)) board)))

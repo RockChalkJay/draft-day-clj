@@ -151,10 +151,11 @@
   (when-not (and (number? season-games) (pos? season-games))
     (throw (ex-info "rest-of-season projection needs :season-games"
                     {:season-games season-games})))
-  (mapv (fn [p]
-          (let [cols (ros-for p ctx)]
-            (assoc (merge p cols)
-                   :ros-points (if cols
-                                 (scoring/player-points {:stats (:ros/stats cols)} scoring)
-                                 0.0))))
-        board))
+  (let [scoring (scoring/resolve-buckets scoring)]
+    (mapv (fn [p]
+            (let [cols (ros-for p ctx)]
+              (assoc (merge p cols)
+                     :ros-points (if cols
+                                   (scoring/resolved-points {:stats (:ros/stats cols)} scoring)
+                                   0.0))))
+          board)))

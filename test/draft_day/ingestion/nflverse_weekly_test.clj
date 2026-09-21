@@ -1,7 +1,8 @@
 (ns draft-day.ingestion.nflverse-weekly-test
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.ingestion.nflverse :as nflverse]
-            [draft-day.ingestion.nflverse-weekly :as weekly]))
+            [draft-day.ingestion.nflverse-weekly :as weekly]
+            [draft-day.scoring :as scoring]))
 
 (defn- row
   "One weekly row. Extra columns override the defaults."
@@ -60,6 +61,26 @@
     (is (= 189.0 (:rec_yd stats)))
     (is (= 3.0 (:rec_td stats)))))
 
+(deftest a-kickers-realized-field-goals-arrive-by-distance
+  ;; A league scoring by distance reads a flat `fg_made` as nothing, and
+  ;; `ros/blend` shrinks toward what it reads — so without these columns every
+  ;; kicker decays to worthless as the season runs on, silently.
+  (let [rows [(row "00-K" 1 "position" "K"
+                   "fg_made" "3" "fg_made_20_29" "1" "fg_made_40_49" "1"
+                   "fg_made_50_59" "1" "pat_made" "4" "pat_missed" "1")
+              (row "00-K" 2 "position" "K"
+                   "fg_made" "2" "fg_made_30_39" "1" "fg_made_60_" "1"
+                   "fg_missed_40_49" "1" "pat_made" "2")]
+        stats (:stats (:nflverse/season-to-date (get (acc-of rows) "00-K")))]
+    (is (= 1.0 (:fgm_20_29 stats)))
+    (is (= 1.0 (:fgm_30_39 stats)))
+    (is (= 1.0 (:fgm_40_49 stats)))
+    (is (= 2.0 (:fgm_50p stats))
+        "50-59 and 60+ are two columns and one key — the app holds no band above fifty")
+    (is (= 1.0 (:fgmiss_40_49 stats)))
+    (is (= 1.0 (:xpmiss stats)))
+    (is (= 5.0 (:fgm stats)) "the flat total still arrives for a league that scores one")))
+
 (deftest games-counts-appearances-so-a-missed-game-is-not-charged-twice
   ;; Four weeks have been played; he appeared in two. Dividing his totals by
   ;; four would depress his per-game rate by exactly the games he was never on
@@ -111,15 +132,21 @@
     (is (= 3.0 (:fgm stats)))
     (is (= 2.0 (:xpm stats)))))
 
+(def ^:private team-defense-keys
+  "Scored by a team defense, which nflverse publishes no row for at all. See
+  `weekly/stat-columns`."
+  #{:sack :int :fum_rec :ff :def_td :safe :blk_kick})
+
 (deftest the-stat-map-reaches-every-weight-a-league-can-set
   ;; Wider than `nflverse/line-columns` on purpose: that one shows a history
   ;; tile, this one scores a partial season under the league's own weights, so
   ;; a weight with no column here is a rule the in-season board cannot apply.
-  (is (every? (set (vals weekly/stat-columns))
-              [:pass_yd :pass_td :pass_int :pass_2pt
-               :rush_yd :rush_td :rush_2pt
-               :rec :rec_yd :rec_td :rec_2pt
-               :fum_lost :fgm :xpm])))
+  ;; Derived from `scoring/stat-keys` rather than listed, or the guard only ever
+  ;; covers the keys somebody remembered to add to it.
+  (let [reachable (set (vals weekly/stat-columns))]
+    (doseq [k (remove team-defense-keys scoring/stat-keys)]
+      (is (contains? reachable k)
+          (str k " is a weight the in-season board cannot apply")))))
 
 ;; ---- the failure that matters is a 200 with the wrong body ----
 
