@@ -1,7 +1,8 @@
 (ns draft-day.ingestion.nflverse-weekly-test
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.ingestion.nflverse :as nflverse]
-            [draft-day.ingestion.nflverse-weekly :as weekly]))
+            [draft-day.ingestion.nflverse-weekly :as weekly]
+            [draft-day.scoring :as scoring]))
 
 (defn- row
   "One weekly row. Extra columns override the defaults."
@@ -131,15 +132,21 @@
     (is (= 3.0 (:fgm stats)))
     (is (= 2.0 (:xpm stats)))))
 
+(def ^:private team-defense-keys
+  "Scored by a team defense, which nflverse publishes no row for at all. See
+  `weekly/stat-columns`."
+  #{:sack :int :fum_rec :ff :def_td :safe :blk_kick})
+
 (deftest the-stat-map-reaches-every-weight-a-league-can-set
   ;; Wider than `nflverse/line-columns` on purpose: that one shows a history
   ;; tile, this one scores a partial season under the league's own weights, so
   ;; a weight with no column here is a rule the in-season board cannot apply.
-  (is (every? (set (vals weekly/stat-columns))
-              [:pass_yd :pass_td :pass_int :pass_2pt
-               :rush_yd :rush_td :rush_2pt
-               :rec :rec_yd :rec_td :rec_2pt
-               :fum_lost :fgm :xpm])))
+  ;; Derived from `scoring/stat-keys` rather than listed, or the guard only ever
+  ;; covers the keys somebody remembered to add to it.
+  (let [reachable (set (vals weekly/stat-columns))]
+    (doseq [k (remove team-defense-keys scoring/stat-keys)]
+      (is (contains? reachable k)
+          (str k " is a weight the in-season board cannot apply")))))
 
 ;; ---- the failure that matters is a 200 with the wrong body ----
 

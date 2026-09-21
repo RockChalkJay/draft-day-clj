@@ -76,9 +76,10 @@
   A schema-8 file carries none, and `attach-ids` passes an anchored player
   through, so the cache has to be dropped rather than re-anchored.
 
-  10: kickers carry their field goals by distance (:fgm_40_49, :fgm_50p) and
-  their misses (:fgmiss_40_49, :fgmiss_50p, :xpmiss), since every host scores a
-  kick by how far it was kicked. A schema-9 file carries the summed :fgm alone,
+  10: kickers carry their field goals by distance (:fgm_0_19, :fgm_20_29,
+  :fgm_30_39, :fgm_40_49, :fgm_50p) and their misses (:fgmiss_40_49,
+  :fgmiss_50p, :xpmiss), since every host scores a kick by how far it was
+  kicked. A schema-9 file carries the summed :fgm alone,
   so a league stating its distances would score every kicker on extra points
   and nothing would fail to say so."
   10)
@@ -480,8 +481,14 @@
 
 (def weekly-schema-version
   "2: `:kickoffs` was added. A schema-1 file carries none, which is
-  indistinguishable from a scoreboard that failed — see `weekly-answers?`."
-  2)
+  indistinguishable from a scoreboard that failed — see `weekly-answers?`.
+
+  3: a weekly line carries its field goals by distance, since `weekly-line`
+  scores through the same `sleeper/scored-stats` the universe does. A schema-2
+  file holds the flat `:fgm` alone, and a league stating its distances drops
+  that weight — so every kicker on the waiver and matchup boards would price on
+  extra points until the TTL lapsed, which `weekly-answers?` cannot see."
+  3)
 
 (def default-weekly-cache-path
   (str "data/weekly_projections.v" weekly-schema-version ".transit"))

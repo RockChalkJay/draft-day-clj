@@ -133,8 +133,10 @@
     (is (not-any? scoring/unprojected-stats
                   [:fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p
                    :fgmiss_40_49 :fgmiss_50p :xpmiss])))
-  ;; Team defenses genuinely have none of these, so they stay.
-  (is (every? scoring/unprojected-stats [:ff :def_td :safe])))
+  ;; Pinned exactly, not by containment: a key wrongly added to this set locks a
+  ;; rule a league really scores out of the editor, and `scores-anything?` stops
+  ;; counting it, which can 400 a valid config.
+  (is (= #{:ff :def_td :safe} scoring/unprojected-stats)))
 
 (deftest a-flat-field-goal-weight-yields-to-the-buckets
   ;; `sleeper/scored-stats` publishes :fgm *and* the buckets it is summed from,

@@ -17,20 +17,19 @@
 
 (defn- canon-pos [pos] (if (= pos "DEF") "DST" pos))
 
-;; Stat keys carried into :stats for the scoring engine (skill + kicking/defense).
-;; NOT the whole payload: Sleeper also projects first downs (:rec_fd on 474 players,
-;; :rush_fd on 376, :pass_fd on 77), position reception premiums (:bonus_rec_te/_wr/_rb),
-;; :fgm_yds, :pass_int_td, :pr_td, :def_kr_td, :pts_allow_0 and
-;; :yds_allow_0_100. Dropping them is why a PPFD or TE-premium league imports lossy —
-;; see docs/scoring-coverage.md.
 (def ^:private stat-keys
+  "What is carried into `:stats` for the scoring engine, and not the whole
+  payload: first downs, the position reception premiums and every points- or
+  yards-allowed tier are dropped, which is why a PPFD or TE-premium league
+  imports lossy — see docs/scoring-coverage.md.
+
+  Both field-goal grids are here because the season and weekly lines publish
+  different ones, and each scores what it has. See `summed-fgm`."
   [:pass_yd :pass_td :pass_int :pass_2pt
    :rush_yd :rush_td :rush_2pt
    :rec :rec_yd :rec_td :rec_2pt
    :fum_lost
    :fgm :xpm
-   ;; The two lines publish different buckets, so both sets are carried and each
-   ;; line scores what it has. See `summed-fgm`.
    :fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p
    :fgmiss_40_49 :fgmiss_50p :xpmiss
    :sack :int :fum_rec :ff :def_td :safe :blk_kick])
@@ -53,8 +52,11 @@
         adp-keys))
 
 (def ^:private fgm-buckets
-  "The made-field-goal columns Sleeper publishes on a *season* line. Not the
-  whole set — there are no sub-40 buckets — so their sum is a floor."
+  "The made-field-goal columns Sleeper publishes on a *season* line.
+
+  A subset of `scoring/fg-buckets` — the season line has no sub-forty bucket —
+  so their sum is a floor. `every-season-bucket-is-a-scoring-bucket` is what
+  keeps the two from drifting apart."
   [:fgm_40_49 :fgm_50p])
 
 (defn- summed-fgm

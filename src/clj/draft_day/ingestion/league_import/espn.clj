@@ -156,12 +156,12 @@
   settings page is no report at all. Only the ids a real league actually sets
   are named; anything else falls back to its number.
 
-  The kicking labels that used to sit here named the wrong rules, and a wrong
+  Three kicking labels that used to sit here named the wrong rules, and a wrong
   name is worse than a number: a live league puts those bands on 77, 198 and
   201, and its misses on 85."
   {23  "rushing attempts"    58  "targets"
-   68  "fumbles"             201 "field goals 60+"
-   89  "points allowed 0"
+   68  "fumbles"             87  "extra points attempted"
+   201 "field goals 60+"     89  "points allowed 0"
    90  "points allowed 1-6"  91  "points allowed 7-13"
    92  "points allowed 14-17" 93 "points allowed 18-21"
    94  "points allowed 22-27" 101 "kickoff return TD"
@@ -211,6 +211,14 @@
               points
               0)))
 
+(defn stat-keys-for
+  "The app's scoring keys for one ESPN stat id, as a seq. Empty for an id the
+  app cannot score. The one place `stat-ids`' scalar-or-vector value is
+  unwrapped."
+  [id]
+  (when-let [k (stat-ids id)]
+    (if (vector? k) k [k])))
+
 (defn scoring-config
   "Pure: ESPN's scoring items -> `{stat-key weight}` over the keys the app
   scores, each weighted by `stat-weight`. One id may carry several keys — see
@@ -218,9 +226,8 @@
   [items]
   (into {}
         (mapcat (fn [{:keys [statId] :as item}]
-                  (when-let [k (stat-ids statId)]
-                    (let [w (stat-weight item)]
-                      (map (fn [k] [k w]) (if (vector? k) k [k]))))))
+                  (let [w (stat-weight item)]
+                    (map (fn [key] [key w]) (stat-keys-for statId)))))
         items))
 
 (defn dropped-overrides

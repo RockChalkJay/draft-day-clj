@@ -50,8 +50,8 @@
 (defn- imported [] (league-import/normalize-league :espn raw))
 
 (deftest every-mapped-stat-id-is-a-key-the-app-can-actually-score
-  (doseq [[id k] espn/stat-ids
-          k      (if (vector? k) k [k])]
+  (doseq [[id _] espn/stat-ids
+          k      (espn/stat-keys-for id)]
     (is (contains? (set scoring/stat-keys) k)
         (str "statId " id " maps to " k ", which no scoring config holds"))))
 

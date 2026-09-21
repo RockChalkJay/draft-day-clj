@@ -293,16 +293,18 @@
 (defn form-points
   "Points per game over `nflverse-weekly/recent-window` under the league's own
   weights, or nil before he has played inside it. Scored from the window's own
-  stats and per-game for the same reasons `ros.clj` is."
+  stats and per-game for the same reasons `ros.clj` is. Takes a config
+  `scoring/resolve-buckets` has already been over — `with-form-points` does it."
   [{:nflverse/keys [recent]} scoring]
   (let [{:keys [games stats]} recent]
     (when (and games (pos? games) (seq stats))
-      (/ (scoring/player-points {:stats stats} scoring) (double games)))))
+      (/ (scoring/resolved-points {:stats stats} scoring) (double games)))))
 
 (defn with-form-points [players scoring]
-  (mapv (fn [p]
-          (if-let [v (form-points p scoring)] (assoc p :form-points v) p))
-        players))
+  (let [scoring (scoring/resolve-buckets scoring)]
+    (mapv (fn [p]
+            (if-let [v (form-points p scoring)] (assoc p :form-points v) p))
+          players)))
 
 ;; ---- this week ----
 ;; The other half of the question `:ros-points` answers. Rest-of-season says who
@@ -316,11 +318,12 @@
   did not project this week gets no key at all rather than a zero — not playing
   and projected to do nothing are different answers."
   [players scoring]
-  (mapv (fn [p]
-          (if-let [stats (:week/stats p)]
-            (assoc p :week-points (scoring/player-points {:stats stats} scoring))
-            p))
-        players))
+  (let [scoring (scoring/resolve-buckets scoring)]
+    (mapv (fn [p]
+            (if-let [stats (:week/stats p)]
+              (assoc p :week-points (scoring/resolved-points {:stats stats} scoring))
+              p))
+          players)))
 
 ;; ---- orchestration ----
 

@@ -43,7 +43,7 @@
   one and nothing in the next.
 
   EACH WEEK'S LINE IS SPARSE, and that is transport rather than meaning. The
-  file publishes an explicit 0 in all fourteen columns for every player, so a
+  file publishes an explicit 0 in every scored column for every player, so a
   receiver carries a passing line and a kicking line; kept, the log is 1.4MB of
   mostly zeros on a response fetched once per session. A key absent from a week
   the player *appeared in* means he did none of it, and `game-log/table` reads
@@ -71,10 +71,11 @@
   board is the preseason board. Every consumer therefore has to work with these
   columns entirely absent.
 
-  There are no DST rows here at all and a kicker's only usable columns are
-  `fg_made`/`pat_made`, exactly as in `nflverse` — team defenses are a fantasy
-  construct, not an nflverse player. Deciding what that *means* for a projection
-  is `rankings.ros`'s job, not this namespace's."
+  There are no DST rows here at all — a team defense is a fantasy construct,
+  not an nflverse player. A kicker is the opposite case: his whole distance grid
+  is published, and `stat-columns` takes it, because a league scoring by
+  distance reads a flat total as nothing. Deciding what any of that *means* for
+  a projection is `rankings.ros`'s job, not this namespace's."
   (:require [clojure.tools.logging :as log]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.teams :as teams]))

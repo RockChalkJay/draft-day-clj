@@ -146,16 +146,14 @@
   [scoring]
   (cond-> scoring (scores-by-distance? scoring) (dissoc :fgm)))
 
-(defn player-points
-  "Σ over the scoring map of (stat weight * player's projected stat), defaulting
-  missing stats to 0.
+(defn resolved-points
+  "Σ over an *already resolved* config (stat weight * player's projected stat).
 
-  Resolves `:fgm` against the buckets itself, so a lone caller is correct; a
-  caller scoring a whole board should hoist `resolve-buckets` — `with-points`
-  does."
+  For a caller scoring a whole board, which resolves once with `resolve-buckets`
+  and then runs several hundred rows through this. `player-points` is the one to
+  reach for otherwise."
   [player scoring]
-  (let [scoring (resolve-buckets scoring)
-        stats (:stats player)]
+  (let [stats (:stats player)]
     (reduce-kv (fn [acc stat weight]
                  (let [w (usable-weight weight)]
                    (if (zero? w)
@@ -163,8 +161,14 @@
                      (+ acc (* w (usable-weight (get stats stat 0)))))))
                0.0 scoring)))
 
+(defn player-points
+  "Σ over the scoring map of (stat weight * player's projected stat), defaulting
+  missing stats to 0. Resolves the config, so a lone caller is always correct."
+  [player scoring]
+  (resolved-points player (resolve-buckets scoring)))
+
 (defn with-points
   "Return board with a :points value on each player."
   [board scoring]
   (let [scoring (resolve-buckets scoring)]
-    (mapv #(assoc % :points (player-points % scoring)) board)))
+    (mapv #(assoc % :points (resolved-points % scoring)) board)))

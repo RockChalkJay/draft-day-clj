@@ -170,6 +170,15 @@
                                                 (scoring/resolve-config :half-ppr))))
            1e-9))))
 
+(deftest every-season-bucket-is-a-scoring-bucket
+  ;; `summed-fgm` sums the season line's buckets into a flat `:fgm`. They differ
+  ;; from `scoring/fg-buckets` only because that line has no sub-forty column —
+  ;; a bucket outside the scoring set would sum a kick nothing prices, and a
+  ;; whole grid drifting apart is how Aubrey came out at 42 instead of 116.
+  (is (every? (set scoring/fg-buckets) @#'sleeper/fgm-buckets))
+  (is (not= (set scoring/fg-buckets) (set @#'sleeper/fgm-buckets))
+      "the day the season line gains a sub-forty bucket, this sum has to grow"))
+
 (deftest a-published-total-is-never-overruled
   ;; The weekly endpoint does send :fgm; this only ever fills a gap.
   (let [entry {:player_id "K1" :team "DAL"
