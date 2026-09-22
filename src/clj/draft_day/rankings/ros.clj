@@ -38,6 +38,21 @@
   not make him a starter; five of them do. Setting `PRIOR-GAMES` is precisely
   the choice of how loud one week is allowed to be.
 
+  A STAT NO PRESEASON LINE CARRIES looks exactly like that rookie and is not
+  him. Sleeper's season line publishes no field goal under forty
+  (`ingestion.sleeper/fgm-buckets`) while the realized line publishes every
+  bucket, so a kicker's short makes arrive with a preseason side that is
+  *silent* rather than zero — and shrinking them toward zero charges him the
+  rookie discount for a column his vendor never wrote. The rookie's zero is an
+  opinion about the player; this is the absence of any opinion at all. The two
+  are told apart by the board rather than by a hand-kept list of vendor gaps,
+  which is a list that goes stale the moment either feed adds a column: a key
+  no player anywhere is projected for takes no prior, and a key some player is
+  projected for takes the full one. `scoring/unprojected-stats` is a different
+  fact and not a substitute — it is hand-kept, and it is about every line
+  rather than the season one, which is why it excludes the field-goal buckets
+  this case turns on.
+
   WEEK ZERO IS SAFE BY CONSTRUCTION. `:through-week` and the in-season columns
   come from the same fetch (`ingestion.nflverse-weekly/fetch`), so they cannot
   disagree: if the weekly file is missing — preseason, or a failed fetch in
@@ -88,18 +103,27 @@
   `played` is the player's own game count, never weeks elapsed — see
   `nflverse-weekly/accumulate` on why dividing by weeks charges an absence
   twice. Keys are the union of both lines: a stat one side never mentions
-  contributes 0 from that side, which for a projection is what silence means."
-  [{:keys [pre realized played games-remaining season-games prior-games]}]
+  contributes 0 from that side, which for a projection is what silence means.
+
+  `projected` names the keys the preseason feed carries *for anybody*. A key
+  outside it takes no prior, there being no preseason opinion to shrink toward
+  — see the ns docstring. Omitted, every key takes the prior."
+  [{:keys [pre realized played games-remaining season-games prior-games projected]}]
   (let [played      (double (or played 0))
         prior       (double (or prior-games PRIOR-GAMES))
-        denom       (+ prior played)
         season-games (double season-games)]
-    (when (and (pos? denom) (pos? games-remaining))
+    (when (and (pos? (+ prior played)) (pos? games-remaining))
       (into {}
             (keep (fn [k]
-                    (let [pre-pg (/ (double (get pre k 0.0)) season-games)
-                          rate   (/ (+ (* prior pre-pg) (double (get realized k 0.0)))
-                                    denom)
+                    (let [prior-k (if (and projected (not (contains? projected k)))
+                                    0.0
+                                    prior)
+                          denom  (+ prior-k played)
+                          pre-pg (/ (double (get pre k 0.0)) season-games)
+                          rate   (if (pos? denom)
+                                   (/ (+ (* prior-k pre-pg) (double (get realized k 0.0)))
+                                      denom)
+                                   0.0)
                           total  (* rate games-remaining)]
                       ;; A stat neither side has anything to say about stays out
                       ;; of the line entirely rather than landing as 0.0 — the
@@ -108,7 +132,7 @@
                       (when-not (zero? total) [k total]))))
             (into (set (keys pre)) (keys realized))))))
 
-(defn ros-for
+(defn- ros-for
   "Pure: one player + context -> his rest-of-season columns, or nil when there is
   nothing left to project.
 
@@ -116,14 +140,14 @@
   is in the same Sleeper vocabulary as `:stats`, which is the whole point: every
   scoring weight, every model and every later stage reads it without translating
   between two spellings of the same stat."
-  [{:keys [stats] :as player} {:keys [through-week season-games prior-games]}]
+  [{:keys [stats] :as player} {:keys [through-week season-games prior-games projected]}]
   (let [left   (games-remaining (assoc player :through-week through-week
                                        :season-games season-games))
         played (get-in player [:nflverse/season-to-date :games] 0)
         real   (get-in player [:nflverse/season-to-date :stats] {})
         line   (blend {:pre stats :realized real :played played
                        :games-remaining left :season-games season-games
-                       :prior-games prior-games})]
+                       :prior-games prior-games :projected projected})]
     (when line
       {:ros/stats           line
        :ros/games-remaining left
@@ -141,7 +165,12 @@
   score that sorts and subtracts (`replacement/with-vorp` reads it with
   `score-key`), and nil in a sort key throws where nil in a *display* column
   merely renders a dash. The columns that would explain the number are simply
-  absent, which is what the board reads as 'nothing here'."
+  absent, which is what the board reads as 'nothing here'.
+
+  WANTS THE WHOLE UNIVERSE. Which stats the preseason feed carries is read off
+  `board` itself rather than kept as a list here, so it cannot go stale — see
+  the ns docstring. Handed a slice, every key the slice happens not to project
+  reads as a vendor gap, and the prior stops applying to players it should."
   [board scoring {:keys [season-games] :as ctx}]
   ;; `season-games` is passed in rather than known here, so `rankings` keeps no
   ;; NFL calendar of its own — `ingestion.nflverse/games-in-season` is the one
@@ -151,7 +180,9 @@
   (when-not (and (number? season-games) (pos? season-games))
     (throw (ex-info "rest-of-season projection needs :season-games"
                     {:season-games season-games})))
-  (let [scoring (scoring/resolve-buckets scoring)]
+  (let [scoring (scoring/resolve-buckets scoring)
+        ctx     (assoc ctx :projected
+                       (into #{} (mapcat (comp keys :stats)) board))]
     (mapv (fn [p]
             (let [cols (ros-for p ctx)]
               (assoc (merge p cols)
