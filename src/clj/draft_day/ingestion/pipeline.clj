@@ -16,6 +16,7 @@
             [draft-day.ingestion.merge :as merge]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
+            [draft-day.ingestion.sleeper-actual :as sleeper-actual]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.season :as season]
@@ -29,7 +30,7 @@
 
   Bump it whenever cached data would otherwise deserialize successfully with
   missing or changed fields."
-  12)
+  13)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -161,7 +162,7 @@
 (def enrichment-source-labels
   "All source labels reported by `enrich-universe`."
   (into (into [:sleeper/byes :fantasypros/sleepers :espn
-               :nflverse/player-stats :nflverse/weekly]
+               :nflverse/player-stats :nflverse/weekly :sleeper/realized]
               (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
                                  (format-label :fantasypros/aav fmt)]))
               scoring/formats)
@@ -206,7 +207,11 @@
         sleepers (:fantasypros/sleepers fetched)
         espn     (:espn fetched)
         prior    (:nflverse/player-stats fetched)
-        weekly   (:nflverse/weekly fetched)]
+        weekly   (:nflverse/weekly fetched)
+        ;; Not a peer task: it needs `through-week`, which is
+        ;; `:nflverse/weekly`'s own answer, and two sources for the week is how
+        ;; a November league comes to read an August board.
+        realized (best-effort (sleeper-actual/fetch season (:through-week weekly)))]
     (log/info (format ":sleeper/byes: %d team bye weeks" (count byes)))
     (as-> {:players (cond-> universe (seq byes) (sleeper/assoc-byes byes))
            :sources {:sleeper/byes (if (seq byes)
@@ -237,6 +242,13 @@
       (apply-enrichment acc :nflverse/weekly (:by-key weekly)
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions weekly)
+                         :expected-partial? true})
+      ;; Joined on the player's *Sleeper* id, not `:player-id`, which is the GSIS
+      ;; id wherever one resolves. Same trap and fallback as `assoc-weekly`,
+      ;; whose comment has the numbers; the fallback carries team defenses.
+      (apply-enrichment acc :sleeper/realized (:by-key realized)
+                        {:key-fn            #(or (get-in % [:ids :sleeper])
+                                                 (:player-id %))
                          :expected-partial? true})
       (assoc acc :through-week (or (:through-week weekly) 0)))))
 

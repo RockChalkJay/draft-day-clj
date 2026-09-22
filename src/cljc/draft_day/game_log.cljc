@@ -17,10 +17,16 @@
   — he was active and did nothing. For a week he did not, it is BLANK IS NOT
   ZERO rule broken in the one cell where the lie looks most like a result.
 
-  THE LINE ARRIVES SPARSE. `nflverse-weekly` drops the zeros the file publishes
-  in every column, so a stat missing from a week he appeared in means he did
-  none of it and reads back as 0 here. A week he missed has no entry at all,
-  which is what keeps the two apart.
+  THE LINE ARRIVES SPARSE. Both realized sources drop a zero, so a stat missing
+  from a week he appeared in means he did none of it and reads back as 0 here. A
+  week he missed has no entry at all, which is what keeps the two apart.
+
+  SLEEPER'S OWN LINE WHERE IT ARRIVED, nflverse's where it did not. This table
+  is the one place the app states a *realized* number of its own rather than
+  reporting the provider's, so it is the one place a manager can hold our
+  arithmetic against his league's — and the two sources count a first down and
+  a blocked kick differently. Scored from Sleeper's line under the league's own
+  rules it agrees with the league to the cent.
 
   The columns are `stat-lines/position-rows`, unchanged. The season trend table
   sits directly above this one in the same modal, and two tables describing one
@@ -45,7 +51,8 @@
   (when-let [columns (get sl/position-rows (:position player))]
     (when (and through-week (pos? through-week))
       (let [by-week (into {} (map (juxt :week identity))
-                          (:nflverse/game-log player))]
+                          (or (:realized/game-log player)
+                              (:nflverse/game-log player)))]
         {:columns columns
          :rows    (mapv #(row columns scoring (by-week %) %)
                         (range 1 (inc through-week)))}))))

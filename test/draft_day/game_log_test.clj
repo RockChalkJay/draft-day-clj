@@ -103,3 +103,29 @@
     (is (= 3 (count rows)))
     (is (every? (complement :played?) rows))
     (is (every? (comp nil? :points) rows))))
+
+;; ---- whose account of the week ----
+
+(deftest sleepers-own-line-wins-where-it-arrived
+  ;; This table is the one place the app states a realized number of its own
+  ;; rather than reporting the provider's, so it is the one place a manager can
+  ;; hold our arithmetic against his league's. The two sources disagree about a
+  ;; first down and a blocked kick, so scoring the league's own vocabulary is
+  ;; what makes the cell agree with the league.
+  (let [p (assoc nacua :realized/game-log
+                 [{:week 1 :opponent "SEA" :stats {:rec 9.0 :rec_yd 140.0
+                                                   :rec_td 1.0 :rec_40p 1.0}}])
+        rows (:rows (gl/table p 1 ppr))]
+    (is (= 1 (count rows)))
+    (is (= 9.0 (first (:values (first rows))))
+        "the Rec cell reads Sleeper's count, not nflverse's six")
+    (is (= (scoring/player-points {:stats {:rec 9.0 :rec_yd 140.0
+                                           :rec_td 1.0 :rec_40p 1.0}} ppr)
+           (:points (first rows))))))
+
+(deftest nflverse-still-answers-when-sleeper-did-not
+  ;; Best-effort, so the degradation has to be a working table rather than a
+  ;; blank one — and in August neither source has anything at all.
+  (let [rows (:rows (gl/table nacua 2 ppr))]
+    (is (= [6.0 2.0] (mapv #(first (:values %)) rows))))
+  (is (nil? (gl/table (dissoc nacua :nflverse/game-log) nil ppr))))

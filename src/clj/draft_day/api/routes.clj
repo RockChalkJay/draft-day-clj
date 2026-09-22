@@ -166,7 +166,8 @@
   (`players-handler`), and the board's static facts are read from there while
   live valuation is read from here."
   [players]
-  (mapv #(dissoc % :nflverse/history :nflverse/game-log) players))
+  (mapv #(dissoc % :nflverse/history :nflverse/game-log :realized/game-log)
+        players))
 
 (defn rankings-handler [req]
   (try
@@ -242,12 +243,16 @@
   `:nflverse/recent` joins them now that `waiver/form-points` scores it here.
   Its *sibling* `:nflverse/season-to-date` must not: GP, Tgt and Car all read
   it, which is why the two are named separately rather than the prefix dropped.
+  Both `:realized/` columns go, the season-to-date one included — it is scored
+  by `rankings.ros` and read by nothing the client draws, the GP column being
+  nflverse's to answer.
 
   `:kickoff/started?` goes too: it is a function of `:kickoff/status`, which
   ships beside it, and only the matchup board reads the boolean."
   [players]
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
-                 :nflverse/recent :kickoff/started?)
+                 :nflverse/recent :realized/recent :realized/season-to-date
+                 :kickoff/started?)
         players))
 
 (defn waivers-handler

@@ -164,3 +164,23 @@
   ;; rather than NPE somewhere downstream.
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"season-games"
                         (ros/with-ros [(player :pre {:rec 1.0})] ppr {:through-week 3}))))
+
+(deftest sleepers-own-realized-line-wins-over-nflverses
+  ;; Never a mix of the two: they count a first down and a blocked kick
+  ;; differently, so a player blended from both would be scored in neither
+  ;; vocabulary. Sleeper's is preferred because it is the one the standings are
+  ;; kept in, and the only one with a team defense in it.
+  (let [both (-> (player :pre {:rec 17.0})
+                 (assoc :nflverse/season-to-date {:games 8 :stats {:rec 20.0}}
+                        :realized/season-to-date {:games 8 :stats {:rec 40.0}}))
+        p    (first (ros/with-ros (alongside-a-projected-peer both) ppr (ctx 8)))
+        rate (/ (get-in p [:ros/stats :rec]) (:ros/games-remaining p))]
+    ;; (6*1.0 + 40) / (6+8) = 3.286 — Sleeper's forty, not nflverse's twenty.
+    (is (< 3.28 rate 3.29))
+    (is (= 8 (:ros/games-played p))))
+  (testing "and nflverse answers where Sleeper did not"
+    (let [p (first (ros/with-ros
+                    (alongside-a-projected-peer
+                     (player :pre {:rec 17.0} :played 8 :realized {:rec 40.0}))
+                    ppr (ctx 8)))]
+      (is (< 3.28 (/ (get-in p [:ros/stats :rec]) (:ros/games-remaining p)) 3.29)))))

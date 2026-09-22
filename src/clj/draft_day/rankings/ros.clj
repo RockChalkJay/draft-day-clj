@@ -143,8 +143,16 @@
   [{:keys [stats] :as player} {:keys [through-week season-games prior-games projected]}]
   (let [left   (games-remaining (assoc player :through-week through-week
                                        :season-games season-games))
-        played (get-in player [:nflverse/season-to-date :games] 0)
-        real   (get-in player [:nflverse/season-to-date :stats] {})
+        ;; Sleeper's own realized line where it arrived, nflverse's where it
+        ;; did not. One or the other and never a mix of both: the two count a
+        ;; first down and a blocked kick differently, so a player scored half
+        ;; from each would be scored in neither vocabulary. Sleeper's is
+        ;; preferred because it is the one the league's standings are kept in —
+        ;; and it is the only one with a team defense in it at all.
+        realized (or (:realized/season-to-date player)
+                     (:nflverse/season-to-date player))
+        played (get realized :games 0)
+        real   (get realized :stats {})
         line   (blend {:pre stats :realized real :played played
                        :games-remaining left :season-games season-games
                        :prior-games prior-games :projected projected})]
