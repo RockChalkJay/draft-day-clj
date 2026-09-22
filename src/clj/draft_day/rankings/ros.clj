@@ -48,7 +48,10 @@
   are told apart by the board rather than by a hand-kept list of vendor gaps,
   which is a list that goes stale the moment either feed adds a column: a key
   no player anywhere is projected for takes no prior, and a key some player is
-  projected for takes the full one.
+  projected for takes the full one. `scoring/unprojected-stats` is a different
+  fact and not a substitute — it is hand-kept, and it is about every line
+  rather than the season one, which is why it excludes the field-goal buckets
+  this case turns on.
 
   WEEK ZERO IS SAFE BY CONSTRUCTION. `:through-week` and the in-season columns
   come from the same fetch (`ingestion.nflverse-weekly/fetch`), so they cannot
@@ -129,7 +132,7 @@
                       (when-not (zero? total) [k total]))))
             (into (set (keys pre)) (keys realized))))))
 
-(defn ros-for
+(defn- ros-for
   "Pure: one player + context -> his rest-of-season columns, or nil when there is
   nothing left to project.
 

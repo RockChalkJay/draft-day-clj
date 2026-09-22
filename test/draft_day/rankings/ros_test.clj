@@ -22,7 +22,10 @@
 
   `with-ros` reads which stats the preseason feed carries off the board it is
   given, so on a board of one a player's own silence is indistinguishable from
-  his vendor's and he takes no prior at all. Every real universe has the peer."
+  his vendor's and he takes no prior at all. Every real universe has the peer.
+
+  He projects the rushing and receiving keys this suite blends; a test reaching
+  for a passing or kicking stat wants him widened rather than reused."
   [p]
   [p (assoc (player :pre {:rush_yd 900.0 :rush_td 8.0 :rec 60.0 :rec_yd 700.0})
             :player-id "peer")])
