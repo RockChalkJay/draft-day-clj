@@ -87,8 +87,15 @@
   season line publishes — the reception-length buckets, first downs, completions
   and a thrown pick-six. A schema-10 file has none of them, and a league that
   scores a 40-yard catch or a first down would price its receivers as though it
-  did not."
-  11)
+  did not.
+
+  12: `:stats` is the season line completed from the week-one line, so it
+  carries the keys only the weekly horizon publishes — a defense's tier, a
+  safety, a forced fumble, a long touchdown. A schema-11 file holds the sparse
+  line, which is not merely narrower but tilted: the buckets the season line
+  does publish are receiving ones, so receivers and tight ends read high
+  against quarterbacks and defenses, and VORP compares those directly."
+  12)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")

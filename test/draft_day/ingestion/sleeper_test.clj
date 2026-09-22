@@ -37,6 +37,79 @@
              (:vendor/by-format bijan))))
     (is (= "DST" (:position (by-id "ARI"))))))             ; DEF -> DST
 
+(deftest the-sparse-season-line-is-completed-from-the-weekly-one
+  ;; A defense is the case that matters: the season line projects it no
+  ;; points-allowed bucket, no safety and no forced fumble at all, while the
+  ;; weekly line projects all three. Left sparse, widening the vocabulary lifts
+  ;; receivers — whose buckets the season line does carry — and leaves defenses
+  ;; and quarterbacks flat, which replacement and VORP read as a real gap.
+  (let [season {:player_id "ARI" :team "ARI"
+                :player {:first_name "Arizona" :last_name "Cardinals" :position "DEF"}
+                :stats {:sack 40.0 :int 12.0 :pts_ppr 120.0}}
+        weekly {:sack 2.5 :int 0.75 :ff 0.8 :safe 0.1 :pts_allow_21_27 1.0
+                :pts_ppr 8.0}
+        p (sleeper/normalize-entry season weekly)
+        games (/ 120.0 8.0)]
+    (is (= 15.0 games))
+    (is (= 40.0 (get-in p [:stats :sack]))
+        "a key the season line states is never overwritten")
+    (is (= 12.0 (get-in p [:stats :int])))
+    (is (< 11.9 (get-in p [:stats :ff]) 12.1) "0.8 a week over fifteen games")
+    (is (< 14.9 (get-in p [:stats :pts_allow_21_27]) 15.1)
+        "a bucket Sleeper one-hots reads as the weeks it expects to land there")
+    (is (nil? (get-in p [:stats :pts_ppr])) "still not a scoring key")))
+
+(deftest a-made-field-goal-is-never-filled-from-the-weekly-line
+  ;; The two horizons disagree about this grid rather than covering different
+  ;; parts of it: Aubrey's season line carries nine makes from 40-49, eight from
+  ;; 50+ and nothing under forty, and his weekly line carries every band under
+  ;; fifty and no 50+ at all. Filled, he read as thirty-one makes against the
+  ;; seventeen the season line states and scored 160 against Sleeper's own 116 —
+  ;; where the sparse line scores 118. `summed-fgm` already reconciles the grid.
+  (let [season {:player_id "K1" :team "DAL"
+                :player {:first_name "Brandon" :last_name "Aubrey" :position "K"}
+                :stats {:fgm_40_49 9.0 :fgm_50p 8.0 :xpm 42.0 :pts_ppr 116.0}}
+        weekly {:fgm 2.09 :fgm_20_29 0.36 :fgm_30_39 0.46 :fgm_40_49 0.46
+                :fgmiss_30_39 0.1 :pts_ppr 6.8}
+        st (:stats (sleeper/normalize-entry season weekly))]
+    (is (= 9.0 (:fgm_40_49 st)) "the season line's own band is untouched")
+    (is (= 8.0 (:fgm_50p st)))
+    (is (nil? (:fgm_20_29 st)) "and no band is invented from the weekly line")
+    (is (nil? (:fgm_30_39 st)))
+    (is (= 17.0 (:fgm st)) "still the summed floor, not the weekly rate")
+    (is (some? (:fgmiss_30_39 st))
+        "a miss is not exempt — the season line simply does not project it")))
+
+(deftest a-player-with-no-weekly-line-keeps-the-season-line-alone
+  ;; Sleeper projects a fraction of the universe in any one week, so this is
+  ;; most of the board and it must not change.
+  (let [with    (sleeper/normalize-entry (first sample-entries) nil)
+        without (sleeper/normalize-entry (first sample-entries))]
+    (is (= (:stats with) (:stats without)))
+    (is (= 1372.0 (get-in with [:stats :rush_yd])))))
+
+(deftest one-week-is-never-stretched-past-a-season
+  ;; The two horizons disagree hard about a marginal player, and an unclamped
+  ;; ratio reached thirty on the live line — which would have tripled a bonus
+  ;; key rather than filling it.
+  (is (= 17.0 (sleeper/implied-games {:pts_ppr 300.0} {:pts_ppr 1.0})))
+  (is (= 15.0 (sleeper/implied-games {:pts_ppr 120.0} {:pts_ppr 8.0})))
+  (is (nil? (sleeper/implied-games {:pts_ppr 120.0} {:pts_ppr 0.0}))
+      "a week projected at nothing says nothing about a season")
+  (is (nil? (sleeper/implied-games {:pts_ppr 120.0} nil)))
+  (is (nil? (sleeper/implied-games {} {:pts_ppr 8.0}))))
+
+(deftest a-completed-line-cannot-lose-a-stat-it-had
+  ;; The merge runs the other way round from the obvious one: the season line
+  ;; wins every key it states, and the weekly line only fills silence.
+  (let [season {:rush_yd 1000.0 :rec 50.0}
+        weekly {:rush_yd 99.0 :rec 9.0 :rush_40p 0.5}]
+    (is (= {:rush_yd 1000.0 :rec 50.0 :rush_40p 5.0}
+           (sleeper/complete-season-line season weekly 10.0))))
+  (is (= {:rush_yd 1000.0}
+         (sleeper/complete-season-line {:rush_yd 1000.0} {:rush_40p 0.5} nil))
+      "no games, no fill"))
+
 (deftest adp-sentinel-999-becomes-nil
   (let [entry {:player_id "p" :team "X"
                :player {:first_name "A" :last_name "B" :position "WR"}
