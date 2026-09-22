@@ -65,8 +65,14 @@
   11: a scoring config states its field goals by distance — `:fgm_0_19` through
   `:fgm_50p`, plus `:fgmiss_40_49`, `:fgmiss_50p` and `:xpmiss`. Every host
   scores a kick by how far it was kicked, and one flat `:fgm` weight could hold
-  none of it."
-  11)
+  none of it.
+
+  12: a scoring config states every rule a host exposes, not the twenty-nine a
+  preset prices — the yardage and long-play bonuses, the missed-kick distances,
+  and a defense's points- and yards-allowed buckets. A stored config written at
+  11 holds none of those keys, so an imported league would read back as one
+  whose rules were mostly zero and price its whole board that way."
+  12)
 
 (def drafts-key "draft-day-drafts")
 

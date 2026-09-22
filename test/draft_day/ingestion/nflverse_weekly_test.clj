@@ -137,16 +137,21 @@
   `weekly/stat-columns`."
   #{:sack :int :fum_rec :ff :def_td :safe :blk_kick})
 
-(deftest the-stat-map-reaches-every-weight-a-league-can-set
-  ;; Wider than `nflverse/line-columns` on purpose: that one shows a history
-  ;; tile, this one scores a partial season under the league's own weights, so
-  ;; a weight with no column here is a rule the in-season board cannot apply.
-  ;; Derived from `scoring/stat-keys` rather than listed, or the guard only ever
-  ;; covers the keys somebody remembered to add to it.
-  (let [reachable (set (vals weekly/stat-columns))]
-    (doseq [k (remove team-defense-keys scoring/stat-keys)]
-      (is (contains? reachable k)
-          (str k " is a weight the in-season board cannot apply")))))
+(deftest the-stat-map-only-speaks-keys-the-engine-knows
+  ;; The direction that still holds now the vocabulary is wider than this file:
+  ;; a column mapped to a key `scoring` does not have is a column nothing will
+  ;; ever read, and nothing else would fail.
+  (doseq [k (vals weekly/stat-columns)]
+    (is (contains? (set scoring/stat-keys) k)
+        (str k " is not a scoring key, so no weight can reach it"))))
+
+(deftest a-column-that-means-something-else-is-not-mapped
+  ;; Each of these was measured against Sleeper's own line and disagreed — see
+  ;; `columns-that-disagree`. The names are close enough that the mapping looks
+  ;; right, which is the whole reason to assert it.
+  (doseq [c weekly/columns-that-disagree]
+    (is (not (contains? weekly/stat-columns c))
+        (str c " does not mean what Sleeper means by the key it resembles"))))
 
 ;; ---- the failure that matters is a 200 with the wrong body ----
 

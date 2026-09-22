@@ -131,7 +131,32 @@
    "fg_missed_40_49"           :fgmiss_40_49
    "fg_missed_50_59"           :fgmiss_50p
    "fg_missed_60_"             :fgmiss_50p
-   "pat_missed"                :xpmiss})
+   "pat_missed"                :xpmiss
+   ;; Checked against Sleeper's own weekly line for 2026 weeks 1-3 before being
+   ;; mapped, because a column that merely sounds right prices a rule nobody
+   ;; set: these four agreed on every player-week either side reported.
+   "completions"               :pass_cmp
+   "fumbles_total"             :fum
+   "passing_40"                :pass_cmp_40p
+   "rushing_40"                :rush_40p
+   "receiving_40"              :rec_40p})
+
+(def columns-that-disagree
+  "nflverse columns naming a stat this app scores that do not mean the same
+  thing by it, kept so nobody maps one on the strength of its name.
+
+  Checked against Sleeper's own 2026 weeks 1-3. The first downs differ on a
+  quarter to three quarters of the player-weeks either side reports, nflverse
+  reading higher every time — and a first down is the rule
+  `docs/scoring-coverage.md` calls the one worth closing, so the pull toward
+  mapping them is real and they would still have been wrong.
+
+  A blocked kick is the second: Sleeper counts one as a miss and nflverse files
+  it under `fg_blocked`, so `fg_missed` and every `fg_missed_*` bucket reads
+  low by exactly the blocks (`fg_missed + fg_blocked` matched `fgmiss` on both
+  cases in the sample). The made buckets agreed on every kick."
+  #{"passing_first_downs" "rushing_first_downs" "receiving_first_downs"
+    "fg_missed" "fg_missed_0_19" "fg_missed_20_29" "fg_missed_30_39"})
 
 (def usage-columns
   "Opportunity columns carried alongside the scored line, for the trend signal.

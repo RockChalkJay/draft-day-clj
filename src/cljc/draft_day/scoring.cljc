@@ -14,20 +14,59 @@
   picked Custom before it landed got a nil scoring config and a Settings page
   that threw. One definition, both sides, no fetch.")
 
+(def ^:private stated-only
+  "Stat keys a league may put a weight on that no preset prices.
+
+  A preset is a named format, not an opinion about every rule a host exposes,
+  so all of these sit at 0.0 and the three presets stay byte-identical for a
+  league that plays one. They are here because `stat-keys` is what a league
+  import is allowed to keep: a rule with no key is dropped, and a config that
+  looks complete and scores differently from the league it came from is the
+  failure this vocabulary exists to prevent. Sleeper states a tier or a bonus
+  as a *stat* — `pts_allow_7_13` arrives as 1.0 in the week it happened — so a
+  flat weighted sum expresses them exactly, and none of them needs a shape the
+  model does not already have."
+  [;; passing
+   :pass_cmp :pass_fd :pass_cmp_40p :pass_td_40p :pass_td_50p :pass_int_td
+   :bonus_pass_cmp_25 :bonus_pass_yd_300 :bonus_pass_yd_400
+   ;; rushing
+   :rush_fd :rush_40p :rush_td_40p :rush_td_50p
+   :bonus_rush_att_20 :bonus_rush_yd_100 :bonus_rush_yd_200
+   ;; receiving
+   :rec_fd :rec_20_29 :rec_30_39 :rec_40p :rec_td_40p :rec_td_50p
+   :bonus_rec_yd_100 :bonus_rec_yd_200
+   ;; from scrimmage, rushing and receiving together
+   :bonus_rush_rec_yd_100 :bonus_rush_rec_yd_200
+   ;; `:fum` is every fumble, where `:fum_lost` is only the ones that turned over
+   :fum :fum_rec_td
+   ;; the misses the presets do not already price, by distance
+   :fgmiss :fgmiss_0_19 :fgmiss_20_29 :fgmiss_30_39
+   ;; a defense's points and yards allowed, one bucket per game
+   :pts_allow_0 :pts_allow_1_6 :pts_allow_7_13 :pts_allow_14_20
+   :pts_allow_21_27 :pts_allow_28_34 :pts_allow_35p
+   :yds_allow_0_100 :yds_allow_100_199 :yds_allow_200_299 :yds_allow_300_349
+   :yds_allow_350_399 :yds_allow_400_449 :yds_allow_450_499 :yds_allow_500_549
+   :yds_allow_550p
+   ;; special teams, and the defense's own share of them
+   :def_2pt :def_3_and_out :def_4_and_stop :def_kr_yd :def_pr_yd
+   :def_st_ff :def_st_fum_rec :def_st_td :st_ff :st_fum_rec :st_td])
+
 (defn- preset [reception-pts]
-  {:pass_yd 0.04 :pass_td 4.0 :pass_int -2.0 :pass_2pt 0.0
-   :rush_yd 0.1 :rush_td 6.0 :rush_2pt 0.0
-   :rec reception-pts :rec_yd 0.1 :rec_td 6.0 :rec_2pt 0.0
-   :fum_lost -2.0
-   ;; Every host scores a field goal by how far it was kicked, so the
-   ;; near-universal 3/4/5 grid is what a preset means by "field goals".
-   :fgm 3.0 :fgm_0_19 3.0 :fgm_20_29 3.0 :fgm_30_39 3.0
-   :fgm_40_49 4.0 :fgm_50p 5.0
-   ;; A miss costs nothing unless a league says otherwise.
-   :fgmiss_40_49 0.0 :fgmiss_50p 0.0 :xpmiss 0.0
-   :xpm 1.0 :blk_kick 0.0
-   ;; team defense (linear stats only)
-   :sack 1.0 :int 2.0 :fum_rec 2.0 :ff 1.0 :def_td 6.0 :safe 2.0})
+  (merge
+   (zipmap stated-only (repeat 0.0))
+   {:pass_yd 0.04 :pass_td 4.0 :pass_int -2.0 :pass_2pt 0.0
+    :rush_yd 0.1 :rush_td 6.0 :rush_2pt 0.0
+    :rec reception-pts :rec_yd 0.1 :rec_td 6.0 :rec_2pt 0.0
+    :fum_lost -2.0
+    ;; Every host scores a field goal by how far it was kicked, so the
+    ;; near-universal 3/4/5 grid is what a preset means by "field goals".
+    :fgm 3.0 :fgm_0_19 3.0 :fgm_20_29 3.0 :fgm_30_39 3.0
+    :fgm_40_49 4.0 :fgm_50p 5.0
+    ;; A miss costs nothing unless a league says otherwise.
+    :fgmiss_40_49 0.0 :fgmiss_50p 0.0 :xpmiss 0.0
+    :xpm 1.0 :blk_kick 0.0
+    ;; team defense (linear stats only)
+    :sack 1.0 :int 2.0 :fum_rec 2.0 :ff 1.0 :def_td 6.0 :safe 2.0}))
 
 (def presets
   {:standard (preset 0.0)
@@ -101,17 +140,42 @@
           (< rec ppr-cutoff)      :half-ppr
           :else                   :ppr)))
 
-(def unprojected-stats
-  "Stat keys we score but that Sleeper's projections never carry: team defenses
-  are projected for sacks, interceptions and fumble recoveries but not forced
-  fumbles, defensive touchdowns or safeties. A weight on these cannot move any
-  player's points, so the editor shows them but will not pretend they are
-  editable.
+(def ^:private season-projected
+  "The keys of `stated-only` Sleeper's *season* projection carries, and so the
+  only ones of it that can move the draft board.
 
-  No field-goal key is here. Each bucket is projected on one line or the other —
-  the weekly carries every make under fifty, the season the two over forty — and
-  `:fgm` is summed from them (`sleeper/scored-stats`)."
-  #{:ff :def_td :safe})
+  `:yds_allow_0_100` is deliberately absent though the season line does send
+  it: it sends 1.0 for all thirty-two defenses, which is a placeholder and not
+  a projection — see `ingestion.sleeper/season-only-noise`."
+  #{:pass_cmp :pass_fd :pass_int_td :rush_fd
+    :rec_fd :rec_20_29 :rec_30_39 :rec_40p})
+
+(def unprojected-stats
+  "Stat keys Sleeper's *season* line does not carry, so no weight on one can
+  move the draft board. The editor shows them and will not pretend they are
+  editable there, and `scores-anything?` does not read them as evidence of a
+  real league — zeroing every weight a manager can reach has to leave nothing
+  standing, or the all-zero board that check exists to catch gets through.
+
+  Unprojected is not unscoreable. `weekly-live-stats` is the part of this set
+  the weekly line does carry, and it moves Week, rest-of-season and the waiver
+  board. No field-goal *make* is here: each bucket is projected on one line or
+  the other, and `:fgm` is summed from them (`sleeper/scored-stats`)."
+  (into #{:ff :def_td :safe} (remove season-projected) stated-only))
+
+(def weekly-live-stats
+  "The part of `unprojected-stats` Sleeper's weekly line does carry.
+
+  A weight on one of these is dead on the draft board and live everywhere the
+  season is under way, which is a different sentence from the one the editor
+  says about a key nothing carries at all. Team defenses are the reason the
+  distinction is worth keeping: the weekly line projects a forced fumble, a
+  defensive touchdown, a safety and which points- and yards-allowed bucket a
+  defense lands in, and the season line projects none of it."
+  #{:ff :def_td :safe
+    :pass_cmp_40p :rush_40p :fum :fgmiss_30_39 :st_td :def_kr_yd :def_pr_yd
+    :pts_allow_14_20 :pts_allow_21_27 :pts_allow_28_34
+    :yds_allow_200_299 :yds_allow_300_349 :yds_allow_350_399})
 
 (def fg-buckets
   "The made-field-goal keys that supersede the flat `:fgm` weight.

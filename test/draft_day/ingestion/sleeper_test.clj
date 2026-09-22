@@ -93,7 +93,8 @@
   [{:player_id "9509" :team "ATL" :opponent "TB" :week 1 :updated_at 1788755441199
     :player {:first_name "Bijan" :last_name "Robinson" :position "RB"}
     :stats {:rush_yd 81.0 :rush_td 0.6 :rec 3.8 :rec_yd 32.0 :pts_ppr 18.4
-            :rec_fd 2.1}}                                  ; rec_fd is not scored
+            :rec_fd 2.1                                    ; scored
+            :rec_tgt 5.2}}                                 ; a usage column, not a rule
    {:player_id "4034" :team "GB" :opponent nil :week 1
     :player {:first_name "Bye" :last_name "Guy" :position "RB"}
     :stats {:gp 0.0}}                                      ; no pts_ppr -> excluded
@@ -107,7 +108,10 @@
     ;; pts_ppr gates but is never carried — points come from :stats under the
     ;; league's own weights, exactly as the season line does.
     (is (nil? (get-in by-id ["9509" :stats :pts_ppr])))
-    (is (nil? (get-in by-id ["9509" :stats :rec_fd])))))
+    (is (= 2.1 (get-in by-id ["9509" :stats :rec_fd]))
+        "a rule the league can state is carried, whether or not it prices it")
+    (is (nil? (get-in by-id ["9509" :stats :rec_tgt]))
+        "a column no scoring rule names stays out of the line")))
 
 (deftest weekly-carries-opponent-and-side
   (let [by-id (sleeper/weekly-by-id sample-weekly #{"ATL"})]
