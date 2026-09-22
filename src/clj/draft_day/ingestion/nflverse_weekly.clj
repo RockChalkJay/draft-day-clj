@@ -141,20 +141,24 @@
    "rushing_40"                :rush_40p
    "receiving_40"              :rec_40p})
 
-(def columns-that-disagree
-  "nflverse columns naming a stat this app scores that do not mean the same
-  thing by it, kept so nobody maps one on the strength of its name.
+(def refused-columns
+  "Columns this file will not map, though each names a stat the app scores.
 
-  Checked against Sleeper's own 2026 weeks 1-3. The first downs differ on a
-  quarter to three quarters of the player-weeks either side reports, nflverse
-  reading higher every time — and a first down is the rule
-  `docs/scoring-coverage.md` calls the one worth closing, so the pull toward
-  mapping them is real and they would still have been wrong.
+  Measured against Sleeper's own 2026 weeks 1-3 before being refused, because
+  the names are close enough that mapping them looks obviously right. The first
+  downs read higher than Sleeper's on a quarter to three quarters of the
+  player-weeks either side reports — and a first down is the rule
+  `docs/scoring-coverage.md` calls the one worth closing, so the pull is real.
+  `fg_missed` reads lower: nflverse files a blocked kick under `fg_blocked`
+  where Sleeper counts it a miss, and `fg_missed + fg_blocked` matched `fgmiss`
+  on both cases in the sample.
 
-  A blocked kick is the second: Sleeper counts one as a miss and nflverse files
-  it under `fg_blocked`, so `fg_missed` and every `fg_missed_*` bucket reads
-  low by exactly the blocks (`fg_missed + fg_blocked` matched `fgmiss` on both
-  cases in the sample). The made buckets agreed on every kick."
+  That blocked kick also reaches `fg_missed_40_49` and the two bands above,
+  which `stat-columns` does map and which therefore read low by exactly the
+  blocks. Those stay: charging a league's miss rule short beats not charging it
+  at all, which is what unmapping would do. The sub-forty bands are refused
+  instead of mapped only because nothing maps them today, so refusing them
+  adds no wrongness where there is none yet."
   #{"passing_first_downs" "rushing_first_downs" "receiving_first_downs"
     "fg_missed" "fg_missed_0_19" "fg_missed_20_29" "fg_missed_30_39"})
 
