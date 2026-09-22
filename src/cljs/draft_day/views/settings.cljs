@@ -355,10 +355,28 @@
 (defn- priced-here?
   "Does the league put a weight on anything in `stats`? What decides whether a
   disclosure opens on arrival: a manager whose league really does score the
-  points-allowed tiers should find them open rather than go looking."
+  points-allowed tiers should find them open rather than go looking.
+
+  `usable-weight` and not a bare `zero?` — a cleared input box sends NaN, which
+  `JSON.stringify` writes as null, and reading either as a priced rule would
+  pop a disclosure open mid-keystroke. Same hazard that function exists for."
   [weights stats]
   (boolean (some (fn [[k _]] (not (zero? (scoring/usable-weight (get weights k 0)))))
                  stats)))
+
+(defn- disclosed-fields
+  "One group's `:more` weights behind a disclosure.
+
+  `:open` is seeded once per group rather than recomputed, because it is a
+  *controlled* attribute: read from the live weights it would flip back to false
+  the moment a manager cleared a rule he had just typed, closing the section
+  under his cursor. Opening on arrival is a mount-time question, so `with-let`
+  answers it once and the DOM owns the toggle from then on."
+  [weights read-only? label stats]
+  (r/with-let [open? (priced-here? weights stats)]
+    [:details.scoring-more {:open open?}
+     [:summary label]
+     [scoring-fields weights read-only? stats]]))
 
 (defn- custom-scoring-editor
   "The weight grid. `:stats` is always drawn; `:more` sits behind a disclosure,
@@ -372,9 +390,8 @@
            [:h4 group]
            (when (seq stats) [scoring-fields weights read-only? stats])
            (when (seq more)
-             [:details.scoring-more {:open (priced-here? weights more)}
-              [:summary (if (seq stats) "More rules" group)]
-              [scoring-fields weights read-only? more]])])
+             [disclosed-fields weights read-only?
+              (if (seq stats) "More rules" group) more])])
         db/scoring-catalog)])
 
 (defn- chips [rules]
@@ -395,7 +412,7 @@
   could hold one and simply had no key for it."
   []
   (let [{:keys [unsupported]} @(rf/subscribe [:active-league-rules])
-        weights   (scoring/resolve-config (:scoring @(rf/subscribe [:config])))
+        weights   (scoring/resolve-config @(rf/subscribe [:active-league-scoring]))
         unprojected (sort (keep (fn [[k w]]
                                   (when (and (contains? scoring/unprojected-stats k)
                                              (not (zero? (scoring/usable-weight w))))

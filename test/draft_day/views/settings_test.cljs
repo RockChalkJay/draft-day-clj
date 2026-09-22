@@ -239,17 +239,25 @@
 (deftest an-import-report-speaks-only-for-its-own-league
   ;; A badge that kept League A's dropped rules on screen under League B would
   ;; be a claim about B.
+  ;; Both halves, and they are read from different places: the dropped rules
+  ;; off the league's `:rules` and the unprojected ones off its own `:config`.
+  ;; A report is a claim about one league, so neither half may outlive it.
   (swap! rdb/app-db assoc
          :active-league "sleeper:1"
-         :leagues {"sleeper:1" {:rules {:status :imported :unsupported ["fg_50p"]}}
-                   "espn:9"    {:rules {:status :imported :unsupported []}}})
+         :leagues {"sleeper:1" {:rules {:status :imported :unsupported ["bonus_rec_te"]}
+                                :config {:scoring {:rec 1.0 :pts_allow_0 10.0}}}
+                   "espn:9"    {:rules {:status :imported :unsupported []}
+                                :config {:scoring {:rec 1.0}}}})
   (rf/clear-subscription-cache!)
   (is (re-find #"nav-badge" (render settings/settings-nav)))
-  (is (re-find #"rule-chip" (render settings/import-warning)))
+  (let [html (render settings/import-warning)]
+    (is (re-find #"bonus_rec_te" html))
+    (is (re-find #"pts_allow_0" html) "and the half read off the config"))
   (swap! rdb/app-db assoc :active-league "espn:9")
   (rf/clear-subscription-cache!)
   (is (not (re-find #"nav-badge" (render settings/settings-nav))))
-  (is (nil? (settings/import-warning))))
+  (is (nil? (settings/import-warning))
+      "neither half survives the switch"))
 
 (deftest a-connected-league-s-scoring-is-shown-not-edited
   ;; Its rules are its import's: an edit would be lost to the next Re-sync, and
