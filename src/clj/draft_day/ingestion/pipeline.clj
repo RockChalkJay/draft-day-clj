@@ -2,13 +2,13 @@
   "Resolve the player universe with a TTL disk cache and a fallout chain, mirroring
   the POC: offline-sample -> fresh-cache -> live -> stale-cache -> bundled-sample.
   The cache is Transit on disk, its name carrying `schema-version` so an old file
-  is never found rather than read back short a column (data/players_cache.v9.transit
+  is never found rather than read back short a column (data/players_cache.v10.transit
   today); the bundled sample is EDN on the classpath (resources/sample_players.edn).
 
   Every branch returns the same envelope, so a caller can always tell what it is
   looking at:
 
-    {:schema-version 9
+    {:schema-version 10
      :season         2026        ; the NFL season the rows were fetched for
      :fetched-at     \"...Z\"      ; when, nil for the committed sample
      :source         \"live\"      ; which rung of the fallout chain answered
@@ -74,8 +74,15 @@
 
   9: :bio was added — draft capital and a birth year, off the pinned snapshot.
   A schema-8 file carries none, and `attach-ids` passes an anchored player
-  through, so the cache has to be dropped rather than re-anchored."
-  9)
+  through, so the cache has to be dropped rather than re-anchored.
+
+  10: kickers carry their field goals by distance (:fgm_0_19, :fgm_20_29,
+  :fgm_30_39, :fgm_40_49, :fgm_50p) and their misses (:fgmiss_40_49,
+  :fgmiss_50p, :xpmiss), since every host scores a kick by how far it was
+  kicked. A schema-9 file carries the summed :fgm alone,
+  so a league stating its distances would score every kicker on extra points
+  and nothing would fail to say so."
+  10)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -474,8 +481,14 @@
 
 (def weekly-schema-version
   "2: `:kickoffs` was added. A schema-1 file carries none, which is
-  indistinguishable from a scoreboard that failed — see `weekly-answers?`."
-  2)
+  indistinguishable from a scoreboard that failed — see `weekly-answers?`.
+
+  3: a weekly line carries its field goals by distance, since `weekly-line`
+  scores through the same `sleeper/scored-stats` the universe does. A schema-2
+  file holds the flat `:fgm` alone, and a league stating its distances drops
+  that weight — so every kicker on the waiver and matchup boards would price on
+  extra points until the TTL lapsed, which `weekly-answers?` cannot see."
+  3)
 
 (def default-weekly-cache-path
   (str "data/weekly_projections.v" weekly-schema-version ".transit"))

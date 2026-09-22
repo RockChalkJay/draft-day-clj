@@ -43,7 +43,7 @@
   one and nothing in the next.
 
   EACH WEEK'S LINE IS SPARSE, and that is transport rather than meaning. The
-  file publishes an explicit 0 in all fourteen columns for every player, so a
+  file publishes an explicit 0 in every scored column for every player, so a
   receiver carries a passing line and a kicking line; kept, the log is 1.4MB of
   mostly zeros on a response fetched once per session. A key absent from a week
   the player *appeared in* means he did none of it, and `game-log/table` reads
@@ -71,10 +71,11 @@
   board is the preseason board. Every consumer therefore has to work with these
   columns entirely absent.
 
-  There are no DST rows here at all and a kicker's only usable columns are
-  `fg_made`/`pat_made`, exactly as in `nflverse` — team defenses are a fantasy
-  construct, not an nflverse player. Deciding what that *means* for a projection
-  is `rankings.ros`'s job, not this namespace's."
+  There are no DST rows here at all — a team defense is a fantasy construct,
+  not an nflverse player. A kicker is the opposite case: his whole distance grid
+  is published, and `stat-columns` takes it, because a league scoring by
+  distance reads a flat total as nothing. Deciding what any of that *means* for
+  a projection is `rankings.ros`'s job, not this namespace's."
   (:require [clojure.tools.logging :as log]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.teams :as teams]))
@@ -115,7 +116,22 @@
    "receiving_2pt_conversions" :rec_2pt
    "fumbles_lost_total"        :fum_lost
    "fg_made"                   :fgm
-   "pat_made"                  :xpm})
+   "pat_made"                  :xpm
+   ;; The same distance grid the projections use, or a league scoring by
+   ;; distance reads every realized kick as zero — and `ros/blend` shrinks
+   ;; toward that, so kickers decay to nothing as the season runs on.
+   "fg_made_0_19"              :fgm_0_19
+   "fg_made_20_29"             :fgm_20_29
+   "fg_made_30_39"             :fgm_30_39
+   "fg_made_40_49"             :fgm_40_49
+   ;; Two columns, one key: `add-stats` sums them, and the app holds no band
+   ;; above fifty.
+   "fg_made_50_59"             :fgm_50p
+   "fg_made_60_"               :fgm_50p
+   "fg_missed_40_49"           :fgmiss_40_49
+   "fg_missed_50_59"           :fgmiss_50p
+   "fg_missed_60_"             :fgmiss_50p
+   "pat_missed"                :xpmiss})
 
 (def usage-columns
   "Opportunity columns carried alongside the scored line, for the trend signal.

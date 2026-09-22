@@ -24,6 +24,13 @@
                     {:statId 43 :points 6.0}
                     {:statId 53 :points 1.0 :pointsOverrides {:6 1.5}}
                     {:statId 72 :points -2.0}
+                    ;; Kicking, by distance, as every host states it.
+                    {:statId 80 :points 3.0}
+                    {:statId 77 :points 4.0}
+                    {:statId 198 :points 5.0}
+                    {:statId 201 :points 6.0}
+                    {:statId 85 :points -1.0}
+                    {:statId 86 :points 1.0}
                     {:statId 23 :points 0.0}
                     {:statId 89 :points 5.0}
                     ;; How ESPN states a defense's scoring: nothing on the base,
@@ -43,7 +50,8 @@
 (defn- imported [] (league-import/normalize-league :espn raw))
 
 (deftest every-mapped-stat-id-is-a-key-the-app-can-actually-score
-  (doseq [[id k] espn/stat-ids]
+  (doseq [[id _] espn/stat-ids
+          k      (espn/stat-keys-for id)]
     (is (contains? (set scoring/stat-keys) k)
         (str "statId " id " maps to " k ", which no scoring config holds"))))
 
@@ -78,6 +86,23 @@
     (is (contains? u "yards allowed"))
     (is (not (contains? u "rushing attempts"))
         "a rule set to zero costs the league nothing and is not worth reporting")))
+
+(deftest a-field-goal-is-scored-by-how-far-it-was-kicked
+  (let [s (:scoring (imported))]
+    (is (= 4.0 (:fgm_40_49 s)))
+    (is (= 5.0 (:fgm_50p s)))
+    (is (= 1.0 (:xpm s)))
+    (testing "one weight for everything under forty lands on all three buckets"
+      (is (= 3.0 (:fgm_0_19 s)))
+      (is (= 3.0 (:fgm_20_29 s)))
+      (is (= 3.0 (:fgm_30_39 s))))
+    (testing "and a total-miss rule lands on the two miss buckets that exist"
+      (is (= -1.0 (:fgmiss_40_49 s)))
+      (is (= -1.0 (:fgmiss_50p s))))))
+
+(deftest a-sixty-yard-band-is-reported-rather-than-priced-as-a-fifty
+  (is (contains? (set (:unsupported-scoring (imported))) "field goals 60+")
+      "folding it into :fgm_50p would pay a fifty-yarder at the sixty-yard rate"))
 
 (deftest a-defense-is-scored-from-its-own-override-not-from-an-empty-base
   ;; Nobody but a defense records a sack, so the D/ST override is the whole

@@ -17,6 +17,19 @@
     played   (assoc :nflverse/season-to-date
                     {:games played :stats (or realized {})})))
 
+(defn- alongside-a-projected-peer
+  "`p` on a board that also carries an ordinarily projected player.
+
+  `with-ros` reads which stats the preseason feed carries off the board it is
+  given, so on a board of one a player's own silence is indistinguishable from
+  his vendor's and he takes no prior at all. Every real universe has the peer.
+
+  He projects the rushing and receiving keys this suite blends; a test reaching
+  for a passing or kicking stat wants him widened rather than reused."
+  [p]
+  [p (assoc (player :pre {:rush_yd 900.0 :rush_td 8.0 :rec 60.0 :rec_yd 700.0})
+            :player-id "peer")])
+
 ;; ---- games remaining ----
 
 (deftest weeks-left-is-not-games-left
@@ -93,7 +106,8 @@
   ;; feature exists for. Deliberately discounted early: his total is spread over
   ;; prior-games + played, not over played.
   (let [p (first (ros/with-ros
-                  [(player :played 4 :realized {:rush_yd 400.0 :rush_td 4.0})]
+                  (alongside-a-projected-peer
+                   (player :played 4 :realized {:rush_yd 400.0 :rush_td 4.0}))
                   ppr (ctx 5)))
         rate (/ (get-in p [:ros/stats :rush_yd]) (:ros/games-remaining p))]
     ;; 400 / (6+4) = 40 yd/game, not the 100 he has actually been running for
@@ -103,8 +117,9 @@
 (deftest a-breakout-climbs-as-the-games-accumulate
   (let [rate-at (fn [played]
                   (let [p (first (ros/with-ros
-                                  [(player :played played
-                                           :realized {:rush_yd (* 100.0 played)})]
+                                  (alongside-a-projected-peer
+                                   (player :played played
+                                           :realized {:rush_yd (* 100.0 played)}))
                                   ppr (ctx (inc played))))]
                     (/ (get-in p [:ros/stats :rush_yd]) (:ros/games-remaining p))))]
     (is (< (rate-at 1) (rate-at 5) (rate-at 10)))
@@ -116,6 +131,20 @@
     (is (contains? (:ros/stats p) :rec))
     (is (not (contains? (:ros/stats p) :pass_yd))
         "silence is not futility — the same rule ingestion keeps")))
+
+(deftest a-stat-no-preseason-line-carries-takes-no-prior
+  ;; Sleeper's season line carries no sub-forty field goal bucket and the
+  ;; realized line carries them all — see the `rankings.ros` ns docstring.
+  (let [board [{:player-id "k" :position "K" :bye 7
+                :stats {:fgm_40_49 10.0 :fgm_50p 5.0}
+                :nflverse/season-to-date {:games 3 :stats {:fgm_0_19 3.0 :fgm_40_49 2.0}}}]
+        p     (first (ros/with-ros board ppr (ctx 3)))
+        left  (:ros/games-remaining p)
+        per-game (fn [k] (/ (get-in p [:ros/stats k]) left))]
+    (is (< 0.99 (per-game :fgm_0_19) 1.01)
+        "three short makes in three games projects one a game, not a third of one")
+    (is (< (per-game :fgm_40_49) (/ 2.0 3.0))
+        "40-49 is on the season line, so its realized rate is still shrunk toward it")))
 
 (deftest a-season-with-nothing-left-projects-nothing
   (let [p (first (ros/with-ros [(player :pre {:rec 100.0})] ppr (ctx 18)))]

@@ -321,8 +321,20 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 10 fx/storage-version)
+  (is (= 11 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
+
+  ;; A league's scoring config is persisted under `:config`, so a stat key added
+  ;; to the model is a changed shape exactly as a column is. Nothing pinned it
+  ;; until the field-goal buckets went in, and the bump nearly went missing.
+  (is (= #{:pass_yd :pass_td :pass_int :pass_2pt
+           :rush_yd :rush_td :rush_2pt
+           :rec :rec_yd :rec_td :rec_2pt :fum_lost
+           :fgm :fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p
+           :fgmiss_40_49 :fgmiss_50p :xpm :xpmiss :blk_kick
+           :sack :int :fum_rec :ff :def_td :safe}
+         (set scoring/stat-keys))
+      "a stat key added or removed changes every persisted scoring config")
 
   (is (= "espn:{SWID}" (db/account-key "espn" "{SWID}"))
       "a stored :accounts map is keyed off this, and a league entry names it")
