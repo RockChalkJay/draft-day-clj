@@ -205,7 +205,8 @@ pick one of its leagues to pull that league's real scoring and roster settings �
 or paste a league ID, or set them by hand. ESPN needs your own session cookies
 (`SWID` and `espn_s2`), which is why the server proxies the call and the browser
 never talks to a provider directly. An import reports
-exactly which of your league's rules it could *not* apply — see
+exactly which of your league's rules it could not apply, and separately which
+it applies but nobody projects — see
 [docs/scoring-coverage.md](docs/scoring-coverage.md), because a config that
 looks complete but scores differently is worse than one that admits its gaps.
 
@@ -622,10 +623,14 @@ instead of a preset keyword, and the vendor format to read is *derived* from
 its reception weight rather than stored — `< 0.25` standard, `< 0.75` half,
 else PPR.
 
-Rules with a shape other than "stat × weight" — FG distance buckets, tiered
-points-allowed, yardage bonuses — have nowhere to land. See
-[docs/scoring-coverage.md](docs/scoring-coverage.md) for exactly which, and
-what each one costs.
+Sleeper states a tier or a bonus *as a stat* — `pts_allow_7_13` arrives as 1.0
+in the week it happened — so a flat weighted sum is not an approximation of how
+a host scores but the thing itself, and it reproduces Sleeper's own per-player
+points to the cent. What is left over is one rule that really does have another
+shape: a position reception premium prices one stat by who earned it, which one
+weight cannot hold. See
+[docs/scoring-coverage.md](docs/scoring-coverage.md) for that, for the rules
+nothing projects, and for what each one costs.
 
 ### Floor / ceiling — `projections.clj` → `:floor` `:ceiling`
 

@@ -325,7 +325,7 @@
         (< total bankroll) (str " · $" (- bankroll total) " unallocated"))]]))
 
 (def ^:private unprojected-note
-  "Sleeper publishes no projection for this stat, so a weight here cannot change any player's points.")
+  "Neither of Sleeper's projection horizons carries this stat, so a weight here cannot change any player's points.")
 
 (defn- unprojected-field
   "Shows the weight — an imported league may well set it — but will not pretend
@@ -335,44 +335,88 @@
    [:span label [:i.not-projected "not projected"]]
    [:input {:type "number" :value (str value) :disabled true :read-only true}]])
 
-(defn- custom-scoring-editor [weights read-only?]
+(defn- scoring-fields
+  "One group's fields. The key rides on each branch's vector, not on the `cond`
+  — metadata on a special form is dropped at compile time, which left every row
+  keyless and reconciled by index."
+  [weights read-only? stats]
+  [:div.fields
+   (map (fn [[stat-key label]]
+          (cond
+            (contains? scoring/unprojected-stats stat-key)
+            ^{:key stat-key} [unprojected-field label (get weights stat-key 0)]
+            read-only?
+            ^{:key stat-key} [fixed-field label (get weights stat-key 0)]
+            :else
+            ^{:key stat-key} [weight-field label (get weights stat-key 0)
+                              #(rf/dispatch [:set-scoring-weight stat-key %])]))
+        stats)])
+
+(defn- priced-here?
+  "Does the league put a weight on anything in `stats`? What decides whether a
+  disclosure opens on arrival: a manager whose league really does score the
+  points-allowed tiers should find them open rather than go looking."
+  [weights stats]
+  (boolean (some (fn [[k _]] (not (zero? (scoring/usable-weight (get weights k 0)))))
+                 stats)))
+
+(defn- custom-scoring-editor
+  "The weight grid. `:stats` is always drawn; `:more` sits behind a disclosure,
+  because eighty-eight fields in one grid is a worse editor than twenty-nine
+  was and every rule in `:more` is zero in a league that has not imported one."
+  [weights read-only?]
   [:div.scoring-groups
-   (map (fn [{:keys [group stats]}]
+   (map (fn [{:keys [group stats more]}]
           ^{:key group}
           [:div.scoring-group
            [:h4 group]
-           [:div.fields
-            ;; The key rides on each branch's vector, not on the `if` — metadata
-            ;; on a special form is dropped at compile time, which left every row
-            ;; keyless and reconciled by index.
-            (map (fn [[stat-key label]]
-                   (cond
-                     (contains? scoring/unprojected-stats stat-key)
-                     ^{:key stat-key} [unprojected-field label (get weights stat-key 0)]
-                     read-only?
-                     ^{:key stat-key} [fixed-field label (get weights stat-key 0)]
-                     :else
-                     ^{:key stat-key} [weight-field label (get weights stat-key 0)
-                                       #(rf/dispatch [:set-scoring-weight stat-key %])]))
-                 stats)]])
+           (when (seq stats) [scoring-fields weights read-only? stats])
+           (when (seq more)
+             [:details.scoring-more {:open (priced-here? weights more)}
+              [:summary (if (seq stats) "More rules" group)]
+              [scoring-fields weights read-only? more]])])
         db/scoring-catalog)])
 
+(defn- chips [rules]
+  ;; Chips rather than one comma-joined run: rule keys have no spaces to break
+  ;; on, and a single long token pushed straight out of the card.
+  (into [:div.rule-chips]
+        (map (fn [rule] ^{:key rule} [:span.rule-chip rule]))
+        rules))
+
 (defn import-warning
-  "What the last league import could not apply. An import that quietly drops most
-  of a league's rules while reporting success is the failure this exists to
-  prevent."
+  "What the last import could not apply, and what it applied but cannot project.
+
+  Two states and not one, because collapsing them is what made this confusing:
+  a rule with no key at all scores nothing anywhere, while a rule the model
+  holds but no projection carries still scores the weeks that have happened. The
+  old copy called both 'not applied' and blamed the flat stat line for it, which
+  was never the reason — Sleeper states a tier as a stat, so the model always
+  could hold one and simply had no key for it."
   []
-  (let [{:keys [unsupported]} @(rf/subscribe [:active-league-rules])]
-    (when (seq unsupported)
+  (let [{:keys [unsupported]} @(rf/subscribe [:active-league-rules])
+        weights   (scoring/resolve-config (:scoring @(rf/subscribe [:config])))
+        unprojected (sort (keep (fn [[k w]]
+                                  (when (and (contains? scoring/unprojected-stats k)
+                                             (not (zero? (scoring/usable-weight w))))
+                                    (name k)))
+                                weights))]
+    (when (or (seq unsupported) (seq unprojected))
       [:div.scoring-warning
-       [:b (str (count unsupported) " scoring rules were not applied.")]
-       [:p.muted "Draft Day scores a flat stat line, so these are not modelled and
-                  your board will differ from your league where they matter:"]
-       ;; Chips rather than one comma-joined run: rule keys have no spaces to
-       ;; break on, and a single long token pushed straight out of the card.
-       (into [:div.rule-chips]
-             (map (fn [rule] ^{:key rule} [:span.rule-chip rule]))
-             unsupported)])))
+       (when (seq unsupported)
+         [:div
+          [:b (str (count unsupported) " scoring rules are not modelled.")]
+          [:p.muted "These price one stat differently depending on who earned it,
+                     which one weight cannot express, so your board will differ
+                     from your league where they matter:"]
+          [chips unsupported]])
+       (when (seq unprojected)
+         [:div
+          [:b (str (count unprojected) " rules have no projection.")]
+          [:p.muted "Your league scores these and so does Draft Day, but nobody
+                     projects them — they move your in-season numbers once the
+                     games are played, and cannot move the draft board:"]
+          [chips unprojected]])])))
 
 (defn league-source
   "Where a connected league's settings came from, and whether they came at all.

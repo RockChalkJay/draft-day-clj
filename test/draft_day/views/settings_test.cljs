@@ -206,6 +206,26 @@
   (let [html (render settings/import-warning)]
     (is (= 2 (count (re-seq #":span\.rule-chip\b" html))))))
 
+(deftest a-rule-nobody-projects-reads-differently-from-one-nobody-models
+  ;; Collapsing the two is what made the old warning confusing: a rule with no
+  ;; key scores nothing anywhere, while a rule the model holds but no projection
+  ;; carries still scores the weeks that have happened.
+  (swap! rdb/app-db assoc
+         :active-league "sleeper:1"
+         :config {:scoring {:rec 1.0 :pts_allow_0 10.0 :yds_allow_550p -6.0}}
+         :leagues {"sleeper:1" {:rules {:status :imported :unsupported []}}})
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/import-warning)]
+    (is (re-find #"2 rules have no projection" html))
+    (is (re-find #"pts_allow_0" html))
+    (is (re-find #"yds_allow_550p" html))
+    (is (not (re-find #"not modelled" html))
+        "nothing was dropped, so nothing claims to have been"))
+  (testing "a rule the league scores and Sleeper projects says nothing at all"
+    (swap! rdb/app-db assoc :config {:scoring {:rec 1.0 :pts_allow_14_20 1.0}})
+    (rf/clear-subscription-cache!)
+    (is (nil? (settings/import-warning)))))
+
 (deftest connect-a-league-opens-the-accounts-section
   (swap! rdb/app-db assoc :settings-section :data)
   (rf/dispatch-sync [:set-view :settings :leagues])

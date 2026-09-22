@@ -1,88 +1,131 @@
-# Known scoring coverage gaps
+# Scoring coverage
 
-Where a league's real rules and what Draft Day can score come apart. Linked
-from the [README](../README.md#the-math).
+Where a league's real rules and what Draft Day can score come apart, and what
+is left of the gap. Linked from the [README](../README.md#the-math).
 
-Draft Day scores a flat stat line — `Σ(projected stat × weight)` over the 21 keys in
-`draft-day.scoring/stat-keys`. Rules with any other shape (FG distance buckets, tiered
-points-allowed, yardage bonuses) have nowhere to land. A Sleeper import therefore lists
-exactly what it could not apply (one real league: 54 of its 74 non-zero rules), because a
-config that looks complete but scores differently is worse than one that admits its gaps.
+## The gap was vocabulary, not shape
 
-The gaps were measured 2026-08-15 against the live 2026 Sleeper payload, scoring each
-variant against the half-PPR preset and comparing board order. They cost wildly different
-amounts, so they are listed by what they actually cost rather than by why they exist.
+This document used to say that Draft Day scores a flat stat line, so rules of
+any other shape — field-goal distance buckets, tiered points allowed, yardage
+bonuses — had nowhere to land. That was wrong, and it shaped the design for a
+while, so it is worth stating plainly.
 
-**Standard / half-PPR / PPR leagues lose nothing at skill positions.** No dropped key
-carries a non-zero weight in any preset. If you play a vanilla format, only the kicker
-issue below applies to you.
+Sleeper states a tier or a bonus **as a stat**. `pts_allow_7_13` arrives as
+`1.0` in a week a defense held its opponent to ten; `bonus_rec_yd_100` arrives
+as `1.0` in a week a receiver went over a hundred; `rec_40p` arrives as the
+count of catches over forty yards. So `Σ(stat × weight)` is not an
+approximation of how Sleeper scores — it is how Sleeper scores.
 
-### PPFD reorders the board — the one defect that changes who you draft
+Measured against the live 2026 week 2 line for one real league, scoring
+Sleeper's own stats under all 85 of the league's rules reproduces Sleeper's own
+`players_points` for **all 166 rostered players to the cent**. Over the 29 keys
+the vocabulary held before, 48 of those players were wrong, by up to 14.5
+points. `draft-day.scoring-golden-test` is a committed, offline fixture that
+pins both halves of that: the wide vocabulary agrees, and the narrow one does
+not.
 
-`ingestion/sleeper.clj`'s stat-key list drops first downs that Sleeper does project:
-`rec_fd` (474 players), `rush_fd` (376), `pass_fd` (77). Awarding 0.5 per receiving and
-rushing first down moves **40 of the top 200 by ≥10 slots** (mean absolute move 6.4), and it
-reorders *within* position — volume backs up (Jonathan Taylor +21, McCaffrey +19, Cook and
-Henry +17), low-volume QBs down. A within-position shuffle survives the VORP transform
-instead of cancelling out, so a PPFD league drafting off this board drafts the wrong
-players. This is the gap worth closing.
+The vocabulary is now 88 keys (`draft-day.scoring/stat-keys`), which is every
+rule Sleeper exposes in a league's scoring settings. The league above loses
+none of them.
 
-### TE premium misprices rather than misorders
+## What is still genuinely unsupported
 
-Position reception premiums are dropped too: `bonus_rec_te` (126 players), `bonus_rec_wr`
-(210), `bonus_rec_rb` (138). Adding `bonus_rec_te` at 0.5 looks alarming on a global points
-list — 77 of the top 200 move ≥10 slots — but restricted to tight ends the order barely
-budges: **max move 2 slots, mean 0.4**. Every starting TE gains ~12 points in step. Since
-replacement-level TE rises with them, VORP absorbs part of even that. The board is right;
-the auction dollars at one position come out low.
+One shape, and it really is a shape rather than a missing key: a **position
+reception premium** — `bonus_rec_te`, `bonus_rec_wr`, `bonus_rec_rb` — prices
+one stat differently depending on who caught it. One weight per stat cannot
+express that, and a key would not help. ESPN writes the same rule as a
+per-position override on an ordinary receptions rule, and
+`league-import.espn/dropped-overrides` reports it for the same reason.
 
-### Kickers were wrong in every league — mostly fixed
+ESPN's points-allowed bands are the other open case, and also not a missing
+key: ESPN splits 14-17 / 18-21 / 22-27 where Sleeper splits 14-20 / 21-27 /
+28-34. Those are different partitions of the same space, so nothing maps
+without a band neither provider's stat line publishes. ESPN's 0, 1-6 and 7-13
+bands do line up and could be mapped; that has not been done yet.
 
-Sleeper emits `fgm` on **0 of 45 kickers**. It publishes only distance buckets (`fgm_40_49`
-on all 45, `fgm_50p` on 40, `fgm_yds` on 45, plus `fgmiss_40_49`, `fgmiss_50p`, `xpmiss`),
-and `fgm` is the key the presets price at 3.0 — so that weight multiplied nothing and every
-kicker was scored on extra points alone, compressing the position into a 39–42 band:
+## Modelled but unprojected
 
-| Kicker | Sleeper's own total | Was scored | Now scored |
-| --- | --- | --- | --- |
-| Brandon Aubrey | 116.0 | 42.0 | 93.0 |
-| Ka'imi Fairbairn | 113.0 | 39.0 | 90.0 |
-| Cam Little | 112.0 | 42.0 | 90.0 |
+38 of the 88 keys are ones no Sleeper projection horizon carries
+(`scoring/unprojected-stats`). A league that scores them is scored on them
+*once the games are played* — they reach the rest-of-season board, the waiver
+board's form column and the player detail modal — and they cannot reach the
+draft board, because nothing projects them. Settings says this, separately from
+the rules that are not modelled at all, because the two are different facts.
 
-`sleeper/scored-stats` now sums the published buckets into `:fgm` when Sleeper sends no
-total. That is **a floor, not the answer**: the sub-40 kicks are still missing, so a kicker
-reads about 20% light and the residue is what is left of this entry. It is close to uniform
-across the position, so ordering is now roughly right where before there was no spread at all.
+The families involved are the yardage-threshold bonuses, the long-touchdown
+counts, the outer points- and yards-allowed bands, and most special-teams
+scoring.
 
-ESPN publishes a real total (stat id 83, verified against its own buckets summing to it) and
-was the obvious alternative. It is deliberately not used: it projects Aubrey 35.5 field goals
-against Sleeper's ~25, so importing it would price kickers out of a different projection
-house than every other player on the board. The whole line stays one vendor's opinion.
+## The two projection horizons
 
-### Extractable but not yet extracted, low stakes
+Sleeper publishes a season line and a weekly line from the same house, and the
+season line is much the sparser: no tier bucket, no long touchdown, no
+completion over forty, no forced fumble, no safety. The buckets it *does*
+publish are receiving ones.
 
-Also dropped and unmeasured, all cheap to add alongside the above: `pass_int_td`, `pr_td`,
-`def_kr_td`, `pts_allow_0`, `yds_allow_0_100`.
+That asymmetry is why the season line is completed from the week-one line
+(`ingestion.sleeper/complete-season-line`), scaled by each player's own implied
+games. Without it, widening the vocabulary is a tilt rather than a gain:
+receivers and tight ends gain 9.1 and 7.4 points a season while quarterbacks,
+kickers and defenses gain exactly nothing, and replacement and VORP compare
+those positions directly. Filled, a starting quarterback gains about 8 points a
+season and a starting defense about 72.
 
-### Genuinely absent — no fix without another source
+Three traps live here, each found by measurement:
 
-Most yardage and long-play bonuses (`bonus_rush_yd_100`, `rec_40p`, `pass_td_50p`, …), the
-short FG buckets (`fgm_0_19`…`fgm_30_39`), and all but the first `pts_allow_*` /
-`yds_allow_*` tier. No weight can act on a stat nobody projects.
+**The season line's defense is not a season.** It reports
+`yds_allow_0_100: 1.0` for all 32 defenses beside a `gp` of 1.0, while `sack`
+and `int` on the same line are real season totals. It is the modal bucket of
+one game. At a ten-point weight it would have handed every defense the same
+spurious +10, so `ingestion.sleeper/season-only-noise` refuses it.
 
-Three modelled weights are inert for the same reason: `ff`, `def_td` and `safe` never appear
-in a projection, so team defenses score on sacks/interceptions/fumble recoveries alone. The
-custom scoring editor shows them as "not projected" via `scoring/unprojected-stats` rather
-than offering an editable box that cannot move any player's points. `fgm` used to be in that
-set and no longer is: it *was* recoverable from the distance buckets, and now is recovered
-(see above), so leaving it there would have locked FG Made in the editor for the one
-position the fix exists for.
+**The two horizons disagree about made field goals** rather than covering
+different parts of the grid. Aubrey's season line carries nine makes from 40-49
+and eight from 50+ and nothing under forty; his weekly line carries every band
+under fifty and no 50+ at all. Filling one from the other read him as 31 makes
+against the 17 his season line states, and scored him 160 against Sleeper's own
+116 — where the sparse line scores 118. Made kicks are exempt from the fill;
+`summed-fgm` and `scoring/fg-buckets` already reconcile that grid.
 
-### Closing it
+**The tier buckets are one-hot.** Every defense carries exactly one
+`pts_allow_*` and one `yds_allow_*` at 1.0 — Sleeper's modal week, not a
+distribution — and across all 32 only the 14-20, 21-27 and 28-34 points bands
+ever appear. Stretched over a season that asserts a defense lands in one bucket
+every week, which none does, so a league paying well for a shutout collects
+nothing for it in a projection. Taken anyway, because the alternative is a
+defense projected on sacks and interceptions alone. The real-valued `pts_allow`
+Sleeper sends beside the one-hot is what a distribution would be built from if
+`dev/draft_day/benchmark/` ever earned one.
 
-The cheapest fix with real return is three keys — `rec_fd`, `rush_fd`, `bonus_rec_te` —
-added to `ingestion/sleeper.clj`'s stat-key list, the preset table in
-`src/cljc/draft_day/scoring.cljc` (at 0.0, so preset behaviour stays byte-identical), and
-`db/scoring-catalog`, which have to move together. The kicker half of that is done — the
-buckets are summed into a synthetic `fgm` — and what remains is pricing them individually,
-which is the only way to recover the sub-40 kicks Sleeper never publishes.
+## Realized production: two sources, one preferred
+
+`ingestion.sleeper-actual` reads Sleeper's own account of what has happened and
+is preferred over nflverse's, per player and never mixed. Three measured
+reasons:
+
+- nflverse publishes **no team defense row at all**, so a defense had no
+  realized production to blend and the tier rules had no realized side to land
+  on.
+- Against Sleeper's own 2026 weeks 1-3, nflverse's first downs read **higher**
+  on a quarter to three quarters of the player-weeks either side reports, and it
+  files a **blocked field goal** under `fg_blocked` where Sleeper counts it a
+  miss (`fg_missed + fg_blocked` matched `fgmiss` on both cases in the sample).
+- It publishes **no count of a touchdown's length**, so the long-touchdown
+  rules have nowhere to come from.
+
+Those are two vocabularies rather than anyone's error, but only one of them is
+the one the standings are kept in. `nflverse-weekly/refused-columns` records the
+columns whose names invite a mapping their meaning does not support; nflverse
+keeps the usage columns and the three-season history, which it is better at.
+
+Presence is not an appearance: Sleeper answers a week with an entry for
+everyone who dressed and credits `gp` only where it counts a game. 271 of 728
+entries on the live weeks 1-2 carry no `gp`, so counting them inflated games
+played by 37% — and games played is the denominator the rest-of-season blend
+divides by.
+
+## Standard, half-PPR and PPR lose nothing
+
+No key added to the vocabulary is priced by any preset, so a league playing a
+vanilla format scores exactly as it did. `only-the-reception-weight-separates-the-presets`
+and `every-preset-weight-is-applied-as-written` pin that.
