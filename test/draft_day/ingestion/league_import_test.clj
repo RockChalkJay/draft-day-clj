@@ -53,13 +53,14 @@
   ;; field-goal buckets used to be dropped here too and are modelled now.
   (let [dropped (sleeper-import/unsupported-scoring
                  {:rec 1.0 :rec_yd 0.1                    ; modelled
-                  :fgm_0_19 3.0 :fgm_50p 5.0              ; modelled now
-                  :fgmiss_30_39 -2.0                      ; not modelled
-                  :bonus_rec_te 0.5 :pts_allow_0 10.0
+                  :fgm_0_19 3.0 :fgm_50p 5.0              ; modelled
+                  :fgmiss_30_39 -2.0 :pts_allow_0 10.0    ; modelled now
+                  :bonus_rec_te 0.5 :bonus_rec_wr 0.5     ; not modelled
                   :def_st_ff 0.0                          ; present but off
                   :pass_2pt 2.0})]                        ; modelled
-    (is (= ["bonus_rec_te" "fgmiss_30_39" "pts_allow_0"] dropped))
-    (is (not-any? #{"rec" "rec_yd" "pass_2pt" "fgm_0_19" "fgm_50p"} dropped)
+    (is (= ["bonus_rec_te" "bonus_rec_wr"] dropped))
+    (is (not-any? #{"rec" "rec_yd" "pass_2pt" "fgm_0_19" "fgm_50p"
+                    "fgmiss_30_39" "pts_allow_0"} dropped)
         "rules we do score are not reported as dropped")
     (is (not-any? #{"def_st_ff"} dropped)
         "a rule the league has switched off costs it nothing"))

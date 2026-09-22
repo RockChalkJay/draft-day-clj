@@ -13,10 +13,10 @@
     (is (= 10.0 (scoring/player-points player (:ppr scoring/presets))))))
 
 (deftest every-stat-key-actually-scores
-  ;; 13 of the 21 keys had no test that they move :points at all — every kicking
-  ;; and every team-defense key among them. A key that drifted from Sleeper's
-  ;; spelling would score silently as zero, which is indistinguishable on the
-  ;; board from a player who simply does not accumulate that stat.
+  ;; A key that drifted from Sleeper's spelling scores silently as zero, which
+  ;; on the board is indistinguishable from a player who does not accumulate
+  ;; that stat. Over the whole vocabulary rather than a list, so a key added
+  ;; without a test cannot exist.
   ;; `:fgm` is the exception and has its own test below: a config stating its
   ;; field goals by distance drops the flat weight rather than counting the
   ;; same kick twice.
@@ -105,9 +105,11 @@
     ;; zeroed: the unprojected ones are rendered disabled, so they keep whatever
     ;; the preset set. They cannot move a single player's points. `:fgm` left
     ;; this set when kickers got a projected total.
-    (let [only-unprojected (select-keys (:ppr scoring/presets) scoring/unprojected-stats)]
-      (is (= (count scoring/unprojected-stats) (count only-unprojected))
-          "every unprojected key is one a preset prices, or this proves nothing")
+    ;; Weighted positively on purpose rather than read off a preset: most of
+    ;; these sit at 0.0 there, and a set of zeroes would pass this for the
+    ;; wrong reason.
+    (let [only-unprojected (zipmap scoring/unprojected-stats (repeat 6.0))]
+      (is (= (count scoring/unprojected-stats) (count only-unprojected)))
       (is (every? pos? (vals only-unprojected)))
       (is (not (scoring/scores-anything? only-unprojected)))
       (is (not (scoring/scores-anything?
@@ -133,10 +135,25 @@
     (is (not-any? scoring/unprojected-stats
                   [:fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p
                    :fgmiss_40_49 :fgmiss_50p :xpmiss])))
-  ;; Pinned exactly, not by containment: a key wrongly added to this set locks a
-  ;; rule a league really scores out of the editor, and `scores-anything?` stops
-  ;; counting it, which can 400 a valid config.
-  (is (= #{:ff :def_td :safe} scoring/unprojected-stats)))
+  ;; A key wrongly in this set locks a rule a league really scores out of the
+  ;; editor, and `scores-anything?` stops counting it, which can 400 a valid
+  ;; config. Too wide to pin as a literal now, so pinned from both ends.
+  (is (not-any? scoring/unprojected-stats
+                (for [[k w] (:ppr scoring/presets)
+                      :when (and (not (zero? w)) (not (#{:ff :def_td :safe} k)))]
+                  k))
+      "nothing a preset prices for a skill position is locked")
+  (is (every? scoring/unprojected-stats scoring/weekly-live-stats)
+      "the weekly-only keys are a part of this set, not a rival to it"))
+
+(deftest a-season-projected-rule-is-not-locked-out-of-the-editor
+  ;; The set is derived by removing these, so getting it wrong in either
+  ;; direction shows up here: Sleeper's season line carries all eight, so a
+  ;; weight on one moves the draft board and the editor must let it.
+  (doseq [k [:pass_cmp :pass_fd :pass_int_td :rush_fd
+             :rec_fd :rec_20_29 :rec_30_39 :rec_40p]]
+    (is (not (contains? scoring/unprojected-stats k)) (str k " is projected"))
+    (is (scoring/scores-anything? {k 1.0}) (str k " can move a board"))))
 
 (deftest a-flat-field-goal-weight-yields-to-the-buckets
   ;; `sleeper/scored-stats` publishes :fgm *and* the buckets it is summed from,

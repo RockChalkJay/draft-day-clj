@@ -9,7 +9,8 @@
             [org.httpkit.client :as http]
             [jsonista.core :as json]
             [draft-day.ingestion.season :as season]
-            [draft-day.json :refer [mapper]]))
+            [draft-day.json :refer [mapper]]
+            [draft-day.scoring :as scoring]))
 
 (def ^:private base "https://api.sleeper.app")
 (def fantasy-positions ["QB" "RB" "WR" "TE" "K" "DEF"])
@@ -17,22 +18,17 @@
 
 (defn- canon-pos [pos] (if (= pos "DEF") "DST" pos))
 
-(def ^:private stat-keys
-  "What is carried into `:stats` for the scoring engine, and not the whole
-  payload: first downs, the position reception premiums and every points- or
-  yards-allowed tier are dropped, which is why a PPFD or TE-premium league
-  imports lossy — see docs/scoring-coverage.md.
+(def ^:private season-only-noise
+  "Keys not to be believed on a *season* line, whatever it sends.
 
-  Both field-goal grids are here because the season and weekly lines publish
-  different ones, and each scores what it has. See `summed-fgm`."
-  [:pass_yd :pass_td :pass_int :pass_2pt
-   :rush_yd :rush_td :rush_2pt
-   :rec :rec_yd :rec_td :rec_2pt
-   :fum_lost
-   :fgm :xpm
-   :fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p
-   :fgmiss_40_49 :fgmiss_50p :xpmiss
-   :sack :int :fum_rec :ff :def_td :safe :blk_kick])
+  Sleeper sends `yds_allow_0_100` as 1.0 for all thirty-two defenses, beside a
+  `gp` of 1.0, while `sack` and `int` on the same line are real season totals.
+  It is the modal bucket of one game rather than a projection of a season, and
+  a league weighting that band at ten points would hand every defense the same
+  spurious ten. The weekly line states a bucket the same way and means it, so
+  this is the season line's problem alone — `scoring/season-projected` leaves
+  the key out for the same reason."
+  #{:yds_allow_0_100})
 
 (def adp-keys
   "Sleeper publishes ADP per scoring format, and they diverge hard — Amon-Ra St.
@@ -87,7 +83,7 @@
   "The subset of a Sleeper stats map the scoring engine reads, as doubles."
   [stats]
   (let [base (into {} (keep (fn [k] (when-let [v (get stats k)] [k (double v)])))
-                   stat-keys)]
+                   scoring/stat-keys)]
     (if (:fgm base)
       base
       (if-let [fgm (summed-fgm stats)] (assoc base :fgm fgm) base))))
@@ -108,7 +104,7 @@
        :position              (canon-pos pos)
        :team                  (or team (:team_abbr player))
        :bye                   nil
-       :stats                 (scored-stats stats)
+       :stats                 (apply dissoc (scored-stats stats) season-only-noise)
        :vendor/by-format      (adp-by-format stats)
        :sleeper/injury-status (:injury_status player)
        :sleeper/years-exp     (:years_exp player)})))
