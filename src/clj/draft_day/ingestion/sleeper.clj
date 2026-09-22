@@ -136,6 +136,17 @@
   anybody projected. Only keys the season line is silent on are filled, so
   nothing the vendor did state is ever overwritten.
 
+  A defense's tier buckets are the estimate's weakest part and most of its
+  gain. Sleeper one-hots them — exactly one `pts_allow_*` and one
+  `yds_allow_*` at 1.0, its modal week rather than a distribution, and across
+  all thirty-two defenses only the 14-20, 21-27 and 28-34 points bands ever
+  appear — so stretching one over a season asserts a defense lands in that
+  single bucket every week, which none does. A league paying well for a shutout
+  collects nothing for it here. Taken anyway, because the alternative is a
+  defense scored on sacks and interceptions alone; the real-valued `pts_allow`
+  Sleeper sends beside the one-hot is what a distribution would be built from
+  if a benchmark ever earned one.
+
   A made field goal is exempt, because the two horizons do not merely differ in
   coverage there, they disagree. Aubrey's season line carries nine makes from
   40-49 and eight from 50+ and nothing under forty; his weekly line carries
@@ -205,34 +216,6 @@
       error            (throw (ex-info "Sleeper projections fetch failed" {:error error}))
       (= 200 status)   (json/read-value body mapper)
       :else            (throw (ex-info "Sleeper projections non-200" {:status status})))))
-
-(declare fetch-weekly-entries)
-
-(defn week-one-stats
-  "Network, best-effort: `{player-id raw-stats}` for week one of a season.
-
-  Week one and not the current week, because `:stats` is by definition the
-  *preseason* full-season line — `rankings.ros` is what corrects it for a
-  season in progress, and filling it from a November week would mix the two
-  horizons this exists to keep straight.
-
-  Best-effort for `summed-fgm`'s reason: a season line that is merely sparse
-  still prices a board, and failing the whole universe over the half of it that
-  fills the gaps would trade a working board for a better one."
-  [season]
-  (try
-    (into {} (keep (fn [{:keys [player_id stats]}]
-                     (when (and player_id stats) [player_id stats])))
-          (fetch-weekly-entries season 1))
-    (catch Exception e
-      (log/warn e "Sleeper week-one fetch failed; season line stands alone")
-      nil)))
-
-(defn fetch-universe
-  "Network: the normalized player universe for a season (defaults to current)."
-  ([] (fetch-universe (season/current)))
-  ([season] (universe-from-entries (fetch-projections season)
-                                   (week-one-stats season))))
 
 ;; ---- bye weeks (derived from the regular-season schedule) ----
 ;; Sleeper carries no bye field on players; a team's bye is simply the one
@@ -315,6 +298,32 @@
       (= 200 status) (json/read-value body mapper)
       :else          (throw (ex-info "Sleeper weekly non-200"
                                      {:week week :status status})))))
+
+(defn week-one-stats
+  "Network, best-effort: `{player-id raw-stats}` for week one of a season.
+
+  Week one and not the current week, because `:stats` is by definition the
+  *preseason* full-season line — `rankings.ros` is what corrects it for a
+  season in progress, and filling it from a November week would mix the two
+  horizons this exists to keep straight.
+
+  Best-effort for `summed-fgm`'s reason: a season line that is merely sparse
+  still prices a board, and failing the whole universe over the half of it that
+  fills the gaps would trade a working board for a better one."
+  [season]
+  (try
+    (into {} (keep (fn [{:keys [player_id stats]}]
+                     (when (and player_id stats) [player_id stats])))
+          (fetch-weekly-entries season 1))
+    (catch Exception e
+      (log/warn e "Sleeper week-one fetch failed; season line stands alone")
+      nil)))
+
+(defn fetch-universe
+  "Network: the normalized player universe for a season (defaults to current)."
+  ([] (fetch-universe (season/current)))
+  ([season] (universe-from-entries (fetch-projections season)
+                                   (week-one-stats season))))
 
 (defn home-teams [games week]
   (into #{} (comp (filter #(= week (:week %))) (keep :home)) games))

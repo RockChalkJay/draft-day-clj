@@ -143,15 +143,21 @@
                       :when (and (not (zero? w)) (not (#{:ff :def_td :safe} k)))]
                   k))
       "nothing a preset prices for a skill position is locked")
-  (is (every? scoring/unprojected-stats scoring/weekly-live-stats)
-      "the weekly-only keys are a part of this set, not a rival to it"))
+  (is (not-any? scoring/unprojected-stats [:ff :def_td :safe])
+      "the weekly line projects all three, and the fill carries them to a season"))
 
-(deftest a-season-projected-rule-is-not-locked-out-of-the-editor
-  ;; The set is derived by removing these, so getting it wrong in either
-  ;; direction shows up here: Sleeper's season line carries all eight, so a
-  ;; weight on one moves the draft board and the editor must let it.
-  (doseq [k [:pass_cmp :pass_fd :pass_int_td :rush_fd
-             :rec_fd :rec_20_29 :rec_30_39 :rec_40p]]
+(deftest a-projected-rule-is-not-locked-out-of-the-editor
+  ;; The set is derived by removing these, so getting it wrong either way shows
+  ;; up here. A key listed as unprojected is greyed out in the editor and
+  ;; discounted by `scores-anything?`, which can 400 a config the board scores.
+  (doseq [k [;; on Sleeper's season line directly
+             :pass_cmp :pass_fd :pass_int_td :rush_fd
+             :rec_fd :rec_20_29 :rec_30_39 :rec_40p
+             ;; on its weekly line, reaching a season through the fill
+             :pass_cmp_40p :rush_40p :fum :fgmiss_30_39 :st_td
+             :pts_allow_14_20 :pts_allow_21_27 :pts_allow_28_34
+             :yds_allow_200_299 :yds_allow_300_349 :yds_allow_350_399
+             :ff :def_td :safe]]
     (is (not (contains? scoring/unprojected-stats k)) (str k " is projected"))
     (is (scoring/scores-anything? {k 1.0}) (str k " can move a board"))))
 

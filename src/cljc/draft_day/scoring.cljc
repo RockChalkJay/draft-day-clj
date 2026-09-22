@@ -140,42 +140,41 @@
           (< rec ppr-cutoff)      :half-ppr
           :else                   :ppr)))
 
-(def ^:private season-projected
-  "The keys of `stated-only` Sleeper's *season* projection carries, and so the
-  only ones of it that can move the draft board.
+(def ^:private projected-stats
+  "The keys of `stated-only` that reach a player's `:stats`, and so can move
+  any board the app draws.
 
-  `:yds_allow_0_100` is deliberately absent though the season line does send
-  it: it sends 1.0 for all thirty-two defenses, which is a placeholder and not
-  a projection — see `ingestion.sleeper/season-only-noise`."
-  #{:pass_cmp :pass_fd :pass_int_td :rush_fd
-    :rec_fd :rec_20_29 :rec_30_39 :rec_40p})
+  Either Sleeper's season line carries it, or its weekly line does and
+  `ingestion.sleeper/complete-season-line` stretches that over the season. From
+  a board's point of view those are the same thing, which is why this is one
+  set rather than two.
 
-(def unprojected-stats
-  "Stat keys Sleeper's *season* line does not carry, so no weight on one can
-  move the draft board. The editor shows them and will not pretend they are
-  editable there, and `scores-anything?` does not read them as evidence of a
-  real league — zeroing every weight a manager can reach has to leave nothing
-  standing, or the all-zero board that check exists to catch gets through.
-
-  Unprojected is not unscoreable. `weekly-live-stats` is the part of this set
-  the weekly line does carry, and it moves Week, rest-of-season and the waiver
-  board. No field-goal *make* is here: each bucket is projected on one line or
-  the other, and `:fgm` is summed from them (`sleeper/scored-stats`)."
-  (into #{:ff :def_td :safe} (remove season-projected) stated-only))
-
-(def weekly-live-stats
-  "The part of `unprojected-stats` Sleeper's weekly line does carry.
-
-  A weight on one of these is dead on the draft board and live everywhere the
-  season is under way, which is a different sentence from the one the editor
-  says about a key nothing carries at all. Team defenses are the reason the
-  distinction is worth keeping: the weekly line projects a forced fumble, a
-  defensive touchdown, a safety and which points- and yards-allowed bucket a
-  defense lands in, and the season line projects none of it."
-  #{:ff :def_td :safe
+  `:yds_allow_0_100` is absent although the season line does send it — 1.0 for
+  all thirty-two defenses, a placeholder rather than a projection, refused by
+  `ingestion.sleeper/season-only-noise`. No weekly line carries it either, so
+  nothing fills it."
+  #{;; the season line's own
+    :pass_cmp :pass_fd :pass_int_td :rush_fd
+    :rec_fd :rec_20_29 :rec_30_39 :rec_40p
+    ;; the weekly line's, reaching the season horizon through the fill
     :pass_cmp_40p :rush_40p :fum :fgmiss_30_39 :st_td :def_kr_yd :def_pr_yd
     :pts_allow_14_20 :pts_allow_21_27 :pts_allow_28_34
     :yds_allow_200_299 :yds_allow_300_349 :yds_allow_350_399})
+
+(def unprojected-stats
+  "Stat keys neither Sleeper projection horizon carries, so no weight on one
+  can move any player's points. The editor shows them and will not pretend they
+  are editable, and `scores-anything?` does not read them as evidence of a real
+  league — zeroing every weight a manager can reach has to leave nothing
+  standing, or the all-zero board that check exists to catch gets through.
+
+  `:ff`, `:def_td` and `:safe` are deliberately *not* here, though they were for
+  as long as this set has existed: the weekly line projects all three for a team
+  defense and the fill carries them to the season horizon. The same correction
+  the field goals got once they became recoverable. A key wrongly listed here is
+  a rule locked out of the editor and discounted by `scores-anything?`, which
+  can 400 a config the board could score — so it errs toward claiming less."
+  (into #{} (remove projected-stats) stated-only))
 
 (def fg-buckets
   "The made-field-goal keys that supersede the flat `:fgm` weight.
