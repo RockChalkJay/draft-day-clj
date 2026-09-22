@@ -615,7 +615,7 @@ Constants are named where the code names them.
 
 ### Points — `scoring.cljc` → `:points`
 
-`points = Σ(projected stat × weight)` over the 21 keys in `scoring/stat-keys`.
+`points = Σ(projected stat × weight)` over the 88 keys in `scoring/stat-keys`.
 Presets differ only in the reception weight: `:standard` 0.0, `:half-ppr` 0.5,
 `:ppr` 1.0. A custom or imported league carries a full `{stat-key weight}` map
 instead of a preset keyword, and the vendor format to read is *derived* from

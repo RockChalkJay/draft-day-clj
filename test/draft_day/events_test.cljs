@@ -321,18 +321,46 @@
   ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
   ;; persisted the same way, and a Waivers column is exactly the kind of change
   ;; that would otherwise slip past.
-  (is (= 11 fx/storage-version)
+  (is (= 12 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
   ;; A league's scoring config is persisted under `:config`, so a stat key added
   ;; to the model is a changed shape exactly as a column is. Nothing pinned it
   ;; until the field-goal buckets went in, and the bump nearly went missing.
-  (is (= #{:pass_yd :pass_td :pass_int :pass_2pt
-           :rush_yd :rush_td :rush_2pt
-           :rec :rec_yd :rec_td :rec_2pt :fum_lost
-           :fgm :fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p
+  ;; Grouped as `db/scoring-catalog` groups them, so this reads against the
+  ;; editor rather than as eighty-eight keywords in a bag.
+  (is (= #{;; Passing
+           :pass_yd :pass_td :pass_int :pass_2pt :pass_cmp
+           :pass_fd :pass_cmp_40p :pass_td_40p :pass_td_50p :pass_int_td
+           :bonus_pass_cmp_25 :bonus_pass_yd_300 :bonus_pass_yd_400
+           ;; Rushing
+           :rush_yd :rush_td :rush_2pt :rush_fd :rush_40p
+           :rush_td_40p :rush_td_50p :bonus_rush_att_20 :bonus_rush_yd_100 :bonus_rush_yd_200
+           ;; Receiving
+           :rec :rec_yd :rec_td :rec_2pt :rec_fd
+           :rec_20_29 :rec_30_39 :rec_40p :rec_td_40p :rec_td_50p
+           :bonus_rec_yd_100 :bonus_rec_yd_200
+           ;; Scrimmage
+           :bonus_rush_rec_yd_100 :bonus_rush_rec_yd_200
+           ;; Misc
+           :fum_lost :fum :fum_rec_td
+           ;; Kicking
+           :fgm :fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49
+           :fgm_50p :fgmiss :fgmiss_0_19 :fgmiss_20_29 :fgmiss_30_39
            :fgmiss_40_49 :fgmiss_50p :xpm :xpmiss :blk_kick
-           :sack :int :fum_rec :ff :def_td :safe}
+           ;; Defense
+           :sack :int :fum_rec :ff :def_td
+           :safe :def_2pt :def_3_and_out :def_4_and_stop
+           ;; Points allowed
+           :pts_allow_0 :pts_allow_1_6 :pts_allow_7_13 :pts_allow_14_20 :pts_allow_21_27
+           :pts_allow_28_34 :pts_allow_35p
+           ;; Yards allowed
+           :yds_allow_0_100 :yds_allow_100_199 :yds_allow_200_299 :yds_allow_300_349
+           :yds_allow_350_399 :yds_allow_400_449 :yds_allow_450_499 :yds_allow_500_549
+           :yds_allow_550p
+           ;; Special teams
+           :st_td :st_ff :st_fum_rec :def_st_td :def_st_ff
+           :def_st_fum_rec :def_kr_yd :def_pr_yd}
          (set scoring/stat-keys))
       "a stat key added or removed changes every persisted scoring config")
 

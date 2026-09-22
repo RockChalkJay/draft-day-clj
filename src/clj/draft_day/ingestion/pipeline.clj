@@ -81,8 +81,14 @@
   :fgmiss_50p, :xpmiss), since every host scores a kick by how far it was
   kicked. A schema-9 file carries the summed :fgm alone,
   so a league stating its distances would score every kicker on extra points
-  and nothing would fail to say so."
-  10)
+  and nothing would fail to say so.
+
+  11: `:stats` carries every key the scoring vocabulary now names that the
+  season line publishes — the reception-length buckets, first downs, completions
+  and a thrown pick-six. A schema-10 file has none of them, and a league that
+  scores a 40-yard catch or a first down would price its receivers as though it
+  did not."
+  11)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -487,8 +493,15 @@
   scores through the same `sleeper/scored-stats` the universe does. A schema-2
   file holds the flat `:fgm` alone, and a league stating its distances drops
   that weight — so every kicker on the waiver and matchup boards would price on
-  extra points until the TTL lapsed, which `weekly-answers?` cannot see."
-  3)
+  extra points until the TTL lapsed, which `weekly-answers?` cannot see.
+
+  4: a weekly line carries what the widened vocabulary reaches on that line —
+  a forced fumble, a defensive touchdown, a safety, and which points- and
+  yards-allowed bucket a defense is projected into. A schema-3 file holds none
+  of it, and those buckets are over a third of what a defense is projected to
+  score, so the waiver and matchup boards would rank defenses on sacks and
+  interceptions alone until the TTL lapsed."
+  4)
 
 (def default-weekly-cache-path
   (str "data/weekly_projections.v" weekly-schema-version ".transit"))
