@@ -94,17 +94,33 @@
         scoring/stat-keys))
 
 (defn entry->row
-  "One raw entry -> `{:id :week :opponent :stats}`, or nil when it is not an
-  appearance this module can score."
+  "One raw entry -> `{:id :week :opponent :stats}`, or nil when it is not a game
+  he played.
+
+  `gp` is the gate, and it is the whole difference between dressing and playing.
+  Sleeper answers a week with an entry for everyone on the active roster and
+  credits `gp` only to the ones it counts a game for — on the live 2026 weeks
+  1-2, 271 of 728 entries carry no `gp` at all, a receiver active for six snaps
+  who caught nothing among them. Counting those is the error
+  `nflverse-weekly/accumulate` names: `:games` is what `ros/blend` divides a
+  realized total by, so 37% too many games is every per-game rate too low, and
+  the game log would put a confident 0.0 in a week he was not out there.
+
+  A game he played and did nothing in is a different thing and is kept: his
+  stats are empty, `:played?` is true, and the zero is the truth."
   [{:keys [player_id stats week opponent]}]
-  (when (and player_id stats week)
+  (when (and player_id stats week (pos? (or (:gp stats) 0)))
     {:id       player_id
      :week     (long week)
      :opponent opponent
      :stats    (scored-stats stats)}))
 
 (defn- totals
-  "`{:games n :stats {...}}` over a player's rows."
+  "`{:games n :stats {...}}` over a player's rows.
+
+  Summed, which every key the vocabulary names is: a count, a yardage or a
+  bucket membership all add across weeks. A rate or a maximum would not, and
+  nothing here would catch one arriving."
   [rows]
   {:games (count rows)
    :stats (reduce (fn [acc {:keys [stats]}] (merge-with + acc stats)) {} rows)})
