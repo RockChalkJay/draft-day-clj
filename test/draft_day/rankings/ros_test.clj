@@ -30,11 +30,7 @@
   [p (assoc (player :pre {:rush_yd 900.0 :rush_td 8.0 :rec 60.0 :rec_yd 700.0})
             :player-id "peer")])
 
-;; ---- games remaining ----
-
 (deftest weeks-left-is-not-games-left
-  ;; Since 2021 a team plays 17 games across 18 weeks. Treating the two as one
-  ;; number hands every player an extra game.
   (testing "preseason: the whole season, bye included"
     (is (= 17.0 (ros/games-remaining {:through-week 0 :season-games 17 :bye 7}))))
   (testing "the bye is subtracted only while it is still ahead"
@@ -47,22 +43,14 @@
     (is (= 0.0 (ros/games-remaining {:through-week 25 :season-games 17 :bye 7})))))
 
 (deftest a-player-with-no-bye-on-record-gets-the-expected-one
-  ;; A teamless player would otherwise quietly gain a game, every week, all
-  ;; season — the error always runs the same direction.
   (is (= 17.0 (ros/games-remaining {:through-week 0 :season-games 17 :bye nil})))
   (let [mid (ros/games-remaining {:through-week 9 :season-games 17 :bye nil})]
     (is (< 8.0 mid 9.0) "nine weeks left, about half a bye still to come")))
 
 (deftest the-sixteen-game-era-is-not-hardcoded-away
-  ;; The harness reaches back past 2021; a hardcoded 17 would hand every player
-  ;; in an older season a free game.
   (is (= 16.0 (ros/games-remaining {:through-week 0 :season-games 16 :bye 7}))))
 
-;; ---- the blend ----
-
 (deftest week-zero-is-the-preseason-board
-  ;; The safe degradation, and the one that runs all August: no realized line
-  ;; anywhere means the rest-of-season board *is* the draft board.
   (let [p (first (ros/with-ros [(player :pre {:rec 100.0 :rec_yd 1200.0})] ppr (ctx 0)))]
     (is (= 100.0 (get-in p [:ros/stats :rec])))
     (is (= 1200.0 (get-in p [:ros/stats :rec_yd])))
@@ -71,25 +59,18 @@
            (:ros-points p)))))
 
 (deftest no-games-played-needs-no-special-case
-  ;; A rookie who has not debuted, and every defense (nflverse publishes no DST
-  ;; row at all), land here. The blend collapses to the prorated projection.
   (let [p (first (ros/with-ros [(player :pre {:rec 85.0})] ppr (ctx 8)))]
-    ;; weeks 9-18 remain and the bye at 7 is already taken -> 10 games
     (is (= 10.0 (:ros/games-remaining p)))
     (is (< 49.9 (get-in p [:ros/stats :rec]) 50.1) "85 * 10/17")))
 
 (deftest realized-production-pulls-the-rate-toward-itself
-  (let [;; projected 17 catches (1.0/game); actually catching 5.0/game for 8 games
-        p (first (ros/with-ros [(player :pre {:rec 17.0} :played 8 :realized {:rec 40.0})]
+  (let [p (first (ros/with-ros [(player :pre {:rec 17.0} :played 8 :realized {:rec 40.0})]
                                ppr (ctx 8)))
         rate (/ (get-in p [:ros/stats :rec]) (:ros/games-remaining p))]
-    ;; (6*1.0 + 40) / (6+8) = 46/14 = 3.286
     (is (< 3.28 rate 3.29))
     (is (< 1.0 rate 5.0) "between the projection and the realized rate, by construction")))
 
 (deftest the-projection-holds-the-line-early-and-yields-late
-  ;; The whole point of the prior: one loud week must not reorder the board, and
-  ;; a role change in September must not still be argued with in December.
   (let [rate-at (fn [played]
                   (let [p (first (ros/with-ros
                                   [(player :pre {:rec 17.0} :played played
@@ -102,15 +83,11 @@
     (is (> (rate-at 12) 3.5) "twelve of them are mostly fact")))
 
 (deftest a-player-with-no-preseason-line-is-valued-off-what-he-has-done
-  ;; The undrafted rookie who is now the lead back — the player the whole
-  ;; feature exists for. Deliberately discounted early: his total is spread over
-  ;; prior-games + played, not over played.
   (let [p (first (ros/with-ros
                   (alongside-a-projected-peer
                    (player :played 4 :realized {:rush_yd 400.0 :rush_td 4.0}))
                   ppr (ctx 5)))
         rate (/ (get-in p [:ros/stats :rush_yd]) (:ros/games-remaining p))]
-    ;; 400 / (6+4) = 40 yd/game, not the 100 he has actually been running for
     (is (< 39.9 rate 40.1))
     (is (pos? (:ros-points p)) "he is on the board, which he was not before")))
 
@@ -133,8 +110,6 @@
         "silence is not futility — the same rule ingestion keeps")))
 
 (deftest a-stat-no-preseason-line-carries-takes-no-prior
-  ;; Sleeper's season line carries no sub-forty field goal bucket and the
-  ;; realized line carries them all — see the `rankings.ros` ns docstring.
   (let [board [{:player-id "k" :position "K" :bye 7
                 :stats {:fgm_40_49 10.0 :fgm_50p 5.0}
                 :nflverse/season-to-date {:games 3 :stats {:fgm_0_19 3.0 :fgm_40_49 2.0}}}]
@@ -152,15 +127,26 @@
     (is (nil? (:ros/stats p)) "and no columns pretending to explain it")))
 
 (deftest scoring-weights-reach-the-rest-of-season-line
-  ;; A rest-of-season board and a draft board are the same board asked about
-  ;; different games — so the league's own weights have to move it.
   (let [board [(player :pre {:rec 100.0 :rec_yd 1000.0})]
         pts   (fn [s] (:ros-points (first (ros/with-ros board s (ctx 0)))))]
     (is (> (pts ppr) (pts (:standard scoring/presets)))
         "a PPR league values the same line higher")))
 
 (deftest season-games-must-be-supplied-rather-than-assumed
-  ;; `rankings` keeps no NFL calendar of its own; a missing value should say so
-  ;; rather than NPE somewhere downstream.
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"season-games"
                         (ros/with-ros [(player :pre {:rec 1.0})] ppr {:through-week 3}))))
+
+(deftest sleepers-own-realized-line-wins-over-nflverses
+  (let [both (-> (player :pre {:rec 17.0})
+                 (assoc :nflverse/season-to-date {:games 8 :stats {:rec 20.0}}
+                        :realized/season-to-date {:games 8 :stats {:rec 40.0}}))
+        p    (first (ros/with-ros (alongside-a-projected-peer both) ppr (ctx 8)))
+        rate (/ (get-in p [:ros/stats :rec]) (:ros/games-remaining p))]
+    (is (< 3.28 rate 3.29))
+    (is (= 8 (:ros/games-played p))))
+  (testing "and nflverse answers where Sleeper did not"
+    (let [p (first (ros/with-ros
+                    (alongside-a-projected-peer
+                     (player :pre {:rec 17.0} :played 8 :realized {:rec 40.0}))
+                    ppr (ctx 8)))]
+      (is (< 3.28 (/ (get-in p [:ros/stats :rec]) (:ros/games-remaining p)) 3.29)))))

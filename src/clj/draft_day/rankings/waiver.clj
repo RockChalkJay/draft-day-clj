@@ -295,8 +295,9 @@
   weights, or nil before he has played inside it. Scored from the window's own
   stats and per-game for the same reasons `ros.clj` is. Takes a config
   `scoring/resolve-buckets` has already been over — `with-form-points` does it."
-  [{:nflverse/keys [recent]} scoring]
-  (let [{:keys [games stats]} recent]
+  [player scoring]
+  (let [{:keys [games stats]} (or (:realized/recent player)
+                                  (:nflverse/recent player))]
     (when (and games (pos? games) (seq stats))
       (/ (scoring/resolved-points {:stats stats} scoring) (double games)))))
 
