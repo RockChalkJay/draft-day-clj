@@ -112,7 +112,7 @@
     ok           (assoc league :bid-history history)
     unsupported? league
     :else        (cond-> (assoc league :bid-history-error (or error "Bid history unavailable"))
-                   cached (assoc :bid-history cached))))
+                         cached (assoc :bid-history cached))))
 
 (defn league-sync-handler
   "Who is rostered right now, and what everybody bid to get there. Separate from

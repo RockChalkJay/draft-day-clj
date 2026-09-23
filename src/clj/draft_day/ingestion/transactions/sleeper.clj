@@ -54,7 +54,8 @@
   filed under the week it is processed in, and this week's may already have
   happened."
   [league]
-  (range 1 (inc (long (or (get-in league [:settings :leg]) 0)))))
+  (let [weeks-played (or (get-in league [:settings :leg]) 0)]
+    (range 1 (inc weeks-played))))
 
 (defn faab?
   "Did this league-season bid for its waivers? One that did not still files its
@@ -68,16 +69,16 @@
   its league document alone when the season did not run FAAB (see `faab?`),
   which has no auctions to read."
   [league-id]
-  (let [league (throttled #(import-sleeper/fetch-league league-id))
-        tasks  (if (faab? league)
-                 (into {:rosters #(throttled (fn [] (sync-sleeper/fetch-json league-id "rosters")))}
-                       (map (fn [w] [w #(throttled (fn [] (fetch-week league-id w)))]))
-                       (weeks-played league))
-                 {})
-        got    (parallel/all tasks)]
+  (let [league  (throttled #(import-sleeper/fetch-league league-id))
+        tasks   (if (faab? league)
+                  (into {:rosters #(throttled (fn [] (sync-sleeper/fetch-json league-id "rosters")))}
+                        (map (fn [w] [w #(throttled (fn [] (fetch-week league-id w)))]))
+                        (weeks-played league))
+                  {})
+        results (parallel/all tasks)]
     {:league  league
-     :rosters (:rosters got)
-     :weeks   (into (sorted-map) (dissoc got :rosters))}))
+     :rosters (:rosters results)
+     :weeks   (into (sorted-map) (dissoc results :rosters))}))
 
 (defmethod transactions/fetch-raw-season :sleeper
   [_ {:keys [league-id]}]
@@ -94,9 +95,11 @@
   "The season this one continues, as `ingestion.transactions` addresses it, or
   nil. A Sleeper predecessor is always the year before."
   [league]
-  (when-let [pid (previous-league-id league)]
-    (when-let [yr (parse-long (str (:season league)))]
-      {:league-id pid :season (str (dec yr))})))
+  (let [prev-league-id (previous-league-id league)
+        season-year    (some-> (:season league) str parse-long)]
+    (when (and prev-league-id season-year)
+      {:league-id prev-league-id
+       :season    (str (dec season-year))})))
 
 (defn owners
   "`{roster-id owner-id}` for one season; an orphan roster maps to nil."
@@ -110,19 +113,21 @@
   `:adds` is keyed by player id, and `draft-day.json/mapper` keywordizes every
   key it decodes, so `{\"4034\": 3}` arrives as `{:4034 3}` — hence `name`."
   [week txs]
-  (into []
-        (comp (filter #(= "waiver" (:type %)))
-              (filter #(#{"complete" "failed"} (:status %)))
-              (mapcat (fn [tx]
-                        (map (fn [[pid rid]]
-                               {:week      week
-                                :at        (:status_updated tx)
-                                :player-id (name pid)
-                                :roster-id rid
-                                :amount    (or (get-in tx [:settings :waiver_bid]) 0)
-                                :won?      (= "complete" (:status tx))})
-                             (:adds tx)))))
-        txs))
+  (letfn [(claim-row [tx]
+            (map (fn [[pid rid]]
+                   {:week      week
+                    :at        (:status_updated tx)
+                    :player-id (name pid)
+                    :roster-id rid
+                    :amount    (or (get-in tx [:settings :waiver_bid]) 0)
+                    :won?      (= "complete" (:status tx))})
+                 (:adds tx)))]
+    (into []
+          (comp
+            (filter #(= "waiver" (:type %)))
+            (filter #(#{"complete" "failed"} (:status %)))
+            (mapcat claim-row))
+          txs)))
 
 (defn one-per-roster
   "A roster's claims on one player in one run as its single best bid. Two claims

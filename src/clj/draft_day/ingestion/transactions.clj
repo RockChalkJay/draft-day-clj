@@ -63,9 +63,14 @@
   "One auction with its player id and every owner id as strings. An orphan
   roster's nil owner stays nil — `(str nil)` is an owner called \"\"."
   [auction]
-  (-> auction
-      (update :player-id str)
-      (update :bids (fn [bids] (mapv #(update % :owner-id (fn [o] (some-> o str))) bids)))))
+  (let [stringify-owner (fn [owner] (some-> owner str))
+        stringify-player (fn [player-id] (str player-id))
+        normalized-bids (mapv (fn [bid]
+                                (update bid :owner-id stringify-owner))
+                              (:bids auction))]
+    (-> auction
+        (update :player-id stringify-player)
+        (assoc :bids normalized-bids))))
 
 (defn normalized
   "A provider's normalized season with the ids this namespace promises."
@@ -140,11 +145,10 @@
   "`{:seasons [current previous]}` as the last sync left them, or nil when this
   league-season has never been cached. Reads disk only."
   [provider league-id season]
-  (let [provider (keyword provider)]
-    (when-let [current (read-season provider league-id season)]
-      (let [{pl :league-id ps :season} (:previous current)
-            previous (when pl (read-season provider pl ps))]
-        {:seasons (cond-> [current] previous (conj previous))}))))
+  (when-let [current (read-season (keyword provider) league-id season)]
+    (let [{prev-id :league-id prev-season :season} (:previous current)
+          previous (when prev-id (read-season (keyword provider) prev-id prev-season))]
+      {:seasons (cond-> [current] previous (conj previous))})))
 
 (defn summary
   "What the browser is told about a history: per season, how much there is and
@@ -167,22 +171,26 @@
   Never throws. The sync runs it beside the rosters, and a history that fails
   must not take them down with it."
   [{:keys [provider league-id season credentials]}]
-  (let [provider (keyword provider)
-        season   (season/resolve-season season)
-        bad      (providers/league-access-error provider league-id credentials)]
+  (let [provider-kw     (keyword provider)
+        resolved-season (season/resolve-season season)
+        access-error    (providers/league-access-error provider-kw league-id credentials)]
     (cond
-      (not (providers/bid-history? provider)) {:ok false :unsupported? true}
-      bad                                     {:ok false :status 400 :error (:error bad)}
+      (not (providers/bid-history? provider-kw))
+      {:ok false :unsupported? true}
+
+      access-error
+      {:ok false :status 400 :error (:error access-error)}
+
       :else
       (try
-        (let [current  (fetch-season! provider {:league-id   league-id
-                                                :season      season
-                                                :credentials credentials})
-              previous (previous-season! provider current credentials)]
-          {:ok true :history (summary {:seasons (cond-> [current] previous (conj previous))})})
+        (let [current  (fetch-season! provider-kw {:league-id league-id :season resolved-season :credentials credentials})
+              previous (previous-season! provider-kw current credentials)
+              seasons  (cond-> [current] previous (conj previous))]
+          {:ok true :history (summary {:seasons seasons})})
         (catch Exception e
-          (let [cause (league-sync/unwrap-execution e)]
-            {:ok     false
-             :status (or (:status (ex-data cause)) 502)
-             :error  (ex-message cause)
-             :cached (some-> (cached-history provider league-id season) summary)}))))))
+          (let [cause       (league-sync/unwrap-execution e)
+                error-status (or (:status (ex-data cause)) 502)]
+            {:ok false
+             :status error-status
+             :error (ex-message cause)
+             :cached (some-> (cached-history provider-kw league-id resolved-season) summary)}))))))
