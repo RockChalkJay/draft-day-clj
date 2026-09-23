@@ -49,10 +49,11 @@ Env vars the ingestion pipeline reads: `DRAFTDAY_OFFLINE=1` forces the bundled s
 Research harnesses (Leiningen `:dev` profile, `dev/` on the source path — active by default for `repl`/`test`/`run`, so no `with-profile` needed):
 - `lein run -m draft-day.benchmark.report --help` — score a `rankings.model` against real historical outcomes; see `dev/draft_day/benchmark/report.clj` for flags (`--models`, `--seasons`, `--compare`, `--power-report`, `--simulate`, etc.)
 - `lein run -m draft-day.replay.report` — replay a real historical auction draft and compare Worth's picks against what was actually paid
+- `lein run -m draft-day.faab.report` — what real Sleeper leagues pay for waiver claims, from a crawled corpus of FAAB auctions (`--crawl` to extend it, `--prior` to print the tables `bid_prior.cljc` holds)
 
 ## Not the shipped app
 
-`dev/` (`draft_day.benchmark.*`, `draft_day.replay.*`) and their tests under `test/draft_day/benchmark/` are a research harness for validating ranking formulas against real outcomes before they ship — not part of the deployed API or SPA. Local caches live under `data/benchmark_cache/` and `data/replay_cache/` (gitignored, re-fetchable). See `dev/draft_day/benchmark/core.clj`, `.../report.clj`, and `.../vintage.clj` docstrings for the harness's own architecture (vintage/leakage gating, paired season-block-bootstrapped statistics, draft-simulation metric); it's involved enough to warrant reading those directly rather than duplicating here.
+`dev/` (`draft_day.benchmark.*`, `draft_day.replay.*`, `draft_day.faab.*`) and their tests under `test/draft_day/benchmark/`, `test/draft_day/replay/` and `test/draft_day/faab/` are a research harness for validating ranking formulas and bid models against real outcomes before they ship — not part of the deployed API or SPA. Local caches live under `data/benchmark_cache/`, `data/replay_cache/` and `data/faab_cache/` (gitignored, re-fetchable). See `dev/draft_day/benchmark/core.clj`, `.../report.clj`, and `.../vintage.clj` docstrings for the harness's own architecture (vintage/leakage gating, paired season-block-bootstrapped statistics, draft-simulation metric); it's involved enough to warrant reading those directly rather than duplicating here.
 
 ## Architecture
 
