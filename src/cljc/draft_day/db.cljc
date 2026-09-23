@@ -898,6 +898,19 @@
   [p]
   [(position-rank (:position p)) (- (or (:ros-points p) 0)) (str (:player-name p))])
 
+(def ^:private seat-index
+  (merge (zipmap ["QB" "RB" "WR" "TE"] (range))
+         (zipmap (keys flex-slots) (repeat 4))
+         {"K" 5 "DST" 6}))
+
+(defn seat-rank
+  "A starter's place in the order every roster is drawn in — QB, RB, WR, TE,
+  the flex seats together, K, DST — whatever order the host's lineup arrived
+  in. Read off `:slot`, else `:position` where the seat is unknown; unknown
+  sorts last."
+  [p]
+  (get seat-index (or (:slot p) (:position p)) (count seat-index)))
+
 (defn team-roster
   "One synced team as every season view draws it — the League tab's cards, My
   Team and the Waivers panel alike: `{:starters :bench :parked}`, each a vector
@@ -908,7 +921,8 @@
   membership and this took them from `:starter-ids`, so one starter could show
   on the League tab and not on My Team.
 
-  Starters come in lineup order off `:starter-ids`, seated by `starter-seats`.
+  Starters are seated in lineup order off `:starter-ids` by `starter-seats`,
+  then drawn in `seat-rank` order, since hosts disagree about lineup order.
   An unfilled seat (`empty-seat`) consumes its index and is dropped: this is
   a list of who a team holds, not of its seats. Ids go through `held-ids`, and
   an id `by-id` cannot resolve keeps its place as `{:player-id id :unvalued?
@@ -931,7 +945,7 @@
                       (remove started)
                       (map row)
                       (sort-by roster-sort-key))]
-    {:starters starters
+    {:starters (vec (sort-by seat-rank starters))
      :bench    (filterv #(contains? active (:player-id %)) others)
      :parked   (filterv #(not (contains? active (:player-id %))) others)}))
 

@@ -240,7 +240,11 @@
                            ;; this panel is where he is on screen.
                            :on-click (when pick?
                                        #(rf/dispatch [:compare-toggle (:player-id p)]))}
-                      [:td.slot (or (:position p) "–")]
+                      ;; A starter reads his seat, as on My Team: a FLEX
+                      ;; receiver is not a WR seat.
+                      [:td.slot (if (:starter? p)
+                                  (or (:slot p) "–")
+                                  (or (:position p) "–"))]
                       [:td.slot-player
                        (if (:unvalued? p)
                          [:span.muted {:title (str "No player for id " (:player-id p))}
@@ -260,9 +264,9 @@
          [:table.roster
           [:thead [:tr [:th.slot "Pos"] [:th "Player"] [:th.num "ROS"]]]
           [:tbody
-           (group "Starters" starters)
+           (group "Starters" (mapv #(assoc % :starter? true) starters))
            (group "Bench" bench)
-           (group "IR / Taxi" (mapv #(assoc % :parked? true) parked))]]))]))
+           (group "IR" (mapv #(assoc % :parked? true) parked))]]))]))
 
 (defn week-note
   "How old this week's projection is.

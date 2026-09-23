@@ -780,7 +780,8 @@
         {:keys [starters]} (db/team-roster team {:provider "espn"
                                                   :roster-positions ["QB" "RB" "FLEX"]}
                                            synced-xwalk synced-by-id)]
-    (is (= [["00-wr" "FLEX"] ["00-qb" "QB"]] (mapv (juxt :player-id :slot) starters))))
+    (is (= [["00-qb" "QB"] ["00-wr" "FLEX"]] (mapv (juxt :player-id :slot) starters))
+        "drawn in seat order, not the order ESPN listed them"))
   (testing "and a stored ESPN sync that names none gets no label rather than a guess"
     (let [{:keys [starters]} (db/team-roster {:player-ids ["11"] :active-ids ["11"]
                                               :starter-ids ["11"]}
@@ -861,3 +862,12 @@
   (is (= :season (db/view-mode :rosters)))
   (is (= :team (db/view-for {} :season :league)))
   (is (= :board (db/view-for {} :draft :rosters))))
+
+(deftest starters-draw-in-one-seat-order-whatever-the-host-sent
+  (is (= ["QB" "RB" "WR" "TE" "SUPER_FLEX" "FLEX" "K" "DST"]
+         (mapv :slot (sort-by db/seat-rank
+                              (map #(hash-map :slot %)
+                                   ["K" "SUPER_FLEX" "WR" "QB" "FLEX" "DST" "TE" "RB"])))))
+  (is (= ["QB" "TE" nil] (mapv :position (sort-by db/seat-rank
+                                                  [{:position nil} {:position "TE"} {:position "QB"}])))
+      "a starter with no known seat ranks by position; unknown last"))
