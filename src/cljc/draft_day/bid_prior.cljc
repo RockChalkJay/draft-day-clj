@@ -19,7 +19,8 @@
   | 4+ | 2,805 | 2% | 20.0% | 60% |
 
   Shares are of the season's budget. FF Beacon publishes medians of 0 / 5 /
-  10.5 / 20% from its own 15,667 winning bids, which this reproduces. Winners
+  10.5 / 20% from its own 15,667 winning bids, which this matches at one, three
+  and four-plus bidders and runs a third under at two. Winners
   paid a median 2.0 times the second-highest bid, and 42% of contested
   auctions were won by 5% of the budget or more than it took.
 
@@ -96,10 +97,15 @@
    :large    {:n 2027  :log-shift -0.41}})
 
 (def budget-shift
-  "How far bids in leagues on any budget but $100 sit from `bid-share`'s, as a
-  natural log of the ratio of their shares: about half. Measured over all 408
-  league-seasons, 22,363 positive bids against 19,352."
-  -0.69)
+  "How far positive bids in leagues on any budget but $100 sit from
+  `bid-share`'s, by bidders, as a natural log of the ratio of their median
+  shares: a third as much for a lone bidder, two thirds with four or more.
+  Measured over all 408 league-seasons; the counts are the other budgets'
+  positive bids, 22,363 of them against 19,352 in $100 leagues."
+  {1 {:n 7430 :log-shift -1.10}
+   2 {:n 4114 :log-shift -0.59}
+   3 {:n 2844 :log-shift -0.52}
+   4 {:n 7975 :log-shift -0.42}})
 
 (def heaping
   "How often positive bids land on round numbers, beside the rate chance alone

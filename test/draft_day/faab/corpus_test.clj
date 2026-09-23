@@ -37,6 +37,15 @@
     (is (= 1.0 (:remaining (first (:bids a)))) "nothing spent before his first win")
     (is (= 0.75 (:remaining (first (:bids b)))) "the $50 win came off his $200")))
 
+(deftest a-win-does-not-come-off-a-balance-the-same-run-already-decided-against
+  (let [same-run {:meta   {:budget 100}
+                  :season {:auctions [{:week 2 :at 1000 :player-id "a" :bids [(bid 1 "u1" 40 true)]}
+                                      {:week 2 :at 1000 :player-id "b" :bids [(bid 1 "u1" 30 true)]}
+                                      {:week 3 :at 2000 :player-id "c" :bids [(bid 1 "u1" 5 true)]}]}}
+        [a b c]  (corpus/auction-rows same-run {})]
+    (is (= [1.0 1.0] (map #(:remaining (first (:bids %))) [a b])))
+    (is (= 0.3 (:remaining (first (:bids c)))) "both of the run's wins came off before the next")))
+
 (deftest a-manager-season-measures-how-often-and-how-hard-he-bids
   (let [rows     (corpus/auction-rows season {})
         typical  {[3 :early] 0.05 [1 :mid] 0.05}
@@ -86,13 +95,16 @@
   (let [bids [{:bucket 1 :phase :early :share 0.0 :amount 0 :budget 100}
               {:bucket 1 :phase :early :share 0.04 :amount 4 :budget 100}
               {:bucket 4 :phase :late :share 0.3 :amount 30 :budget 100}
-              {:bucket 2 :phase :mid :share 0.01 :amount 10 :budget 1000}]
+              {:bucket 2 :phase :mid :share 0.01 :amount 10 :budget 1000}
+              {:bucket 1 :phase :early :share 0.02 :amount 20 :budget 1000}]
         bb   (report/backbone bids [])]
     (is (= #{[1 :early] [4 :late]} (set (keys (:bid-share bb))))
         "a $1000 league's bids are not read as shares of the $100 scale")
     (is (= 0.5 (get-in bb [:bid-share [1 :early] :p-zero])))
     (is (= 0.04 (get-in bb [:bid-share [1 :early] :positive 0.5])))
-    (is (contains? (:budget-shift bb) :other) "but its distance from that scale is kept")))
+    (is (= (Math/log 0.5) (get-in bb [:budget-shift 1 :log-shift]))
+        "but its distance from that scale is kept, measured against the $100 bids directly")
+    (is (not (contains? (:budget-shift bb) 2)) "a bucket with no $100 bids has nothing to sit off")))
 
 (deftest round-number-heaps-are-read-against-what-chance-would-give
   (let [bids (map (fn [a] {:budget 100 :amount a}) [5 10 15 11 7 3])

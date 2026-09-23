@@ -60,37 +60,41 @@
   (cond (nil? n) :unknown (<= n 8) :small (<= n 12) :standard :else :large))
 
 (defn auction-rows
-  "One season's auctions as report rows, in the order they were decided."
+  "One season's auctions as report rows, in the order they were decided.
+  Spending advances a run at a time, a run being the auctions that share `:at`."
   [{:keys [meta season]} positions]
   (let [budget (double (:budget meta))
         fmt    (select-keys meta [:league-id :season :num-teams :kind :superflex?
-                                  :scoring-rec :budget :daily? :previous-league-id])]
+                                  :scoring-rec :budget :daily? :previous-league-id])
+        row    (fn [spent {:keys [week at player-id bids]}]
+                 (let [shares (mapv #(/ (:amount %) budget) bids)
+                       sorted (sort > shares)]
+                   (merge fmt
+                          {:week      week
+                           :at        at
+                           :phase     (phase week)
+                           :player-id player-id
+                           :position  (get positions player-id "?")
+                           :n         (count bids)
+                           :bucket    (bucket (count bids))
+                           :winner    (first sorted)
+                           :second    (second sorted)
+                           :bids      (mapv (fn [b s]
+                                              (assoc (select-keys b [:owner-id :roster-id :amount :won?])
+                                                     :share s
+                                                     :remaining (/ (- budget (get spent (:roster-id b) 0.0))
+                                                                   budget)))
+                                            bids shares)})))
+        spend  (fn [spent {:keys [bids]}]
+                 (if-let [winner (first (filter :won? bids))]
+                   (update spent (:roster-id winner) (fnil + 0.0) (double (:amount winner)))
+                   spent))]
     (first
-     (reduce (fn [[rows spent] {:keys [week at player-id bids]}]
-               (let [shares  (mapv #(/ (:amount %) budget) bids)
-                     sorted  (sort > shares)
-                     row     (merge fmt
-                                    {:week      week
-                                     :at        at
-                                     :phase     (phase week)
-                                     :player-id player-id
-                                     :position  (get positions player-id "?")
-                                     :n         (count bids)
-                                     :bucket    (bucket (count bids))
-                                     :winner    (first sorted)
-                                     :second    (second sorted)
-                                     :bids      (mapv (fn [b s]
-                                                        (assoc (select-keys b [:owner-id :roster-id :amount :won?])
-                                                               :share s
-                                                               :remaining (/ (- budget (get spent (:roster-id b) 0.0))
-                                                                             budget)))
-                                                      bids shares)})
-                     winner  (first (filter :won? bids))]
-                 [(conj rows row)
-                  (cond-> spent
-                    winner (update (:roster-id winner) (fnil + 0.0) (double (:amount winner))))]))
+     (reduce (fn [[rows spent] run]
+               [(into rows (map #(row spent %)) run)
+                (reduce spend spent run)])
              [[] {}]
-             (sort-by :at (:auctions season))))))
+             (partition-by :at (sort-by :at (:auctions season)))))))
 
 (defn corpus-rows
   "Every auction row across the corpus."

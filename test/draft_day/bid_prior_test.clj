@@ -23,6 +23,10 @@
 (deftest every-position-the-app-drafts-has-a-shift
   (is (= (set db/positions) (set (keys prior/position-shift)))))
 
+(deftest other-budgets-sit-below-the-100-dollar-scale-at-every-bidder-count
+  (is (= #{1 2 3 4} (set (keys prior/budget-shift))))
+  (is (every? (comp neg? :log-shift) (vals prior/budget-shift))))
+
 (deftest a-correlation-is-a-correlation
   (doseq [[_ m] prior/persistence
           k [:per-week :zero-share :aggression]]
