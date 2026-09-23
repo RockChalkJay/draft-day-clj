@@ -1,6 +1,7 @@
 (ns draft-day.faab.corpus
-  "The crawled FAAB seasons as rows the report can slice: one per auction, with
-  its bids as shares of the season's budget, and one per manager-season.
+  "The crawled FAAB seasons as rows the report can slice: one per waiver
+  auction (see `draft-day.ingestion.transactions`), with its bids as shares of
+  the season's budget, and one per manager-season.
 
   A bid is read as a share of the budget its league started the season with,
   so a $100 league and a $1000 one land on one scale. Positions come from

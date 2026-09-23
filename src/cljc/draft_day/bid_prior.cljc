@@ -5,7 +5,7 @@
   Measured, not assumed. Crawled from Sleeper's public API on 2026-09-23 by
   `draft-day.faab.report` — a walk over leaguemates from the author's account —
   408 finished FAAB league-seasons (80 from 2023, 133 from 2024, 195 from 2025),
-  55,745 auctions and 80,957 competitive bids, normalized by the app's own
+  55,745 waiver auctions and 80,957 competitive bids, normalized by the app's own
   `transactions/normalize-season`. Superflex and one-QB are balanced (205/203);
   the walk found dynasty leagues more than redraft (273 against 103).
 
