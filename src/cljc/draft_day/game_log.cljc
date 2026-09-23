@@ -1,37 +1,7 @@
 (ns draft-day.game-log
-  "The player detail modal's week-by-week table: what he did in each week the
-  season has reached, scored under the league's own rules.
-
-  Pure and in cljc for `stat-lines`' reason — every rule here is a judgment
-  about data rather than about markup, and `lein test` reaches cljc.
-
-  A ROW PER WEEK, NOT A ROW PER APPEARANCE. Weeks the player has no entry for
-  are still rows, marked `:played? false` with nil values. A back who missed
-  weeks 3 to 5 has to read as a back who missed weeks 3 to 5, not as one whose
-  season was three weeks shorter — the same rule `stat-lines/season-columns`
-  applies to seasons, one scale down.
-
-  POINTS ARE NIL FOR A WEEK HE DID NOT PLAY, and that distinction is the trap
-  worth naming: `scoring/player-points` reads a missing stat as 0, so it scores
-  an absent week as a cheerful 0.0. For a week he *played*, a zero is the truth
-  — he was active and did nothing. For a week he did not, it is BLANK IS NOT
-  ZERO rule broken in the one cell where the lie looks most like a result.
-
-  THE LINE ARRIVES SPARSE. Both realized sources drop a zero, so a stat missing
-  from a week he appeared in means he did none of it and reads back as 0 here. A
-  week he missed has no entry at all, which is what keeps the two apart.
-
-  SLEEPER'S OWN LINE WHERE IT ARRIVED, nflverse's where it did not. This table
-  is the one place the app states a *realized* number of its own rather than
-  reporting the provider's, so it is the one place a manager can hold our
-  arithmetic against his league's — and the two sources count a first down and
-  a blocked kick differently. Scored from Sleeper's line under the league's own
-  rules it agrees with the league to the cent.
-
-  The columns are `stat-lines/position-rows`, unchanged. The season trend table
-  sits directly above this one in the same modal, and two tables describing one
-  player by two different stat vocabularies is exactly the drift the rest of the
-  app keeps single lists to avoid."
+  "Build a weekly player-detail table scored under the league's rules. Missing
+  weeks remain as rows with nil values; sparse stats on a played week read as
+  zero. Sleeper's realized line takes precedence over nflverse's when present."
   (:require [draft-day.scoring :as scoring]
             [draft-day.stat-lines :as sl]))
 

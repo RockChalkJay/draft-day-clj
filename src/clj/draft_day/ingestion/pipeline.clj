@@ -26,24 +26,19 @@
   (:import [java.time Instant]))
 
 (def schema-version
-  "Version of the persisted universe envelope and player-row shape.
-
-  Bump it whenever cached data would otherwise deserialize successfully with
-  missing or changed fields."
+  "Version of the persisted universe envelope and player-row shape."
   13)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
 
 (defn now-iso
-  "Current instant as ISO-8601. A var so tests can pin it."
+  "Return the current instant as an ISO-8601 string."
   []
   (str (Instant/now)))
 
 (defmacro best-effort
-  "Evaluate body, returning its value; on any exception log it to *err* and
-  return nil. For optional enrichment steps where a failed fetch should degrade
-  gracefully (leave the column absent) rather than abort ingestion."
+  "Evaluate optional ingestion work, logging exceptions and returning nil on failure."
   [& body]
   `(try ~@body
      (catch Exception e#
@@ -85,18 +80,14 @@
     (edn/read-string (slurp r))))
 
 (defn checked
-  "Validate a universe from a branch with nowhere better to fall back to (cache,
-  bundled sample): drop unusable rows and log them, but never throw. Returns
-  `{:players :validation}`."
+  "Validate fallback rows without throwing, returning filtered players and a report."
   [label rows]
   (let [{:keys [players report]} (validate/validate-universe (or rows []))]
     (validate/log-report! label report)
     {:players players :validation report}))
 
 (defn cached->universe
-  "Coerce whatever is on disk into an envelope. Pre-versioning caches were a bare
-  player vector; call those schema 0 so a hand-copied file degrades to a refetch
-  instead of throwing on a map lookup."
+  "Coerce a cached envelope or legacy player vector into an envelope."
   [x]
   (cond
     (map? x)        x
@@ -109,9 +100,7 @@
   0.80)
 
 (defn log-enrichment!
-  "Log each enrichment's coverage and warn when an expected join mostly misses.
-  Sources marked `:expected-partial?` are exempt because their row sets are
-  intentionally smaller than the current universe."
+  "Log enrichment coverage and warn when a non-partial join mostly misses."
   [label {:keys [ok? rows matched hit-rate coverage by-position expected-partial?]}]
   (if-not ok?
     (log/warn (format "%s: unavailable, columns omitted" label))
@@ -127,9 +116,7 @@
                  label pos rows matched n))))))
 
 (defn apply-enrichment
-  "Left-join one enrichment source and record its report under `label`.
-  A nil source is recorded as unavailable; an empty successful source remains a
-  join report so an unexpected miss is distinguishable from an outage."
+  "Left-join one enrichment source and record whether it was unavailable or empty."
   ([acc label by-key] (apply-enrichment acc label by-key {}))
   ([acc label by-key opts]
    (if (nil? by-key)
@@ -176,10 +163,7 @@
   (some-> by-key (update-vals (fn [cols] {:vendor/by-format {fmt cols}}))))
 
 (defn enrichment-tasks
-  "Build best-effort enrichment tasks keyed by their source labels.
-
-  Fetches are independent and run concurrently; joins remain ordered so the
-  source report is deterministic."
+  "Build independently fetched enrichment tasks keyed by source label."
   [season]
   (into (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
                :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
@@ -197,10 +181,7 @@
         pos-tier-tasks))
 
 (defn enrich-universe
-  "Enrich an already-validated universe and return `{:players :sources}`.
-
-  Format-specific FantasyPros values remain side by side because the shared
-  universe serves leagues with different scoring formats; ESPN stays unscoped."
+  "Enrich a validated universe, retaining format-specific vendor columns side by side."
   [season universe]
   (let [fetched  (parallel/all (enrichment-tasks season))
         byes     (:sleeper/byes fetched)
@@ -208,9 +189,6 @@
         espn     (:espn fetched)
         prior    (:nflverse/player-stats fetched)
         weekly   (:nflverse/weekly fetched)
-        ;; Not a peer task: it needs `through-week`, which is
-        ;; `:nflverse/weekly`'s own answer, and two sources for the week is how
-        ;; a November league comes to read an August board.
         realized (best-effort (sleeper-actual/fetch season (:through-week weekly)))]
     (log/info (format ":sleeper/byes: %d team bye weeks" (count byes)))
     (as-> {:players (cond-> universe (seq byes) (sleeper/assoc-byes byes))
@@ -243,9 +221,6 @@
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions weekly)
                          :expected-partial? true})
-      ;; Joined on the player's *Sleeper* id, not `:player-id`, which is the GSIS
-      ;; id wherever one resolves. Same trap and fallback as `assoc-weekly`,
-      ;; whose comment has the numbers; the fallback carries team defenses.
       (apply-enrichment acc :sleeper/realized (:by-key realized)
                         {:key-fn            #(or (get-in % [:ids :sleeper])
                                                  (:player-id %))
@@ -253,9 +228,7 @@
       (assoc acc :through-week (or (:through-week weekly) 0)))))
 
 (defn fetch-enriched-universe
-  "Fetch, anchor, validate, and enrich the live universe.
-  Validation follows id anchoring so collisions are rejected before enrichment;
-  systemic validation failures throw for the cache fallback to handle."
+  "Fetch, anchor, validate, and enrich the live universe."
   [season]
   (let [anchored (player-ids/attach-ids (sleeper/fetch-universe season)
                                         (player-ids/pinned-index))
@@ -266,7 +239,7 @@
     (assoc (enrich-universe season players) :validation report)))
 
 (defn sample-universe
-  "Return the bundled fallback as an envelope, preserving captured provenance."
+  "Return the bundled fallback as an envelope with its captured provenance."
   []
   (let [env (or (cached->universe (load-sample)) {:players []})]
     (merge {:schema-version (:schema-version env)
@@ -279,7 +252,7 @@
                               (:players env) (player-ids/pinned-index))))))
 
 (defn cached-universe
-  "Read and validate a schema-matched disk cache, or return nil."
+  "Read a schema-matched disk cache, or return nil."
   [path]
   (when-let [env (cached->universe (read-transit path))]
     (when (= schema-version (:schema-version env))
@@ -336,8 +309,7 @@
   (Double/parseDouble (or (System/getenv "DRAFTDAY_WEEKLY_TTL_HOURS") "1")))
 
 (defn weekly-answers?
-  "Whether a cached envelope matches the schema, season, and requested week.
-  An empty `:lines` map is still a valid answer."
+  "Whether a cached envelope matches the schema, season, and requested week."
   [env season week]
   (boolean (and (map? env)
                 (= weekly-schema-version (:schema-version env))
@@ -351,7 +323,7 @@
          nil)))
 
 (defn live-weekly
-  "Fetch and cache one week's projection lines with its kickoff times."
+  "Fetch and cache one week's projection lines and kickoff times."
   [season week path]
   (let [env {:schema-version weekly-schema-version
              :season         season
@@ -363,7 +335,6 @@
     env))
 
 (defonce ^:private weekly-memo
-  ;; Memoized by path; file freshness and season/week matching remain authoritative.
   (atom nil))
 
 (defn load-weekly
@@ -389,7 +360,7 @@
        (when (seq (:lines env)) env)))))
 
 (defn assoc-kickoffs
-  "Join kickoff metadata onto players by team; unknown teams remain unannotated."
+  "Join kickoff metadata onto players by team, leaving unknown teams unchanged."
   [players kickoffs]
   (if (empty? kickoffs)
     players
@@ -409,7 +380,7 @@
           players)))
 
 (defn assoc-weekly
-  "Join weekly lines onto players, preserving absence for unprojected players."
+  "Join weekly lines onto players, leaving unprojected players unannotated."
   [players lines]
   (mapv (fn [p]
           (let [k (or (get-in p [:ids :sleeper]) (:player-id p))]
