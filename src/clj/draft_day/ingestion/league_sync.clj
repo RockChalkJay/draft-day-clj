@@ -43,7 +43,10 @@
 
     {:teams  [{:roster-id :owner-id :name :player-ids :active-ids :starter-ids
                :faab-used :faab-left :waiver-position :wins :losses}]
-     :waiver {:type :faab|:rolling|:reverse-standings :budget n}}
+     :waiver {:type :faab|:rolling|:reverse-standings :budget n :min-bid n}}
+
+  `:min-bid` is optional: a host whose floor is not read leaves it out (ESPN's
+  is not), and absent reads as $0.
 
   `:active-ids` is required, not optional, and it is `:player-ids` minus anyone
   the provider parks — IR, taxi, whatever the host calls it. Both readers of a

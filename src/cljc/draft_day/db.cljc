@@ -1079,6 +1079,15 @@
               [:player-ids :active-ids])
       (update :starter-ids repair-lineup)))
 
+(defn valid-bid-history?
+  "Is this the summary `ingestion.transactions/summary` sends — seasons, each a
+  count of auctions? One that is not is dropped from a sync on its own, keeping
+  the rosters."
+  [h]
+  (and (map? h)
+       (sequential? (:seasons h))
+       (every? #(and (map? %) (number? (:auctions %))) (:seasons h))))
+
 (defn reconcile-league-sync
   "Accept a synced league only if it has the shape the waiver board reads, or
   drop it.
@@ -1102,15 +1111,21 @@
   comes back available. It is the shape a sync stored before providers were
   named has, and one click re-fetches it.
 
-  `:starter-ids` is repaired the other way round — see `repair-lineup`."
+  `:starter-ids` is repaired the other way round — see `repair-lineup`. A
+  malformed `:bid-history` is dropped on its own and reported as a
+  `:bid-history-error`, the same as one that failed to load."
   [stored]
   (when (and (map? stored)
              (sequential? (:teams stored))
              (or (empty? (:teams stored)) (some? (:provider stored))))
-    (-> stored
-        (update :teams (fn [ts]
-                         (into [] (comp (filter map?) (map repair-team)) ts)))
-        (update :waiver #(when (map? %) %)))))
+    (let [h (:bid-history stored)]
+      (cond-> (-> stored
+                  (update :teams (fn [ts]
+                                   (into [] (comp (filter map?) (map repair-team)) ts)))
+                  (update :waiver #(when (map? %) %)))
+        (not (valid-bid-history? h)) (dissoc :bid-history)
+        (and (some? h) (not (valid-bid-history? h)))
+        (assoc :bid-history-error "Bid history arrived in a shape the board cannot read")))))
 
 ;; ---- initial db ----
 

@@ -442,6 +442,19 @@
       (is (= ["a" "b"] (:player-ids (first (:teams (db/reconcile-league-sync ls))))))
       (is (= {:type :faab :budget 100} (:waiver (db/reconcile-league-sync ls)))))))
 
+(deftest a-malformed-bid-history-summary-is-dropped-and-the-rosters-kept
+  (let [ls   {:teams [{:roster-id 1 :player-ids ["a"]}] :provider "sleeper"}
+        good {:seasons [{:season "2026" :auctions 41 :contested 12 :non-competing 3
+                         :fetched-at "2026-09-23T04:00:00Z"}]}]
+    (is (= good (:bid-history (db/reconcile-league-sync (assoc ls :bid-history good)))))
+    (is (not (contains? (db/reconcile-league-sync ls) :bid-history-error))
+        "no history at all is not a malformed one")
+    (doseq [bad [{:seasons "nope"} {:seasons [{:auctions "41"}]} "nonsense"]]
+      (let [out (db/reconcile-league-sync (assoc ls :bid-history bad))]
+        (is (not (contains? out :bid-history)) (pr-str bad))
+        (is (string? (:bid-history-error out)) "said, like a history that failed to load")
+        (is (= ["a"] (:player-ids (first (:teams out)))) "the rosters survive it")))))
+
 (deftest a-team-with-no-player-ids-is-repaired-not-trusted
   ;; The shape that actually matters: it reaches `waiver/rostered-index` as a
   ;; team holding nobody, and every player on it silently becomes a free agent.

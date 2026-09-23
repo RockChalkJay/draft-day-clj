@@ -8,6 +8,7 @@
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.matchups :as matchups]
+            [draft-day.ingestion.transactions :as transactions]
             [draft-day.scoring :as scoring]))
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
@@ -497,21 +498,55 @@
     (is (= 400 (:status (h {:body (input-stream (json/write-value-as-string
                                                  {:provider "sleeper" :league-id "abc"}))}))))))
 
+(defn- sync-with
+  "POST a Sleeper league sync with the roster sync and the bid history each
+  answering as given. Both are stubbed: `bid-history` swallows what a fetch
+  throws, so a sync test that forgot it would reach Sleeper and pass anyway."
+  [sync-result history-result]
+  (with-redefs [league-sync/sync-league    (fn [_] sync-result)
+                transactions/bid-history   (fn [_] history-result)]
+    (routes/league-sync-handler
+     {:body (input-stream (json/write-value-as-string
+                           {:provider "sleeper" :league-id "123"}))})))
+
+(def ^:private history
+  {:seasons [{:season "2026" :auctions 41 :contested 12 :non-competing 3
+              :fetched-at "2026-09-23T04:00:00Z"}]})
+
 (deftest league-sync-endpoint-returns-the-normalized-league
-  (with-redefs [league-sync/sync-league (fn [_] {:ok true :league synced})]
-    (let [resp (routes/league-sync-handler
-                {:body (input-stream (json/write-value-as-string
-                                      {:provider "sleeper" :league-id "123"}))})]
-      (is (= 200 (:status resp)))
-      (is (= 2 (count (:teams (parse resp))))))))
+  (let [resp (sync-with {:ok true :league synced} {:ok true :history history})]
+    (is (= 200 (:status resp)))
+    (is (= 2 (count (:teams (parse resp)))))))
 
 (deftest league-sync-endpoint-passes-a-failures-status-through
-  (with-redefs [league-sync/sync-league (fn [_] {:ok false :status 404 :error "not found"})]
-    (let [resp (routes/league-sync-handler
-                {:body (input-stream (json/write-value-as-string
-                                      {:provider "sleeper" :league-id "999"}))})]
-      (is (= 404 (:status resp)))
-      (is (= "not found" (:error (parse resp)))))))
+  (let [resp (sync-with {:ok false :status 404 :error "not found"} {:ok true :history history})]
+    (is (= 404 (:status resp)) "a history that loaded does not rescue rosters that did not")
+    (is (= "not found" (:error (parse resp))))))
+
+(deftest a-sync-carries-a-summary-of-the-bid-history-beside-the-rosters
+  (let [b (parse (sync-with {:ok true :league synced} {:ok true :history history}))]
+    (is (= 41 (get-in b [:bid-history :seasons 0 :auctions])))
+    (is (not (contains? b :bid-history-error)))))
+
+(deftest a-history-that-fails-leaves-the-rosters-answering
+  (let [resp (sync-with {:ok true :league synced}
+                        {:ok false :status 502 :error "Sleeper non-200"})
+        b    (parse resp)]
+    (is (= 200 (:status resp)))
+    (is (= 2 (count (:teams b))))
+    (is (not (contains? b :bid-history)) "nothing was ever cached")
+    (is (= "Sleeper non-200" (:bid-history-error b)) "said, so the board can say it")))
+
+(deftest a-failed-refresh-still-reports-what-the-board-will-price-from
+  (let [b (parse (sync-with {:ok true :league synced}
+                            {:ok false :status 502 :error "Sleeper non-200" :cached history}))]
+    (is (= 41 (get-in b [:bid-history :seasons 0 :auctions])))
+    (is (= "Sleeper non-200" (:bid-history-error b)))))
+
+(deftest a-host-with-no-bid-history-syncs-with-neither-key
+  (let [b (parse (sync-with {:ok true :league synced} {:ok false :unsupported? true}))]
+    (is (not (contains? b :bid-history)))
+    (is (not (contains? b :bid-history-error)) "a gap it could never fill is not a failure")))
 
 ;; ---- connecting an account ----
 

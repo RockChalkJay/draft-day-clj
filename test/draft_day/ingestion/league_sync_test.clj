@@ -30,7 +30,7 @@
 ;; ---- waiver settings ----
 
 (deftest waiver-type-is-read-from-the-league-not-guessed
-  (is (= {:type :faab :budget 100}
+  (is (= {:type :faab :budget 100 :min-bid 0}
          (import-sleeper/waiver-settings {:settings {:waiver_type 2 :waiver_budget 100}})))
   (is (= :rolling (:type (import-sleeper/waiver-settings {:settings {:waiver_type 0}}))))
   (is (= :reverse-standings
@@ -46,11 +46,18 @@
   (testing "an absent budget is 0, not nil — no share rule divides by nobody's number"
     (is (= 0 (:budget (import-sleeper/waiver-settings {:settings {:waiver_type 0}}))))))
 
+(deftest the-commissioners-minimum-bid-is-read-from-the-league
+  (is (= 1 (:min-bid (import-sleeper/waiver-settings
+                      {:settings {:waiver_type 2 :waiver_budget 100 :waiver_bid_min 1}})))
+      "a bid below it is not one the host accepts")
+  (is (= 0 (:min-bid (import-sleeper/waiver-settings {:settings {:waiver_type 2}})))
+      "Sleeper's default is $0"))
+
 (deftest the-waiver-rules-are-read-by-the-sync-not-returned-by-the-import
   ;; They were on `normalize-league` too, which only looked tidy: the client
   ;; select-keys them away on arrival, so it was two keys nobody read and a
   ;; second place to drift.
-  (is (= {:type :faab :budget 100} (import-sleeper/waiver-settings (:league raw))))
+  (is (= {:type :faab :budget 100 :min-bid 0} (import-sleeper/waiver-settings (:league raw))))
   (is (= 15 (import-sleeper/playoff-week-start (:league raw))))
   (let [cfg (league-import/normalize-league :sleeper (:league raw))]
     (is (not (contains? cfg :waiver)))
@@ -61,7 +68,7 @@
 (deftest a-roster-carries-who-holds-whom-and-what-is-left-to-bid
   (let [{:keys [teams waiver]} (sync-of raw)
         [t1 t2 t3] teams]
-    (is (= {:type :faab :budget 100} waiver))
+    (is (= {:type :faab :budget 100 :min-bid 0} waiver))
     (is (= 3 (count teams)))
     (is (= ["4034" "6794" "SF" "9001" "9002"] (:player-ids t1))
         "everyone rostered, IR and taxi included — none of them is a free agent")

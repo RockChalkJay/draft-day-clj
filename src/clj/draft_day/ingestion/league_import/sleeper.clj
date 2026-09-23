@@ -101,17 +101,21 @@
   {0 :rolling 1 :reverse-standings 2 :faab})
 
 (defn waiver-settings
-  "Pure: a raw Sleeper league -> `{:type :faab :budget 100}`.
+  "Pure: a raw Sleeper league -> `{:type :faab :budget 100 :min-bid 0}`.
 
   The budget is only meaningful under `:faab`, but it is carried either way so a
   consumer never has to ask two questions to find out it should not be asking.
   Sleeper omits `waiver_budget` on leagues that never enabled FAAB; 0 is the
   honest reading of an absent budget and keeps every downstream share rule from
-  dividing by a number nobody set."
+  dividing by a number nobody set.
+
+  `:min-bid` is the commissioner's floor, $0 unless changed; the host rejects a
+  bid below it."
   [raw]
   (let [s (:settings raw)]
-    {:type   (get waiver-types (:waiver_type s) :rolling)
-     :budget (or (:waiver_budget s) 0)}))
+    {:type    (get waiver-types (:waiver_type s) :rolling)
+     :budget  (or (:waiver_budget s) 0)
+     :min-bid (or (:waiver_bid_min s) 0)}))
 
 (defn playoff-week-start
   "The first week of the league's fantasy playoffs, or nil when it says nothing.

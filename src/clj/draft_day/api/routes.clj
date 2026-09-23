@@ -19,6 +19,8 @@
             [draft-day.ingestion.matchups :as matchups]
             [draft-day.ingestion.matchups.espn]
             [draft-day.ingestion.matchups.sleeper]
+            [draft-day.ingestion.transactions :as transactions]
+            [draft-day.ingestion.transactions.sleeper]
             [draft-day.rankings.engine :as engine]
             [draft-day.rankings.model :as model]
             [draft-day.rankings.injury :as injury]
@@ -100,17 +102,40 @@
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
+(defn with-bid-history
+  "The synced league with a summary of its bid history — the auctions stay in
+  the server's cache. A refresh that failed adds `:bid-history-error` beside a
+  summary of what is still cached, and a host with no history to read adds
+  neither: a gap it could never have filled is not a failure."
+  [league {:keys [ok history error unsupported? cached]}]
+  (cond
+    ok           (assoc league :bid-history history)
+    unsupported? league
+    :else        (cond-> (assoc league :bid-history-error (or error "Bid history unavailable"))
+                   cached (assoc :bid-history cached))))
+
 (defn league-sync-handler
-  "Who is rostered right now. Separate from the import for the same reason the
-  namespaces are: an import is the league's rules and a sync is its state, and
-  the state changes every time anyone in the league makes a claim."
+  "Who is rostered right now, and what everybody bid to get there. Separate from
+  the import for the same reason the namespaces are: an import is the league's
+  rules and a sync is its state, and the state changes every time anyone in the
+  league makes a claim.
+
+  The bid history is fetched beside the rosters rather than after them, and it
+  can never cost them: `transactions/bid-history` never throws, and a history
+  that failed leaves the rosters answering as they always did. The reply does
+  wait for it, though — it is the slower of the two by a season of weekly logs.
+  Rosters that failed are answered at once and the history abandoned, since
+  there is no reply for it to ride on."
   [req]
   (try
-    (let [{:keys [ok league status error]}
-          (league-sync/sync-league (league-request req))]
-      (if ok
-        (json-response 200 league)
-        (json-response status {:error error})))
+    (let [lreq    (league-request req)
+          history (future (transactions/bid-history lreq))]
+      (try
+        (let [{:keys [ok league status error]} (league-sync/sync-league lreq)]
+          (if ok
+            (json-response 200 (with-bid-history league @history))
+            (json-response status {:error error})))
+        (finally (future-cancel history))))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
