@@ -113,6 +113,17 @@ for the known gaps between a league's real rules and what the board can score.
   `test/draft_day/integration/espn_league_test.clj` before it is trusted, like
   the other ESPN tables.
 
+- **A rival new to this league can bring his habits from his others.** Sleeper
+  user ids are global, so a manager's bids in his other public FAAB leagues are
+  readable, and `draft-day.bid-prior/persistence` says they carry: across 277
+  managers in two leagues in the same season, claims a week correlate at 0.56,
+  $0 share at 0.47 and aggression at 0.38 — weaker than the same league a
+  season apart (0.63, 0.64, 0.53), stronger than knowing nothing. It would give
+  a brand-new league per-rival habits from week one, where it now has only the
+  Sleeper-wide typical manager. The cost is the reason it waits: a
+  sync would read tens to a couple of hundred more transaction logs, which wants
+  the history cache to keep them and `sleeper-http`'s limit to pace them.
+
 - **ESPN league discovery is undocumented and will break.** `fan.api.espn.com`
   is the only endpoint in the app with a credential in its *path*, and the only
   one whose shape nobody publishes. `league-sync.espn/league-entries` is written
