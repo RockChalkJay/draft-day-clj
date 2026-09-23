@@ -113,6 +113,15 @@ for the known gaps between a league's real rules and what the board can score.
   `test/draft_day/integration/espn_league_test.clj` before it is trusted, like
   the other ESPN tables.
 
+- **Optional: rename the bid history's `:auctions` key.** In an auction-draft
+  app, "auction" on the waiver side reads like the draft room, so the docstrings
+  say "waiver auction" and `ingestion/transactions.clj` defines the term. A
+  name that cannot be misread (`:waiver-runs`, `:contests`) would retire the
+  qualifier. It touches the season contract in `transactions.clj`, the Sleeper
+  normalizer, `transactions/summary`, the `faab.*` harness and their tests, and
+  the cached history files — `transactions/schema-version` must move, or an old
+  file loads with the key missing.
+
 - **A rival new to this league can bring his habits from his others.** Sleeper
   user ids are global, so a manager's bids in his other public FAAB leagues are
   readable, and `draft-day.bid-prior/persistence` says they carry: across 277

@@ -1,5 +1,5 @@
 (ns draft-day.faab.crawl
-  "Collect real FAAB auctions from public Sleeper leagues: the corpus the bid
+  "Collect real FAAB waiver auctions from public Sleeper leagues: the corpus the bid
   model's Sleeper-wide backbone is measured from.
 
   Sleeper has no league search, so the corpus is found the way the replay

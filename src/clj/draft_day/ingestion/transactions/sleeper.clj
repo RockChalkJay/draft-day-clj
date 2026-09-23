@@ -3,7 +3,7 @@
   request per week played.
 
   Sleeper publishes failed waiver claims beside the ones that went through, each
-  with its bid, so every auction a league has run can be rebuilt. A season that
+  with its bid, so every waiver auction a league has run can be rebuilt. A season that
   did not run FAAB has no auctions, and its log is not asked for.
 
   Which failed claims lost an auction is read from the structure, never from the
