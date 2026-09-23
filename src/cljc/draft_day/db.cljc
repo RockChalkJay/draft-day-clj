@@ -655,67 +655,72 @@
    [:data    "Data"]])
 
 (def scoring-catalog
-  "The scoring editor's grouping and labels, one entry per `scoring/stat-keys`.
+  "The scoring editor's grouping and labels, covering every `scoring/stat-keys`.
 
-  Presentational only, and deliberately a second literal rather than something
-  derived: `the-custom-editor-can-reach-every-stat-key` ties the two, so a key
-  in one and not the other fails out loud instead of becoming a weight the
-  editor cannot show or a field the engine ignores."
-  [{:group "Passing"   :stats [[:pass_yd "Pass Yd"] [:pass_td "Pass TD"]
-                               [:pass_int "Pass INT"] [:pass_2pt "Pass 2PT"]
-                               [:pass_cmp "Completion"] [:pass_fd "Pass 1st Down"]
-                               [:pass_cmp_40p "Completion 40+"]
-                               [:pass_td_40p "Pass TD 40+"] [:pass_td_50p "Pass TD 50+"]
-                               [:pass_int_td "Pick Six Thrown"]
-                               [:bonus_pass_cmp_25 "Bonus 25 Completions"]
-                               [:bonus_pass_yd_300 "Bonus 300 Pass Yd"]
-                               [:bonus_pass_yd_400 "Bonus 400 Pass Yd"]]}
-   {:group "Rushing"   :stats [[:rush_yd "Rush Yd"] [:rush_td "Rush TD"] [:rush_2pt "Rush 2PT"]
-                               [:rush_fd "Rush 1st Down"] [:rush_40p "Rush 40+"]
-                               [:rush_td_40p "Rush TD 40+"] [:rush_td_50p "Rush TD 50+"]
-                               [:bonus_rush_att_20 "Bonus 20 Carries"]
-                               [:bonus_rush_yd_100 "Bonus 100 Rush Yd"]
-                               [:bonus_rush_yd_200 "Bonus 200 Rush Yd"]]}
-   {:group "Receiving" :stats [[:rec "Reception"] [:rec_yd "Rec Yd"]
-                               [:rec_td "Rec TD"] [:rec_2pt "Rec 2PT"]
-                               [:rec_fd "Rec 1st Down"]
-                               [:rec_20_29 "Rec 20-29"] [:rec_30_39 "Rec 30-39"]
-                               [:rec_40p "Rec 40+"]
-                               [:rec_td_40p "Rec TD 40+"] [:rec_td_50p "Rec TD 50+"]
-                               [:bonus_rec_yd_100 "Bonus 100 Rec Yd"]
-                               [:bonus_rec_yd_200 "Bonus 200 Rec Yd"]]}
-   {:group "Scrimmage" :stats [[:bonus_rush_rec_yd_100 "Bonus 100 Scrimmage Yd"]
-                               [:bonus_rush_rec_yd_200 "Bonus 200 Scrimmage Yd"]]}
-   {:group "Misc"      :stats [[:fum_lost "Fumble Lost"] [:fum "Fumble"]
-                               [:fum_rec_td "Fumble Rec TD"]]}
-   {:group "Kicking"   :stats [[:fgm "FG Made"]
-                               [:fgm_0_19 "FG 0-19"] [:fgm_20_29 "FG 20-29"]
-                               [:fgm_30_39 "FG 30-39"] [:fgm_40_49 "FG 40-49"]
-                               [:fgm_50p "FG 50+"]
-                               [:fgmiss "FG Miss"]
-                               [:fgmiss_0_19 "FG Miss 0-19"] [:fgmiss_20_29 "FG Miss 20-29"]
-                               [:fgmiss_30_39 "FG Miss 30-39"]
-                               [:fgmiss_40_49 "FG Miss 40-49"] [:fgmiss_50p "FG Miss 50+"]
-                               [:xpm "XP Made"] [:xpmiss "XP Miss"]
-                               [:blk_kick "Blocked Kick"]]}
-   {:group "Defense"   :stats [[:sack "Sack"] [:int "INT"] [:fum_rec "Fumble Rec"]
-                               [:ff "Forced Fumble"] [:def_td "Def/ST TD"] [:safe "Safety"]
-                               [:def_2pt "Def 2PT Return"]
-                               [:def_3_and_out "3 and Out"] [:def_4_and_stop "4th Down Stop"]]}
-   {:group "Points Allowed" :stats [[:pts_allow_0 "Shutout"] [:pts_allow_1_6 "1-6 Allowed"]
-                                    [:pts_allow_7_13 "7-13 Allowed"] [:pts_allow_14_20 "14-20 Allowed"]
-                                    [:pts_allow_21_27 "21-27 Allowed"] [:pts_allow_28_34 "28-34 Allowed"]
-                                    [:pts_allow_35p "35+ Allowed"]]}
-   {:group "Yards Allowed" :stats [[:yds_allow_0_100 "Under 100 Yd"] [:yds_allow_100_199 "100-199 Yd"]
-                                   [:yds_allow_200_299 "200-299 Yd"] [:yds_allow_300_349 "300-349 Yd"]
-                                   [:yds_allow_350_399 "350-399 Yd"] [:yds_allow_400_449 "400-449 Yd"]
-                                   [:yds_allow_450_499 "450-499 Yd"] [:yds_allow_500_549 "500-549 Yd"]
-                                   [:yds_allow_550p "550+ Yd"]]}
-   {:group "Special Teams" :stats [[:st_td "ST TD"] [:st_ff "ST Forced Fumble"]
-                                   [:st_fum_rec "ST Fumble Rec"]
-                                   [:def_st_td "Def ST TD"] [:def_st_ff "Def ST Forced Fumble"]
-                                   [:def_st_fum_rec "Def ST Fumble Rec"]
-                                   [:def_kr_yd "Kick Return Yd"] [:def_pr_yd "Punt Return Yd"]]}])
+  `:stats` is always drawn; `:more` is behind a disclosure for imported or
+  custom rules. The catalog remains a literal so tests can catch keys the
+  editor cannot show or the scoring engine cannot use."
+  [{:group "Passing"
+    :stats [[:pass_yd "Pass Yd"] [:pass_td "Pass TD"]
+            [:pass_int "Pass INT"] [:pass_2pt "Pass 2PT"]]
+    :more  [[:pass_cmp "Completion"] [:pass_fd "Pass 1st Down"]
+            [:pass_cmp_40p "Completion 40+"]
+            [:pass_td_40p "Pass TD 40+"] [:pass_td_50p "Pass TD 50+"]
+            [:pass_int_td "Pick Six Thrown"]
+            [:bonus_pass_cmp_25 "Bonus 25 Completions"]
+            [:bonus_pass_yd_300 "Bonus 300 Pass Yd"]
+            [:bonus_pass_yd_400 "Bonus 400 Pass Yd"]]}
+   {:group "Rushing"
+    :stats [[:rush_yd "Rush Yd"] [:rush_td "Rush TD"] [:rush_2pt "Rush 2PT"]]
+    :more  [[:rush_fd "Rush 1st Down"] [:rush_40p "Rush 40+"]
+            [:rush_td_40p "Rush TD 40+"] [:rush_td_50p "Rush TD 50+"]
+            [:bonus_rush_att_20 "Bonus 20 Carries"]
+            [:bonus_rush_yd_100 "Bonus 100 Rush Yd"]
+            [:bonus_rush_yd_200 "Bonus 200 Rush Yd"]
+            [:bonus_rush_rec_yd_100 "Bonus 100 Scrimmage Yd"]
+            [:bonus_rush_rec_yd_200 "Bonus 200 Scrimmage Yd"]]}
+   {:group "Receiving"
+    :stats [[:rec "Reception"] [:rec_yd "Rec Yd"]
+            [:rec_td "Rec TD"] [:rec_2pt "Rec 2PT"]]
+    :more  [[:rec_fd "Rec 1st Down"]
+            [:rec_20_29 "Rec 20-29"] [:rec_30_39 "Rec 30-39"] [:rec_40p "Rec 40+"]
+            [:rec_td_40p "Rec TD 40+"] [:rec_td_50p "Rec TD 50+"]
+            [:bonus_rec_yd_100 "Bonus 100 Rec Yd"]
+            [:bonus_rec_yd_200 "Bonus 200 Rec Yd"]]}
+   {:group "Misc"
+    :stats [[:fum_lost "Fumble Lost"]]
+    :more  [[:fum "Fumble"] [:fum_rec_td "Fumble Rec TD"]]}
+   {:group "Kicking"
+    :stats [[:fgm "FG Made"]
+            [:fgm_0_19 "FG 0-19"] [:fgm_20_29 "FG 20-29"]
+            [:fgm_30_39 "FG 30-39"] [:fgm_40_49 "FG 40-49"] [:fgm_50p "FG 50+"]
+            [:xpm "XP Made"] [:xpmiss "XP Miss"] [:blk_kick "Blocked Kick"]]
+    :more  [[:fgmiss "FG Miss"]
+            [:fgmiss_0_19 "FG Miss 0-19"] [:fgmiss_20_29 "FG Miss 20-29"]
+            [:fgmiss_30_39 "FG Miss 30-39"]
+            [:fgmiss_40_49 "FG Miss 40-49"] [:fgmiss_50p "FG Miss 50+"]]}
+   {:group "Defense"
+    :stats [[:sack "Sack"] [:int "INT"] [:fum_rec "Fumble Rec"]
+            [:ff "Forced Fumble"] [:def_td "Def/ST TD"] [:safe "Safety"]]
+    :more  [[:def_2pt "Def 2PT Return"]
+            [:def_3_and_out "3 and Out"] [:def_4_and_stop "4th Down Stop"]]}
+   {:group "Points Allowed"
+    :more  [[:pts_allow_0 "Shutout"] [:pts_allow_1_6 "1-6 Allowed"]
+            [:pts_allow_7_13 "7-13 Allowed"] [:pts_allow_14_20 "14-20 Allowed"]
+            [:pts_allow_21_27 "21-27 Allowed"] [:pts_allow_28_34 "28-34 Allowed"]
+            [:pts_allow_35p "35+ Allowed"]]}
+   {:group "Yards Allowed"
+    :more  [[:yds_allow_0_100 "Under 100 Yd"] [:yds_allow_100_199 "100-199 Yd"]
+            [:yds_allow_200_299 "200-299 Yd"] [:yds_allow_300_349 "300-349 Yd"]
+            [:yds_allow_350_399 "350-399 Yd"] [:yds_allow_400_449 "400-449 Yd"]
+            [:yds_allow_450_499 "450-499 Yd"] [:yds_allow_500_549 "500-549 Yd"]
+            [:yds_allow_550p "550+ Yd"]]}
+   {:group "Special Teams"
+    :more  [[:st_td "ST TD"] [:st_ff "ST Forced Fumble"]
+            [:st_fum_rec "ST Fumble Rec"]
+            [:def_st_td "Def ST TD"] [:def_st_ff "Def ST Forced Fumble"]
+            [:def_st_fum_rec "Def ST Fumble Rec"]
+            [:def_kr_yd "Kick Return Yd"] [:def_pr_yd "Punt Return Yd"]]}])
 
 (def sort-accessors
   "column key -> fn player -> sortable value. :rank is attached in the sub."

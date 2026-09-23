@@ -206,6 +206,23 @@
   (let [html (render settings/import-warning)]
     (is (= 2 (count (re-seq #":span\.rule-chip\b" html))))))
 
+(deftest a-rule-nobody-projects-reads-differently-from-one-nobody-models
+  (swap! rdb/app-db assoc
+         :active-league "sleeper:1"
+         :config {:scoring {:rec 1.0 :pts_allow_0 10.0 :yds_allow_550p -6.0}}
+         :leagues {"sleeper:1" {:rules {:status :imported :unsupported []}}})
+  (rf/clear-subscription-cache!)
+  (let [html (render settings/import-warning)]
+    (is (re-find #"2 rules have no projection" html))
+    (is (re-find #"pts_allow_0" html))
+    (is (re-find #"yds_allow_550p" html))
+    (is (not (re-find #"not modelled" html))
+        "nothing was dropped, so nothing claims to have been"))
+  (testing "a rule the league scores and Sleeper projects says nothing at all"
+    (swap! rdb/app-db assoc :config {:scoring {:rec 1.0 :pts_allow_14_20 1.0}})
+    (rf/clear-subscription-cache!)
+    (is (nil? (settings/import-warning)))))
+
 (deftest connect-a-league-opens-the-accounts-section
   (swap! rdb/app-db assoc :settings-section :data)
   (rf/dispatch-sync [:set-view :settings :leagues])
@@ -217,23 +234,24 @@
     (is (= :scoring (:settings-section @rdb/app-db)))))
 
 (deftest an-import-report-speaks-only-for-its-own-league
-  ;; A badge that kept League A's dropped rules on screen under League B would
-  ;; be a claim about B.
   (swap! rdb/app-db assoc
          :active-league "sleeper:1"
-         :leagues {"sleeper:1" {:rules {:status :imported :unsupported ["fg_50p"]}}
-                   "espn:9"    {:rules {:status :imported :unsupported []}}})
+         :leagues {"sleeper:1" {:rules {:status :imported :unsupported ["bonus_rec_te"]}
+                                :config {:scoring {:rec 1.0 :pts_allow_0 10.0}}}
+                   "espn:9"    {:rules {:status :imported :unsupported []}
+                                :config {:scoring {:rec 1.0}}}})
   (rf/clear-subscription-cache!)
   (is (re-find #"nav-badge" (render settings/settings-nav)))
-  (is (re-find #"rule-chip" (render settings/import-warning)))
+  (let [html (render settings/import-warning)]
+    (is (re-find #"bonus_rec_te" html))
+    (is (re-find #"pts_allow_0" html) "and the half read off the config"))
   (swap! rdb/app-db assoc :active-league "espn:9")
   (rf/clear-subscription-cache!)
   (is (not (re-find #"nav-badge" (render settings/settings-nav))))
-  (is (nil? (settings/import-warning))))
+  (is (nil? (settings/import-warning))
+      "neither half survives the switch"))
 
 (deftest a-connected-league-s-scoring-is-shown-not-edited
-  ;; Its rules are its import's: an edit would be lost to the next Re-sync, and
-  ;; allowing one is what kept Re-sync from refreshing them.
   (swap! rdb/app-db assoc
          :active-league "sleeper:1"
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :name "Dynasty"

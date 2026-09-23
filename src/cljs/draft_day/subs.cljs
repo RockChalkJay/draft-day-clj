@@ -57,6 +57,13 @@
   (fn [[leagues k] _]
     (get-in leagues [k :rules])))
 
+;; Read scoring from the active league when present, so import warnings stay
+;; scoped to that league; unconnected drafts use the top-level config.
+(rf/reg-sub :active-league-scoring
+  :<- [:leagues] :<- [:active-league-key] :<- [:config]
+  (fn [[leagues k config] _]
+    (or (get-in leagues [k :config :scoring]) (:scoring config))))
+
 ;; Whether the active league's import is in flight. "Not imported yet" and
 ;; "importing" are different instructions, and Retry belongs only to the first.
 (rf/reg-sub :active-league-importing? :<- [:importing] :<- [:active-league-key]

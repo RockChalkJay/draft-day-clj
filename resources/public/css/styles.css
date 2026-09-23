@@ -433,6 +433,11 @@ button.undo:hover { color: var(--warn); }
 .rule-chip { font-size: 11px; background: var(--panel2); border: 1px solid var(--border);
   border-radius: 6px; padding: 1px 7px; color: var(--muted); }
 .scoring-groups { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.scoring-more { margin-top: 6px; }
+.scoring-more > summary { cursor: pointer; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; opacity: .65; padding: 2px 0; }
+.scoring-more > summary:hover { opacity: 1; }
+.scoring-more[open] > summary { margin-bottom: 6px; }
 .scoring-group h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
   letter-spacing: .05em; color: var(--muted); }
 /* Where a connected league's read-only settings came from. */

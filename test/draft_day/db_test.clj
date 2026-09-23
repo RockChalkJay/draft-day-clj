@@ -319,12 +319,19 @@
   ;; weight the editor cannot show, or the editor could offer a weight the scoring
   ;; engine ignores.
   (is (= (set scoring/stat-keys)
-         (set (mapcat (fn [g] (map first (:stats g))) db/scoring-catalog)))))
+         (set (mapcat (fn [g] (map first (concat (:stats g) (:more g))))
+                      db/scoring-catalog)))))
+
+(deftest a-group-is-drawn-before-it-is-disclosed
+  (doseq [{:keys [group stats more]} db/scoring-catalog]
+    (is (seq (concat stats more)) (str group " has no fields to render"))
+    (is (not-any? (set (map first stats)) (map first more))
+        (str group " renders a key twice"))))
 
 (deftest the-editor-labels-every-stat-it-offers
-  (doseq [{:keys [group stats]} db/scoring-catalog]
+  (doseq [{:keys [group stats more]} db/scoring-catalog]
     (is (seq group))
-    (doseq [[k label] stats]
+    (doseq [[k label] (concat stats more)]
       (is (keyword? k))
       (is (and (string? label) (seq label)) (str k " has no label")))))
 
