@@ -453,7 +453,11 @@
       (let [out (db/reconcile-league-sync (assoc ls :bid-history bad))]
         (is (not (contains? out :bid-history)) (pr-str bad))
         (is (string? (:bid-history-error out)) "said, like a history that failed to load")
-        (is (= ["a"] (:player-ids (first (:teams out)))) "the rosters survive it")))))
+        (is (= ["a"] (:player-ids (first (:teams out)))) "the rosters survive it")))
+    (is (= "Sleeper non-200"
+           (:bid-history-error (db/reconcile-league-sync
+                                (assoc ls :bid-history "nonsense" :bid-history-error "Sleeper non-200"))))
+        "the server's reason is kept over ours")))
 
 (deftest a-team-with-no-player-ids-is-repaired-not-trusted
   ;; The shape that actually matters: it reaches `waiver/rostered-index` as a

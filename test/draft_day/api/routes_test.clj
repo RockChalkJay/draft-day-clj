@@ -503,8 +503,9 @@
   answering as given. Both are stubbed: `bid-history` swallows what a fetch
   throws, so a sync test that forgot it would reach Sleeper and pass anyway."
   [sync-result history-result]
-  (with-redefs [league-sync/sync-league    (fn [_] sync-result)
-                transactions/bid-history   (fn [_] history-result)]
+  (with-redefs [league-sync/sync-league      (fn [_] sync-result)
+                transactions/bid-history     (fn [_] history-result)
+                transactions/cached-summary  (fn [& _] nil)]
     (routes/league-sync-handler
      {:body (input-stream (json/write-value-as-string
                            {:provider "sleeper" :league-id "123"}))})))
@@ -542,6 +543,46 @@
                             {:ok false :status 502 :error "Sleeper non-200" :cached history}))]
     (is (= 41 (get-in b [:bid-history :seasons 0 :auctions])))
     (is (= "Sleeper non-200" (:bid-history-error b)))))
+
+(deftest a-slow-history-does-not-hold-the-rosters
+  (with-redefs [league-sync/sync-league     (fn [_] {:ok true :league synced})
+                transactions/bid-history    (fn [_] (Thread/sleep 2000) {:ok true :history history})
+                transactions/cached-summary (fn [& _] history)
+                routes/bid-history-wait-ms  50]
+    (let [started (System/nanoTime)
+          resp    (routes/league-sync-handler
+                   {:body (input-stream (json/write-value-as-string
+                                         {:provider "sleeper" :league-id "123"}))})
+          b       (parse resp)]
+      (is (= 200 (:status resp)))
+      (is (< (/ (- (System/nanoTime) started) 1e6) 1000) "answered long before the history")
+      (is (= 41 (get-in b [:bid-history :seasons 0 :auctions])) "what is cached, in its place")
+      (is (string? (:bid-history-error b)) "and said to be stale"))))
+
+(deftest a-history-whose-future-breaks-leaves-the-rosters-answering
+  (with-redefs [league-sync/sync-league     (fn [_] {:ok true :league synced})
+                transactions/bid-history    (fn [_] (throw (AssertionError. "boom")))
+                transactions/cached-summary (fn [& _] nil)]
+    (let [resp (routes/league-sync-handler
+                {:body (input-stream (json/write-value-as-string
+                                      {:provider "sleeper" :league-id "123"}))})
+          b    (parse resp)]
+      (is (= 200 (:status resp)) "an Error in the history is not a bad request")
+      (is (= 2 (count (:teams b))))
+      (is (string? (:bid-history-error b))))))
+
+(deftest the-fallback-summary-is-looked-up-under-the-leagues-own-season
+  ;; A league added by id sends no season, and the calendar year a missing one
+  ;; defaults to runs ahead of the league every January.
+  (let [asked (atom nil)]
+    (with-redefs [league-sync/sync-league     (fn [_] {:ok true :league (assoc synced :season "2025")})
+                  transactions/bid-history    (fn [_] {:ok false :status 502 :error "Sleeper non-200"})
+                  transactions/cached-summary (fn [& args] (reset! asked args) history)]
+      (let [b (parse (routes/league-sync-handler
+                      {:body (input-stream (json/write-value-as-string
+                                            {:provider "sleeper" :league-id "123"}))}))]
+        (is (= ["sleeper" "123" "2025"] @asked))
+        (is (= 41 (get-in b [:bid-history :seasons 0 :auctions])))))))
 
 (deftest a-host-with-no-bid-history-syncs-with-neither-key
   (let [b (parse (sync-with {:ok true :league synced} {:ok false :unsupported? true}))]

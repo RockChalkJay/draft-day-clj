@@ -701,8 +701,12 @@
                                        (str "✓ Synced " (count (:teams league)) " rosters")
                                        "Sync returned nothing usable")
                       ;; Quiet again on success: the header's button then says
-                      ;; how old the rosters are, which is the fresher fact.
-                      :sync-status (when-not league "Sync returned nothing usable")))
+                      ;; how old the rosters are, which is the fresher fact —
+                      ;; unless the bid history beside them did not refresh.
+                      :sync-status (cond
+                                     (not league) "Sync returned nothing usable"
+                                     (:bid-history-error league)
+                                     (str "bid history not refreshed: " (:bid-history-error league)))))
        :fx (cond-> [[:dispatch [:fetch-waivers]]]
              ;; The matchup board asked with no rosters is every team empty.
              (and (db/matchup-view? (:view db)) (= k (:active-league db)))

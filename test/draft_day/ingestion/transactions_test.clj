@@ -3,26 +3,24 @@
             [clojure.test :refer [deftest is testing use-fixtures]]
             [draft-day.ingestion.league-import.sleeper :as import-sleeper]
             [draft-day.ingestion.league-sync.sleeper :as sync-sleeper]
+            [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.transactions :as transactions]
             [draft-day.ingestion.transactions.sleeper :as tx-sleeper]))
 
 (defn- claim
   "One Sleeper transaction as `draft-day.json/mapper` decodes it: the `adds`
-  keys, being player ids, arrive keywordized."
-  [status roster player bid at & {:keys [type] :or {type "waiver"}}]
-  {:type type :status status :status_updated at
+  keys, being player ids, arrive keywordized. Placed by roster N's manager,
+  `uN`, unless `:creator` says otherwise."
+  [status roster player bid at & {:keys [type creator]
+                                  :or   {type "waiver" creator (str "u" roster)}}]
+  {:type type :status status :status_updated at :creator creator
    :adds {(keyword player) roster} :settings {:waiver_bid bid}})
-
-(def ^:private rosters
-  [{:roster_id 2 :owner_id "u2"} {:roster_id 7 :owner_id "u7"}
-   {:roster_id 12 :owner_id "u12"} {:roster_id 9 :owner_id nil}])
 
 (defn- season-of [weeks]
   (transactions/normalize-season
    :sleeper
-   {:league  {:season "2025" :league_id 99 :settings {:waiver_budget 100}}
-    :rosters rosters
-    :weeks   weeks}))
+   {:league {:season "2025" :league_id 99 :settings {:waiver_budget 100}}
+    :weeks  weeks}))
 
 (defn- delete-tree [f]
   (when (.isDirectory f) (run! delete-tree (.listFiles f)))
@@ -105,8 +103,13 @@
                          (claim "failed" 12 "p" 4 1000)]})]
     (is (= [[2 5] [12 4]] (mapv (juxt :roster-id :amount) (:bids (first (:auctions s))))))))
 
-(deftest an-orphan-roster-bids-with-no-owner
-  (let [s (season-of {3 [(claim "complete" 9 "p" 1 1000)]})]
+(deftest a-bid-belongs-to-the-manager-who-placed-it
+  (let [s (season-of {3 [(claim "complete" 9 "p" 1 1000 :creator "u-before")]})]
+    (is (= "u-before" (:owner-id (first (:bids (first (:auctions s))))))
+        "not whoever holds roster 9 when the log is read")))
+
+(deftest a-claim-with-no-creator-bids-with-no-owner
+  (let [s (season-of {3 [(claim "complete" 9 "p" 1 1000 :creator nil)]})]
     (is (nil? (:owner-id (first (:bids (first (:auctions s)))))))))
 
 (deftest a-season-says-whether-it-is-over-and-which-one-it-continues
@@ -130,6 +133,15 @@
     (is (= "4034" (:player-id a)))
     (is (= ["77" nil] (mapv :owner-id (:bids a))) "(str nil) would be an owner called \"\"")))
 
+(deftest the-season-and-league-ids-come-back-as-strings-too
+  ;; ESPN publishes both as integers, and both are half of a cache path.
+  (let [out (transactions/normalized {:league-id 123 :season 2026
+                                      :previous {:league-id 123 :season 2025}
+                                      :auctions []})]
+    (is (= ["123" "2026"] ((juxt :league-id :season) out)))
+    (is (= {:league-id "123" :season "2025"} (:previous out)))
+    (is (nil? (:previous (transactions/normalized {:previous nil :auctions []}))))))
+
 (def ^:private leagues
   {"200" {:league_id "200" :season "2026" :status "in_season" :previous_league_id "100"
           :settings {:leg 3 :waiver_type 2 :waiver_budget 100}}
@@ -146,7 +158,6 @@
                  (swap! asked conj path)
                  (if-let [e (get fail path)] (throw e) v))]
      (with-redefs [import-sleeper/fetch-league (fn [id] (serve (str "league/" id) (get leagues id)))
-                   sync-sleeper/fetch-json     (fn [id path] (serve (str "league/" id "/" path) rosters))
                    sync-sleeper/get-json       (fn [path _] (serve path []))]
        (f asked)))))
 
@@ -160,7 +171,7 @@
        (is (= ["2026" "2025"] (mapv :season (get-in out [:history :seasons]))))
        (is (every? @asked ["league/200/transactions/1" "league/200/transactions/2"
                            "league/200/transactions/3" "league/100/transactions/1"
-                           "league/100/transactions/2" "league/100/rosters"]))
+                           "league/100/transactions/2"]))
        (is (not (@asked "league/200/transactions/4")) "no week the league has not reached")))))
 
 (deftest the-browser-is-told-how-much-history-there-is-not-handed-it
@@ -172,8 +183,7 @@
                      {:type "waiver" :status "failed" :status_updated 1000
                       :adds {:p1 7} :settings {:waiver_bid 1}}]
                     []))
-                import-sleeper/fetch-league (fn [id] (get leagues id))
-                sync-sleeper/fetch-json     (fn [_ _] rosters)]
+                import-sleeper/fetch-league (fn [id] (get leagues id))]
     (let [[now before] (get-in (history) [:history :seasons])]
       (is (= {:season "2026" :auctions 1 :contested 1 :non-competing 0}
              (dissoc now :fetched-at)))
@@ -245,9 +255,41 @@
 
 (deftest a-predecessor-that-breaks-rather-than-vanishes-fails-too
   (with-redefs [leagues (assoc-in leagues ["100" :status] "in_season")]
-    (stubbed {"league/100/rosters" (ex-info "Sleeper non-200" {:status 502})}
+    (stubbed {"league/100/transactions/1" (ex-info "Sleeper non-200" {:status 502})}
              (fn [_]
                (is (= 502 (:status (history))))))))
+
+(deftest a-finished-current-season-is-read-from-the-cache-too
+  (with-redefs [leagues (assoc-in leagues ["200" :status] "complete")]
+    (stubbed (fn [_] (history)))
+    (stubbed (fn [asked]
+               (is (= ["2026" "2025"] (mapv :season (get-in (history) [:history :seasons]))))
+               (is (empty? @asked) "neither season can change, so a sync asks for nothing")))))
+
+(deftest a-predecessor-is-cached-under-the-season-its-own-document-states
+  ;; Sleeper's link only guesses the year before; a league re-created mid-season
+  ;; is the case where the guess is wrong.
+  (with-redefs [leagues (assoc-in leagues ["100" :season] "2026")]
+    (stubbed (fn [_] (history)))
+    (is (= ["2026" "2026"] (mapv :season (:seasons (transactions/cached-history :sleeper "200" "2026"))))
+        "the waiver board finds it")
+    (stubbed (fn [asked]
+               (history)
+               (is (not-any? #(re-find #"league/100" %) @asked)
+                   "and a finished predecessor is not fetched again under the guess")))))
+
+(deftest an-error-in-the-predecessor-is-a-failed-history-not-a-thrown-one
+  (with-redefs [leagues (assoc-in leagues ["100" :status] "in_season")]
+    (stubbed {"league/100/transactions/1" (StackOverflowError.)}
+             (fn [_]
+               (let [out (history)]
+                 (is (false? (:ok out)) "bid-history promises never to throw")
+                 (is (string? (:error out))))))))
+
+(deftest a-cache-write-that-fails-leaves-no-temporary-file
+  (with-redefs [pipeline/write-transit! (fn [path _] (spit path "partial") (throw (ex-info "disk full" {})))]
+    (is (thrown? Exception (transactions/write-season! :sleeper {:league-id "200" :season "2026"})))
+    (is (empty? (.listFiles (io/file transactions/cache-dir))))))
 
 (deftest a-league-id-that-is-not-one-is-refused-before-any-fetch
   (stubbed

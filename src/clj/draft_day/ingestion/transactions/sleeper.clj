@@ -17,30 +17,18 @@
   all 308 losing bids in a real league's two seasons shared with their winner,
   and daily waivers process several runs a week.
 
+  A bid's owner is the claim's `creator`, the manager who placed it, and not
+  whoever holds the roster when the log is read: a roster taken over mid-season
+  would otherwise hand its old manager's bids to the new one, and a finished
+  season is cached for good.
+
   Each Sleeper season is its own league, linked back by `previous_league_id`;
   that link becomes the season's `:previous`, and `ingestion.transactions`
   decides whether to follow it."
   (:require [draft-day.ingestion.league-import.sleeper :as import-sleeper]
             [draft-day.ingestion.league-sync.sleeper :as sync-sleeper]
             [draft-day.ingestion.parallel :as parallel]
-            [draft-day.ingestion.transactions :as transactions])
-  (:import [java.util.concurrent Semaphore]))
-
-(def max-in-flight
-  "How many requests Sleeper sees from one history fetch at once. Its documented
-  ceiling is 1000 a minute, so this is politeness rather than a limit: forty
-  weekly logs fired together is a burst from one IP for no gain a handful of
-  connections does not already give."
-  4)
-
-(defonce ^:private throttle (Semaphore. max-in-flight true))
-
-(defn throttled
-  "Call `f` holding one of the host's permits, released however `f` leaves — a
-  fetch that throws must not retire a permit for good."
-  [f]
-  (.acquire throttle)
-  (try (f) (finally (.release throttle))))
+            [draft-day.ingestion.transactions :as transactions]))
 
 (defn fetch-week
   "Network: one week's transactions. A week with none is `[]`, a real answer."
@@ -65,20 +53,17 @@
   (= :faab (:type (import-sleeper/waiver-settings league))))
 
 (defn fetch-season
-  "Network: one league-season's league document, rosters and weekly logs — or
-  its league document alone when the season did not run FAAB (see `faab?`),
-  which has no auctions to read."
+  "Network: one league-season's league document and weekly logs — or its league
+  document alone when the season did not run FAAB (see `faab?`), which has no
+  auctions to read."
   [league-id]
-  (let [league  (throttled #(import-sleeper/fetch-league league-id))
-        tasks   (if (faab? league)
-                  (into {:rosters #(throttled (fn [] (sync-sleeper/fetch-json league-id "rosters")))}
-                        (map (fn [w] [w #(throttled (fn [] (fetch-week league-id w)))]))
-                        (weeks-played league))
-                  {})
-        results (parallel/all tasks)]
-    {:league  league
-     :rosters (:rosters results)
-     :weeks   (into (sorted-map) (dissoc results :rosters))}))
+  (let [league (import-sleeper/fetch-league league-id)
+        weeks  (when (faab? league)
+                 (parallel/all (into {}
+                                     (map (fn [w] [w #(fetch-week league-id w)]))
+                                     (weeks-played league))))]
+    {:league league
+     :weeks  (into (sorted-map) weeks)}))
 
 (defmethod transactions/fetch-raw-season :sleeper
   [_ {:keys [league-id]}]
@@ -93,18 +78,14 @@
 
 (defn previous
   "The season this one continues, as `ingestion.transactions` addresses it, or
-  nil. A Sleeper predecessor is always the year before."
+  nil. The season is a guess at the year before, which `ingestion.transactions`
+  replaces with the one the predecessor's own document states."
   [league]
   (let [prev-league-id (previous-league-id league)
         season-year    (some-> (:season league) str parse-long)]
     (when (and prev-league-id season-year)
       {:league-id prev-league-id
        :season    (str (dec season-year))})))
-
-(defn owners
-  "`{roster-id owner-id}` for one season; an orphan roster maps to nil."
-  [rosters]
-  (into {} (map (juxt :roster_id :owner_id)) rosters))
 
 (defn claims
   "One week's processed waiver claims, one row per player added. Free-agent adds
@@ -119,6 +100,7 @@
                     :at        (:status_updated tx)
                     :player-id (name pid)
                     :roster-id rid
+                    :owner-id  (:creator tx)
                     :amount    (or (get-in tx [:settings :waiver_bid]) 0)
                     :won?      (= "complete" (:status tx))})
                  (:adds tx)))]
@@ -146,7 +128,7 @@
   Which claims competed is decided before one manager's are collapsed to one:
   his highest claim can fail on a roster rule while a lower one on the same
   player lost on price, and that lower one is the bid he was outbid at."
-  [claims owner-of]
+  [claims]
   (let [bidders (count (distinct (map :roster-id claims)))]
     (if-let [winner (first (sort-by (comp - :amount) (filter :won? claims)))]
       (let [bids (->> claims
@@ -156,23 +138,17 @@
         [{:week      (:week winner)
           :at        (:at winner)
           :player-id (:player-id winner)
-          :bids      (mapv (fn [{:keys [roster-id amount won?]}]
-                             {:roster-id roster-id
-                              :owner-id  (owner-of roster-id)
-                              :amount    amount
-                              :won?      won?})
-                           bids)}
+          :bids      (mapv #(select-keys % [:roster-id :owner-id :amount :won?]) bids)}
          (- bidders (count bids))])
       [nil bidders])))
 
 (defmethod transactions/normalize-season :sleeper
-  [_ {:keys [league rosters weeks]}]
-  (let [owner-of (owners rosters)
-        results  (->> weeks
-                      (mapcat (fn [[w txs]] (claims w txs)))
-                      (group-by (juxt :at :player-id))
-                      (sort-by key)
-                      (map #(auction (val %) owner-of)))]
+  [_ {:keys [league weeks]}]
+  (let [results (->> weeks
+                     (mapcat (fn [[w txs]] (claims w txs)))
+                     (group-by (juxt :at :player-id))
+                     (sort-by key)
+                     (map #(auction (val %))))]
     {:season        (some-> (:season league) str)
      :league-id     (some-> (:league_id league) str)
      :budget        (or (get-in league [:settings :waiver_budget]) 0)

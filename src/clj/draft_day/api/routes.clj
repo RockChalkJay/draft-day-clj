@@ -114,6 +114,25 @@
     :else        (cond-> (assoc league :bid-history-error (or error "Bid history unavailable"))
                          cached (assoc :bid-history cached))))
 
+(def bid-history-wait-ms
+  "How long a sync reply waits on the bid history once the rosters are in. A
+  season of weekly logs is a second or two on a good day; past this the rosters
+  go out with what is cached, and the refresh finishes behind them."
+  5000)
+
+(defn awaited-history
+  "`transactions/bid-history`'s answer, or a failure when it has not arrived in
+  `ms` or its future broke. The history never costs the rosters, and a slow
+  vendor must not either."
+  [history ms]
+  (try
+    (let [h (deref history ms ::pending)]
+      (if (= ::pending h)
+        {:ok false :error "still loading"}
+        h))
+    (catch Exception e
+      {:ok false :error (or (ex-message e) "Bid history unavailable")})))
+
 (defn league-sync-handler
   "Who is rostered right now, and what everybody bid to get there. Separate from
   the import for the same reason the namespaces are: an import is the league's
@@ -121,21 +140,31 @@
   league makes a claim.
 
   The bid history is fetched beside the rosters rather than after them, and it
-  can never cost them: `transactions/bid-history` never throws, and a history
-  that failed leaves the rosters answering as they always did. The reply does
-  wait for it, though — it is the slower of the two by a season of weekly logs.
-  Rosters that failed are answered at once and the history abandoned, since
-  there is no reply for it to ride on."
+  cannot cost them: it is waited on for `bid-history-wait-ms` at most, and one
+  that failed or ran late leaves the rosters answering as they always did,
+  beside a summary of what is cached. A late one is left running so its refresh
+  lands for the next sync; one whose rosters failed is abandoned, since there is
+  no reply for it to ride on.
+
+  The fallback summary is looked up under the synced league's own season, not
+  the request's: a league added by id arrives with none, and the calendar year
+  a missing one defaults to runs ahead of the league every January."
   [req]
   (try
     (let [lreq    (league-request req)
-          history (future (transactions/bid-history lreq))]
-      (try
-        (let [{:keys [ok league status error]} (league-sync/sync-league lreq)]
-          (if ok
-            (json-response 200 (with-bid-history league @history))
-            (json-response status {:error error})))
-        (finally (future-cancel history))))
+          history (future (transactions/bid-history lreq))
+          {:keys [ok league status error]}
+          (try (league-sync/sync-league lreq)
+               (catch Exception e (future-cancel history) (throw e)))]
+      (if ok
+        (let [h (awaited-history history bid-history-wait-ms)
+              h (if (or (:ok h) (:unsupported? h) (:cached h))
+                  h
+                  (assoc h :cached (transactions/cached-summary
+                                    (:provider lreq) (:league-id lreq) (:season league))))]
+          (json-response 200 (with-bid-history league h)))
+        (do (future-cancel history)
+            (json-response status {:error error}))))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 

@@ -1113,7 +1113,8 @@
 
   `:starter-ids` is repaired the other way round — see `repair-lineup`. A
   malformed `:bid-history` is dropped on its own and reported as a
-  `:bid-history-error`, the same as one that failed to load."
+  `:bid-history-error`, the same as one that failed to load, unless the server
+  already reported one."
   [stored]
   (when (and (map? stored)
              (sequential? (:teams stored))
@@ -1123,17 +1124,15 @@
                   (update :teams (fn [ts]
                                    (into [] (comp (filter map?) (map repair-team)) ts)))
                   (update :waiver #(when (map? %) %)))
-        (not (valid-bid-history? h)) (dissoc :bid-history)
         (and (some? h) (not (valid-bid-history? h)))
-        (assoc :bid-history-error "Bid history arrived in a shape the board cannot read")))))
+        (-> (dissoc :bid-history)
+            ;; The server's own reason, when it gave one, says more than ours.
+            (update :bid-history-error
+                    #(or % "Bid history arrived in a shape the board cannot read")))))))
 
 ;; ---- initial db ----
 
-(defn default-db
-  "The initial app state: draft and season config, team rosters, league accounts,
-   synced state, and UI selections. See the ns docstring for the shape and
-   relationships of accounts, leagues, and the board's view state."
-  []
+(defn default-db []
   (let [cfg default-config]
     {:players     []            ; raw universe from /api/players
      :ranked      nil           ; last /api/rankings response
@@ -1149,13 +1148,30 @@
      :picks       []            ; [{:player-id :position :price :team-id}]
      :nominated-id nil
      :watchlist    []           ; player-ids the manager is tracking, in his own order
-     :accounts     {}           ; account-key -> {:provider :user-id :username :avatar :credentials}
-     :leagues      {}           ; league-key -> {:provider :league-id :account-key :name :season :sync :rules :config}
+     ;; ---- accounts and leagues ----
+     ;; account-key -> {:provider :user-id :username :avatar :credentials}
+     :accounts     {}
+     ;; league-key -> {:provider :league-id :account-key :name :season :my-roster-id
+     ;;                :config    — this league's scoring/roster/team count
+     ;;                :sync      — last /api/league/sync reply: who is rostered, and FAAB
+     ;;                :synced-at — when this browser last received it
+     ;;                :rules     — what the last import did: {:status :imported
+     ;;                             :unsupported [...] :bankroll? bool}, or :failed
+     ;;                             with an :error beside what the last good one left
+     ;;                :phase     — :draft/:season override, nil for automatic}
+     :leagues      {}
      :active-league nil         ; which league-key everything on screen is about
-     :importing    #{}          ; league-keys with an import in flight (transient)
-     :league-choices   nil      ; account-key -> [league-key…] or nil if not yet looked up
+     ;; league-keys with an import in flight. Transient, so a reload mid-import
+     ;; cannot leave a league reading as forever importing.
+     :importing    #{}
+     ;; account-key -> the league maps that account plays in, and why the listing
+     ;; failed when it did. Refetched, never persisted. nil and [] differ: never
+     ;; looked up, against looked up and plays in none.
+     :league-choices   nil
      :league-choices-error nil
-     :drafts       []           ; completed drafts, oldest first; keyed by fx/drafts-key
+     ;; Completed drafts, oldest first. Read from `fx/drafts-key` at boot, not
+     ;; from the persisted slice: an archived draft has its own key and version.
+     :drafts       []
      :waivers      nil          ; last /api/waivers reply
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}
@@ -1166,7 +1182,9 @@
      :matchup-status nil
      :matchup-pick nil          ; which game on screen: one of its roster ids, or nil for mine
      :lineup-view  {}           ; roster-id -> :set/:projected/:actual; transient
-     :compare      []           ; at most two player-ids being compared; transient
+     ;; At most two player-ids, in pick order. Transient: a comparison is a
+     ;; question being asked right now, not a layout worth restoring.
+     :compare      []
      :modal        nil
      :sort        {:key :worth :dir -1}
      :pos-filter  nil
