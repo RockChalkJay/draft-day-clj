@@ -5,7 +5,7 @@
   no appearance, while an entry with `gp` and empty stats is a scoreless game."
   (:require [clojure.tools.logging :as log]
             [jsonista.core :as json]
-            [org.httpkit.client :as http]
+            [draft-day.ingestion.sleeper-http :as sleeper-http]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.json :refer [mapper]]
             [draft-day.scoring :as scoring]))
@@ -27,7 +27,7 @@
 (defn fetch-week
   "Network: raw stat entries for one week of a season (throws on failure)."
   [season week]
-  (let [{:keys [status body error]} @(http/get (week-url season week)
+  (let [{:keys [status body error]} (sleeper-http/get! (week-url season week)
                                                {:timeout 30000})]
     (cond
       error          (throw (ex-info "Sleeper stats fetch failed"
@@ -82,26 +82,18 @@
      {}
      (group-by :id rows))))
 
-(def ^:private max-in-flight
-  "Maximum number of weekly requests made concurrently."
-  4)
-
 (defn fetch
-  "Fetch played weeks, returning Sleeper-keyed realized columns or nil if none arrive."
+  "Fetch played weeks, returning Sleeper-keyed realized columns or nil if none
+  arrive. Fired together; `sleeper-http` holds them to the host's limit."
   [season through-week]
   (when (and (number? through-week) (pos? through-week))
-    (let [weeks (range 1 (inc (long through-week)))
-          got   (mapcat (fn [batch]
-                          (vals (parallel/all
-                                 (into {} (map (fn [w]
-                                                 [w (fn []
-                                                      (try (fetch-week season w)
-                                                           (catch Exception e
-                                                             (log/warn e "sleeper-actual: week" w "failed")
-                                                             nil)))]))
-                                       batch))))
-                        (partition-all max-in-flight weeks))
-          rows  (into [] (comp cat (keep entry->row)) got)]
+    (let [weeks   (range 1 (inc (long through-week)))
+          fetch-w (fn [w]
+                    #(try (fetch-week season w)
+                          (catch Exception e
+                            (log/warn e "sleeper-actual: week" w "failed"))))
+          results (vals (parallel/all (zipmap weeks (map fetch-w weeks))))
+          rows    (into [] (comp cat (keep entry->row)) results)]
       (when (seq rows)
         {:by-key       (accumulate rows)
          :through-week (reduce max 0 (map :week rows))}))))
