@@ -236,6 +236,21 @@
 
 (defn budget-class [b] (if (= backbone-budget (:budget b)) :base :other))
 
+(defn budget-shifts
+  "Per bidder bucket, how far positive bids in leagues on any other budget sit
+  from `backbone-budget` leagues': the log of the ratio of their median shares.
+  Measured one class against the other rather than through `shifts`, whose
+  pooled median would put both classes off it and leave the distance between
+  them to be subtracted by hand."
+  [bids]
+  (let [med (fn [bs] (quantile (map :share bs) 0.5))]
+    (into (sorted-map)
+          (keep (fn [[b bs]]
+                  (let [{base :base other :other} (group-by budget-class bs)]
+                    (when (and (seq base) (seq other))
+                      [b {:n (count other) :log-shift (Math/log (/ (med other) (med base)))}]))))
+          (group-by :bucket (filter #(pos? (:share %)) bids)))))
+
 (defn backbone
   "The measured tables, as data for `draft-day.bid-prior`: the bid cells and the
   position, kind, superflex and team shifts over `backbone-budget` leagues; the
@@ -256,7 +271,7 @@
      :kind         (shifts base :kind)
      :superflex    (shifts base :superflex?)
      :teams        (shifts base #(corpus/team-bucket (:num-teams %)))
-     :budget-shift (shifts bids budget-class)
+     :budget-shift (budget-shifts bids)
      :heaping      {:budget-100  (heaping bids 100 5 5)
                     :budget-1000 (heaping bids 1000 50 50)}
      :managers     (let [ms (filter #(>= (:bids %) 10) managers)
