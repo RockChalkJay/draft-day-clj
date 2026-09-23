@@ -132,9 +132,6 @@
    "fg_missed_50_59"           :fgmiss_50p
    "fg_missed_60_"             :fgmiss_50p
    "pat_missed"                :xpmiss
-   ;; Checked against Sleeper's own weekly line for 2026 weeks 1-3 before being
-   ;; mapped, because a column that merely sounds right prices a rule nobody
-   ;; set: these four agreed on every player-week either side reported.
    "completions"               :pass_cmp
    "fumbles_total"             :fum
    "passing_40"                :pass_cmp_40p

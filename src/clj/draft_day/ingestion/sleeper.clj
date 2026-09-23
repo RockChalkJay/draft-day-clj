@@ -1,9 +1,7 @@
 (ns draft-day.ingestion.sleeper
-  "Sleeper JSON backbone: the projectable player universe + projections + ids.
-  Free, keyless. Each projection entry carries player_id, an embedded player
-  object (name/position/team), and a stats map whose keys match the scoring
-  engine (`rush_yd`, `pass_td`, `rec`, ...). Team defenses use the team abbrev
-  as their player_id (e.g. \"ARI\") and Sleeper's \"DEF\" maps to our \"DST\"."
+  "Sleeper player universe and projections. Free, keyless, and keyed to the
+  scoring engine's stat vocabulary. Team defenses use their abbrev as player-id
+  and map Sleeper's `DEF` position to `DST`."
   (:require [clojure.set :as set]
             [clojure.tools.logging :as log]
             [org.httpkit.client :as http]
@@ -19,99 +17,78 @@
 (defn- canon-pos [pos] (if (= pos "DEF") "DST" pos))
 
 (def ^:private season-only-noise
-  "Keys not to be believed on a *season* line, whatever it sends.
+  "Season-line keys that are not trustworthy, even when Sleeper sends them.
 
-  Sleeper sends `yds_allow_0_100` as 1.0 for all thirty-two defenses, beside a
-  `gp` of 1.0, while `sack` and `int` on the same line are real season totals.
-  It is the modal bucket of one game rather than a projection of a season, and
-  a league weighting that band at ten points would hand every defense the same
-  spurious ten. The weekly line states a bucket the same way and means it, so
-  this is the season line's problem alone — `scoring/season-projected` leaves
-  the key out for the same reason."
+  `:yds_allow_0_100` is a one-game modal bucket on the season line and should not
+  be treated like a full-season projection. The weekly line is the real source
+  for that bucket; season-only noise must be stripped before scoring."
   #{:yds_allow_0_100})
 
 (def adp-keys
-  "Sleeper publishes ADP per scoring format, and they diverge hard — Amon-Ra St.
-  Brown went 8.1 PPR against 16.8 standard for 2026. Collapsing them to one
-  PPR-preferred number meant the ADP column ignored the league's scoring, so all
-  three are carried and `rankings.vendor` picks one per request."
+  "ADP by scoring format. Sleeper publishes separate ADP values per format, and
+  the chosen one is resolved at request time against the league's scoring."
   {:standard :adp_std :half-ppr :adp_half_ppr :ppr :adp_ppr})
 
 (defn- adp
-  "One format's ADP, or nil (Sleeper uses 999 as its 'no ADP' sentinel)."
+  "A single format's ADP, or nil when Sleeper marks it as absent."
   [stats k]
   (let [v (get stats k)]
-    (when (and (number? v) (< v 999)) (double v))))
+    (when (and (number? v) (< v 999))
+      (double v))))
 
 (defn adp-by-format [stats]
   (into {} (keep (fn [[fmt k]] (when-let [v (adp stats k)] [fmt {:sleeper/adp v}])))
         adp-keys))
 
 (def ^:private fgm-buckets
-  "The made-field-goal columns Sleeper publishes on a *season* line.
+  "Made-field-goal buckets that appear on Sleeper's season line.
 
-  A subset of `scoring/fg-buckets` — the season line has no sub-forty bucket —
-  so their sum is a floor. `every-season-bucket-is-a-scoring-bucket` is what
-  keeps the two from drifting apart."
+  This is a subset of the full field-goal bucket set; the season line omits
+  the sub-40 bucket, so the published buckets are treated as a floor rather than
+  a complete total."
   [:fgm_40_49 :fgm_50p])
 
 (defn- summed-fgm
-  "A kicker's made field goals, when Sleeper did not publish the total.
+  "Recover a kicker's total FGM when Sleeper omits the flat total.
 
-  Its season projections carry no `:fgm` at all — 0 of 45 kickers — only these
-  distance buckets and a yardage total, so a flat weight multiplied nothing and
-  every kicker scored on extra points alone. Aubrey came out at 42 against
-  Sleeper's own 116, and the position compressed into a 39-42 band with no
-  spread in it.
-
-  A league stating its field goals by distance never needs this: it scores the
-  buckets, which reconcile to Sleeper's own total (Aubrey 118 against 116).
-
-  Summing what *is* published recovers most of that (Aubrey 93) and keeps the
-  whole line one vendor's opinion. ESPN publishes a real total and was the
-  obvious alternative, but it projects him 35.5 field goals against Sleeper's
-  ~25 — importing it would price kickers out of a different house than every
-  other player on the board. Deliberately a floor rather than a guess: the
-  sub-40 kicks are missing and no published column implies them.
-
-  The weekly endpoint *does* send `:fgm`, so this only ever fills a gap."
+  The season line exposes only the bucketed makes, so we sum the published
+  buckets and treat that as a floor. This only fills gaps; the weekly line's
+  `:fgm` remains the authoritative total when it exists."
   [stats]
   (let [made (keep #(get stats %) fgm-buckets)]
     (when (seq made) (double (reduce + made)))))
 
 (defn- scored-stats
-  "The subset of a Sleeper stats map the scoring engine reads, as doubles."
+  "The subset of Sleeper's stat map that the scoring engine can read, coerced to doubles."
   [stats]
   (let [base (into {} (keep (fn [k] (when-let [v (get stats k)] [k (double v)])))
                    scoring/stat-keys)]
     (if (:fgm base)
       base
-      (if-let [fgm (summed-fgm stats)] (assoc base :fgm fgm) base))))
+      (if-let [fgm (summed-fgm stats)]
+        (assoc base :fgm fgm) base))))
 
 (def ^:private season-length
-  "The most games one week may be stretched over.
+  "Maximum season-to-week stretch factor for a single player line.
 
-  A cap, not a calendar: the two projection horizons disagree hard about a
-  marginal player and an unclamped ratio reached thirty, which would have
-  tripled a bonus key. Seventeen is every modern season, and the 16-game era
-  reaches `nflverse/games-in-season` rather than this path."
+  This is a cap, not a calendar fact: a ratio exceeding 17 would wildly
+  overstate a player who had a tiny weekly projection."
   17.0)
 
 (def ^:private fill-exempt
-  "Keys `complete-season-line` must not fill, whatever the weekly line says.
+  "Keys that must not be filled from the weekly line.
 
-  The made-field-goal grid alone: the two horizons disagree about it rather
-  than merely covering different parts of it, and `summed-fgm` already
-  reconciles them. See `complete-season-line`."
+  The made-FG grid is intentionally exempt because Sleeper's season and weekly
+  horizons disagree on that bucketed shape, and the bucket-sum logic already
+  reconciles it."
   (into #{:fgm} scoring/fg-buckets))
 
 (defn implied-games
-  "How many of this week the season is, for this player, or nil.
+  "How many games the season line represents for this player, or nil.
 
-  The vendor's own summary of each line — `pts_ppr` season over `pts_ppr` week
-  — rather than a flat seventeen, so a back-up projected for a handful of games
-  is stretched over a handful. It cross-checks against the ratio a player's
-  shared stats imply to within about three quarters of a game."
+  This is derived from the player's season `:pts_ppr` divided by the weekly
+  `:pts_ppr`, capped to a modern season length. It is a per-player stretch
+  factor, not a flat 17-game assumption."
   [season-stats weekly-stats]
   (let [s (:pts_ppr season-stats)
         w (:pts_ppr weekly-stats)]
@@ -119,44 +96,12 @@
       (min season-length (/ (double s) (double w))))))
 
 (defn complete-season-line
-  "A season line plus every scored key only the weekly line carries, stretched
-  from one week to this player's own season.
+  "Backfill sparse season stats from the weekly line, scaled to the player's
+  implied games.
 
-  Sleeper publishes both horizons from one house — the payload's `company` says
-  rotowire for each — and the season line is much the sparser: it carries no
-  points- or yards-allowed bucket, no long touchdown, no completion over forty,
-  no forced fumble, no safety. Left alone that is not a neutral gap but a
-  *tilt*, because the receiving buckets it does carry lift receivers and tight
-  ends while a quarterback and a team defense gain nothing, and replacement and
-  VORP compare those directly. A defense's tier points are over a third of what
-  it is projected to score.
-
-  Deliberately an estimate and it says so, the same standing `summed-fgm` has:
-  a filled key is one house's week stretched over a season rather than a season
-  anybody projected. Only keys the season line is silent on are filled, so
-  nothing the vendor did state is ever overwritten.
-
-  A defense's tier buckets are the estimate's weakest part and most of its
-  gain. Sleeper one-hots them — exactly one `pts_allow_*` and one
-  `yds_allow_*` at 1.0, its modal week rather than a distribution, and across
-  all thirty-two defenses only the 14-20, 21-27 and 28-34 points bands ever
-  appear — so stretching one over a season asserts a defense lands in that
-  single bucket every week, which none does. A league paying well for a shutout
-  collects nothing for it here. Taken anyway, because the alternative is a
-  defense scored on sacks and interceptions alone; the real-valued `pts_allow`
-  Sleeper sends beside the one-hot is what a distribution would be built from
-  if a benchmark ever earned one.
-
-  A made field goal is exempt, because the two horizons do not merely differ in
-  coverage there, they disagree. Aubrey's season line carries nine makes from
-  40-49 and eight from 50+ and nothing under forty; his weekly line carries
-  every band under fifty and no 50+ at all. Filling one from the other reads as
-  thirty-one makes a season against the seventeen the season line states, and
-  scored him 160 against Sleeper's own 116 — where the sparse line scores 118.
-  `summed-fgm` and `scoring/fg-buckets` already reconcile that grid and the
-  board agrees with Sleeper on both horizons because of it; this must not reach
-  in and undo it. Misses are not exempt: a miss the season line omits is simply
-  one it does not project."
+  Values already published on the season line are preserved; the made-FG buckets
+  are intentionally skipped because Sleeper's season and weekly horizons disagree
+  on that shape."
   [season-scored weekly-scored games]
   (if (and games weekly-scored)
     (reduce-kv (fn [acc k v]
@@ -168,14 +113,11 @@
     season-scored))
 
 (defn normalize-entry
-  "Sleeper projection entry -> a universe player map, or nil if it is not a
-  projectable, fantasy-relevant player. `weekly` is the same player's week-one
-  stats, for `complete-season-line`; absent, the season line stands alone.
+  "Normalize a Sleeper projection entry into a universe player map.
 
-  The `pts_ppr` gate is a projectability check, not a scoring choice: Sleeper
-  sets it for anyone it projects at all, so its absence means there is no
-  projection to score under *any* config. The number itself is not carried —
-  `:points` is always computed from `:stats` under the league's own weights."
+  Returns nil for non-projectable players. `weekly` is the same player's week-one
+  stats, used to backfill sparse season stats without overwriting values already
+  published on the season line."
   ([entry] (normalize-entry entry nil))
   ([{:keys [player_id player stats team]} weekly]
    (let [pos (:position player)]
@@ -194,12 +136,10 @@
         :sleeper/years-exp     (:years_exp player)}))))
 
 (defn universe-from-entries
-  "Pure: projection entries -> the normalized, filtered player universe.
+  "Normalize projection entries into the filtered player universe.
 
-  `weekly-stats-by-id` completes the sparse season line — see
-  `complete-season-line`. Sleeper projects only a fraction of the universe in
-  any one week, so a player it names no week for keeps the season line alone;
-  that is the deep bench, and the board it moves is the one nobody drafts off."
+  `weekly-stats-by-id` backfills sparse season stats for players the feed does
+  not project in a given week; players with no weekly row keep the season line as-is."
   ([entries] (universe-from-entries entries nil))
   ([entries weekly-stats-by-id]
    (into [] (keep #(normalize-entry % (get weekly-stats-by-id (:player_id %)))) entries)))
@@ -209,7 +149,7 @@
        (apply str (map #(str "&position[]=" %) fantasy-positions))))
 
 (defn fetch-projections
-  "Network: raw projection entries for a season (throws on failure)."
+  "Fetch raw Sleeper projection entries for a season."
   [season]
   (let [{:keys [status body error]} @(http/get (projections-url season) {:timeout 30000})]
     (cond
@@ -224,10 +164,10 @@
 
 
 (defn schedule->byes
-  "Pure: regular-season schedule games -> {team-abbrev bye-week}. Each game is
-  `{:home \"ATL\" :away \"TB\" :week 1 ...}`; a team's bye is the single week in
-  1..(max week) it appears in no game. Teams without exactly one missing week are
-  omitted (they simply keep :bye nil)."
+  "Translate a regular-season schedule into a {team-abbrev bye-week} map.
+
+  A team's bye is the single week it does not appear in any game; any team with
+  no unique missing week keeps `:bye` nil."
   [games]
   (let [weeks     (keep :week games)
         all-weeks (set (range 1 (inc (apply max 0 weeks))))
@@ -243,8 +183,9 @@
           played)))
 
 (defn assoc-byes
-  "Pure: set each player's :bye from a {team-abbrev bye-week} map, keyed on :team.
-  Players with an unknown/nil team keep their existing :bye."
+  "Set each player's `:bye` from a {team-abbrev bye-week} map keyed by `:team`.
+
+  Players with no known team keep their existing `:bye`."
   [universe byes]
   (mapv (fn [p] 
           (if-let [b (get byes (:team p))] 
@@ -255,7 +196,7 @@
   (str base "/schedule/nfl/regular/" season))
 
 (defn fetch-schedule
-  "Network: raw regular-season schedule games for a season (throws on failure)."
+  "Fetch raw regular-season schedule games for a season."
   [season]
   (let [{:keys [status body error]} @(http/get (schedule-url season) {:timeout 30000})]
     (cond
@@ -264,31 +205,23 @@
       :else          (throw (ex-info "Sleeper schedule non-200" {:status status})))))
 
 (defn fetch-byes
-  "Network: {team-abbrev bye-week} for a season (defaults to current)."
+  "Fetch a {team-abbrev bye-week} map for a season."
   ([] (fetch-byes (season/current)))
   ([season] (schedule->byes (fetch-schedule season))))
 
 ;; ---- weekly projections ----
-;; The same projections endpoint, one week at a time. The payload's own `company`
-;; field says rotowire for both horizons, so a weekly number and a season number
-;; are one house's opinion at two ranges rather than two houses disagreeing —
-;; which is what makes showing them side by side honest.
-;;
-;; Three quirks. The entry carries its own `opponent`, so the matchup costs no
-;; second fetch; a nil one means a bye or a player nobody projects, and only the
-;; ~14% Sleeper actually projects carry one. Home/away is *not* on the entry —
-;; both teams of a game share one `game_id` — so it comes from the schedule
-;; `fetch-byes` already parses. And these revise through the week as injury news
-;; and inactives land, so `:updated-at` is carried: a consumer that cannot say
-;; how old the number is will imply it is current, and on a Sunday morning that
-;; is the difference between a projection and a wrong answer.
+
+;; Sleeper's season and weekly projections are the same vendor's view
+;; at different horizons. Keep the weekly :updated-at because a stale
+;; projection is worse than no number. The weekly payload carries
+;; matchup context, and these values are revised throughout the week.
 
 (defn- weekly-url [season week]
   (str base "/projections/nfl/" season "/" week "?season_type=regular"
        (apply str (map #(str "&position[]=" %) fantasy-positions))))
 
 (defn fetch-weekly-entries
-  "Network: raw weekly projection entries for one week (throws on failure)."
+  "Fetch raw weekly projection entries for one week."
   [season week]
   (let [{:keys [status body error]} @(http/get (weekly-url season week)
                                                {:timeout 30000})]
@@ -300,16 +233,10 @@
                                      {:week week :status status})))))
 
 (defn week-one-stats
-  "Network, best-effort: `{player-id raw-stats}` for week one of a season.
+  "Fetch best-effort week-one stats keyed by player-id.
 
-  Week one and not the current week, because `:stats` is by definition the
-  *preseason* full-season line — `rankings.ros` is what corrects it for a
-  season in progress, and filling it from a November week would mix the two
-  horizons this exists to keep straight.
-
-  Best-effort for `summed-fgm`'s reason: a season line that is merely sparse
-  still prices a board, and failing the whole universe over the half of it that
-  fills the gaps would trade a working board for a better one."
+  Week one is intentionally used as the baseline for the season line; the
+  in-season weekly line is handled separately so the two horizons stay distinct."
   [season]
   (try
     (into {} (keep (fn [{:keys [player_id stats]}]
@@ -320,7 +247,7 @@
       nil)))
 
 (defn fetch-universe
-  "Network: the normalized player universe for a season (defaults to current)."
+  "Fetch the normalized player universe for a season."
   ([] (fetch-universe (season/current)))
   ([season] (universe-from-entries (fetch-projections season)
                                    (week-one-stats season))))
@@ -329,8 +256,10 @@
   (into #{} (comp (filter #(= week (:week %))) (keep :home)) games))
 
 (defn weekly-line
-  "Pure: one entry -> its weekly line, or nil when Sleeper does not project the
-  player that week. The `pts_ppr` gate is `normalize-entry`'s, for its reason."
+  "Normalize one weekly entry into the app's line shape.
+
+  Returns nil when Sleeper does not project that player for the requested week,
+  and keeps `:home?` nil when the schedule data is unavailable instead of guessing."
   [{:keys [stats opponent team updated_at]} homes]
   (when (and stats (:pts_ppr stats))
     {:stats      (scored-stats stats)
@@ -342,7 +271,7 @@
      :updated-at updated_at}))
 
 (defn weekly-by-id
-  "Pure: entries -> {sleeper-id line}. See `fetch-weekly` on the id space."
+  "Build a {sleeper-id weekly-line} map from weekly entries."
   [entries homes]
   (into {} (keep (fn [{:keys [player_id] :as entry}]
                    (when-let [line (weekly-line entry homes)]
@@ -350,10 +279,10 @@
         entries))
 
 (defn fetch-weekly
-  "Network: {sleeper-id weekly-line} for one week of a season.
+  "Fetch the weekly line keyed by Sleeper player-id for one season week.
 
-  Keyed in *Sleeper's* id space, not the universe's — `:player-id` there is the
-  GSIS id wherever one resolves. `pipeline/assoc-weekly` crosses the two."
+  This uses Sleeper's id space; the universe crosswalk resolves it to the app's
+  player ids elsewhere."
   [season week]
   ;; The schedule only supplies vs/@. Letting it fail the whole fetch would
   ;; trade the entire weekly projection for a two-character prefix, so it

@@ -1,7 +1,6 @@
 (ns draft-day.events-test
-  "The scoring bugs that actually blanked or froze the board all lived here, and
-  none of this was reachable from `lein test` — there was no cljs test runner at
-  all. Run with `npx shadow-cljs compile test && node out/node-tests.js`."
+  "ClojureScript event tests for scoring, persistence, request ordering, and
+  draft/season view transitions."
   (:require [cljs.test :refer [deftest is testing use-fixtures]]
             [re-frame.core :as rf]
             [re-frame.db :as rdb]
@@ -14,17 +13,13 @@
 (defonce captured (atom {}))
 
 (def ^:private stubs
-  "Stand in for the real side effects: node has no fetch target and no
-  localStorage, and we want to see what was *requested* rather than wait on it."
+  "Test effects that capture requests without performing network or storage I/O."
   {:http     (fn [r] (swap! captured update :http conj r))
    :persist! (fn [r] (swap! captured update :persist conj r))
    :debounce (fn [r] (swap! captured update :debounce conj r))})
 
 (defonce ^:private real-fx
-  ;; Captured at load, before any stub is registered, so the fixture can put the
-  ;; real handlers back. Every `-test` namespace compiles into one node bundle,
-  ;; so a stub left registered here would silently disarm these effects for
-  ;; whatever namespace is added next.
+  ;; Capture real handlers before the fixture replaces them.
   (into {} (map (juxt identity #(registrar/get-handler :fx %))) (keys stubs)))
 
 (defn- swap-fx!
@@ -36,8 +31,7 @@
     (when f (rf/reg-fx id f))))
 
 (defn- loaded-db
-  "app-db as it stands once players have arrived — :recompute is a no-op before
-  that, so most of these events need it."
+  "Return an app-db with players loaded so recompute-dependent events can run."
   []
   (assoc (db/default-db)
          :players [{:player-id "p1" :position "RB"}]
@@ -53,12 +47,7 @@
 (defn- scoring-now [] (get-in @rdb/app-db [:config :scoring]))
 (defn- last-http [] (last (:http @captured)))
 
-;; ---- a weight you cannot type ----
-
 (deftest a-cleared-weight-box-cannot-reach-the-request
-  ;; parseFloat("") is NaN, JSON.stringify writes NaN as null, and the server used
-  ;; to throw on (zero? nil) -> 400 -> the board went blank and stayed blank,
-  ;; because the bad weight was persisted to localStorage on the way through.
   (rf/dispatch-sync [:enable-custom-scoring])
   (doseq [bad [js/NaN nil "" js/Infinity]]
     (rf/dispatch-sync [:set-scoring-weight :rec bad])
@@ -73,12 +62,7 @@
   (is (= [{:id :recompute :event [:recompute]}] (:debounce @captured))
       "and asks for a debounced recompute rather than one per keystroke"))
 
-;; ---- custom scoring without a round trip ----
-
 (deftest custom-scoring-is-available-before-any-request-resolves
-  ;; It used to seed from an async /api/scoring/presets reply. Picking Custom
-  ;; first wrote nil, which the server silently read as PPR while the Settings
-  ;; page threw on (name nil).
   (is (empty? (:http @captured)) "nothing has been fetched")
   (rf/dispatch-sync [:enable-custom-scoring])
   (is (map? (scoring-now)))
@@ -93,16 +77,10 @@
 (deftest switching-to-a-preset-sends-that-preset
   (rf/dispatch-sync [:select-scoring-preset :standard])
   (is (= :standard (scoring-now)))
-  ;; A handler's own :fx [[:dispatch …]] goes through the async router, so the
-  ;; recompute it queues is driven here to see what the request would carry.
   (rf/dispatch-sync [:recompute])
   (is (= :standard (:scoring (:body (last-http))))))
 
-;; ---- out-of-order responses ----
-
 (deftest only-the-newest-rankings-reply-may-write-the-board
-  ;; Each reply re-ranks the whole universe, so latency varies and a slow reply
-  ;; computed under the previous scoring config could land last and stick.
   (rf/dispatch-sync [:recompute])
   (rf/dispatch-sync [:recompute])
   (let [n     (:recompute-seq @rdb/app-db)
@@ -125,8 +103,6 @@
   (rf/dispatch-sync [:enable-custom-scoring])
   (rf/dispatch-sync [:recompute])
   (is (= (:half-ppr scoring/presets) (:scoring (:body (last-http))))))
-
-;; ---- failure leaves something readable ----
 
 (deftest a-failed-recompute-keeps-the-old-board-and-says-so
   (rf/dispatch-sync [:recompute])
@@ -151,9 +127,6 @@
   (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db)))
 
   (testing "not even when it is clearing an earlier failure of its own"
-    ;; The real sequence: a recompute fails, the manager imports a league, and
-    ;; the import's own recompute lands 250 ms later. The import's message has
-    ;; to survive that.
     (rf/dispatch-sync [:recompute-failed "boom"])
     (rf/dispatch-sync [:set-status "✓ Imported \"RaiderNation\" (2026)"])
     (rf/dispatch-sync [:recompute])
@@ -161,11 +134,7 @@
                        (db/rules-stamp (:config @rdb/app-db)) {:players []}])
     (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db)))))
 
-;; ---- which way a column opens ----
-
 (deftest a-rank-shaped-column-opens-best-first
-  ;; FP T sorted the wrong way round: it is a tier, so 1 is the best number, but
-  ;; it opened descending and put tier 16 on top of the board.
   (doseq [k [:name :team :position :rank :adp :ecr :fp-tier]]
     (rf/dispatch-sync [:set-sort k])
     (is (= {:key k :dir 1} (:sort @rdb/app-db)) (str k " opens ascending")))
@@ -176,8 +145,6 @@
     (rf/dispatch-sync [:set-sort :fp-tier])
     (rf/dispatch-sync [:set-sort :fp-tier])
     (is (= {:key :fp-tier :dir -1} (:sort @rdb/app-db)))))
-
-;; ---- a dragged column keeps its new slot across a refresh ----
 
 (deftest a-reordered-column-reaches-localstorage
   (let [keys-now #(mapv :key (:columns @rdb/app-db))
@@ -190,8 +157,6 @@
          hard-refresh guarantee, since :boot keeps the stored order")
     (testing "reordering is display-only; it must not re-rank the board"
       (is (empty? (:http @captured))))))
-
-;; ---- the watch list keeps the manager's own order ----
 
 (deftest starring-appends-and-a-drag-reorders
   (let [wl #(:watchlist @rdb/app-db)]
@@ -217,9 +182,6 @@
 
 (deftest sorting-the-watch-list-rewrites-the-order-and-leaves-it-alone
   (let [wl #(:watchlist @rdb/app-db)]
-    ;; `:ranked-rules` alongside `:ranked`, because that is what `:ranked-loaded`
-    ;; always writes and what says this board is priced under the rules in force.
-    ;; `:watch-sort` refuses without it — see the stale-read-that-writes guard.
     (swap! rdb/app-db assoc
            :ranked-rules (db/rules-stamp (:config @rdb/app-db))
            :ranked
@@ -244,8 +206,6 @@
     (testing "sorting re-ranks nothing: the watch list feeds no valuation"
       (is (empty? (:http @captured))))))
 
-;; ---- a config change made before the universe lands is not lost ----
-
 (deftest a-scoring-change-with-no-players-yet-is-picked-up-on-load
   (reset! rdb/app-db (db/default-db))                    ; no :players
   (rf/dispatch-sync [:select-scoring-preset :standard])
@@ -253,11 +213,8 @@
   (rf/dispatch-sync [:players-loaded {:players [{:player-id "p1"}] :count 1 :source "sample"}])
   (is (= :standard (scoring-now)) "and the choice survived the wait"))
 
-;; ---- boot loads only what this version wrote ----
-
 (defn- with-fake-storage
-  "Run `f` against an empty in-memory localStorage. Node has none, and the
-  version gate is the one piece of persistence with a decision in it."
+  "Run `f` against an isolated in-memory localStorage implementation."
   [f]
   (let [store (atom {})
         prev  (.-localStorage js/globalThis)]
@@ -298,8 +255,6 @@
     (is (= (db/default-columns) (:columns @rdb/app-db)))))
 
 (deftest boot-takes-a-loaded-slice-as-it-stands
-  ;; It was written by this version, so there is nothing to reconcile: whatever
-  ;; the slice holds wins, and every key it does not hold comes from default-db.
   (with-redefs [draft-day.fx/load-persisted
                 (fn [] {:my-team-id "t3" :watchlist ["gibbs"]})]
     (rf/dispatch-sync [:boot])
@@ -307,58 +262,30 @@
     (is (= ["gibbs"] (:watchlist @rdb/app-db)))
     (is (= (db/default-columns) (:columns @rdb/app-db)) "and the rest is default")))
 
-;; ---- the shape the version stands for ----
-
 (deftest the-persisted-shape-is-pinned-to-the-version-that-reads-it
-  ;; Nothing repairs a stored blob any more, so `fx/storage-version` is the only
-  ;; thing standing between a changed shape and a manager reading it under the
-  ;; old one. Remembering to bump it is exactly the kind of discipline that gets
-  ;; forgotten, and both failure modes are silent for existing users only: a new
-  ;; column never appears on their board, a removed one renders as a column of
-  ;; dashes under a blank header. So the shapes are written down here — change
-  ;; any of them and this test fails until the version moves with them.
-  ;;
-  ;; Both catalogs are pinned, not just the draft board's: `:waiver-columns` is
-  ;; persisted the same way, and a Waivers column is exactly the kind of change
-  ;; that would otherwise slip past.
   (is (= 12 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
-  ;; A league's scoring config is persisted under `:config`, so a stat key added
-  ;; to the model is a changed shape exactly as a column is. Nothing pinned it
-  ;; until the field-goal buckets went in, and the bump nearly went missing.
-  ;; Grouped as `db/scoring-catalog` groups them, so this reads against the
-  ;; editor rather than as eighty-eight keywords in a bag.
-  (is (= #{;; Passing
-           :pass_yd :pass_td :pass_int :pass_2pt :pass_cmp
+  (is (= #{:pass_yd :pass_td :pass_int :pass_2pt :pass_cmp
            :pass_fd :pass_cmp_40p :pass_td_40p :pass_td_50p :pass_int_td
            :bonus_pass_cmp_25 :bonus_pass_yd_300 :bonus_pass_yd_400
-           ;; Rushing
            :rush_yd :rush_td :rush_2pt :rush_fd :rush_40p
            :rush_td_40p :rush_td_50p :bonus_rush_att_20 :bonus_rush_yd_100 :bonus_rush_yd_200
-           ;; Receiving
            :rec :rec_yd :rec_td :rec_2pt :rec_fd
            :rec_20_29 :rec_30_39 :rec_40p :rec_td_40p :rec_td_50p
            :bonus_rec_yd_100 :bonus_rec_yd_200
-           ;; Scrimmage
            :bonus_rush_rec_yd_100 :bonus_rush_rec_yd_200
-           ;; Misc
            :fum_lost :fum :fum_rec_td
-           ;; Kicking
            :fgm :fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49
            :fgm_50p :fgmiss :fgmiss_0_19 :fgmiss_20_29 :fgmiss_30_39
            :fgmiss_40_49 :fgmiss_50p :xpm :xpmiss :blk_kick
-           ;; Defense
            :sack :int :fum_rec :ff :def_td
            :safe :def_2pt :def_3_and_out :def_4_and_stop
-           ;; Points allowed
            :pts_allow_0 :pts_allow_1_6 :pts_allow_7_13 :pts_allow_14_20 :pts_allow_21_27
            :pts_allow_28_34 :pts_allow_35p
-           ;; Yards allowed
            :yds_allow_0_100 :yds_allow_100_199 :yds_allow_200_299 :yds_allow_300_349
            :yds_allow_350_399 :yds_allow_400_449 :yds_allow_450_499 :yds_allow_500_549
            :yds_allow_550p
-           ;; Special teams
            :st_td :st_ff :st_fum_rec :def_st_td :def_st_ff
            :def_st_fum_rec :def_kr_yd :def_pr_yd}
          (set scoring/stat-keys))
@@ -395,20 +322,12 @@
   (is (= "sleeper:123" (db/league-key "sleeper" "123"))
       "and a league is stored under provider *and* id — see `db/league-key`"))
 
-;; ---- the draft archive ----
-
 (deftest an-archived-draft-outlives-a-storage-version-bump
-  ;; The whole reason it has its own key and its own version. A bump exists to
-  ;; stop *live* state being read under a shape it was not written for, and
-  ;; dropping the blob is the right answer for a column layout. A completed
-  ;; draft is a record of something that happened; discarding it because a
-  ;; Waivers column moved would be absurd.
   (with-fake-storage
     (fn [store]
       (swap! store assoc fx/drafts-key
              (pr-str {:v fx/drafts-version
                       :drafts [{:archived-at "2026-09-06" :picks [{:player-id "a"}]}]}))
-      ;; the live slice, written under a version that is about to move
       (swap! store assoc fx/store-key
              (pr-str {:v (inc fx/storage-version) :state {:my-team-id "t3"}}))
       (is (nil? (fx/load-persisted)) "live state is dropped, as designed")
@@ -425,7 +344,6 @@
       (is (= [] (fx/read-drafts)) "written under a different archive version"))))
 
 (deftest archiving-appends-rather-than-replaces
-  ;; A manager drafts in more than one league and more than one season.
   (with-fake-storage
     (fn [_]
       (rf/dispatch-sync [:archive-draft])          ; nothing drafted yet
@@ -449,9 +367,6 @@
         (is (= 3 (count (fx/read-drafts))))))))
 
 (deftest starting-a-draft-archives-the-one-it-destroys
-  ;; The only moment a completed draft is thrown away, and it happens by pressing
-  ;; a button labelled Start Draft — so the record is taken here rather than left
-  ;; to one somebody has to remember to press.
   (with-fake-storage
     (fn [_]
       (swap! rdb/app-db assoc
@@ -475,13 +390,6 @@
       (rf/dispatch-sync [:start-draft {:num-teams 10 :starting-bankroll 100 :team-names []}])
       (is (= [] (fx/read-drafts))))))
 
-;; ---- one Escape, one effect ----
-;; The tile and the modal both close on Escape and both used to want their own
-;; document listener. Two listeners are order-dependent: whichever ran second
-;; would see `:modal` already nil and clear `:compare` anyway, so shutting the
-;; modal would silently take away the pair underneath it. The precedence is a
-;; rule in one event instead, which is what makes it assertable at all.
-
 (deftest escape-closes-the-modal-and-leaves-the-comparison-alone
   (reset! rdb/app-db (assoc (loaded-db)
                             :view :waivers
@@ -498,10 +406,6 @@
   (is (= [] (:compare @rdb/app-db))))
 
 (deftest escape-on-another-tab-leaves-the-comparison-alone
-  ;; The listener lives in `core/app` and is attached for the life of the app,
-  ;; where it used to unmount with the tile. Without the view guard, holding a
-  ;; pair and pressing Escape anywhere else would lose it with nothing on screen
-  ;; acknowledging that anything happened.
   (doseq [v [:board :league :settings]]
     (reset! rdb/app-db (assoc (loaded-db) :view v :compare ["p1" "p2"]))
     (rf/dispatch-sync [:escape-pressed])
@@ -509,8 +413,6 @@
         (str "Escape on " v " cleared a comparison held on the waivers tab"))))
 
 (deftest a-modal-closes-from-any-tab
-  ;; The modal is not view-scoped the way the tile is: it opens over whatever is
-  ;; on screen, so Escape has to reach it from anywhere.
   (reset! rdb/app-db (assoc (loaded-db) :view :board
                             :modal {:kind :player-detail :player-id "p1"}))
   (rf/dispatch-sync [:escape-pressed])
@@ -522,13 +424,7 @@
     (rf/dispatch-sync [:escape-pressed])
     (is (= before @rdb/app-db))))
 
-;; ---- a modal that carries an argument ----
-
 (deftest a-modal-is-named-the-same-way-whether-or-not-it-carries-an-argument
-  ;; `:modal` held a bare keyword until one of them needed a player id. Both
-  ;; shapes are read through `db/modal-kind`, so the two argument-less modals
-  ;; keep working and the next one to need an argument costs a map rather than a
-  ;; fourth spelling of the comparison.
   (is (= :start-draft (db/modal-kind {:kind :start-draft})))
   (is (= :player-detail (db/modal-kind {:kind :player-detail :player-id "p1"})))
   (is (= :reset-cache (db/modal-kind :reset-cache)) "the bare keyword still reads")
@@ -541,8 +437,6 @@
   (is (nil? (:modal @rdb/app-db))))
 
 (deftest a-connected-league-s-scoring-cannot-be-edited
-  ;; The Scoring section draws it read-only; the events hold the same line, so
-  ;; nothing can write a league's rules behind the import's back.
   (swap! rdb/app-db assoc :active-league "sleeper:1")
   (let [before (get-in @rdb/app-db [:config :scoring])]
     (rf/dispatch-sync [:enable-custom-scoring])
@@ -551,8 +445,6 @@
     (is (= before (get-in @rdb/app-db [:config :scoring])))))
 
 (deftest a-connected-league-s-shape-cannot-be-edited-either
-  ;; Re-sync re-imports team count and roster too, so an edit to either was
-  ;; reverted on the next press without a word.
   (swap! rdb/app-db assoc
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"
                                 :rules {:status :imported :bankroll? false}}}
@@ -576,7 +468,6 @@
   (is (= 150 (get-in @rdb/app-db [:config :starting-bankroll]))))
 
 (deftest start-draft-is-not-a-way-round-the-league-s-settings
-  ;; The modal draws them read-only; the event holds the same line.
   (with-fake-storage
     (fn [_]
       (swap! rdb/app-db assoc
@@ -589,11 +480,8 @@
       (is (= 300 (get-in @rdb/app-db [:config :starting-bankroll])))
       (is (= 10 (count (:teams @rdb/app-db))) "and the teams are the league's"))))
 
-;; ---- the two halves ----
-
 (defn- dispatched
-  "The events the handler under `f` dispatched, captured rather than queued — a
-  real `:dispatch` runs on a later tick, after the assertion."
+  "Capture events dispatched by `f` instead of queuing them for a later tick."
   [f]
   (let [seen (atom [])
         real (registrar/get-handler :fx :dispatch)]
@@ -602,7 +490,7 @@
     @seen))
 
 (defn- dispatched-views
-  "The `:set-view`s among them."
+  "Return the `:set-view` values dispatched by `f`."
   [f]
   (keep (fn [[e v]] (when (= e :set-view) v)) (dispatched f)))
 
@@ -625,16 +513,12 @@
   (is (= [:board] (dispatched-views #(rf/dispatch-sync (universe-at 0))))))
 
 (deftest the-app-draws-neither-half-until-it-knows-which-it-is-in
-  ;; Placing the board first meant a mid-season manager saw the draft half, and
-  ;; Start Draft, for as long as the universe took.
   (with-fake-storage
     (fn [_]
       (is (empty? (dispatched-views #(rf/dispatch-sync [:boot]))))
       (is (nil? (:view @rdb/app-db))))))
 
 (deftest a-league-drafted-on-its-host-opens-in-season-at-boot
-  ;; Its sync already says so, so there is no week to wait for — and week 1's
-  ;; Sunday, before any stats exist, is exactly when it is wanted.
   (with-fake-storage
     (fn [store]
       (swap! store assoc fx/store-key
@@ -642,8 +526,6 @@
       (is (= [:team] (dispatched-views #(rf/dispatch-sync [:boot])))))))
 
 (deftest a-universe-reload-leaves-the-view-where-the-manager-put-it
-  ;; The board stays up after the last pick so it can be undone; a cache reset
-  ;; refetching the universe must not carry him off it.
   (swap! rdb/app-db assoc :view :board)
   (is (empty? (dispatched-views #(rf/dispatch-sync (universe-at 3))))))
 
@@ -655,21 +537,17 @@
       "while a league that has drafted is still in season"))
 
 (deftest an-espn-league-s-season-opens-on-my-team
-  ;; Whichever host it is on: the season's first tab is My Team.
   (swap! rdb/app-db assoc :active-league "espn:1"
          :leagues {"espn:1" {:provider "espn" :league-id "1"}})
   (is (= [:team] (dispatched-views #(rf/dispatch-sync (universe-at 3))))))
 
 (deftest switching-mode-before-the-week-is-known-stores-no-override
-  ;; There is nothing yet for the choice to disagree with; storing one here
-  ;; outlived the load that would have agreed with it.
   (swap! rdb/app-db assoc :active-league "sleeper:1" :view :settings
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}})
   (is (= [:team] (dispatched-views #(rf/dispatch-sync [:switch-mode :season]))))
   (is (nil? (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))))
 
 (deftest the-matchup-waits-for-the-league-s-rosters
-  ;; Asked with none, every team came back empty: a scoreboard of blank lineups.
   (swap! rdb/app-db assoc :active-league "sleeper:1"
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}})
   (rf/dispatch-sync [:fetch-matchup])
@@ -680,8 +558,6 @@
            (dispatched #(rf/dispatch-sync [:set-view :matchup]))))))
 
 (deftest a-host-with-no-matchup-board-is-not-asked-for-one
-  ;; Checked against a host the catalog does not name: asking a host with no
-  ;; board is a 400 on the screen a season opens on.
   (swap! rdb/app-db assoc :active-league "yahoo:1"
          :leagues {"yahoo:1" {:provider "yahoo" :league-id "1" :sync {:teams []}}})
   (rf/dispatch-sync [:fetch-matchup])
@@ -726,15 +602,12 @@
     (is (= #{:fetch-waivers :fetch-matchup} (set (map first @seen))))))
 
 (deftest opening-the-league-tab-first-loads-what-it-reads
-  ;; Reached from Settings after a phase change, nothing else had loaded them:
-  ;; the manager's own players drew as plain text and the header had no week.
   (swap! rdb/app-db assoc :active-league "sleeper:1"
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :sync {:teams []}}})
   (is (= #{:fetch-waivers :fetch-matchup}
          (set (map first (dispatched #(rf/dispatch-sync [:set-view :rosters])))))))
 
 (deftest a-league-switch-on-any-season-tab-refetches-the-week
-  ;; The switch drops the matchup, and the header's week is only ever its.
   (swap! rdb/app-db assoc :view :rosters :active-league "sleeper:1"
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :phase :season
                                 :sync {:teams []}}

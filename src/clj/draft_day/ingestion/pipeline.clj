@@ -1,23 +1,9 @@
 (ns draft-day.ingestion.pipeline
-  "Resolve the player universe with a TTL disk cache and a fallout chain, mirroring
-  the POC: offline-sample -> fresh-cache -> live -> stale-cache -> bundled-sample.
-  The cache is Transit on disk, its name carrying `schema-version` so an old file
-  is never found rather than read back short a column (data/players_cache.v10.transit
-  today); the bundled sample is EDN on the classpath (resources/sample_players.edn).
+  "Resolve the player universe through cache, live ingestion, and fallbacks.
 
-  Every branch returns the same envelope, so a caller can always tell what it is
-  looking at:
-
-    {:schema-version 10
-     :season         2026        ; the NFL season the rows were fetched for
-     :fetched-at     \"...Z\"      ; when, nil for the committed sample
-     :source         \"live\"      ; which rung of the fallout chain answered
-     :validation     {...}       ; what id validation dropped
-     :players        [...]}
-
-  `:source` alone could not distinguish a twenty-minute-old cache from a
-  fourteen-month-old one served because the network died; `:season` and
-  `:fetched-at` can."
+  Each branch returns an envelope containing the players, source, season,
+  fetch time, schema version, and validation report, so cached and fallback
+  boards retain their provenance."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -39,62 +25,10 @@
   (:import [java.time Instant]))
 
 (def schema-version
-  "Bumped whenever the player row shape changes. It rides in the cache filename
-  as well as the payload, so an old file is simply never found rather than
-  deserializing cleanly into missing columns that render as zero. The benchmark
-  harness learned this the hard way — see benchmark/fetch.clj's cache-path.
+  "Version of the persisted universe envelope and player-row shape.
 
-  2: vendor columns moved under :vendor/by-format, one entry per scoring format,
-  and the write-only :sleeper/pts-* fields were dropped.
-
-  3: prior-season usage (:nflverse/prior-*) and ESPN's projected targets and
-  receptions (:espn/proj-*) were added.
-
-  4: multi-season availability (:nflverse/games-by-season, :nflverse/games-seasons)
-  was added, and the nflverse label became :nflverse/player-stats now that one
-  fetch answers two questions.
-
-  5: per-season realized stat lines (:nflverse/history) were added, from the same
-  window that fetch already had in hand.
-
-  6: in-season production (:nflverse/season-to-date, :nflverse/recent) was added,
-  and the envelope grew :through-week. The bump matters more than most: a cache
-  written at schema 5 carries no in-season columns at all, which is
-  indistinguishable from a preseason board — so a stale file deserializing
-  cleanly would put a November league on an August projection and say nothing.
-
-  7: kickers carry a :fgm again, summed from the distance buckets Sleeper does
-  publish (see `sleeper/scored-stats`). A schema-6 file scores every kicker on
-  extra points alone — roughly a third of his value — so it must not be read
-  back.
-
-  8: :nflverse/game-log was added, the weekly rows uncollapsed. A schema-7 file
-  carries none, which the modal cannot tell from a player who has not played —
-  and in November that reads as a season nobody appeared in.
-
-  9: :bio was added — draft capital and a birth year, off the pinned snapshot.
-  A schema-8 file carries none, and `attach-ids` passes an anchored player
-  through, so the cache has to be dropped rather than re-anchored.
-
-  10: kickers carry their field goals by distance (:fgm_0_19, :fgm_20_29,
-  :fgm_30_39, :fgm_40_49, :fgm_50p) and their misses (:fgmiss_40_49,
-  :fgmiss_50p, :xpmiss), since every host scores a kick by how far it was
-  kicked. A schema-9 file carries the summed :fgm alone,
-  so a league stating its distances would score every kicker on extra points
-  and nothing would fail to say so.
-
-  11: `:stats` carries every key the scoring vocabulary now names that the
-  season line publishes — the reception-length buckets, first downs, completions
-  and a thrown pick-six. A schema-10 file has none of them, and a league that
-  scores a 40-yard catch or a first down would price its receivers as though it
-  did not.
-
-  12: `:stats` is the season line completed from the week-one line, so it
-  carries the keys only the weekly horizon publishes — a defense's tier, a
-  safety, a forced fumble, a long touchdown. A schema-11 file holds the sparse
-  line, which is not merely narrower but tilted: the buckets the season line
-  does publish are receiving ones, so receivers and tight ends read high
-  against quarterbacks and defenses, and VORP compares those directly."
+  Bump it whenever cached data would otherwise deserialize successfully with
+  missing or changed fields."
   12)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
@@ -174,17 +108,9 @@
   0.80)
 
 (defn log-enrichment!
-  "One line per source, plus a warning for any position whose published rows
-  mostly failed to land. Warning on coverage instead would be pure noise: the
-  FantasyPros auction list covers ~150 players by design, so it is *supposed*
-  to leave most of the board untouched.
-
-  `:expected-partial?` turns that warning off for a source whose rows cannot all
-  land no matter how healthy the join is. A prior-season source is the case:
-  nflverse publishes everyone who played last year, and the ones who retired or
-  were cut have no row on this year's board to find. Warning about that every
-  run costs the floor its only job — saying that a join which *should* land is
-  not landing — by burying it under warnings that always mean 'as intended'."
+  "Log each enrichment's coverage and warn when an expected join mostly misses.
+  Sources marked `:expected-partial?` are exempt because their row sets are
+  intentionally smaller than the current universe."
   [label {:keys [ok? rows matched hit-rate coverage by-position expected-partial?]}]
   (if-not ok?
     (log/warn (format "%s: unavailable, columns omitted" label))
@@ -200,14 +126,9 @@
                  label pos rows matched n))))))
 
 (defn apply-enrichment
-  "Left-join one best-effort enrichment source onto the accumulating universe,
-  recording its match report under `label`. A nil source means the fetch failed
-  (see `best-effort`) and is reported as unavailable — distinct from a source
-  that answered and simply matched nothing, which is a join bug, not an outage.
-
-  `opts` is passed straight through to `merge/left-join-report`, for a source
-  that joins on something better than a name key; `:expected-partial?` is read
-  here rather than there, and reaches `log-enrichment!` via the report."
+  "Left-join one enrichment source and record its report under `label`.
+  A nil source is recorded as unavailable; an empty successful source remains a
+  join report so an unexpected miss is distinguishable from an outage."
   ([acc label by-key] (apply-enrichment acc label by-key {}))
   ([acc label by-key opts]
    (if (nil? by-key)
@@ -221,20 +142,16 @@
            (assoc :players players)
            (assoc-in [:sources label] report))))))
 
-(def ^{:doc "Alias for the shared `scoring/format-label` — the label scheme is
-  cljc because the browser reads these keys back off /api/players."}
+(def ^{:doc "Shared vendor-column label builder used by ingestion and the browser."}
   format-label scoring/format-label)
 
 (defn pos-tier-label
-  "The `:sources` label for one position's expert-tier scrape. Format-varying
-  positions get one label per format; the rest get a single unscoped label, so
-  the report says plainly that QB was fetched once and not three times."
+  "Build the `:sources` label for a position's expert-tier scrape."
   ([pos] (keyword "fantasypros" (str "pos-tier-" (str/lower-case pos))))
   ([pos fmt] (format-label (pos-tier-label pos) fmt)))
 
 (def pos-tier-tasks
-  "[label position format-or-nil] for every per-position expert-tier scrape.
-  Twelve of them: RB/WR/TE across three formats, plus QB/K/DST once each."
+  "Tasks for each position-tier scrape, scoped only where formats differ."
   (vec (mapcat (fn [[pos varies?]]
                  (if varies?
                    (map (fn [fmt] [(pos-tier-label pos fmt) pos fmt]) scoring/formats)
@@ -242,11 +159,7 @@
                (sort fantasypros/pos-formats))))
 
 (def enrichment-source-labels
-  "Every source `enrich-universe` reports on. The bundled sample is expected to
-  carry all of them; when a new one is added here and the sample is not
-  recaptured, its column renders blank offline with nothing to say the column
-  is structurally absent rather than merely unmatched. That is exactly what
-  happened when the FantasyPros AAV and sleepers joins were introduced."
+  "All source labels reported by `enrich-universe`."
   (into (into [:sleeper/byes :fantasypros/sleepers :espn
                :nflverse/player-stats :nflverse/weekly]
               (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
@@ -262,27 +175,15 @@
   (some-> by-key (update-vals (fn [cols] {:vendor/by-format {fmt cols}}))))
 
 (defn enrichment-tasks
-  "Every enrichment fetch as a best-effort thunk, keyed by the `:sources` label
-  it reports under.
+  "Build best-effort enrichment tasks keyed by their source labels.
 
-  One flat map rather than a sequence of `let` bindings, because the bindings
-  *were* the bug: each one blocked on a 30-second timeout before the next
-  started, and singling out the FantasyPros half for concurrency just moved the
-  stall to Sleeper's four sleeper pages. Everything here is independent I/O over
-  three different hosts, so the honest shape is a set of tasks with no order at
-  all — `parallel/all` starts them together and the joins below impose the order
-  that actually matters (a deterministic `:sources` report)."
+  Fetches are independent and run concurrently; joins remain ordered so the
+  source report is deterministic."
   [season]
   (into (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
                :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
                :espn                 #(best-effort (espn/fetch season))
-               ;; Last season, not this one: these are realized outcomes. One
-               ;; fetch, two questions — last season's usage and the availability
-               ;; window ending there. See `nflverse/fetch`.
                :nflverse/player-stats #(best-effort (nflverse/fetch (dec season)))
-               ;; This season, not last: how far it has got and what each player
-               ;; has produced inside it. Absent by design until week 1 is
-               ;; played — see `nflverse-weekly`'s ns docstring.
                :nflverse/weekly       #(best-effort (nflverse-weekly/fetch season))}
               (mapcat (fn [fmt]
                         [[(format-label :fantasypros/ecr fmt)
@@ -295,46 +196,22 @@
         pos-tier-tasks))
 
 (defn enrich-universe
-  "Left-join the best-effort enrichment columns onto an already-validated
-  universe, returning `{:players :sources}`. Split out from the fetch so the
-  validation gate below reads as the gate it is.
+  "Enrich an already-validated universe and return `{:players :sources}`.
 
-  FantasyPros publishes ECR and auction values per scoring format, so all three
-  are fetched and stored side by side under `:vendor/by-format`; the league's
-  format is chosen per request in `rankings.vendor`. Baking one format in here
-  is what made a standard league read PPR tiers, PPR rank spread and PPR market
-  prices — the universe cache is shared across leagues, so the choice cannot be
-  made at ingestion.
-
-  Every fetch goes out at once (`enrichment-tasks` + `parallel/all`); only the
-  joins below are sequential. That does raise peak heap — ESPN's ~37MB feed is
-  now in memory alongside a few cheatsheet pages instead of strictly after them,
-  which is why FantasyPros caps its own concurrency rather than letting all ten
-  of its pages land together.
-
-  ESPN is deliberately *not* format-scoped: it publishes the same auction value
-  under both its PPR and STANDARD rank types (checked against the live feed), so
-  splitting it would invent a distinction the source does not make."
+  Format-specific FantasyPros values remain side by side because the shared
+  universe serves leagues with different scoring formats; ESPN stays unscoped."
   [season universe]
   (let [fetched  (parallel/all (enrichment-tasks season))
-        ;; Bye weeks come from Sleeper itself (the schedule endpoint), keyed on the
-        ;; :team every player already carries — complete, not just the FantasyPros
-        ;; matches. Best-effort: a failed schedule fetch just leaves :bye nil.
         byes     (:sleeper/byes fetched)
         sleepers (:fantasypros/sleepers fetched)
         espn     (:espn fetched)
         prior    (:nflverse/player-stats fetched)
         weekly   (:nflverse/weekly fetched)]
-    ;; Byes join on :team rather than a name key, so they get a row count but
-    ;; none of the match-rate machinery — reporting them as a 0% join would be
-    ;; a lie, not a diagnostic.
     (log/info (format ":sleeper/byes: %d team bye weeks" (count byes)))
     (as-> {:players (cond-> universe (seq byes) (sleeper/assoc-byes byes))
            :sources {:sleeper/byes (if (seq byes)
                                      {:ok? true :rows (count byes)}
                                      {:ok? false})}} acc
-      ;; The joins stay sequential and in `scoring/formats` order: only the
-      ;; fetching is concurrent, so :sources reads the same every run.
       (reduce (fn [acc fmt]
                 (let [ecr (get fetched (format-label :fantasypros/ecr fmt))
                       aav (get fetched (format-label :fantasypros/aav fmt))]
@@ -344,9 +221,6 @@
                       (apply-enrichment (format-label :fantasypros/aav fmt)
                                         (scoped fmt (some-> aav match/by-key))))))
               acc scoring/formats)
-      ;; Per-position expert tiers. RB/WR/TE are scoped like every other
-      ;; format-varying column; QB/K/DST publish one page for all three formats
-      ;; and so join flat, exactly as ESPN does.
       (reduce (fn [acc [label pos fmt]]
                 (let [by-key (some-> (get fetched label) match/by-key)]
                   (apply-enrichment acc label
@@ -356,37 +230,20 @@
               acc pos-tier-tasks)
       (apply-enrichment acc :fantasypros/sleepers (some-> sleepers match/by-key))
       (apply-enrichment acc :espn espn)
-      ;; nflverse alone joins on GSIS rather than a name key — every universe
-      ;; player already carries one, so there is nothing to guess. Its keys hold
-      ;; no position, hence the explicit index for the per-position report.
       (apply-enrichment acc :nflverse/player-stats (:by-key prior)
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions prior)
                          :expected-partial? true})
-      ;; Same exact GSIS join as the season file above. Expected partial for a
-      ;; second reason as well as the first: before week 1 nobody has a row, and
-      ;; even in December the board carries players who have not played a snap.
       (apply-enrichment acc :nflverse/weekly (:by-key weekly)
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions weekly)
                          :expected-partial? true})
-      ;; How far the season has got, read off the weekly file rather than the
-      ;; calendar. It rides on the envelope and not on the players: it is one
-      ;; fact about the league year, and `rankings.ros` needs it exactly once
-      ;; per request. 0 when the source is absent, which is preseason.
       (assoc acc :through-week (or (:through-week weekly) 0)))))
 
 (defn fetch-enriched-universe
-  "The live universe: Sleeper rows, id-validated, then enriched.
-
-  Ids are anchored first, then validated, then enriched. That order matters:
-  anchoring rewrites `:player-id`, so validating afterwards is what catches two
-  Sleeper ids resolving to one GSIS id — a collision that would silently drop a
-  player from the board. Enrichment comes last because it joins by name key and
-  could not repair a bad id anyway.
-
-  A systemic failure throws, which `load-universe` catches into the stale-cache
-  branch: serving last night's board beats serving a structurally broken one."
+  "Fetch, anchor, validate, and enrich the live universe.
+  Validation follows id anchoring so collisions are rejected before enrichment;
+  systemic validation failures throw for the cache fallback to handle."
   [season]
   (let [anchored (player-ids/attach-ids (sleeper/fetch-universe season)
                                         (player-ids/pinned-index))
@@ -397,34 +254,20 @@
     (assoc (enrich-universe season players) :validation report)))
 
 (defn sample-universe
-  "The bundled fallback as an envelope.
-
-  A sample captured by `draft-day.tools.snapshot` carries its own stamp — the
-  season, when it was captured, and which enrichment sources contributed. The
-  original hand-captured sample is a bare vector with no stamp at all, so it
-  honestly reports schema 0 and nil provenance rather than borrowing the
-  current version and claiming to be something it is not."
+  "Return the bundled fallback as an envelope, preserving captured provenance."
   []
   (let [env (or (cached->universe (load-sample)) {:players []})]
     (merge {:schema-version (:schema-version env)
             :season         (:season env)
             :fetched-at     (:captured-at env)
-            ;; A captured sample carries whatever week it was taken in; the
-            ;; original hand-captured one has none and reads as preseason,
-            ;; which is what it is.
             :through-week   (or (:through-week env) 0)
             :sources        (:sources env)
             :source         "sample"}
-           ;; Anchored on read so offline dev and tests share the live id
-           ;; space; a sample captured after anchoring shipped already carries
-           ;; :ids and passes straight through.
            (checked "sample" (player-ids/attach-ids
                               (:players env) (player-ids/pinned-index))))))
 
 (defn cached-universe
-  "The disk cache as an envelope, or nil when absent, empty or written by a
-  different schema. Provenance is read from the file, so a cached board still
-  reports the season and time it was actually fetched rather than now."
+  "Read and validate a schema-matched disk cache, or return nil."
   [path]
   (when-let [env (cached->universe (read-transit path))]
     (when (= schema-version (:schema-version env))
@@ -433,8 +276,7 @@
           (merge env v {:source "cache"}))))))
 
 (defn live-universe
-  "Fetch, validate, cache and stamp. On any failure fall back down the chain:
-  a stale cache beats the committed sample, and both beat an empty board."
+  "Fetch and cache the live universe, falling back to stale cache, sample, or empty."
   [season cache-path]
   (try
     (let [season' (season/resolve-season season)
@@ -442,9 +284,6 @@
           env {:schema-version schema-version
                :season         season'
                :fetched-at     (now-iso)
-               ;; 0 all preseason, then the last week nflverse has published.
-               ;; Cached with everything else, so a board served from disk knows
-               ;; which week it was computed for rather than assuming today's.
                :through-week   (or through-week 0)
                :validation     validation
                :sources        sources
@@ -452,15 +291,12 @@
       (write-transit! cache-path env)
       (assoc env :source "live"))
     (catch Exception _
-      ;; stale > fake, but only if the stale copy still validates — a cache that
-      ;; drops to nothing is worse than the sample, not better.
       (or (cached-universe cache-path)
           (let [s (sample-universe)] (when (seq (:players s)) s))
           {:schema-version schema-version :players [] :source "empty"}))))
 
 (defn load-universe
-  "Return the universe envelope (see the ns docstring). opts: :refresh (bypass a
-  fresh cache), :season, :cache-path (defaults to data/...)."
+  "Load the universe envelope, optionally bypassing the fresh cache."
   ([] (load-universe {}))
   ([{:keys [refresh season cache-path] :or {cache-path default-cache-path}}]
    (cond
@@ -473,61 +309,23 @@
      :else
      (live-universe season cache-path))))
 
-;; ---- weekly projections: its own cache, deliberately ----
-;; Two reasons this does not ride the universe envelope, and the second is the
-;; one that bites. `cache-fresh?` is a single mtime over one file holding
-;; everything, so expiring it to refresh this one column would re-run all ~24
-;; ingestion tasks — the 37MB ESPN download and the rate-limited FantasyPros
-;; scrapes included. And `api.routes` holds the loaded universe in an atom with
-;; no expiry at all, so a column joined at load time would never refresh on a
-;; long-running server however short its TTL was. Hence: a small file of its
-;; own, read per request.
-;;
-;; It is the only column in the app that goes stale in under a day. Everything
-;; else — preseason lines, ECR, AAV, ADP, prior-season usage, last week's
-;; realized stats — has a genuine 24h+ cadence.
-;;
-;; A week rollover invalidates regardless of TTL: a fresh file for last week is
-;; not a fresh file. A failed fetch falls back to the stale copy for the *same*
-;; week and is retried on the next request — /api/waivers is user-triggered, not
-;; polled, so that is self-limiting.
-
 (def weekly-schema-version
-  "2: `:kickoffs` was added. A schema-1 file carries none, which is
-  indistinguishable from a scoreboard that failed — see `weekly-answers?`.
-
-  3: a weekly line carries its field goals by distance, since `weekly-line`
-  scores through the same `sleeper/scored-stats` the universe does. A schema-2
-  file holds the flat `:fgm` alone, and a league stating its distances drops
-  that weight — so every kicker on the waiver and matchup boards would price on
-  extra points until the TTL lapsed, which `weekly-answers?` cannot see.
-
-  4: a weekly line carries what the widened vocabulary reaches on that line —
-  a forced fumble, a defensive touchdown, a safety, and which points- and
-  yards-allowed bucket a defense is projected into. A schema-3 file holds none
-  of it, and those buckets are over a third of what a defense is projected to
-  score, so the waiver and matchup boards would rank defenses on sacks and
-  interceptions alone until the TTL lapsed."
+  "Version of the weekly projection cache envelope and line shape."
   4)
 
 (def default-weekly-cache-path
   (str "data/weekly_projections.v" weekly-schema-version ".transit"))
 
 (def matchup-weekly-cache-path
-  "The matchup board's own copy. It asks for the provider's week while the waiver
-  board asks for the next unplayed one, and those differ from the first game of
-  a week until the last; sharing one file made each board evict the other's.
-  Named under `weekly_projections` so `.gitignore`'s glob already covers it."
+  "Separate cache path for matchup projections, which use a different week."
   (str "data/weekly_projections_matchup.v" weekly-schema-version ".transit"))
 
 (defn- weekly-ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_WEEKLY_TTL_HOURS") "1")))
 
 (defn weekly-answers?
-  "Whether a cached envelope is an answer for exactly this season and week.
-
-  Deliberately not `(seq :lines)` — an empty map is a real answer, and treating
-  it as no answer is what made the offseason refetch on every request."
+  "Whether a cached envelope matches the schema, season, and requested week.
+  An empty `:lines` map is still a valid answer."
   [env season week]
   (boolean (and (map? env)
                 (= weekly-schema-version (:schema-version env))
@@ -541,11 +339,8 @@
          nil)))
 
 (defn live-weekly
-  "One week's projection lines and the kickoff times beside them, written as one
-  envelope so the two cannot disagree about which week they describe."
+  "Fetch and cache one week's projection lines with its kickoff times."
   [season week path]
-  ;; The scoreboard degrades on its own, as `sleeper/fetch-weekly` does for the
-  ;; schedule it needs: ESPN being down must not cost a week's prices.
   (let [env {:schema-version weekly-schema-version
              :season         season
              :week           week
@@ -556,18 +351,11 @@
     env))
 
 (defonce ^:private weekly-memo
-  ;; The decoded envelope, so a fresh file is not re-read and re-decoded on every
-  ;; /api/waivers — the same reason `api.routes` holds the universe in an atom.
-  ;;
-  ;; It is safe here and was not there because it is not the whole cache, only a
-  ;; copy of it: `cache-fresh?` still gates on the file's own mtime and
-  ;; `weekly-answers?` on the season and week, so this expires exactly when the
-  ;; file does. Keyed by path so a test's temp cache cannot answer for another's.
+  ;; Memoized by path; file freshness and season/week matching remain authoritative.
   (atom nil))
 
 (defn load-weekly
-  "The weekly envelope for one week, or nil when there is nothing to project.
-  See the section comment above for why this is cached apart from the universe."
+  "Load one week's cached projection envelope, or nil when unavailable."
   ([season week] (load-weekly season week {}))
   ([season week {:keys [refresh path] :or {path default-weekly-cache-path}}]
    (when-not (offline?)
@@ -586,16 +374,10 @@
                               (log/warn e "weekly projections fetch failed:" (ex-message e))
                               (when (weekly-answers? cached season week) cached))))))]
        (reset! weekly-memo {:memo-path path :env env})
-       ;; "Nobody is projected" is cached like any other answer, but it is not a
-       ;; week the board can show. Sleeper serves week 19 with a 200 and 750
-       ;; unprojected entries rather than a 404, so past the regular season this
-       ;; is the *normal* reply — returning the envelope would have the banner
-       ;; announce a week that does not exist.
        (when (seq (:lines env)) env)))))
 
 (defn assoc-kickoffs
-  "Join this week's kickoff onto players by TEAM — not by weekly line; see
-  `espn-schedule`. A player on bye, or with no team, gets no keys at all."
+  "Join kickoff metadata onto players by team; unknown teams remain unannotated."
   [players kickoffs]
   (if (empty? kickoffs)
     players
@@ -605,9 +387,6 @@
               (assoc p
                      :kickoff/at       kickoff
                      :kickoff/status   status
-                     ;; Decided here so the ESPN status vocabulary stays in the
-                     ;; namespace that owns it. A player with no scoreboard
-                     ;; entry gets no key at all: absent means unknown.
                      :kickoff/started? (not (espn-schedule/not-started? status))
                      :kickoff/detail   detail
                      :kickoff/venue    venue
@@ -618,15 +397,8 @@
           players)))
 
 (defn assoc-weekly
-  "Join weekly lines onto players. A player without one keeps no weekly keys at
-  all, so a consumer can tell 'not projected' from 'projected zero'."
+  "Join weekly lines onto players, preserving absence for unprojected players."
   [players lines]
-  ;; Keyed on the player's *Sleeper* id, not `:player-id` — that is the GSIS id
-  ;; wherever one resolves, and these lines arrive in Sleeper's space. Joining
-  ;; the two directly matches only the players who have no crosswalk entry (38
-  ;; of 628 on a live board), which looks like a thin vendor rather than a bug.
-  ;; Same trap, and the same fix, as `db/held-ids`. The fallback covers team
-  ;; defenses, whose id is the team abbrev in both spaces.
   (mapv (fn [p]
           (let [k (or (get-in p [:ids :sleeper]) (:player-id p))]
             (if-let [{:keys [stats opponent home? updated-at]} (get lines k)]
