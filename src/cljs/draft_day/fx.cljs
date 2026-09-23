@@ -1,93 +1,27 @@
 (ns draft-day.fx
-  "Side-effect handlers: a small fetch-based :http effect (no extra deps) and
-  localStorage persistence."
+  "re-frame side effects for fetches and localStorage persistence."
   (:require [re-frame.core :as rf]
             [cljs.reader :as reader]))
 
 (def store-key "draft-day-state")
 
 (def storage-version
-  "The shape of the persisted slice (`db/persist-keys`).
+  "Persisted-slice schema version.
 
-  Saved state is stamped with this and read back only when the stamp matches;
-  anything else is dropped and the app opens at defaults. **Bump it whenever a
-  persisted shape changes** — a key added to or removed from the config, a
-  column added to or removed from `db/column-catalog`, a value that changes
-  type.
-
-  This is deliberately all the migration there is. The app used to repair every
-  shape it had ever written, in place, which meant a permanent record of its own
-  history spread across three reconcile functions and an id crosswalk. Starting
-  over costs a manager his column layout and, mid-draft, his picks; the version
-  is only bumped by a deploy, and a rebuilt layout is worth less than the code
-  that avoided rebuilding it.
-
-  2: leagues are keyed by provider and league id, with the account and the
-  active league stored alongside; `:league-sync` and `:my-roster-id` are gone.
-  Archived drafts are under `drafts-key` and survive this.
-
-  3: the waiver board grew Wk and Opp columns — this week's projected points and
-  this week's opponent — so `db/waiver-column-catalog` changed shape.
-
-  4: it grew Wk# and Form alongside them — this week's rank within his position,
-  and points per game over the last three weeks.
-
-  5: and Lineup — what a claim adds to the starting lineup rather than to the
-  bench.
-
-  6: Lineup is on by default, because the board now sorts by it. Without the
-  bump an existing manager keeps his stored columns and his rows reorder on a
-  number he cannot see.
-
-  7: accounts are keyed by `db/account-key` — the provider and its own id for
-  the manager — rather than by provider alone, and each one carries the
-  credentials that authorize reading its leagues; every league entry names the
-  account it is read through. Without the bump a stored account reads back
-  under a key nothing looks up, so the switcher empties and every sync loses
-  what authorizes it.
-
-  8: a synced league carries `:roster-positions` — its own seats, in order. A
-  stored sync written before that key has no way to name which seat a starter
-  occupies, and the matchup board falls back to the draft config's slot
-  template, which is only a guess at that league's shape.
-
-  9: a league entry carries `:rules` — what its import could not apply, whether
-  it brought an auction budget, or why it failed — because a connected league's
-  settings are read-only and the warning has to outlive a reload.
-
-  10: a league entry may carry `:phase` — a manual Draft/Season override — and
-  `:synced-at`, when its rosters were last fetched; `:phase` is stored at the top
-  level too, for when no league is active. Its `:sync` carries `:drafted?`, the
-  host's word on whether the draft is over, and an ESPN sync's teams carry
-  `:starter-slots`, each starter's own seat; a sync stored without it labels
-  no seats rather than guessing them.
-
-  11: a scoring config states its field goals by distance — `:fgm_0_19` through
-  `:fgm_50p`, plus `:fgmiss_40_49`, `:fgmiss_50p` and `:xpmiss`. Every host
-  scores a kick by how far it was kicked, and one flat `:fgm` weight could hold
-  none of it."
-  11)
+  Bump this whenever a persisted shape changes; stale blobs are discarded and the
+  app opens with defaults."
+  12)
 
 (def drafts-key "draft-day-drafts")
 
 (def drafts-version
-  "The shape of an archived draft (`db/archive-entry`).
-
-  Its own key and its own version, deliberately separate from `store-key` and
-  `storage-version`. Those exist to stop *live* state being read back under a
-  shape it was not written for, and their remedy — drop the blob, open at
-  defaults — is right for a column layout and survivable for a draft in
-  progress. A completed draft is neither. It is a record of something that
-  happened, the whole point of keeping it is that it outlives the state that
-  produced it, and discarding it because a Waivers column moved would be absurd.
-
-  So a `storage-version` bump cannot reach these, and this version moves only
-  when the archived shape itself changes."
+  "Archived-draft schema version.
+  This is independent from the live app state because an archived draft should
+  remain readable across UI migrations and layout changes."
   1)
 
 (defn read-drafts
-  "Archived drafts, oldest first — or [] when there are none, the blob is
-  unreadable, or it carries a different `drafts-version`."
+  "Read archived drafts, oldest first, or `[]` when unavailable or mismatched."
   []
   (try (if-let [s (.getItem js/localStorage drafts-key)]
          (let [{:keys [v drafts]} (reader/read-string s)]
@@ -105,12 +39,9 @@
         (catch :default _ nil))))
 
 (defn failure-event
-  "`on-failure` with the message and the status appended.
-
-  The status is what lets a handler tell a rejected credential from an outage:
-  a 401 means reconnect and a 502 means try again, and a message alone reads
-  the same either way. Appended rather than substituted, so a handler that
-  destructures `[_ err]` keeps working and ignores it."
+  "Append the HTTP status to an error event so callers can branch on 401 vs 502.
+  The original event shape is preserved, and the status is only appended after the
+  message to avoid breaking handlers that destructure the existing arity."
   [on-failure body status]
   (conj on-failure (or (:error body) "request failed") status))
 
@@ -159,8 +90,7 @@
         (catch :default _ nil))))
 
 (defn load-persisted
-  "The saved slice, or nil if there is none, it is unreadable, or it was written
-  by a different `storage-version`."
+  "Load the saved app slice, or nil if missing, unreadable, or version-mismatched."
   []
   (try (when-let [s (.getItem js/localStorage store-key)]
          (let [{:keys [v state]} (reader/read-string s)]

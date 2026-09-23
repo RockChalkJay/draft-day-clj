@@ -131,7 +131,33 @@
    "fg_missed_40_49"           :fgmiss_40_49
    "fg_missed_50_59"           :fgmiss_50p
    "fg_missed_60_"             :fgmiss_50p
-   "pat_missed"                :xpmiss})
+   "pat_missed"                :xpmiss
+   "completions"               :pass_cmp
+   "fumbles_total"             :fum
+   "passing_40"                :pass_cmp_40p
+   "rushing_40"                :rush_40p
+   "receiving_40"              :rec_40p})
+
+(def refused-columns
+  "Columns this file will not map, though each names a stat the app scores.
+
+  Measured against Sleeper's own 2026 weeks 1-3 before being refused, because
+  the names are close enough that mapping them looks obviously right. The first
+  downs read higher than Sleeper's on a quarter to three quarters of the
+  player-weeks either side reports — and a first down is the rule
+  `docs/scoring-coverage.md` calls the one worth closing, so the pull is real.
+  `fg_missed` reads lower: nflverse files a blocked kick under `fg_blocked`
+  where Sleeper counts it a miss, and `fg_missed + fg_blocked` matched `fgmiss`
+  on both cases in the sample.
+
+  That blocked kick also reaches `fg_missed_40_49` and the two bands above,
+  which `stat-columns` does map and which therefore read low by exactly the
+  blocks. Those stay: charging a league's miss rule short beats not charging it
+  at all, which is what unmapping would do. The sub-forty bands are refused
+  instead of mapped only because nothing maps them today, so refusing them
+  adds no wrongness where there is none yet."
+  #{"passing_first_downs" "rushing_first_downs" "receiving_first_downs"
+    "fg_missed" "fg_missed_0_19" "fg_missed_20_29" "fg_missed_30_39"})
 
 (def usage-columns
   "Opportunity columns carried alongside the scored line, for the trend signal.

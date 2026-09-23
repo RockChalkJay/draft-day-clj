@@ -63,13 +63,19 @@
 (defn unsupported-scoring
   "The league's own scoring rules that this app cannot score, sorted.
 
-  `select-keys` against `scoring/stat-keys` silently drops everything else, and a
-  real league carries a lot of it: FG distance buckets (Sleeper never emits a
-  bare `fgm`, so an imported league loses field goals outright), DST
-  points-allowed and yards-allowed tiers, yardage and long-play bonuses, TE
-  premium. One live league dropped 65 of its 85 rules. Reporting a bare success
-  hands back a config that looks complete and scores differently from the league
-  it came from, so the import says what it could not take."
+  `select-keys` against `scoring/stat-keys` silently drops everything else, and
+  reporting a bare success hands back a config that looks complete and scores
+  differently from the league it came from — so the import says what it could
+  not take.
+
+  What is left is narrow now, and it is not narrow because the model grew a
+  shape. Sleeper states a tier or a bonus as a *stat*, so a flat weighted sum
+  always could express one and the vocabulary simply had no key for it: the
+  same live league that once dropped 54 of its 85 rules now drops none. What
+  still has no key needs *two* weights rather than another key — a position
+  reception premium (`bonus_rec_te` and its siblings) prices one stat
+  differently by who caught it, which is the shape this model really cannot
+  hold."
   [scoring-settings]
   (->> (apply dissoc scoring-settings scoring/stat-keys)
        (keep (fn [[k v]] (when (and (number? v) (not (zero? v))) (name k))))
