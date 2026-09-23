@@ -155,6 +155,14 @@
     (is (nil? (:sync (league-entry))))
     (is (re-find #"nothing usable" (:waiver-status @rdb/app-db)))))
 
+(deftest a-bid-history-that-did-not-refresh-is-said-on-the-resync-button
+  (with-league!)
+  (rf/dispatch-sync [:league-synced lk synced])
+  (is (nil? (:sync-status @rdb/app-db)) "a clean sync leaves the button to say how old it is")
+  (rf/dispatch-sync [:league-synced lk (assoc synced :bid-history-error "still loading")])
+  (is (= "bid history not refreshed: still loading" (:sync-status @rdb/app-db))
+      "the rosters landed, so this is the one thing left to say"))
+
 (deftest a-sync-is-written-to-the-league-it-was-asked-for
   ;; The key rides on the request rather than being read off `:active-league` at
   ;; reply time. A manager who switches leagues while a sync is in flight would

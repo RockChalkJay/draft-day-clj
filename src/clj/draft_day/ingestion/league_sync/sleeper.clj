@@ -20,7 +20,7 @@
   `db/provider->player-id` and needs the universe, which ingestion of a *league*
   has no business loading. `rankings.waiver` does the mapping where both halves
   are already in hand."
-  (:require [org.httpkit.client :as http]
+  (:require [draft-day.ingestion.sleeper-http :as sleeper-http]
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.parallel :as parallel]
@@ -45,7 +45,7 @@
   Both confirmed against the live API. `empty?` cannot tell them apart, which is
   exactly why the caller has to say which it expects."
   [path {:keys [empty-is-missing? not-found-msg]}]
-  (let [{:keys [status body error]} @(http/get (str base path) {:timeout 30000})]
+  (let [{:keys [status body error]} (sleeper-http/get! (str base path) {:timeout 30000})]
     (cond
       error             (throw (ex-info (str "Sleeper " path " fetch failed")
                                         {:status 502 :error error}))

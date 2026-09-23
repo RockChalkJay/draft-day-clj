@@ -95,6 +95,24 @@ for the known gaps between a league's real rules and what the board can score.
   against a live league before reading it. `:waiver-position` is read from
   `waiverRank` on the same evidence, i.e. none.
 
+- **ESPN leagues have no bid history.** `ingestion/transactions.clj` is
+  provider-agnostic and Sleeper is its only provider, so an ESPN sync carries no
+  `:bid-history` (`providers/bid-history?` is false) and its waiver board will
+  price rival bids from Sleeper-wide data alone. The ESPN half is one new file,
+  `ingestion/transactions/espn.clj`, with the season-level pair:
+  `fetch-raw-season` reads `view=mTransactions2&scoringPeriodId=N` for each
+  week with an `x-fantasy-filter` asking for `WAIVER` and `WAIVER_ERROR` — the
+  failed claims, which is the whole point — and `normalize-season` reads
+  `bidAmount`, `teamId`, the `ADD` item's player (a D/ST by its team
+  abbreviation, as `league-sync.espn/entry-player-id` keys it), `status`
+  (`EXECUTED` won) and `processDate` under the Sleeper normalizer's structural
+  rule. An ESPN league keeps its id across seasons, so `:previous` is the same
+  id a year earlier, which ESPN serves from its separate `leagueHistory`
+  endpoint. `import-espn/get-json` needs an optional filter header. None of
+  that shape has been read off a live payload, so it wants assertions in
+  `test/draft_day/integration/espn_league_test.clj` before it is trusted, like
+  the other ESPN tables.
+
 - **ESPN league discovery is undocumented and will break.** `fan.api.espn.com`
   is the only endpoint in the app with a credential in its *path*, and the only
   one whose shape nobody publishes. `league-sync.espn/league-entries` is written

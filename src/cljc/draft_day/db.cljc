@@ -1079,6 +1079,15 @@
               [:player-ids :active-ids])
       (update :starter-ids repair-lineup)))
 
+(defn valid-bid-history?
+  "Is this the summary `ingestion.transactions/summary` sends — seasons, each a
+  count of auctions? One that is not is dropped from a sync on its own, keeping
+  the rosters."
+  [h]
+  (and (map? h)
+       (sequential? (:seasons h))
+       (every? #(and (map? %) (number? (:auctions %))) (:seasons h))))
+
 (defn reconcile-league-sync
   "Accept a synced league only if it has the shape the waiver board reads, or
   drop it.
@@ -1102,15 +1111,24 @@
   comes back available. It is the shape a sync stored before providers were
   named has, and one click re-fetches it.
 
-  `:starter-ids` is repaired the other way round — see `repair-lineup`."
+  `:starter-ids` is repaired the other way round — see `repair-lineup`. A
+  malformed `:bid-history` is dropped on its own and reported as a
+  `:bid-history-error`, the same as one that failed to load, unless the server
+  already reported one."
   [stored]
   (when (and (map? stored)
              (sequential? (:teams stored))
              (or (empty? (:teams stored)) (some? (:provider stored))))
-    (-> stored
-        (update :teams (fn [ts]
-                         (into [] (comp (filter map?) (map repair-team)) ts)))
-        (update :waiver #(when (map? %) %)))))
+    (let [h (:bid-history stored)]
+      (cond-> (-> stored
+                  (update :teams (fn [ts]
+                                   (into [] (comp (filter map?) (map repair-team)) ts)))
+                  (update :waiver #(when (map? %) %)))
+        (and (some? h) (not (valid-bid-history? h)))
+        (-> (dissoc :bid-history)
+            ;; The server's own reason, when it gave one, says more than ours.
+            (update :bid-history-error
+                    #(or % "Bid history arrived in a shape the board cannot read")))))))
 
 ;; ---- initial db ----
 
@@ -1131,65 +1149,48 @@
      :nominated-id nil
      :watchlist    []           ; player-ids the manager is tracking, in his own order
      ;; ---- accounts and leagues ----
-     ;; A manager plays in more than one league, and one day across more than one
-     ;; provider. Both maps are keyed so a second provider is a new entry rather
-     ;; than a second shape: accounts by provider, leagues by `league-key`.
      ;; account-key -> {:provider :user-id :username :avatar :credentials}
      :accounts     {}
      ;; league-key -> {:provider :league-id :account-key :name :season :my-roster-id
-     ;;                :config  — this league's scoring/roster/team count
-     ;;                :sync    — last /api/league/sync reply: who is rostered, and FAAB
-     ;;                :rules   — what the last import did: {:status :imported
-     ;;                           :unsupported [...] :bankroll? bool}, or :failed
-     ;;                           with an :error beside what the last good one left}
+     ;;                :config    — this league's scoring/roster/team count
+     ;;                :sync      — last /api/league/sync reply: who is rostered, and FAAB
+     ;;                :synced-at — when this browser last received it
+     ;;                :rules     — what the last import did: {:status :imported
+     ;;                             :unsupported [...] :bankroll? bool}, or :failed
+     ;;                             with an :error beside what the last good one left
+     ;;                :phase     — :draft/:season override, nil for automatic}
      :leagues      {}
      :active-league nil         ; which league-key everything on screen is about
      ;; league-keys with an import in flight. Transient, so a reload mid-import
      ;; cannot leave a league reading as forever importing.
      :importing    #{}
-     ;; account-key -> the leagues that account plays in, and why the listing
-     ;; failed when it did. Top-level rather than inside the account, because
-     ;; `:accounts` is persisted and these are refetched, never stored. nil and
-     ;; [] differ: never looked up, against looked up and plays in none.
+     ;; account-key -> the league maps that account plays in, and why the listing
+     ;; failed when it did. Refetched, never persisted. nil and [] differ: never
+     ;; looked up, against looked up and plays in none.
      :league-choices   nil
      :league-choices-error nil
-     ;; Read from `fx/drafts-key` at boot, not from the persisted slice: an
-     ;; archived draft has its own key and its own version.
-     :drafts       []           ; completed drafts, oldest first
+     ;; Completed drafts, oldest first. Read from `fx/drafts-key` at boot, not
+     ;; from the persisted slice: an archived draft has its own key and version.
+     :drafts       []
      :waivers      nil          ; last /api/waivers reply
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
      :waiver-sort  {:key :upgrade :dir -1}
      :waiver-status nil         ; what the waiver board is doing, or why it failed
-     ;; What the rosters are doing, which is a different question read in a
-     ;; different place — the season header's Re-sync. nil is nothing to report.
-     :sync-status  nil
-     ;; The matchup board. A fixed two-sided layout, not a board of toggleable
-     ;; columns, so it has no column catalog and nothing persisted.
+     :sync-status  nil          ; what the rosters sync is doing, or why it failed
      :matchup      nil          ; last /api/matchup reply
      :matchup-seq  0            ; newest /api/matchup request; older replies are dropped
      :matchup-status nil
-     ;; Which game is on screen, named by one of its roster ids: a nil matchup
-     ;; id collides exactly with "nothing picked". nil means mine.
-     :matchup-pick nil
-     ;; Which lineup each side of the matchup draws, by roster id: :set (the
-     ;; default, the lineup that scores), :projected or :actual. Transient.
-     :lineup-view  {}
-     ;; At most two player-ids, in the order they were picked. Transient like
-     ;; `:nominated-id` and deliberately outside `persist-keys`: a comparison is
-     ;; a question being asked right now, not a layout worth restoring.
+     :matchup-pick nil          ; which game on screen: one of its roster ids, or nil for mine
+     :lineup-view  {}           ; roster-id -> :set/:projected/:actual; transient
+     ;; At most two player-ids, in pick order. Transient: a comparison is a
+     ;; question being asked right now, not a layout worth restoring.
      :compare      []
      :modal        nil
      :sort        {:key :worth :dir -1}
      :pos-filter  nil
      :search      ""
-     ;; nil until the phase is known, so neither half is drawn and then taken
-     ;; back — see `:boot` and `:players-loaded`.
-     :view        nil
-     ;; The manual phase override for when no league is active; a league's own
-     ;; lives on its entry. nil is automatic — see `phase`.
-     :phase       nil
-     ;; Transient: Settings reopens on the section most often needed, not the
-     ;; one last visited.
+     :view        nil           ; which tab (draft, season, etc.); nil until phase is known
+     :phase       nil           ; manual override for when no league is active
      :settings-section :leagues
      :columns     (default-columns)
      :waiver-columns (default-waiver-columns)}))

@@ -36,6 +36,9 @@ out/
 # this week's projections, cached apart from the universe and on a far shorter
 # TTL — see ingestion/pipeline.clj for why the two cannot share a file
 /data/weekly_projections*.transit
+# each synced league's FAAB auctions, one file per league-season — see
+# ingestion/transactions.clj; re-fetchable by a re-sync
+/data/bid_history.v*/
 # research-harness caches: derived, re-fetchable, and large (~100MB once a
 # benchmark sweep has pulled every season from every source)
 /data/benchmark_cache/

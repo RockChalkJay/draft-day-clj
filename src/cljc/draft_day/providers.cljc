@@ -42,6 +42,9 @@
                  :forbidden   #{".."}}]
     :public?   true
     :matchups? true
+    ;; Its transaction log carries the claims that *lost*, with their bids — the
+    ;; one document that says what the other managers were willing to pay.
+    :bid-history? true
     :league-id {:label "Sleeper league ID" :pattern #"\d+"}
     :help      nil}
 
@@ -124,6 +127,12 @@
   tab, because asking the server is a 400 on the screen a season opens on."
   [p]
   (boolean (:matchups? (entry p))))
+
+(defn bid-history?
+  "Can this host's past waiver auctions be read? Asked before the fetch, so a
+  host without them syncs with no history rather than with an error beside it."
+  [p]
+  (boolean (:bid-history? (entry p))))
 
 (defn help [p] (:help (entry p)))
 

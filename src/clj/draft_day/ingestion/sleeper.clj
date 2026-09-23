@@ -4,7 +4,7 @@
   and map Sleeper's `DEF` position to `DST`."
   (:require [clojure.set :as set]
             [clojure.tools.logging :as log]
-            [org.httpkit.client :as http]
+            [draft-day.ingestion.sleeper-http :as sleeper-http]
             [jsonista.core :as json]
             [draft-day.ingestion.season :as season]
             [draft-day.json :refer [mapper]]
@@ -151,7 +151,7 @@
 (defn fetch-projections
   "Fetch raw Sleeper projection entries for a season."
   [season]
-  (let [{:keys [status body error]} @(http/get (projections-url season) {:timeout 30000})]
+  (let [{:keys [status body error]} (sleeper-http/get! (projections-url season) {:timeout 30000})]
     (cond
       error            (throw (ex-info "Sleeper projections fetch failed" {:error error}))
       (= 200 status)   (json/read-value body mapper)
@@ -198,7 +198,7 @@
 (defn fetch-schedule
   "Fetch raw regular-season schedule games for a season."
   [season]
-  (let [{:keys [status body error]} @(http/get (schedule-url season) {:timeout 30000})]
+  (let [{:keys [status body error]} (sleeper-http/get! (schedule-url season) {:timeout 30000})]
     (cond
       error          (throw (ex-info "Sleeper schedule fetch failed" {:status status :error error}))
       (= 200 status) (json/read-value body mapper)
@@ -223,7 +223,7 @@
 (defn fetch-weekly-entries
   "Fetch raw weekly projection entries for one week."
   [season week]
-  (let [{:keys [status body error]} @(http/get (weekly-url season week)
+  (let [{:keys [status body error]} (sleeper-http/get! (weekly-url season week)
                                                {:timeout 30000})]
     (cond
       error          (throw (ex-info "Sleeper weekly fetch failed"

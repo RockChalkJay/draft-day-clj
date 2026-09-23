@@ -5,7 +5,7 @@
   The auction budget is not on the league document. It is on the league's
   *draft*, a second fetch, which is why `fetch-raw-league` is two requests and
   `fetch-league` — the one `league-sync.sleeper` reads — is one."
-  (:require [org.httpkit.client :as http]
+  (:require [draft-day.ingestion.sleeper-http :as sleeper-http]
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.league-import :as league-import]
@@ -17,7 +17,7 @@
   "Network: one Sleeper document, parsed. Sleeper answers an unknown id with
   HTTP 200 and a JSON null body, so null is a 404 here."
   [path what]
-  (let [{:keys [status body error]} @(http/get (str base path) {:timeout 30000})]
+  (let [{:keys [status body error]} (sleeper-http/get! (str base path) {:timeout 30000})]
     (cond
       error             (throw (ex-info (str "Sleeper " what " fetch failed") {:status 502 :error error}))
       (not= 200 status) (throw (ex-info (str "Sleeper " what " non-200") {:status 502 :sleeper-status status}))
@@ -101,17 +101,21 @@
   {0 :rolling 1 :reverse-standings 2 :faab})
 
 (defn waiver-settings
-  "Pure: a raw Sleeper league -> `{:type :faab :budget 100}`.
+  "Pure: a raw Sleeper league -> `{:type :faab :budget 100 :min-bid 0}`.
 
   The budget is only meaningful under `:faab`, but it is carried either way so a
   consumer never has to ask two questions to find out it should not be asking.
   Sleeper omits `waiver_budget` on leagues that never enabled FAAB; 0 is the
   honest reading of an absent budget and keeps every downstream share rule from
-  dividing by a number nobody set."
+  dividing by a number nobody set.
+
+  `:min-bid` is the commissioner's floor, $0 unless changed; the host rejects a
+  bid below it."
   [raw]
   (let [s (:settings raw)]
-    {:type   (get waiver-types (:waiver_type s) :rolling)
-     :budget (or (:waiver_budget s) 0)}))
+    {:type    (get waiver-types (:waiver_type s) :rolling)
+     :budget  (or (:waiver_budget s) 0)
+     :min-bid (or (:waiver_bid_min s) 0)}))
 
 (defn playoff-week-start
   "The first week of the league's fantasy playoffs, or nil when it says nothing.
