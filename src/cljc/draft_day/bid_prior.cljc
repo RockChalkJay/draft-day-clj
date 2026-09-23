@@ -26,7 +26,7 @@
 
   The number of bidders is what prices a claim, far more than anything else
   measured: once it is known, position, league size and budget move the typical
-  bid by a third to a half, and superflex and dynasty barely at all. The phase of
+  bid by a third to two thirds, and superflex and dynasty barely at all. The phase of
   the season changes how often a bid is $0 rather than how big a positive one
   is. So `bid-share` is cut by bidders and phase, and the rest are multipliers
   on it.
