@@ -28,7 +28,7 @@
   [{:keys [starters bench parked]}]
   [["Starters"  (mapv #(assoc % :starter? true) starters)]
    ["Bench"     bench]
-   ["IR / Taxi" (mapv #(assoc % :parked? true) parked)]])
+   ["IR" (mapv #(assoc % :parked? true) parked)]])
 
 (defn team-cell [k p week]
   (case k

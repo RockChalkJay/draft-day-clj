@@ -486,7 +486,7 @@
   (let [out (render waivers/my-roster-panel)]
     (is (re-find #"Starters" out))
     (is (re-find #"Bench" out))
-    (is (re-find #"IR / Taxi" out))
+    (is (re-find #"IR" out))
     (is (re-find #"drop-seat" out) "the seat a claim would cost is marked")
     (is (re-find #"s-ghost" out)
         "a row nobody could resolve keeps its seat and shows its id")))

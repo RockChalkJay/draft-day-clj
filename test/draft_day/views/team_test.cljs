@@ -85,7 +85,7 @@
     (is (re-find #"2–0" html))
     (is (re-find #"Waiver priority 9" html))
     (is (re-find #"Starters" html))
-    (is (re-find #"IR / Taxi" html))
+    (is (re-find #"IR" html))
     (is (re-find #"drop-seat" html) "the seat a claim would cost is marked")
     (is (re-find #"Yours would come from" html))))
 

@@ -266,7 +266,7 @@
           [:tbody
            (group "Starters" (mapv #(assoc % :starter? true) starters))
            (group "Bench" bench)
-           (group "IR / Taxi" (mapv #(assoc % :parked? true) parked))]]))]))
+           (group "IR" (mapv #(assoc % :parked? true) parked))]]))]))
 
 (defn week-note
   "How old this week's projection is.

@@ -58,7 +58,7 @@
        [:<> [:tr.roster-group [:td {:col-span 3} "Bench"]]
         (map #(player-row % true (openable (:player-id %))) bench)])
      (when (seq parked)
-       [:<> [:tr.roster-group [:td {:col-span 3} "IR / Taxi"]]
+       [:<> [:tr.roster-group [:td {:col-span 3} "IR"]]
         (map #(player-row % true (openable (:player-id %))) parked)])]]])
 
 (defn season-view []
