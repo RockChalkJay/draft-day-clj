@@ -207,9 +207,6 @@
     (is (= 2 (count (re-seq #":span\.rule-chip\b" html))))))
 
 (deftest a-rule-nobody-projects-reads-differently-from-one-nobody-models
-  ;; Collapsing the two is what made the old warning confusing: a rule with no
-  ;; key scores nothing anywhere, while a rule the model holds but no projection
-  ;; carries still scores the weeks that have happened.
   (swap! rdb/app-db assoc
          :active-league "sleeper:1"
          :config {:scoring {:rec 1.0 :pts_allow_0 10.0 :yds_allow_550p -6.0}}
@@ -237,11 +234,6 @@
     (is (= :scoring (:settings-section @rdb/app-db)))))
 
 (deftest an-import-report-speaks-only-for-its-own-league
-  ;; A badge that kept League A's dropped rules on screen under League B would
-  ;; be a claim about B.
-  ;; Both halves, and they are read from different places: the dropped rules
-  ;; off the league's `:rules` and the unprojected ones off its own `:config`.
-  ;; A report is a claim about one league, so neither half may outlive it.
   (swap! rdb/app-db assoc
          :active-league "sleeper:1"
          :leagues {"sleeper:1" {:rules {:status :imported :unsupported ["bonus_rec_te"]}
@@ -260,8 +252,6 @@
       "neither half survives the switch"))
 
 (deftest a-connected-league-s-scoring-is-shown-not-edited
-  ;; Its rules are its import's: an edit would be lost to the next Re-sync, and
-  ;; allowing one is what kept Re-sync from refreshing them.
   (swap! rdb/app-db assoc
          :active-league "sleeper:1"
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :name "Dynasty"

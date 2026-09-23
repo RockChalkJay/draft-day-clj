@@ -657,17 +657,9 @@
 (def scoring-catalog
   "The scoring editor's grouping and labels, covering every `scoring/stat-keys`.
 
-  Presentational only, and deliberately a second literal rather than something
-  derived: `the-custom-editor-can-reach-every-stat-key` ties the two, so a key
-  in one and not the other fails out loud instead of becoming a weight the
-  editor cannot show or a field the engine ignores.
-
-  `:stats` is what a named format is about and is always drawn. `:more` is
-  everything else a host exposes, drawn behind a disclosure — eighty-eight
-  fields in one grid is a worse editor than twenty-nine was, and the rules in
-  `:more` are zero in every league that has not imported one. A group may be
-  entirely `:more`, which is how the tier families stay out of the way of a
-  manager hand-rolling a PPR league."
+  `:stats` is always drawn; `:more` is behind a disclosure for imported or
+  custom rules. The catalog remains a literal so tests can catch keys the
+  editor cannot show or the scoring engine cannot use."
   [{:group "Passing"
     :stats [[:pass_yd "Pass Yd"] [:pass_td "Pass TD"]
             [:pass_int "Pass INT"] [:pass_2pt "Pass 2PT"]]

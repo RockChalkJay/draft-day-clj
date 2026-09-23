@@ -336,9 +336,7 @@
    [:input {:type "number" :value (str value) :disabled true :read-only true}]])
 
 (defn- scoring-fields
-  "One group's fields. The key rides on each branch's vector, not on the `cond`
-  — metadata on a special form is dropped at compile time, which left every row
-  keyless and reconciled by index."
+  "Render one group's fields with stable keys on each rendered control."
   [weights read-only? stats]
   [:div.fields
    (map (fn [[stat-key label]]
@@ -353,25 +351,15 @@
         stats)])
 
 (defn- priced-here?
-  "Does the league put a weight on anything in `stats`? What decides whether a
-  disclosure opens on arrival: a manager whose league really does score the
-  points-allowed tiers should find them open rather than go looking.
-
-  `usable-weight` and not a bare `zero?` — a cleared input box sends NaN, which
-  `JSON.stringify` writes as null, and reading either as a priced rule would
-  pop a disclosure open mid-keystroke. Same hazard that function exists for."
+  "Whether `stats` contains a usable non-zero weight, including protection
+  against transient NaN values from a cleared input."
   [weights stats]
   (boolean (some (fn [[k _]] (not (zero? (scoring/usable-weight (get weights k 0)))))
                  stats)))
 
 (defn- disclosed-fields
-  "One group's `:more` weights behind a disclosure.
-
-  `:open` is seeded once per group rather than recomputed, because it is a
-  *controlled* attribute: read from the live weights it would flip back to false
-  the moment a manager cleared a rule he had just typed, closing the section
-  under his cursor. Opening on arrival is a mount-time question, so `with-let`
-  answers it once and the DOM owns the toggle from then on."
+  "Render a group's secondary fields with its initial open state.
+  The DOM owns the disclosure after mount so editing a field cannot close it."
   [weights read-only? label stats]
   (r/with-let [open? (priced-here? weights stats)]
     [:details.scoring-more {:open open?}
@@ -380,8 +368,7 @@
 
 (defn- custom-scoring-editor
   "The weight grid. `:stats` is always drawn; `:more` sits behind a disclosure,
-  because eighty-eight fields in one grid is a worse editor than twenty-nine
-  was and every rule in `:more` is zero in a league that has not imported one."
+  keeping secondary imported rules from overwhelming the common controls."
   [weights read-only?]
   [:div.scoring-groups
    (map (fn [{:keys [group stats more]}]
@@ -395,21 +382,15 @@
         db/scoring-catalog)])
 
 (defn- chips [rules]
-  ;; Chips rather than one comma-joined run: rule keys have no spaces to break
-  ;; on, and a single long token pushed straight out of the card.
+  ;; Separate chips allow long rule keys to wrap within the warning card.
   (into [:div.rule-chips]
         (map (fn [rule] ^{:key rule} [:span.rule-chip rule]))
         rules))
 
 (defn import-warning
   "What the last import could not apply, and what it applied but cannot project.
-
-  Two states and not one, because collapsing them is what made this confusing:
-  a rule with no key at all scores nothing anywhere, while a rule the model
-  holds but no projection carries still scores the weeks that have happened. The
-  old copy called both 'not applied' and blamed the flat stat line for it, which
-  was never the reason — Sleeper states a tier as a stat, so the model always
-  could hold one and simply had no key for it."
+  Unsupported rules are absent from the model; unprojected rules affect realized
+  scoring but cannot change draft projections."
   []
   (let [{:keys [unsupported]} @(rf/subscribe [:active-league-rules])
         weights   (scoring/resolve-config @(rf/subscribe [:active-league-scoring]))

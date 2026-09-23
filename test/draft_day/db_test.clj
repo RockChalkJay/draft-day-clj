@@ -323,13 +323,10 @@
                       db/scoring-catalog)))))
 
 (deftest a-group-is-drawn-before-it-is-disclosed
-  ;; `:stats` is always drawn and `:more` sits behind a disclosure, so a key in
-  ;; both would render twice and a group with neither would render as an empty
-  ;; heading.
   (doseq [{:keys [group stats more]} db/scoring-catalog]
-    (is (seq (concat stats more)) (str group " has no fields"))
+    (is (seq (concat stats more)) (str group " has no fields to render"))
     (is (not-any? (set (map first stats)) (map first more))
-        (str group " draws a key twice"))))
+        (str group " renders a key twice"))))
 
 (deftest the-editor-labels-every-stat-it-offers
   (doseq [{:keys [group stats more]} db/scoring-catalog]

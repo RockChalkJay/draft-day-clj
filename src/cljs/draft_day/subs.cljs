@@ -57,12 +57,8 @@
   (fn [[leagues k] _]
     (get-in leagues [k :rules])))
 
-;; The active league's own scoring weights, for the half of `import-warning`
-;; that is about the config rather than about the import. Its own copy rather
-;; than the mirrored top-level one, so both halves of that report are per league
-;; by construction instead of by `db/set-config` remembering to mirror — the
-;; same reason `:active-league-rules` is kept per league. A league with no entry
-;; is a hand-rolled config, which the top-level copy is all there is of.
+;; Read scoring from the active league when present, so import warnings stay
+;; scoped to that league; unconnected drafts use the top-level config.
 (rf/reg-sub :active-league-scoring
   :<- [:leagues] :<- [:active-league-key] :<- [:config]
   (fn [[leagues k config] _]
