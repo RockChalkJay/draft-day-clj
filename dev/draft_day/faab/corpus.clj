@@ -13,6 +13,7 @@
   still had before the run the bid was decided in, reconstructed from his own
   earlier wins — the ceiling a broke manager bids against."
   (:require [clojure.java.io :as io]
+            [draft-day.bid-prior :as prior]
             [draft-day.faab.crawl :as crawl]
             [draft-day.ingestion.pipeline :as pipeline]))
 
@@ -44,16 +45,13 @@
         (keep #(try (pipeline/read-transit (.getPath %)) (catch Exception _ nil)))
         vec)))
 
-(defn phase
-  "Early, middle or late season, by the week an auction was decided in."
-  [week]
-  (cond (<= week 4) :early (<= week 10) :mid :else :late))
+(def phase
+  "`bid-prior/phase`, the one copy of the cutoffs its table is keyed by."
+  prior/phase)
 
-(defn bucket
-  "Bidder count, with four and up pooled: the expensive auctions are rare enough
-  that splitting them further leaves cells too thin to read."
-  [n]
-  (min 4 n))
+(def bucket
+  "`bid-prior/bucket`, the one copy of the pooling its table is keyed by."
+  prior/bucket)
 
 (defn team-bucket
   "Small, standard or large league; unknown when the league did not say."

@@ -44,6 +44,7 @@
   `ExecutionException` is unwrapped before its status is read."
   (:require [clojure.java.io :as io]
             [clojure.tools.logging :as log]
+            [draft-day.bid-history :as bid-history]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.season :as season]
@@ -179,15 +180,20 @@
 
 (defn summary
   "What the browser is told about a history: per season, how much there is and
-  when it was fetched. The auctions themselves stay on the server."
-  [{:keys [seasons]}]
-  {:seasons (mapv (fn [{:keys [season auctions non-competing fetched-at]}]
-                    {:season        season
-                     :auctions      (count auctions)
-                     :contested     (count (filter #(< 1 (count (:bids %))) auctions))
-                     :non-competing (or non-competing 0)
-                     :fetched-at    fetched-at})
-                  seasons)})
+  when it was fetched, and each manager's bidding profile (`bid-history`) for
+  the League tab. The auctions themselves stay on the server."
+  [{:keys [seasons] :as history}]
+  (let [{:keys [log-multiplier weeks-run profiles]} (bid-history/profiles history)]
+    {:seasons        (mapv (fn [{:keys [season auctions non-competing fetched-at]}]
+                             {:season        season
+                              :auctions      (count auctions)
+                              :contested     (count (filter #(< 1 (count (:bids %))) auctions))
+                              :non-competing (or non-competing 0)
+                              :fetched-at    fetched-at})
+                           seasons)
+     :log-multiplier log-multiplier
+     :weeks-run      weeks-run
+     :profiles       (or profiles [])}))
 
 (defn cached-summary
   "`summary` of what the waiver board would price from, or nil when nothing is

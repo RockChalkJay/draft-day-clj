@@ -1081,12 +1081,15 @@
 
 (defn valid-bid-history?
   "Is this the summary `ingestion.transactions/summary` sends — seasons, each a
-  count of auctions? One that is not is dropped from a sync on its own, keeping
-  the rosters."
+  count of auctions, and a profile per manager where there are any? One that is
+  not is dropped from a sync on its own, keeping the rosters."
   [h]
   (and (map? h)
        (sequential? (:seasons h))
-       (every? #(and (map? %) (number? (:auctions %))) (:seasons h))))
+       (every? #(and (map? %) (number? (:auctions %))) (:seasons h))
+       (or (nil? (:profiles h))
+           (and (sequential? (:profiles h))
+                (every? #(and (map? %) (string? (:manager %))) (:profiles h))))))
 
 (defn reconcile-league-sync
   "Accept a synced league only if it has the shape the waiver board reads, or
