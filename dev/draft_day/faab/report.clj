@@ -43,13 +43,9 @@
 (defn ranks
   "Average ranks, ties sharing their mean rank."
   [xs]
-  (let [idx (sort-by #(nth xs %) (range (count xs)))
-        groups (partition-by #(nth xs %) idx)]
-    (loop [gs groups start 0 out (vec (repeat (count xs) 0.0))]
-      (if-let [g (first gs)]
-        (let [r (+ start (/ (dec (count g)) 2.0))]
-          (recur (rest gs) (+ start (count g)) (reduce #(assoc %1 %2 r) out g)))
-        out))))
+  (let [by-value (group-by second (map-indexed vector (sort xs)))
+        rank-of  (update-vals by-value #(/ (reduce + (map first %)) (double (count %))))]
+    (mapv rank-of xs)))
 
 (defn pearson [xs ys]
   (let [n  (count xs)
