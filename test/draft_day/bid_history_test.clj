@@ -74,6 +74,19 @@
     (is (= 21 (:bids with)))
     (is (= 1 (:current-bids with)))))
 
+(deftest a-manager-new-to-the-league-is-not-charged-for-last-season
+  (let [then (apply season 100 (map #(auction % (bid "veteran" 1 true)) (range 1 18)))
+        now  (apply season 100 (mapcat (fn [w] [(auction w (bid "rookie" 1 true))
+                                                (auction w (bid "rookie" 1 true))
+                                                (auction w (bid "rookie" 1 true))])
+                                       [1 2 3]))
+        by   (into {} (map (juxt :manager identity))
+                   (:profiles (bh/profiles {:seasons [now then]})))]
+    (is (< 2.0 (:per-week (by "rookie")))
+        "three claims a week this season, with no silent season behind him")
+    (is (< (:per-week (by "veteran")) 1.0)
+        "the veteran, who played last season, is charged for this one too")))
+
 (deftest a-manager-follows-his-owner-id-and-an-ownerless-bid-its-roster
   (let [h {:seasons [(season 100 (auction 1 {:roster-id 4 :owner-id nil :amount 1 :won? true}))]}]
     (is (= ["roster:4"] (map :manager (:profiles (bh/profiles h)))))

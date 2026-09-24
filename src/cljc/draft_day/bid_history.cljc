@@ -8,8 +8,9 @@
   prior's value, so a manager with three bids reads close to the typical Sleeper
   manager and one with sixty reads as himself. The measures are the harness's
   own, so the prior is on their scale: bids a week are over the weeks the league
-  ran auctions, and a bid's log ratio is its share of the budget over the
-  backbone's typical positive bid for the same bidders and phase.
+  ran auctions in the seasons he played, and a bid's log ratio is its share of
+  the budget over the backbone's typical positive bid for the same bidders and
+  phase.
 
   Evidence is weighted twice. The current season decays toward its latest week,
   so a manager who stopped bidding stops reading as active, and last season
@@ -103,14 +104,29 @@
     (vec (concat (season-bids current now true)
                  (mapcat #(season-bids % before false) earlier)))))
 
+(defn season-exposure
+  "One season's weeks of auctions, weighted as its bids are."
+  [season weight]
+  (reduce + 0.0 (map weight (distinct (map :week (:auctions season))))))
+
+(defn bidders-in
+  "Who placed a bid in a season: the only evidence of who played in it, since the
+  history carries no rosters."
+  [season]
+  (into #{} (mapcat #(map manager-key (:bids %))) (:auctions season)))
+
 (defn exposure
-  "Weeks a manager could have bid in, weighted as his bids are: each week the
-  league ran auctions, decayed this season and discounted before it."
+  "`manager -> weeks he could have bid in`, weighted as his bids are: the current
+  season for everyone, an earlier one only for a manager who bid in it — a
+  manager new to the league would otherwise be charged a season of silence he
+  was never there for. One who played a season without a single bid is the case
+  this misses, and the pseudo-weeks cover it."
   [[current & earlier]]
   (let [[now before] (weights current)
-        weeks        #(distinct (map :week (:auctions %)))]
-    (+ (reduce + 0.0 (map now (weeks current)))
-       (reduce + 0.0 (mapcat #(map before (weeks %)) earlier)))))
+        base         (season-exposure current now)
+        extra        (map (fn [s] [(bidders-in s) (season-exposure s before)]) earlier)]
+    (fn [manager]
+      (+ base (reduce + 0.0 (keep (fn [[who weeks]] (when (who manager) weeks)) extra))))))
 
 (defn blend
   "`sum` of weighted evidence and `pseudo` observations at `center`, over their
@@ -155,18 +171,27 @@
   pouncing is what a sniper does."
   [{:keys [bids current-bids recent-bids per-week zero-share aggression top-share]} weeks-run]
   (cond
-    (zero? (or bids 0))                                     :new
+    (zero? (or bids 0)) :new
+
     (and (<= per-week 0.8)
-         (or (>= aggression 0.4) (>= (or top-share 0) 0.25))) :sniper
-    (and (>= weeks-run quiet-weeks) (zero? recent-bids))    :quiet
-    (>= aggression 0.6)                                     :big-spender
-    (and (>= zero-share 0.75) (>= per-week 1.2) (pos? current-bids)) :zero-flyer
-    :else                                                   :typical))
+         (or (>= aggression 0.4)
+             (>= (or top-share 0) 0.25))) :sniper
+
+    (and (>= weeks-run quiet-weeks)
+         (zero? recent-bids)) :quiet
+
+    (>= aggression 0.6) :big-spender
+
+    (and (>= zero-share 0.75)
+         (>= per-week 1.2)
+         (pos? current-bids)) :zero-flyer
+
+    :else :typical))
 
 (defn profile
   "One manager's bids, shrunk, with the raw counts beside the blended figures so
   a reader can see how much evidence stands behind each."
-  [manager bs exposure league-log current]
+  [manager bs exposure-of league-log current]
   (let [pos        (filter :log-ratio bs)
         this-year  (filter :current? bs)
         latest     (latest-week current)
@@ -177,7 +202,7 @@
      :bids            (count bs)
      :current-bids    (count this-year)
      :recent-bids     (count (filter #(> (:week %) (- latest quiet-weeks)) this-year))
-     :per-week        (blend (weighted-sum (constantly 1.0) bs) exposure pseudo-weeks
+     :per-week        (blend (weighted-sum (constantly 1.0) bs) (exposure-of manager) pseudo-weeks
                              (get-in prior/managers [:per-week :p50]))
      :zero-share      (blend (weighted-sum #(if (:log-ratio %) 0.0 1.0) bs)
                              (weighted-sum (constantly 1.0) bs) pseudo-bids
@@ -199,14 +224,14 @@
   (when (seq seasons)
     (let [bids      (weighted-bids seasons)
           league    (league-log-multiplier bids)
-          exp-weeks (exposure seasons)
+          exposure-of (exposure seasons)
           current   (first seasons)
           weeks-run (count (distinct (map :week (:auctions current))))]
       {:log-multiplier league
        :weeks-run      weeks-run
        :profiles       (->> (group-by :manager bids)
                             (map (fn [[m bs]]
-                                   (let [p (profile m bs exp-weeks league current)]
+                                   (let [p (profile m bs exposure-of league current)]
                                      (assoc p :style (style p weeks-run)))))
                             (sort-by :manager)
                             vec)})))
