@@ -153,18 +153,30 @@
       (println (format "  $%-5d unit $%-3d n=%-6d on a multiple: %s  of twice it: %s  one over: %s  (chance %s)"
                        budget unit n (pct round) (pct round-2x) (pct one-over) (pct by-chance))))))
 
-(defn print-overpay [rows]
-  (println "\n-- What winners left on the table (contested auctions) --")
+(defn overpay
+  "What winners of contested auctions paid beyond the runner-up: how many, the
+  median winner/runner-up ratio where the runner-up bid anything, quantiles of
+  the gap, and the share won by 5% of the budget or more."
+  [rows]
   (let [c      (filter #(>= (:n %) 2) rows)
         ratios (keep #(when (pos? (:second %)) (/ (:winner %) (:second %))) c)
         gaps   (map #(- (:winner %) (:second %)) c)]
+    {:n         (count c)
+     :ratio-p50 (quantile ratios 0.5)
+     :gap-p50   (quantile gaps 0.5)
+     :gap-p75   (quantile gaps 0.75)
+     :gap-p90   (quantile gaps 0.9)
+     ;; a share gap is a difference of doubles: $12 over $7 is 0.049999…
+     :won-by-5  (if (seq gaps) (/ (count (filter #(>= % (- 0.05 1e-9)) gaps)) (double (count gaps))) 0.0)}))
+
+(defn print-overpay [rows]
+  (println "\n-- What winners left on the table (contested auctions) --")
+  (let [{:keys [n ratio-p50 gap-p50 gap-p75 gap-p90 won-by-5]} (overpay rows)]
     (println (format "  n=%d  winner/second median %.2f×   overpay p50=%s p75=%s p90=%s   won by 5%%+ of budget: %s"
-                     (count c) (double (or (quantile ratios 0.5) 0)) (pct (quantile gaps 0.5))
-                     (pct (quantile gaps 0.75)) (pct (quantile gaps 0.9))
-                     (pct (if (seq gaps) (/ (count (filter #(>= % 0.05) gaps)) (double (count gaps))) 0.0))))))
+                     n (double (or ratio-p50 0)) (pct gap-p50) (pct gap-p75) (pct gap-p90) (pct won-by-5)))))
 
 (defn print-habits [managers]
-  (println "\n-- Managers (manager-seasons with 10+ bids) --")
+  (println "\n-- Managers ($100 leagues, manager-seasons with 10+ bids) --")
   (let [ms (filter #(>= (:bids %) 10) managers)
         q  (fn [k p] (quantile (keep k ms) p))]
     (println (format "  n=%d" (count ms)))
@@ -199,7 +211,7 @@
      :aggression (r :aggression)}))
 
 (defn print-persistence [managers]
-  (println "\n-- Do habits carry over? (rank correlation) --")
+  (println "\n-- Do habits carry over? ($100 leagues, rank correlation) --")
   (doseq [[label p] [["season to season, same league" (persistence (season-pairs managers))]
                      ["league to league, same season" (persistence (league-pairs managers))]]]
     (println (format "  %-32s pairs=%-5d claims/wk=%s  $0 share=%s  aggression=%s"
@@ -237,6 +249,15 @@
 
 (defn budget-class [b] (if (= backbone-budget (:budget b)) :base :other))
 
+(defn manager-habits
+  "Manager-seasons in `backbone-budget` leagues, measured against that budget's
+  typical bids. Pooled with other budgets, every manager inherits his league's
+  budget as a habit, and since a league keeps its budget, the habit reads as
+  persistent."
+  [rows bids]
+  (let [base? #(= :base (budget-class %))]
+    (corpus/manager-seasons (filter base? rows) (typical-shares (filter base? bids)))))
+
 (defn budget-shifts
   "Per bidder bucket, how far positive bids in leagues on any other budget sit
   from `backbone-budget` leagues': the log of the ratio of their median shares.
@@ -254,8 +275,9 @@
 
 (defn backbone
   "The measured tables, as data for `draft-day.bid-prior`: the bid cells and the
-  position, kind, superflex and team shifts over `backbone-budget` leagues; the
-  budget shift, heaping, manager habits and their persistence over all of them."
+  position, kind, superflex and team shifts over `backbone-budget` leagues, as
+  are the `manager-habits` passed in and their persistence; the budget shift and
+  heaping over all of them."
   [bids managers]
   (let [base  (filter #(= :base (budget-class %)) bids)
         qs    [0.05 0.1 0.25 0.5 0.75 0.9 0.95 0.99]
@@ -313,7 +335,7 @@
     (let [seasons  (corpus/load-seasons)
           rows     (corpus/corpus-rows seasons (corpus/fetch-positions!))
           bids     (corpus/bid-rows rows)
-          managers (corpus/manager-seasons rows (typical-shares bids))]
+          managers (manager-habits rows bids)]
       (if (empty? rows)
         (println "no corpus yet — run with --crawl")
         (do

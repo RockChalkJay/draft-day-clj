@@ -106,6 +106,14 @@
         "but its distance from that scale is kept, measured against the $100 bids directly")
     (is (not (contains? (:budget-shift bb) 2)) "a bucket with no $100 bids has nothing to sit off")))
 
+(deftest a-win-by-exactly-five-percent-counts-as-won-by-five-percent
+  (let [auction (fn [w s] {:meta   {:budget 100}
+                           :season {:auctions [{:week 1 :at 1 :player-id "a"
+                                                :bids [(bid 1 "u1" w true) (bid 2 "u2" s false)]}]}})
+        rows    (mapcat #(corpus/auction-rows (apply auction %) {}) [[12 7] [7 3]])]
+    (is (= 0.5 (:won-by-5 (report/overpay rows)))
+        "$12 over $7 is a $5 margin, however 0.12 - 0.07 rounds")))
+
 (deftest round-number-heaps-are-read-against-what-chance-would-give
   (let [bids (map (fn [a] {:budget 100 :amount a}) [5 10 15 11 7 3])
         h    (report/heaping bids 100 5 5)]
