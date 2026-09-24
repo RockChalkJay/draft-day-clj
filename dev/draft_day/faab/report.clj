@@ -26,8 +26,9 @@
   "The `p` quantile of `xs` by nearest rank, or nil for none."
   [xs p]
   (when (seq xs)
-    (let [v (vec (sort xs))]
-      (nth v (min (dec (count v)) (int (Math/floor (* p (count v)))))))))
+    (let [v (vec (sort xs))
+          n (count v)]
+      (v (min (dec n) (int (* p n)))))))
 
 (defn summarize
   "Count, share of zeros, and quantiles of `xs`."
@@ -114,15 +115,15 @@
   the ratio of mean absolute log-deviation around each (bucket, k) median to
   that around each bucket median. Near 0 means `k` does not move prices."
   [bids k]
-  (let [pos   (filter #(pos? (:share %)) bids)
-        dev   (fn [group-key]
-                (let [groups (group-by group-key pos)
-                      meds   (update-vals groups #(quantile (map :share %) 0.5))]
-                  (/ (reduce + (map #(Math/abs (Math/log (/ (:share %) (meds (group-key %))))) pos))
-                     (max 1 (count pos)))))
-        base  (dev :bucket)
-        split (dev (juxt :bucket k))]
-    (when (pos? base) (- 1.0 (/ split base)))))
+  (let [pos    (filter #(pos? (:share %)) bids)
+        spread (fn [group-key]
+                 (->> (vals (group-by group-key pos))
+                      (mapcat (fn [g]
+                                (let [med (quantile (map :share g) 0.5)]
+                                  (map #(abs (Math/log (/ (:share %) med))) g))))
+                      (reduce +)))
+        base   (spread :bucket)]
+    (when (pos? base) (- 1.0 (/ (spread (juxt :bucket k)) base)))))
 
 (defn print-dimensions [bids]
   (println "\n-- Which dimensions move positive bids (spread reduction within bidder count) --")
@@ -213,16 +214,16 @@
   count. Zero means `k` adds nothing once the bidder count is known."
   [bids k]
   (let [pos       (filter #(pos? (:share %)) bids)
-        bucket-md (update-vals (group-by :bucket pos) #(quantile (map :share %) 0.5))]
+        median    #(quantile (map :share %) 0.5)
+        bucket-md (update-vals (group-by :bucket pos) median)
+        log-shift (fn [bs]
+                    (quantile (mapcat (fn [[b cbs]]
+                                        (repeat (count cbs) (Math/log (/ (median cbs) (bucket-md b)))))
+                                      (group-by :bucket bs))
+                              0.5))]
     (into (sorted-map)
-          (map (fn [[v bs]]
-                 (let [logs (mapcat (fn [[b cbs]]
-                                      (repeat (count cbs)
-                                              (Math/log (/ (quantile (map :share cbs) 0.5)
-                                                           (bucket-md b)))))
-                                    (group-by :bucket bs))]
-                   [v {:n (count bs) :log-shift (quantile logs 0.5)}])))
-          (group-by k pos))))
+          (update-vals (group-by k pos)
+                       (fn [bs] {:n (count bs) :log-shift (log-shift bs)})))))
 
 (defn position-shifts [bids] (shifts bids :position))
 
@@ -243,12 +244,12 @@
   pooled median would put both classes off it and leave the distance between
   them to be subtracted by hand."
   [bids]
-  (let [med (fn [bs] (quantile (map :share bs) 0.5))]
+  (let [median #(quantile (map :share %) 0.5)]
     (into (sorted-map)
           (keep (fn [[b bs]]
-                  (let [{base :base other :other} (group-by budget-class bs)]
-                    (when (and (seq base) (seq other))
-                      [b {:n (count other) :log-shift (Math/log (/ (med other) (med base)))}]))))
+                  (let [{:keys [base other]} (group-by budget-class bs)]
+                    (when (and base other)
+                      [b {:n (count other) :log-shift (Math/log (/ (median other) (median base)))}]))))
           (group-by :bucket (filter #(pos? (:share %)) bids)))))
 
 (defn backbone
@@ -257,16 +258,16 @@
   budget shift, heaping, manager habits and their persistence over all of them."
   [bids managers]
   (let [base  (filter #(= :base (budget-class %)) bids)
-        cells (group-by (juxt :bucket :phase) base)
-        qs    [0.05 0.1 0.25 0.5 0.75 0.9 0.95 0.99]]
-    {:bid-share (into (sorted-map)
-                      (map (fn [[k bs]]
-                             (let [shares (map :share bs)
-                                   pos    (filter pos? shares)]
-                               [k {:n        (count shares)
-                                   :p-zero   (/ (count (remove pos? shares)) (double (count shares)))
-                                   :positive (into (sorted-map) (map (fn [p] [p (quantile pos p)])) qs)}])))
-                      cells)
+        qs    [0.05 0.1 0.25 0.5 0.75 0.9 0.95 0.99]
+        cell  (fn [bs]
+                (let [shares (map :share bs)
+                      pos    (filter pos? shares)]
+                  {:n        (count shares)
+                   :p-zero   (/ (count (remove pos? shares)) (double (count shares)))
+                   :positive (into (sorted-map) (zipmap qs (map #(quantile pos %) qs)))}))
+        ms    (filter #(>= (:bids %) 10) managers)
+        habit (fn [k] (zipmap [:p10 :p50 :p90] (map #(quantile (keep k ms) %) [0.1 0.5 0.9])))]
+    {:bid-share    (into (sorted-map) (update-vals (group-by (juxt :bucket :phase) base) cell))
      :position     (shifts base :position)
      :kind         (shifts base :kind)
      :superflex    (shifts base :superflex?)
@@ -274,12 +275,10 @@
      :budget-shift (budget-shifts bids)
      :heaping      {:budget-100  (heaping bids 100 5 5)
                     :budget-1000 (heaping bids 1000 50 50)}
-     :managers     (let [ms (filter #(>= (:bids %) 10) managers)
-                         q  (fn [k p] (quantile (keep k ms) p))]
-                     {:n          (count ms)
-                      :per-week   {:p10 (q :per-week 0.1) :p50 (q :per-week 0.5) :p90 (q :per-week 0.9)}
-                      :zero-share {:p10 (q :zero-share 0.1) :p50 (q :zero-share 0.5) :p90 (q :zero-share 0.9)}
-                      :aggression {:p10 (q :aggression 0.1) :p50 (q :aggression 0.5) :p90 (q :aggression 0.9)}})
+     :managers     {:n          (count ms)
+                    :per-week   (habit :per-week)
+                    :zero-share (habit :zero-share)
+                    :aggression (habit :aggression)}
      :persistence  {:seasons (persistence (season-pairs managers))
                     :leagues (persistence (league-pairs managers))}}))
 
