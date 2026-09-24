@@ -124,10 +124,10 @@ for the known gaps between a league's real rules and what the board can score.
 
 - **A rival new to this league can bring his habits from his others.** Sleeper
   user ids are global, so a manager's bids in his other public FAAB leagues are
-  readable, and `draft-day.bid-prior/persistence` says they carry: across 277
-  managers in two leagues in the same season, claims a week correlate at 0.56,
-  $0 share at 0.47 and aggression at 0.38 — weaker than the same league a
-  season apart (0.63, 0.64, 0.53), stronger than knowing nothing. It would give
+  readable, and `draft-day.bid-prior/persistence` says they carry: across
+  1,973 managers in two $100 leagues in the same season, claims a week
+  correlate at 0.43, $0 share at 0.56 and aggression at 0.37 — weaker than the
+  same league a season apart (0.57, 0.62, 0.43), stronger than knowing nothing. It would give
   a brand-new league per-rival habits from week one, where it now has only the
   Sleeper-wide typical manager. The cost is the reason it waits: a
   sync would read tens to a couple of hundred more transaction logs, which wants
