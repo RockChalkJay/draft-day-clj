@@ -101,7 +101,8 @@
   would gain. Empty when there is nothing to say."
   [team week]
   (let [starters (remove :empty? (:starters team))
-        gain     (get-in team [:optimal :projected :gain])]
+        ;; Rounded before the test for `matchup/lineup-hint`'s reason.
+        gain     (some-> (get-in team [:optimal :projected :gain]) util/hundredths)]
     (cond-> (vec
              (concat
               (keep (fn [p]

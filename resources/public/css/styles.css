@@ -937,9 +937,9 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
 @media (max-width: 900px) {
   .mu-head, .mu-hdr, .mu-row, .mu-tot { grid-template-columns: 1fr 48px 1fr; }
   .mu-side { gap: 5px; }
-  /* Wide enough for a bold three-digit total to two decimals: 108.52. */
-  .mu-side.l { grid-template-columns: minmax(0, 1fr) 52px 52px; }
-  .mu-side.r { grid-template-columns: 52px 52px minmax(0, 1fr); }
+  /* A bold three-digit total to two decimals, 108.52, measures 47.7px. */
+  .mu-side.l { grid-template-columns: minmax(0, 1fr) 50px 50px; }
+  .mu-side.r { grid-template-columns: 50px 50px minmax(0, 1fr); }
   .mu-score { font-size: 22px; }
 }
 

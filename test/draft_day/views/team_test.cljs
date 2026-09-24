@@ -111,7 +111,9 @@
     (is (:warn? (first issues)))
     (is (= :matchup (:link (last issues))) "the one issue fixed elsewhere links there"))
   (is (empty? (team/lineup-issues {:starters [] :optimal {:projected {:gain 0}}} 3))
-      "a clean lineup has nothing to say"))
+      "a clean lineup has nothing to say")
+  (is (empty? (team/lineup-issues {:starters [] :optimal {:projected {:gain 1e-14}}} 3))
+      "nor does one whose gain is only summation drift"))
 
 (deftest the-next-kickoff-skips-games-already-played
   (is (= "2026-09-20T17:00:00Z" (team/next-kickoff (:starters my-side)))

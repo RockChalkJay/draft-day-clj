@@ -113,22 +113,31 @@
 (defn lineup-hint
   "One line under a side's control saying what its best lineup would change,
   by the basis that can currently be believed: by what was scored once every
-  game is final, by projection before that."
+  game is final, by projection before that.
+
+  The gain is tested after rounding, not before: a set lineup that is already
+  the best comes back a float's width either side of zero."
   [t]
-  (let [{:keys [projected actual]} (:optimal t)]
+  (let [{:keys [projected actual]} (:optimal t)
+        gain (fn [o] (util/hundredths (:gain o)))]
     (cond
-      actual                         (str "Best by actual: "
-                                          (util/week-points (:gain actual))
-                                          " left on the bench")
+      (and actual (pos? (gain actual)))
+      (str "Best by actual: " (util/week-points (gain actual)) " left on the bench")
+      actual                         "Best by actual: nothing left on the bench"
       (:seats-locked? projected)     "Lineup locked"
-      (and projected (pos? (:gain projected)))
-      (str "Best by projection: +" (util/week-points (:gain projected)) " still possible")
+      (and projected (pos? (gain projected)))
+      (str "Best by projection: +" (util/week-points (gain projected)) " still possible")
       projected                      "Best by projection: no better lineup")))
 
 (defn side-lineup
   "What a side draws under view `v`: its rows, and what its totals row says.
   A best lineup that is not available — Actual before the week is final — draws
-  the set lineup, so a view cannot strand a side on nothing."
+  the set lineup, so a view cannot strand a side on nothing.
+
+  The set lineup's actual is the league's score of record where there is one,
+  the same figure as the header above it: to the hundredth, a sum of the
+  per-player numbers can miss the host's total by a cent, and one team would
+  read two scores."
   [t v]
   (if-let [o (when (not= v :set) (get-in t [:optimal v]))]
     (let [seated (remove :empty? (:starters o))
@@ -137,13 +146,13 @@
       {:starters  (:starters o)
        :bench     (:bench o)
        :basis     v
-       :gain      (:gain o)
+       :gain      (some-> (:gain o) util/hundredths)
        :projected (sum :week-points)
        :actual    (sum :actual)})
     {:starters  (:starters t)
      :bench     (:bench t)
      :projected (:projected t)
-     :actual    (:actual t)}))
+     :actual    (or (:official t) (:actual t))}))
 
 (defn shown-view
   "The view a side actually draws: the one picked, unless that basis is gone.
@@ -220,7 +229,8 @@
 
 (defn totals-label
   "\"Starters\" under a set lineup; under a best one, which basis and what it
-  gains over the lineup that is set."
+  gains over the lineup that is set. `gain` arrives rounded from
+  `side-lineup`, so the test and the digits read one value."
   [{:keys [basis gain]}]
   [:div.mu-who
    (if basis
