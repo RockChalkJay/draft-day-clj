@@ -47,6 +47,18 @@
   job, and whether a crowd signal such as Sleeper's trending adds sharpens it —
   that cannot be read off a past season.")
 
+(defn phase
+  "The phase `bid-share` is cut by, from the week an auction was decided in:
+  weeks 1-4, 5-10, and 11 on."
+  [week]
+  (cond (<= week 4) :early (<= week 10) :mid :else :late))
+
+(defn bucket
+  "The bidder count `bid-share` is cut by, four and up pooled: the expensive
+  auctions are rare enough that splitting them further leaves cells too thin."
+  [bidders]
+  (min 4 bidders))
+
 (def winning-bid
   "The ns docstring's table as data, keyed by bidders (4 meaning four or more).
   Nothing reads this; it is the provenance for the claim that bidders price a
