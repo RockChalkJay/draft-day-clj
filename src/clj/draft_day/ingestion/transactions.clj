@@ -2,6 +2,9 @@
   "Provider-agnostic bid history: every FAAB auction a league has run, losing
   bids included, rebuilt from the host's transaction log and cached on disk.
 
+  An auction here is a waiver auction — every claim one waiver run decided on
+  one player — and never the draft room's. A claim is one manager's bid in it.
+
   A fourth multimethod pair beside `league-import`, `league-sync` and
   `matchups`, working a season at a time. It is fetched on the sync's cadence,
   since a waiver run changes both, but kept apart because it reads a different
