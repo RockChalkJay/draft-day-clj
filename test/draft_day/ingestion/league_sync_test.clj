@@ -211,8 +211,8 @@
 (def ^:private raw-user
   ;; Shape confirmed against the live API. The nulls are Sleeper's, and three of
   ;; these keys are the reason `normalize-user` builds rather than passes through.
-  {:user_id "993960010998722560" :username "rockchalkjay"
-   :display_name "rockchalkjay" :avatar "fb846befd76ce7953cb9b21093d2697b"
+  {:user_id "123456789012345678" :username "test-manager"
+   :display_name "test-manager" :avatar "0123456789abcdef0123456789abcdef"
    :email nil :phone nil :token nil :is_bot false :real_name nil})
 
 (deftest a-user-is-narrowed-to-the-three-fields-the-app-needs
@@ -220,9 +220,9 @@
   ;; returns whatever this hands back, so it is the only thing between them and
   ;; the browser.
   (let [u (sync-sleeper/normalize-user raw-user)]
-    (is (= {:user-id "993960010998722560"
-            :display-name "rockchalkjay"
-            :avatar "fb846befd76ce7953cb9b21093d2697b"}
+    (is (= {:user-id "123456789012345678"
+            :display-name "test-manager"
+            :avatar "0123456789abcdef0123456789abcdef"}
            u))
     (is (not-any? #{:email :phone :token :is_bot :real_name} (keys u))
         "nothing from the raw document rides along"))

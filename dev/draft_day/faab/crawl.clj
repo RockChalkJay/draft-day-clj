@@ -187,6 +187,68 @@
                         (take expand-per-user))]
     {:probes probes :expand expand}))
 
+(def crawl-defaults
+  {:max-seasons 400 :max-users 1500 :max-seasons-per-user 12
+   :expand-per-user 6 :checkpoint-every 5 :max-retries 3})
+
+(defn accepted? [p] (get-in p [:decision :ok?]))
+
+(defn owners-of
+  "Network: the distinct owners of `league-ids`, as strings."
+  [league-ids]
+  (->> league-ids
+       (mapcat #(some->> (sleeper/body (fetch (str "/league/" % "/rosters")))
+                         (keep :owner_id)))
+       (map str)
+       distinct))
+
+(defn record-visit
+  "Fold one visited user's probes into the walk's state, queueing the `owners`
+  not already seen or queued."
+  [{:keys [frontier seen-users] :as st} uid probes owners]
+  (let [decided (remove undecided? probes)
+        queued  (set frontier)]
+    (-> st
+        (update :accepted into (map (juxt :league-id #(get-in % [:decision :meta])))
+                (filter accepted? probes))
+        (update :reasons #(merge-with + % (frequencies (map (fn [p] (get-in p [:decision :reason])) probes))))
+        (update :seen-seasons into (map :league-id) decided)
+        (update :seen-users conj uid)
+        (update :frontier into (remove #(or (seen-users %) (queued %)) owners))
+        (update :examined + (count probes)))))
+
+(defn requeue
+  "A user whose league list would not load: back of the queue, or left for a
+  later run once `max-retries` is spent."
+  [st uid max-retries]
+  (let [tries (inc (get-in st [:retries uid] 0))]
+    (if (< tries max-retries)
+      (-> st (assoc-in [:retries uid] tries) (update :frontier conj uid))
+      (update-in st [:reasons :user-unreadable] (fnil inc 0)))))
+
+(defn done? [{:keys [accepted frontier seen-users]} {:keys [max-seasons max-users]}]
+  (or (empty? frontier)
+      (>= (count accepted) max-seasons)
+      (>= (count seen-users) max-users)))
+
+(defn step
+  "Visit the user at the head of the frontier."
+  [st {:keys [max-retries checkpoint-every on-accept! checkpoint! progress!] :as opts}]
+  (let [uid (first (:frontier st))
+        st  (update st :frontier subvec 1)]
+    (if ((:seen-users st) uid)
+      st
+      (if-let [lgs (user-leagues uid)]
+        (let [{:keys [probes expand]} (visit lgs st opts)
+              probes (vec probes)
+              _      (when on-accept! (run! on-accept! (filter accepted? probes)))
+              st'    (record-visit st uid probes (owners-of expand))]
+          (when progress! (progress! st'))
+          (when (and checkpoint! (zero? (mod (count (:seen-users st')) checkpoint-every)))
+            (checkpoint! st'))
+          st')
+        (requeue st uid max-retries)))))
+
 (defn crawl
   "Walk from `seed-uids` until `max-seasons` are accepted, `max-users` visited or
   the frontier drains. Returns the resumable state
@@ -196,51 +258,16 @@
   `on-accept!` is called with each accepted probe as it is accepted and
   `checkpoint!` with the state every `checkpoint-every` users. A user whose
   league list will not load goes to the back of the queue, and after
-  `max-retries` is left for a later run rather than looping a throttled walk."
-  [seed-uids {:keys [max-seasons max-users max-seasons-per-user expand-per-user
-                     checkpoint-every max-retries on-accept! checkpoint! progress! state]
-              :or   {max-seasons 400 max-users 1500 max-seasons-per-user 12
-                     expand-per-user 6 checkpoint-every 5 max-retries 3}}]
-  (let [opts {:max-seasons-per-user max-seasons-per-user :expand-per-user expand-per-user}]
-    (loop [st (merge {:accepted {} :reasons {} :frontier (vec (distinct seed-uids))
-                      :seen-users #{} :seen-seasons #{} :examined 0}
-                     state)]
-      (let [{:keys [accepted frontier seen-users]} st]
-        (if (or (empty? frontier)
-                (>= (count accepted) max-seasons)
-                (>= (count seen-users) max-users))
-          st
-          (let [uid (first frontier)
-                st  (update st :frontier subvec 1)]
-            (if (seen-users uid)
-              (recur st)
-              (if-let [lgs (user-leagues uid)]
-                (let [{:keys [probes expand]} (visit lgs st opts)
-                      probes   (vec probes)
-                      decided  (remove undecided? probes)
-                      ok       (filter #(get-in % [:decision :ok?]) decided)
-                      _        (run! #(when on-accept! (on-accept! %)) ok)
-                      owners   (->> expand
-                                    (mapcat #(when-let [os (sleeper/body (fetch (str "/league/" % "/rosters")))]
-                                               (keep :owner_id os)))
-                                    (map str)
-                                    distinct)
-                      queued   (set frontier)
-                      st'      (-> st
-                                   (update :accepted into (map (juxt :league-id #(get-in % [:decision :meta]))) ok)
-                                   (update :reasons #(reduce (fn [m p] (update m (get-in p [:decision :reason]) (fnil inc 0))) % probes))
-                                   (update :seen-seasons into (map :league-id) decided)
-                                   (update :seen-users conj uid)
-                                   (update :frontier into (remove #(or (seen-users %) (queued %)) owners))
-                                   (update :examined + (count probes)))]
-                  (when progress! (progress! st'))
-                  (when (and checkpoint! (zero? (mod (count (:seen-users st')) checkpoint-every)))
-                    (checkpoint! st'))
-                  (recur st'))
-                (let [tries (inc (get-in st [:retries uid] 0))]
-                  (recur (if (< tries max-retries)
-                           (-> st (assoc-in [:retries uid] tries) (update :frontier conj uid))
-                           (update-in st [:reasons :user-unreadable] (fnil inc 0)))))))))))))
+  `max-retries` is left for a later run rather than looping a throttled walk.
+  Unset options take `crawl-defaults`."
+  [seed-uids opts]
+  (let [opts (merge crawl-defaults opts)]
+    (->> (merge {:accepted {} :reasons {} :frontier (vec (distinct seed-uids))
+                 :seen-users #{} :seen-seasons #{} :examined 0}
+                (:state opts))
+         (iterate #(step % opts))
+         (drop-while #(not (done? % opts)))
+         first)))
 
 (defn save-season!
   "Persist one accepted probe's auctions and meta."
