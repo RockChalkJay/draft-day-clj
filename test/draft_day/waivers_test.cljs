@@ -1185,7 +1185,7 @@
 
 (deftest a-bye-still-outranks-an-absent-scoreboard
   (is (= "Bye" (waivers/week-matchup {:bye 6} 6)))
-  (is (= "\u2013"   (waivers/week-matchup {} 6))))
+  (is (= "-"   (waivers/week-matchup {} 6))))
 
 ;; ---- the Opp tooltip ----
 

@@ -128,7 +128,7 @@
     (is (= ["big"] (mapv :player-id (team/best-claims ps 1))))))
 
 (deftest the-this-week-card-reads-the-managers-own-game
-  (with-synced-team! {:my-roster roster :my-roster-players players})
+  (with-synced-team! {:my-roster-players players})
   (swap! rdb/app-db assoc
          :matchup {:week 3
                    :matchups [{:matchup-id 1 :roster-ids [5 6]}

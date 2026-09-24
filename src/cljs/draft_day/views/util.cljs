@@ -30,7 +30,7 @@
   [n]
   (if (number? n)
     (.toFixed n 1)
-    "\u2013"))
+    "-"))
 
 (defn week-points
   "A week's points, to two decimals, or a dash: projected, scored, or the gain
@@ -40,7 +40,7 @@
   A dash is not a zero: `:actual` is nil until the player's game starts, and
   0.00 means he played and did nothing."
   [n]
-  (if (number? n) (.toFixed n 2) "\u2013"))
+  (if (number? n) (.toFixed n 2) "-"))
 
 (defn money-rnd [n]
   (if (and (number? n) (pos? n))
