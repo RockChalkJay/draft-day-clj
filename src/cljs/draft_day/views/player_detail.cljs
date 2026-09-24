@@ -36,7 +36,6 @@
             [re-frame.core :as rf]
             [draft-day.bio :as bio]
             [draft-day.game-log :as game-log]
-            [draft-day.views.board :as board]
             [draft-day.views.compare :as compare]
             [draft-day.views.controls :as controls]
             [draft-day.views.metrics :as metrics]
@@ -165,7 +164,7 @@
               (if played?
                 [:<>
                  (map-indexed (fn [i v] ^{:key i} [:td.num (player-stats/cell v)]) values)
-                 [:td.num.pts (board/format-one-decimal points)]]
+                 [:td.num.pts (util/week-points points)]]
                 [:td.num.out-note {:col-span (inc (count columns))} "Out"])])
            rows)]]))
 

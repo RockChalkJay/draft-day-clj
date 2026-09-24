@@ -18,7 +18,7 @@
 
   A DASH IS NOT A ZERO, and this is the one screen where that distinction is
   most easily lost. `:actual` is nil until the player's game starts (see
-  `rankings.matchup`), so a dash means \"not yet\" and a 0.0 means he played and
+  `rankings.matchup`), so a dash means \"not yet\" and a 0.00 means he played and
   did nothing. Rendering the first as the second would turn a Sunday morning
   into nine bad performances.
 
@@ -42,13 +42,6 @@
             [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
-
-(defn fmt
-  "One decimal, or a dash. Weekly points are small enough that rounding to whole
-  numbers would collapse 8.4 and 12.6 into a comparison nobody can make."
-  [v]
-  (if (number? v) (.toFixed v 1) "–"))
-
 (defn player-cell
   "A player's name, his NFL game, and the two numbers.
 
@@ -60,9 +53,9 @@
   [p side week]
   (let [mark (cond (:moved-in? p)  [:span.mu-mv.in {:title "Moved in by the best lineup"} "▲"]
                    (:moved-out? p) [:span.mu-mv.out {:title "Benched by the best lineup"} "▼"])
-        nums [^{:key :p} [:div.mu-p (fmt (:week-points p))]
+        nums [^{:key :p} [:div.mu-p (util/week-points (:week-points p))]
               ^{:key :a} [:div {:class (str "mu-a" (when-not (number? (:actual p)) " pending"))}
-                          (fmt (:actual p))]]
+                          (util/week-points (:actual p))]]
         who  [:div.mu-who {:key :who}
               (when (= side :l) mark)
               (if (:unvalued? p)
@@ -124,11 +117,12 @@
   [t]
   (let [{:keys [projected actual]} (:optimal t)]
     (cond
-      actual                         (str "Best by actual: " (fmt (:gain actual))
+      actual                         (str "Best by actual: "
+                                          (util/week-points (:gain actual))
                                           " left on the bench")
       (:seats-locked? projected)     "Lineup locked"
       (and projected (pos? (:gain projected)))
-      (str "Best by projection: +" (fmt (:gain projected)) " still possible")
+      (str "Best by projection: +" (util/week-points (:gain projected)) " still possible")
       projected                      "Best by projection: no better lineup")))
 
 (defn side-lineup
@@ -183,8 +177,8 @@
         [:<> (:name t) [:span.mu-rec (db/record-label t)]]
         [:<> [:span.mu-rec (db/record-label t)] (:name t)])]
      [:div {:class (str "mu-score" (when-not (number? (:actual t)) " pending"))}
-      (fmt (or (:official t) (:actual t)))]
-     [:div.mu-proj (str "projected " (fmt (:projected t)))]
+      (util/week-points (or (:official t) (:actual t)))]
+     [:div.mu-proj (str "projected " (util/week-points (:projected t)))]
      [lineup-control t v]
      (when-let [hint (lineup-hint t)] [:span.mu-lock hint])]))
 
@@ -233,7 +227,7 @@
      [:<> "Best lineup "
       [:span.mu-optnote (if (= basis :actual) "by actual" "by projection")]
       (when (and (number? gain) (pos? gain))
-        [:span.mu-gain (str "+" (fmt gain) " over set")])]
+        [:span.mu-gain (str "+" (util/week-points gain) " over set")])]
      "Starters")])
 
 (defn rows
@@ -259,11 +253,11 @@
      ;; Child order mirrors `player-cell`, or the totals do not line up with
      ;; the columns they are totalling.
      [:div.mu-tot
-      [:div.mu-side.l [totals-label l] [:div.mu-p (fmt (:projected l))]
-       [:div.mu-a (fmt (:actual l))]]
+      [:div.mu-side.l [totals-label l] [:div.mu-p (util/week-points (:projected l))]
+       [:div.mu-a (util/week-points (:actual l))]]
       [:div.mu-slot]
-      [:div.mu-side.r [:div.mu-a (fmt (:actual r))] [:div.mu-p (fmt (:projected r))]
-       [totals-label r]]]
+      [:div.mu-side.r [:div.mu-a (util/week-points (:actual r))]
+       [:div.mu-p (util/week-points (:projected r))] [totals-label r]]]
      [:div.mu-sep "Bench"]
      (seat-rows (:bench l) (:bench r) false "b")]))
 

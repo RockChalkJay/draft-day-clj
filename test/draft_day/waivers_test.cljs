@@ -1020,9 +1020,9 @@
   ;; Not projected and projected to score nothing are different answers, and a
   ;; 0 in this column would assert the second.
   (let [txt (fn [p] (last (waivers/cell :week p 3)))]
-    (is (= 12 (txt {:week-points 11.6})))
+    (is (= "11.60" (txt {:week-points 11.6})))
     (is (= [:span.muted "–"] (txt {})))
-    (is (= 0 (txt {:week-points 0.2})))))
+    (is (= "0.20" (txt {:week-points 0.2})))))
 
 (deftest week-cell-names-the-bye-it-cannot-project
   ;; A bye is the common reason this cell is empty, and Opp — the column that
@@ -1032,7 +1032,7 @@
     (is (= [:span.muted "–"]   (txt {:bye 6} 5)))
     (is (= [:span.muted "–"]   (txt {} 5)))
     ;; A projected number always wins, bye week or not.
-    (is (= 12 (txt {:week-points 11.6 :bye 6} 6)))))
+    (is (= "11.60" (txt {:week-points 11.6 :bye 6} 6)))))
 
 (deftest week-note-is-absent-without-a-week
   ;; The weekly asset 404s until week 1 is played, so the board has to render

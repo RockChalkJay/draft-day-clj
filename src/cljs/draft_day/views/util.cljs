@@ -32,6 +32,16 @@
     (.toFixed n 1)
     "\u2013"))
 
+(defn week-points
+  "A week's points, to two decimals, or a dash: projected, scored, or the gain
+  between two lineups. Two because that is how the hosts report a score, so a
+  matchup reads what the league's own scoreboard reads.
+
+  A dash is not a zero: `:actual` is nil until the player's game starts, and
+  0.00 means he played and did nothing."
+  [n]
+  (if (number? n) (.toFixed n 2) "\u2013"))
+
 (defn money-rnd [n]
   (if (and (number? n) (pos? n))
     (str "$" (js/Math.round n))

@@ -105,7 +105,7 @@
 (deftest the-lineup-check-names-byes-injuries-and-what-the-best-lineup-gains
   (let [issues (team/lineup-issues my-side 3)]
     (is (= ["Tony Pollard is on bye" "Kyren Williams — Questionable"
-            "Best lineup by projection: +11.6"]
+            "Best lineup by projection: +11.60"]
            (mapv :text issues)))
     (is (not (:warn? (second issues))) "a Questionable is not shouted like an IR")
     (is (:warn? (first issues)))
@@ -142,4 +142,4 @@
   (let [html (render team/this-week-card)]
     (is (re-find #"Waiver Wire Warriors \(1–1\)" html)
         "his own opponent, whatever game the Matchup tab has picked")
-    (is (re-find #"110.2 – 118.2" html))))
+    (is (re-find #"110.20 – 118.20" html))))
