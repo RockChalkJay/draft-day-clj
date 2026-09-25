@@ -141,12 +141,18 @@
 
 (deftest the-seats-land-in-the-vocabulary-the-lineup-speaks
   (let [seats (espn/roster-positions (get-in raw [:settings :rosterSettings :lineupSlotCounts]))]
-    (is (= ["QB" "RB" "RB" "WR" "WR" "TE" "DST" "K"
-            "BENCH" "BENCH" "BENCH" "BENCH" "BENCH" "BENCH" "IR" "FLEX"]
-           seats))
+    (is (= ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "K" "DST"
+            "BENCH" "BENCH" "BENCH" "BENCH" "BENCH" "BENCH" "IR"]
+           seats)
+        "Sleeper's lineup order, not ESPN's slot numbering")
     (doseq [s (remove db/held-slots seats)]
       (is (or (contains? (set db/positions) s) (contains? db/flex-slots s))
           (str s " is a seat nothing downstream can fill")))))
+
+(deftest flex-seats-sit-in-sleepers-order
+  (is (= ["QB" "FLEX" "SUPER_FLEX" "K" "DST"]
+         (espn/roster-positions {:0 1 :7 1 :23 1 :16 1 :17 1}))
+      "ESPN numbers SUPER_FLEX 7 and FLEX 23"))
 
 (deftest a-slot-set-to-zero-is-not-a-seat
   (is (not (some #{"WRRB_FLEX"} (espn/roster-positions {:3 0 :0 1})))))

@@ -20,6 +20,7 @@
   (:require [clojure.string :as str]
             [jsonista.core :as json]
             [org.httpkit.client :as http]
+            [draft-day.db :as db]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.json :refer [mapper]]))
 
@@ -290,14 +291,15 @@
         counts))
 
 (defn roster-positions
-  "Pure: ESPN's slot counts -> the league's seats, in ascending slot id.
-
-  The order is ours, not ESPN's: unlike Sleeper, an ESPN roster entry names its
-  own seat on `lineupSlotId`, so nothing downstream is positional against this
-  list. It exists for the seat *vocabulary* `rankings.lineup` fills from."
+  "Pure: ESPN's slot counts -> the league's seats, in `db/seat-order` rather
+  than ESPN's slot numbering, since the matchup board draws one row per seat in
+  this order. Seats it does not rank — IDP, the bench, IR — keep ESPN's order
+  behind the rest."
   [counts]
-  (into [] (mapcat (fn [[id n]] (repeat n (get lineup-slots id (str id)))))
-        (slot-counts counts)))
+  (->> (slot-counts counts)
+       (mapcat (fn [[id n]] (repeat n (get lineup-slots id (str id)))))
+       (sort-by db/slot-rank)
+       vec))
 
 (def ^:private config-keys
   {"QB" :qb "RB" :rb "WR" :wr "TE" :te "K" :k "DST" :dst

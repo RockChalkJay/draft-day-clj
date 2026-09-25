@@ -898,18 +898,22 @@
   [p]
   [(position-rank (:position p)) (- (or (:ros-points p) 0)) (str (:player-name p))])
 
-(def ^:private seat-index
-  (merge (zipmap ["QB" "RB" "WR" "TE"] (range))
-         (zipmap (keys flex-slots) (repeat 4))
-         {"K" 5 "DST" 6}))
+(def seat-order
+  "The order every lineup is drawn in, whichever host it came from."
+  ["QB" "RB" "WR" "TE" "FLEX" "WRRB_FLEX" "REC_FLEX" "SUPER_FLEX" "K" "DST"])
+
+(def ^:private seat-index (zipmap seat-order (range)))
+
+(defn slot-rank
+  "A seat's place in `seat-order`; unknown sorts last."
+  [slot]
+  (get seat-index slot (count seat-order)))
 
 (defn seat-rank
-  "A starter's place in the order every roster is drawn in — QB, RB, WR, TE,
-  the flex seats together, K, DST — whatever order the host's lineup arrived
-  in. Read off `:slot`, else `:position` where the seat is unknown; unknown
-  sorts last."
+  "A starter's place in `seat-order`, whatever order the host's lineup arrived
+  in. Read off `:slot`, else `:position` where the seat is unknown."
   [p]
-  (get seat-index (or (:slot p) (:position p)) (count seat-index)))
+  (slot-rank (or (:slot p) (:position p))))
 
 (defn team-roster
   "One synced team as every season view draws it — the League tab's cards, My
