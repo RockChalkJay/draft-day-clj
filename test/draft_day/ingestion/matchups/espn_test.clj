@@ -89,14 +89,14 @@
       "a board drawing this lineup against another order mislabels every seat past the disagreement"))
 
 (deftest the-lineup-is-seated-against-the-leagues-own-seats
-  (is (= ["QB" "RB" "RB" "WR" "WR" "TE" "DST" "K" "FLEX"] (m-espn/seats raw))
+  (is (= ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "K" "DST"] (m-espn/seats raw))
       "the same vector routes/matchup-slots builds from the sync, bench and IR dropped")
-  (is (= ["4040715" "4362238" "0" "4430878" "4241478" "4361307" "PIT" "2473037" "4695883"]
+  (is (= ["4040715" "4362238" "0" "4430878" "4241478" "4361307" "4695883" "2473037" "PIT"]
          (get-in (normalized) [:scores 11 :starter-ids]))
       "one RB seat went unfilled, and the seats below it stay where they are"))
 
 (deftest a-defense-is-its-team-not-its-espn-id
-  (is (= "WAS" (nth (get-in (normalized) [:scores 3 :starter-ids]) 6))
+  (is (= "WAS" (nth (get-in (normalized) [:scores 3 :starter-ids]) 8))
       "keyed by abbreviation in the app's spelling — ESPN's own WSH is an alias")
   (is (contains? (get-in (normalized) [:scores 11 :player-points]) "PIT")
       "a defense keyed by its ESPN id resolves to nobody and goes blank"))

@@ -881,7 +881,7 @@
   (is (= :board (db/view-for {} :draft :rosters))))
 
 (deftest starters-draw-in-one-seat-order-whatever-the-host-sent
-  (is (= ["QB" "RB" "WR" "TE" "SUPER_FLEX" "FLEX" "K" "DST"]
+  (is (= ["QB" "RB" "WR" "TE" "FLEX" "SUPER_FLEX" "K" "DST"]
          (mapv :slot (sort-by db/seat-rank
                               (map #(hash-map :slot %)
                                    ["K" "SUPER_FLEX" "WR" "QB" "FLEX" "DST" "TE" "RB"])))))
