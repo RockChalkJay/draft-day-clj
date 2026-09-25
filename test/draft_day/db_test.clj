@@ -699,6 +699,11 @@
         named [{:id "4869461" :name "Trey Smack" :position "K"}]]
     (is (not (contains? (db/provider->player-id [smack twin] :espn named) "4869461"))
         "an unvalued row is a gap; picking one of two is the wrong man, confidently")
+    (is (= {} (db/provider->player-id [smack] :espn
+                                      (conj named {:id "4999999" :name "Trey Smack" :position "K"})))
+        "nor may two unknown ids that share his name both put him on a roster")
+    (is (= "13545" (get (db/provider->player-id [smack] :espn (into named named)) "4869461"))
+        "one id named twice, by the sync and by the matchup, is still one id")
     (is (not (contains? (db/provider->player-id [smack] :espn
                                                 [{:id "4869461" :name "Trey Smack" :position "P"}])
                         "4869461"))

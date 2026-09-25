@@ -146,7 +146,7 @@
 (deftest ^:integration espn-matchup-roster-ids-are-the-ones-the-sync-reports
   (with-league [req]
     (let [{:keys [teams roster-positions]} (:league (league-sync/sync-league req))
-          {:keys [ok week scores]} (matchups/fetch-matchups req)]
+          {:keys [ok week scores provider-players]} (matchups/fetch-matchups req)]
       (is ok)
       (is (number? week))
       (is (seq scores))
@@ -155,4 +155,10 @@
       (testing "and each lineup fills the seats the sync names"
         (let [seats (count (db/scoring-slots roster-positions))]
           (is (every? #(= seats (count (:starter-ids %))) (vals scores))
-              "a lineup shorter than the seat list slides every seat below it up"))))))
+              "a lineup shorter than the seat list slides every seat below it up")))
+      (testing "and names every player on it, a view the sync's check does not reach"
+        (let [named (set (map :id provider-players))
+              held  (remove teams/app-teams (mapcat :player-ids (vals scores)))]
+          (is (seq held))
+          (is (every? named held)
+              "rosterForCurrentScoringPeriod's entries stopped carrying fullName"))))))
