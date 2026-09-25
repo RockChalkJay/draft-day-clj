@@ -355,7 +355,8 @@
   [board {:keys [league my-roster-id roster-size num-teams replacement-config
                  starting-slots] :as ctx}]
   (let [{:keys [teams waiver]} league
-        xwalk    (db/provider->player-id board (:provider league))
+        xwalk    (db/provider->player-id board (:provider league)
+                                         (:provider-players league))
         rostered (rostered-index teams xwalk)
         {:keys [levels players]} (with-ros-vorp board num-teams replacement-config)
         by-id    (db/index-by-id players)

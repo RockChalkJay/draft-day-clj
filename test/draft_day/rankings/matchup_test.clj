@@ -151,6 +151,35 @@
     (is (= "QB" (:slot qb)) "the seat is still named")
     (is (= 20.0 (:actual qb)) "and his score still shows")))
 
+(defn- espn-side
+  "The fixture on ESPN, where the id file has no ESPN id for the kicker — a
+  rookie, as Trey Smack's 4869461 was — and `named` is the provider's own
+  account of who its ids are."
+  [named]
+  (let [rookie #(if (= % (sleeper-id "k1")) "4869461" %)
+        ids    #(mapv rookie %)
+        brd    (mapv (fn [{:keys [player-id] :as pl}]
+                       (assoc pl :ids (if (= "k1" player-id) {} {:espn (sleeper-id player-id)})))
+                     board)]
+    (first (:teams (matchup/matchup-board
+                    brd {:league   {:teams [(-> team (update :player-ids ids)
+                                                (update :active-ids ids)
+                                                (update :starter-ids ids))]}
+                         :matchups [{:matchup-id 1 :roster-ids [1 2]}]
+                         :scores   {1 (-> score (update :starter-ids ids)
+                                          (update :player-points update-keys rookie))}
+                         :provider :espn
+                         :provider-players named
+                         :slots    slots})))))
+
+(deftest a-starter-the-crosswalk-misses-is-found-by-the-providers-own-name
+  (let [kicker #(nth (:starters (espn-side %)) 7)]
+    (is (:unvalued? (kicker [])) "with no name to go on he is a bare id")
+    (let [k (kicker [{:id "4869461" :name "Pk1" :position "K"}])]
+      (is (= "k1" (:player-id k)))
+      (is (= 7.0 (:week-points k)) "and his projection comes with him")
+      (is (= 7.0 (:actual k)) "as does what the provider scored him"))))
+
 (deftest totals-skip-what-they-cannot-add
   ;; A seat nobody projected and a seat projected at nothing differ.
   (let [t (side :board (mapv #(if (= "qb1" (:player-id %)) (dissoc % :week-points) %) board))]

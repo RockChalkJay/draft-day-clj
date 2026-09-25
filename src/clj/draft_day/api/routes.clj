@@ -443,7 +443,7 @@
         ;; The other two boards' guard: an all-zero config projects every
         ;; player 0.0, and that is a lie rather than a matchup.
         (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
-        (let [{:keys [ok week matchups scores status error]
+        (let [{:keys [ok week matchups scores status error provider-players]
                provider-slots :slots}
               (matchups/fetch-matchups {:provider    provider
                                         :league-id   league-id
@@ -468,6 +468,10 @@
                             :matchups matchups
                             :scores   scores
                             :provider provider
+                            ;; The sync's too: a team this week's document
+                            ;; skipped is drawn off its synced roster.
+                            :provider-players (concat (:provider-players league)
+                                                      provider-players)
                             :slots    (matchup-slots provider-slots league roster)})]
               (json-response 200 (assoc out
                                         :week            week

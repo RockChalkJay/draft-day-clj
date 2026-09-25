@@ -278,7 +278,7 @@
 ;; The synced league's provider ids -> board ids. Its own sub so the crosswalk is
 ;; built once per universe or league, not again on every waiver reply.
 (rf/reg-sub :roster-xwalk :<- [:players] :<- [:league-sync]
-  (fn [[players ls] _] (db/provider->player-id players (:provider ls))))
+  (fn [[players ls] _] (db/provider->player-id players (:provider ls) (:provider-players ls))))
 
 ;; Every synced team's roster in standings order — the League tab's cards, and
 ;; through `:my-roster` the manager's own everywhere else. Read through

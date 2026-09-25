@@ -108,6 +108,16 @@
           "no defense resolved: proTeamId moved, and every league's defenses
            would sit on the free-agent board while their owners hold them"))))
 
+(deftest ^:integration espn-still-names-every-rostered-player
+  (with-league [req]
+    (let [{:keys [teams provider-players]} (:league (league-sync/sync-league req))
+          named (set (map :id provider-players))
+          held  (remove teams/app-teams (mapcat :player-ids teams))]
+      (is (seq held))
+      (is (every? named held)
+          "a player the id file has not caught up with resolves by this name
+           or not at all: fullName or defaultPositionId moved"))))
+
 (deftest ^:integration espn-still-fills-one-weeks-rosters-into-the-schedule
   (with-league [req]
     (let [week (matchups/current-week :espn req)]

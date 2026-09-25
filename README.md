@@ -413,7 +413,7 @@ source that fails leaves its column empty and the board still renders — it jus
 says so in the provenance report. Unmatched enrichment rows are dropped, never
 added.
 
-Name matching (`match.clj`) lowercases, strips generational suffixes
+Name matching (`match.cljc`) lowercases, strips generational suffixes
 (`jr`/`sr`/`ii`/`iii`/`iv`/`v`) and all non-alphanumerics, then concatenates
 with position: `"T.J. Hockenson", "TE"` → `tjhockenson_te`. nflverse is the one
 source that joins exactly, on the GSIS id every universe player already carries.

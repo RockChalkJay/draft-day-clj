@@ -21,7 +21,10 @@
   (:import [java.net.http HttpClient HttpRequest HttpResponse$BodyHandlers]
            [java.net URI]))
 
-(def ^:private position-map {1 "QB" 2 "RB" 3 "WR" 4 "TE" 5 "K" 16 "DST"})
+(def position-map
+  "ESPN `defaultPositionId` -> the board's position. The same numbering on every
+  ESPN document, so `league-sync.espn` reads a rostered player's position here."
+  {1 "QB" 2 "RB" 3 "WR" 4 "TE" 5 "K" 16 "DST"})
 
 ;; ESPN keys its stat values by numeric id. They arrive as *keywords* (:58, :53)
 ;; rather than strings, because `draft-day.json/mapper` keywordizes every key on

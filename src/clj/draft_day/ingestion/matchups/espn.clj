@@ -167,4 +167,8 @@
                      (sort-by :id games))
      :scores   (into {}
                      (map #(roster-score % week seat-list))
-                     (mapcat sides games))}))
+                     (mapcat sides games))
+     ;; Off this document and not only the sync's: a player picked up since the
+     ;; last sync is on this week's roster and in no stored directory.
+     :provider-players (sync-espn/provider-players
+                        (mapcat side-entries (mapcat sides games)))}))

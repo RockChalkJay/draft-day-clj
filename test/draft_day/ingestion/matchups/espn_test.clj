@@ -95,6 +95,14 @@
          (get-in (normalized) [:scores 11 :starter-ids]))
       "one RB seat went unfilled, and the seats below it stay where they are"))
 
+(deftest the-reply-names-the-players-on-this-weeks-rosters
+  (let [r (assoc-in raw [:schedule 1 :home :rosterForCurrentScoringPeriod :entries 6
+                         :playerPoolEntry :player :fullName]
+                    "Trey Smack")]
+    (is (= [{:id "2473037" :name "Trey Smack" :position "K"}]
+           (:provider-players (matchups/normalize-matchups :espn r)))
+        "a player picked up since the last sync is in no stored directory")))
+
 (deftest a-defense-is-its-team-not-its-espn-id
   (is (= "WAS" (nth (get-in (normalized) [:scores 3 :starter-ids]) 8))
       "keyed by abbreviation in the app's spelling — ESPN's own WSH is an alias")

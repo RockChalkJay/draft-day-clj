@@ -491,3 +491,21 @@
     (is (= ["good"] (mapv :player-id (:players out)))
         "the rostered ESPN id resolved, so he is off the board")
     (is (= "Mine" (get (:rostered out) "star")))))
+
+(deftest a-rookie-the-crosswalk-misses-is-still-rostered
+  (let [b      [{:player-id "13545" :player-name "Trey Smack" :position "K"
+                 :ros-points 90.0 :ids {:sleeper "13545"}}
+                {:player-id "good" :player-name "Pgood" :position "WR"
+                 :ros-points 140.0 :ids {:sleeper "s-good" :espn "e-good"}}]
+        league {:provider :espn
+                :teams [{:roster-id 1 :name "Fumblerooskie" :player-ids ["4869461"]
+                         :active-ids ["4869461"]}]
+                :waiver {:type :rolling}}
+        free   (fn [lg] (set (map :player-id (:players (waiver/waiver-board
+                                                         b {:league lg :my-roster-id 2
+                                                            :num-teams 12 :through-week 3
+                                                            :season-games 17})))))]
+    (is (= #{"good" "13545"} (free league)) "with no name to go on he reads as free")
+    (is (= #{"good"} (free (assoc league :provider-players
+                                  [{:id "4869461" :name "Trey Smack" :position "K"}])))
+        "ESPN's name puts 4869461 back on his owner's roster")))

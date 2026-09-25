@@ -1,7 +1,10 @@
 (ns draft-day.ingestion.match
-  "Canonical match key for joining name-only enrichment sources (FantasyPros) onto
-  the Sleeper universe. A low-stakes fallback — Sleeper ids handle exact joins for
-  ESPN/nflverse; this covers scrape sources that only give a name."
+  "Canonical match key for joining a source that names a player but carries no
+  id the universe knows — FantasyPros, ESPN's auction feed — onto the Sleeper
+  universe. nflverse joins exactly, on GSIS, and needs none of this.
+
+  cljc because `db/provider->player-id`, which the browser reads rosters through
+  too, falls back on it for a provider id the crosswalk lacks."
   (:require [clojure.string :as str]))
 
 (def ^:private suffixes #{"jr" "sr" "ii" "iii" "iv" "v"})
