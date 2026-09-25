@@ -30,7 +30,33 @@
   [n]
   (if (number? n)
     (.toFixed n 1)
-    "\u2013"))
+    "-"))
+
+(defn hundredths
+  "`n` rounded to the hundredth on its decimal value, half away from zero.
+
+  Not `.toFixed` alone, which rounds the binary double: 18.345 is stored a hair
+  under, so it prints 18.34 where a host prints 18.35, and -0.004 prints as
+  -0.00. Reading the product back at twelve significant digits puts it on the
+  decimal value first. That also swallows the ~1e-14 a lineup gain picks up from
+  summing one set of players in two orders, so a guard that tests this and the
+  digits printed from it cannot disagree."
+  [n]
+  (let [x (js/parseFloat (.toPrecision (* n 100) 12))]
+    (/ (* (js/Math.sign x) (js/Math.round (js/Math.abs x))) 100)))
+
+(defn week-points
+  "A week's points, to two decimals, or a dash: projected, scored, or the gain
+  between two lineups. Two because that is the precision the hosts report
+  points in, so an actual reads as the league's own scoreboard does. A
+  projection is this app's scoring of Sleeper's weekly line and can differ from
+  the host's own by more than a cent: its second place is precision, not
+  agreement.
+
+  A dash is not a zero: `:actual` is nil until the player's game starts, and
+  0.00 means he played and did nothing."
+  [n]
+  (if (number? n) (.toFixed (hundredths n) 2) "-"))
 
 (defn money-rnd [n]
   (if (and (number? n) (pos? n))

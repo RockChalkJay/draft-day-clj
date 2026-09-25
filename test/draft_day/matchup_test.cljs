@@ -276,17 +276,7 @@
     (is (= ["Roster 3" "Fourth"] (:names g)))))
 
 
-(deftest a-dash-is-not-a-zero
-  ;; `:actual` is nil until kickoff, and 0.0 there would turn a Sunday morning
-  ;; into nine bad performances.
-  (is (= "–" (matchup/fmt nil)))
-  (is (= "0.0" (matchup/fmt 0.0)) "he played and did nothing, which is a result"))
-
-(deftest points-keep-a-decimal
-  ;; Whole numbers would collapse 8.4 and 12.6 into the same comparison.
-  (is (= "12.6" (matchup/fmt 12.64)))
-  (is (= "8.4" (matchup/fmt 8.44))))
-
+;; The dash itself is `util/week-points`'s, and `util-test` pins it.
 (deftest the-pending-class-is-what-keeps-the-two-apart
   ;; The muted, unbolded look is the only thing telling "not yet" from
   ;; "nothing", so it is rendered rather than asserted on a string.
@@ -348,12 +338,31 @@
       "a basis that is not available yet draws the set lineup rather than nothing"))
 
 (deftest the-hint-says-what-can-still-be-done-or-what-was-left
-  (is (= "Best by projection: +4.0 still possible" (matchup/lineup-hint team-t)))
+  (is (= "Best by projection: +4.00 still possible" (matchup/lineup-hint team-t)))
   (is (= "Lineup locked"
          (matchup/lineup-hint (assoc-in team-t [:optimal :projected :seats-locked?] true))))
-  (is (= "Best by actual: 9.5 left on the bench"
+  (is (= "Best by actual: 9.50 left on the bench"
          (matchup/lineup-hint (assoc-in team-t [:optimal :actual] {:gain 9.5})))
       "once the week is final, regret outranks advice"))
+
+(deftest a-best-lineup-already-set-gains-nothing-whatever-the-float-says
+  ;; `optimal` sums the same players in two orders, so an unchanged lineup's
+  ;; gain lands a float's width either side of zero.
+  (is (= "Best by projection: no better lineup"
+         (matchup/lineup-hint (assoc-in team-t [:optimal :projected :gain] 1e-14))))
+  (doseq [g [0.0 -1e-14 1e-14]]
+    (is (= "Best by actual: nothing left on the bench"
+           (matchup/lineup-hint (assoc-in team-t [:optimal :actual] {:gain g})))))
+  (let [best (matchup/side-lineup (assoc-in team-t [:optimal :projected :gain] 1e-14)
+                                  :projected)]
+    (is (not (re-find #"over set" (pr-str (matchup/totals-label best)))))))
+
+(deftest the-set-lineup-totals-the-leagues-own-score
+  ;; The header shows the score of record; a sum of per-player numbers can miss
+  ;; it by a cent, and one team would read two scores.
+  (is (= 108.52 (:actual (matchup/side-lineup (assoc team-t :official 108.52 :actual 108.51)
+                                              :set))))
+  (is (= 4.0 (:actual (matchup/side-lineup team-t :set))) "the sum, where there is no record"))
 
 (deftest actual-is-offered-only-once-the-week-is-final
   (let [actual-btn (fn [t] (->> (matchup/lineup-control t :set)

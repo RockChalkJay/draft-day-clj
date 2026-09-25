@@ -101,7 +101,8 @@
   would gain. Empty when there is nothing to say."
   [team week]
   (let [starters (remove :empty? (:starters team))
-        gain     (get-in team [:optimal :projected :gain])]
+        ;; Rounded before the test for `matchup/lineup-hint`'s reason.
+        gain     (some-> (get-in team [:optimal :projected :gain]) util/hundredths)]
     (cond-> (vec
              (concat
               (keep (fn [p]
@@ -114,7 +115,7 @@
                          :warn? (boolean (db/serious-injury? st))}))
                     starters)))
       (and (number? gain) (pos? gain))
-      (conj {:text (str "Best lineup by projection: +" (.toFixed gain 1))
+      (conj {:text (str "Best lineup by projection: +" (util/week-points gain))
              :link :matchup}))))
 
 (defn best-claims
@@ -144,8 +145,8 @@
                     (when-let [rec (db/record-label theirs)] (str " (" rec ")")))
                "No opponent")]]
         [:div.side-line [:span.muted "Projected"]
-         [:span (str (board/format-one-decimal (:projected mine))
-                     (when theirs (str " – " (board/format-one-decimal (:projected theirs)))))]]
+         [:span (str (util/week-points (:projected mine))
+                     (when theirs (str " – " (util/week-points (:projected theirs)))))]]
         (when-let [at (util/kickoff-label (next-kickoff (:starters mine)))]
           [:div.side-line [:span.muted "Next kickoff"] [:span at]])])
      [:div.side-line [go-link :matchup "Open matchup →"]]]))

@@ -114,7 +114,7 @@
     ;; a bye is the common reason this cell is empty.
     :week      (let [pts (:week-points p)]
                  [:td.num (cond
-                            (number? pts) (board/format-whole pts)
+                            (number? pts) (util/week-points pts)
                             (and week (= week (:bye p))) [:span.muted "Bye"]
                             :else [:span.muted "–"])])
     ;; The position travels with the ordinal, because the whole point of the
@@ -152,9 +152,9 @@
                          :title (when (:trend p)
                                   "Recent opportunity per game against his season rate")}
                 (format-trend (:trend p))]
-    ;; One decimal, unlike the whole-number projections beside it: this is a
-    ;; per-game rate and rounding 8.4 and 8.6 both to 8 hides the comparison the
-    ;; column exists to make.
+    ;; One decimal, unlike the whole-number season projections beside it: this
+    ;; is a per-game rate and rounding 8.4 and 8.6 both to 8 hides the comparison
+    ;; the column exists to make.
     :form      [:td.num.muted (board/format-one-decimal (:form-points p))]
     :gp        [:td.num.muted (or (get-in p [:nflverse/season-to-date :games]) "–")]
     :tgt       [:td.num.muted (board/format-whole

@@ -50,6 +50,33 @@
   (is (nil? (util/sign-class 0)) "zero takes neither colour")
   (is (nil? (util/sign-class nil))))
 
+;; ---- a week's points ----
+
+(deftest a-dash-is-not-a-zero
+  ;; `:actual` is nil until kickoff, and 0.00 there would turn a Sunday morning
+  ;; into nine bad performances.
+  (is (= "-" (util/week-points nil)))
+  (is (= "0.00" (util/week-points 0.0)) "he played and did nothing, which is a result"))
+
+(deftest week-points-keep-two-decimals
+  ;; The hosts report a score to the hundredth, and the second place prints even
+  ;; when it is a zero, so a column of them lines up.
+  (is (= "12.64" (util/week-points 12.644)))
+  (is (= "8.40" (util/week-points 8.4)))
+  (is (= "-3.46" (util/week-points -3.456)) "a defense can score below zero"))
+
+(deftest a-half-cent-rounds-the-way-the-host-rounds-it
+  ;; Both are stored a hair under the half, which `.toFixed` rounds down.
+  (is (= "18.35" (util/week-points 18.345)))
+  (is (= "1.01" (util/week-points 1.005)))
+  (is (= "-18.35" (util/week-points -18.345)) "half away from zero, both ways"))
+
+(deftest nothing-below-a-cent-carries-a-sign
+  (is (= "0.00" (util/week-points -0.004)) "not -0.00")
+  (is (zero? (util/hundredths 1e-14))
+      "a lineup gain's summation drift is no gain")
+  (is (zero? (util/hundredths (- (+ 0.1 0.2) 0.3)))))
+
 ;; ---- positional label and its sort key ----
 ;; `db/pos-sort-key` lives in cljc but is reached only through `db/sort-accessors`,
 ;; which only `subs/sort-players` reads — so the browser is the one platform it
