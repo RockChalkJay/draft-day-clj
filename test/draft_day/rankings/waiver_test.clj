@@ -316,6 +316,20 @@
     (is (= 0.0 (:rivals (by "filler39")))
         "and one who starts for nobody and clears nothing draws nobody")))
 
+(deftest heat-reads-sleepers-whole-list-not-just-the-free-agents
+  ;; The most-added player is rostered; the free agent below him is not the top.
+  (let [hot  #(assoc % :trending/adds %2)
+        b    (-> board (update 0 hot 600000) (update 1 hot 20000) (update 2 hot 110000))
+        lg   (-> league
+                 (assoc-in [:teams 1 :player-ids] (held "ok"))
+                 (assoc-in [:teams 1 :active-ids] (held "ok")))
+        rate (fn [bd] (->> (waiver/waiver-board bd {:league lg :my-roster-id 1 :roster-size 2
+                                                    :num-teams 12 :through-week 8 :season-games 17
+                                                    :starting-slots two-seats})
+                           :players (filter #(= "good" (:player-id %))) first :rivals))]
+    (is (= (rate board) (rate b))
+        "the least-added on the list, whatever is left on the wire, draws no heat")))
+
 (deftest a-league-with-a-history-prices-from-it
   (let [history {:seasons [{:season "2026" :budget 100
                             :auctions [{:week 3 :player-id "s-x"

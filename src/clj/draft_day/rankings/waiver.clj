@@ -429,6 +429,7 @@
                                 :me     my-team
                                 :waiver waiver
                                 :habits habits
+                                :heat   (faab/heat-of players)
                                 ;; A waiver run is filed under the week it is
                                 ;; processed in, the one after the last played.
                                 :week   (inc (or through-week 0))})
