@@ -10,6 +10,7 @@
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.season :as season]
+            [draft-day.ingestion.sleeper-trending :as trending]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.espn]
             [draft-day.ingestion.league-import.sleeper]
@@ -352,6 +353,7 @@
               ;; the universe: see `pipeline/load-weekly`.
               week         (inc (or through-week 0))
               weekly       (pipeline/load-weekly season* week)
+              adds         (trending/load-adds)
               ctx      {:league             league
                         :my-roster-id       my-roster-id
                         :roster-size        roster-size
@@ -377,6 +379,7 @@
                            (waiver-board-inputs scoring*)
                            (ros/with-ros scoring* ctx)
                            (pipeline/assoc-weekly (:lines weekly))
+                           (pipeline/assoc-trending (:adds adds))
                            (waiver/with-week-points scoring*)
                            ;; The second positional rank, over this week rather
                            ;; than the preseason. Deliberately not folded into
@@ -403,7 +406,10 @@
                                     ;; nil when there is no weekly line at all;
                                     ;; the board then reads rest-of-season only.
                                     :week         (:week weekly)
-                                    :week-fetched-at (:fetched-at weekly))))))
+                                    :week-fetched-at (:fetched-at weekly)
+                                    ;; nil offline or when Sleeper never answered;
+                                    ;; rivals then bid on need alone.
+                                    :trending     (some-> adds (select-keys [:fetched-at :lookback-hours])))))))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 

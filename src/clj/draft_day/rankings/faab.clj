@@ -23,7 +23,9 @@
   Who bids: a rival makes `:per-week` claims (his `bid-history` profile) and
   aims them by `interest-weight` — what a player adds to his own starting
   lineup, plus a CHOSEN fraction of value over replacement for the stash
-  claimed with no hole to fill. The count is Poisson, so he bids on a player
+  claimed with no hole to fill, both raised by the player's `heat` on Sleeper's
+  trending list, which is news no projection has caught up with. The count is
+  Poisson, so he bids on a player
   with chance 1 − e^(−rate); a fixed count, 1 − (1 − share)^λ, would make a
   rival with one target certain to bid however rarely he bids.
 
@@ -51,6 +53,12 @@
   "The chance of winning that `:bid-sure` buys."
   0.9)
 
+(def heat-weight
+  "How far the most-added player on Sleeper raises a rival's interest: at 1.0 it
+  doubles. CHOSEN, and the replay backtest cannot rebuild past trending lists,
+  so it waits on the snapshots `draft-day.tools.trending-snapshot` records."
+  1.0)
+
 (def threat-floor
   "The least chance of bidding that names a rival in `:competition`. CHOSEN."
   0.05)
@@ -59,18 +67,30 @@
   (let [k (Math/pow 10.0 places)]
     (/ (Math/round (* (double x) k)) k)))
 
+(defn heat-of
+  "`player -> 0..1`: where his `:trending/adds` sits on the list `fas` came from,
+  on a log scale from its least-added player to its most. Off the list, 0."
+  [fas]
+  (let [adds (keep :trending/adds fas)]
+    (if (< 1 (count (distinct adds)))
+      (let [lo (Math/log (apply min adds))
+            span (- (Math/log (apply max adds)) lo)]
+        (fn [p] (if-let [n (:trending/adds p)] (/ (- (Math/log n) lo) span) 0.0)))
+      (fn [p] (if (:trending/adds p) 1.0 0.0)))))
+
 (defn interest-weight
   "How much of a rival's attention a free agent draws; see the ns docstring."
-  [need ros-vorp]
-  (+ (max 0.0 (double (or need 0.0)))
-     (* speculative-weight (max 0.0 (double (or ros-vorp 0.0))))))
+  [need ros-vorp heat]
+  (* (+ (max 0.0 (double (or need 0.0)))
+        (* speculative-weight (max 0.0 (double (or ros-vorp 0.0)))))
+     (+ 1.0 (* heat-weight heat))))
 
 (defn claim-rates
   "`{player-id rate}`: how many of a rival's `per-week` claims land on each free
   agent on average. The rates sum to `per-week` whenever anybody draws his
   interest. A player who draws none is absent."
-  [needs fas per-week]
-  (let [ws    (mapv #(interest-weight (get needs (:player-id %)) (:ros-vorp %)) fas)
+  [needs fas per-week heat]
+  (let [ws    (mapv #(interest-weight (get needs (:player-id %)) (:ros-vorp %) (heat %)) fas)
         total (reduce + 0.0 ws)]
     (if (pos? total)
       (into {}
@@ -334,16 +354,17 @@
   "The rivals able to bid at all, each with his habits, his claim rates, his cap
   and his tie odds against me."
   [rivals me fas habits budget min-bid]
-  (->> rivals
-       (map (fn [r]
-              (let [h (rival-habits r habits)]
-                (assoc r
-                       :style (:style h)
-                       :habits h
-                       :cap (long (min budget (or (:faab-left r) budget)))
-                       :rates (claim-rates (:needs r) fas (:per-week h))
-                       :tie (tie-chance (:waiver-position me) (:waiver-position r))))))
-       (filterv #(<= min-bid (:cap %)))))
+  (let [heat (heat-of fas)]
+    (->> rivals
+         (map (fn [r]
+                (let [h (rival-habits r habits)]
+                  (assoc r
+                         :style (:style h)
+                         :habits h
+                         :cap (long (min budget (or (:faab-left r) budget)))
+                         :rates (claim-rates (:needs r) fas (:per-week h) heat)
+                         :tie (tie-chance (:waiver-position me) (:waiver-position r))))))
+         (filterv #(<= min-bid (:cap %))))))
 
 (defn competition
   "One free agent's `:bid`, `:win-prob`, `:bid-sure`, `:rivals` and
