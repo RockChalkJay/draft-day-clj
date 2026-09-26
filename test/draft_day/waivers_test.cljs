@@ -333,6 +333,61 @@
     (is (= "8.4" (txt {:form-points 8.44})))
     (is (= "–" (txt {})))))
 
+(def ^:private contested
+  {:bid 12 :win-prob 0.764 :walk-away 41 :bid-sure 20
+   :competition {:top [8 19]
+                 :threats [{:name "Show me your TDs" :faab-left 89 :p 0.831}
+                           {:name "Quad Squad Monopoly" :faab-left nil :p 0.468}]}})
+
+(deftest the-bid-cell-reads-bid-then-its-chance
+  (let [c (waivers/cell :bid contested nil)]
+    (is (= "$12" (last (nth c 2))))
+    (is (= [:span {:class "muted"} " · 76%"] (nth c 3))))
+  (is (= "warn" (get-in (vec (waivers/cell :bid {:bid 0 :win-prob 0.18} nil)) [3 1 :class]))
+      "a bid that rarely lands says so")
+  (is (= [:td.bid "–"] (waivers/cell :bid {:bid nil} nil))
+      "no FAAB is a dash, never $0"))
+
+(deftest hovering-a-bid-opens-its-tooltip-and-leaving-closes-it
+  (let [[_ attrs] (waivers/cell :bid contested {:source "league" :auctions 461})
+        cell #js {:getBoundingClientRect (fn [] #js {:left 900 :bottom 180})}]
+    (is (re-find #"^Top rival bid" (:aria-label attrs)) "still read by a screen reader")
+    ((:on-mouse-enter attrs) #js {:currentTarget cell})
+    (is (= {:x 900 :y 184} (select-keys @waivers/bid-tip [:x :y])) "just under the cell")
+    (is (re-find #"Show me your TDs" (:text @waivers/bid-tip)))
+    ((:on-mouse-leave attrs) nil)
+    (is (nil? @waivers/bid-tip))))
+
+(deftest the-bid-tooltip-names-who-you-are-bidding-against
+  (is (= (str "Top rival bid: usually ≤ $8, rarely over $19\n"
+              "Show me your TDs · $89 left · 83%\n"
+              "Quad Squad Monopoly · 47%\n"
+              "90% sure: $20 · worth $41 to you\n"
+              "From 461 league auctions + Sleeper-wide")
+         (waivers/bid-title contested {:source "league" :auctions 461})))
+  (is (= (str "No other team likely to bid\n"
+              "90% sure: $0 · worth $1 to you\n"
+              "From Sleeper-wide auctions")
+         (waivers/bid-title {:bid 0 :walk-away 1 :bid-sure 0 :competition {:top nil :threats []}}
+                            {:source "sleeper-wide" :auctions 0})))
+  (is (re-find #"out of reach" (waivers/bid-title (assoc contested :bid-sure nil) nil)))
+  (is (nil? (waivers/bid-title {:bid nil} nil))))
+
+(deftest only-a-certainty-reads-as-one
+  (is (= "76%" (waivers/win-pct 0.764)))
+  (is (= "99%" (waivers/win-pct 0.996)) "almost is not certain")
+  (is (= "100%" (waivers/win-pct 1.0)))
+  (is (= "1%" (waivers/win-pct 0.004)))
+  (is (= "0%" (waivers/win-pct 0)))
+  (is (nil? (waivers/win-pct nil))))
+
+(deftest rivals-and-adds-cells
+  (is (= "4.5" (last (waivers/cell :rivals {:rivals 4.52} nil))))
+  (is (= "–" (last (waivers/cell :rivals {} nil))))
+  (is (= "152.6k" (waivers/format-adds 152600)))
+  (is (= "940" (waivers/format-adds 940)))
+  (is (= "–" (waivers/format-adds nil)) "off Sleeper's list is not zero adds"))
+
 (deftest sorting-puts-players-with-nothing-to-say-last-in-both-directions
   ;; Same rule `sort-players` keeps: a nil is not a low value, it is an absent
   ;; one, and it must not float to the top when the column is reversed.
@@ -1201,3 +1256,17 @@
 (deftest no-kickoff-means-no-tooltip
   (is (nil? (waivers/kickoff-title {})))
   (is (nil? (waivers/kickoff-title {:kickoff/at nil}))))
+
+(deftest a-league-that-does-not-bid-draws-no-bid-columns
+  (reset! rdb/app-db (assoc (db/default-db)
+                            :leagues {"sleeper:1" {:sync {:waiver {:type "rolling"}}}}
+                            :active-league "sleeper:1"))
+  (rf/clear-subscription-cache!)
+  (let [shown (set (map :key @(rf/subscribe [:visible-waiver-columns])))]
+    (is (not-any? shown [:bid :rivals]))
+    (is (contains? shown :adds) "only the columns a bid fills")
+    (is (every? #(get-in % [:visible?]) (filter #(#{:bid :rivals} (:key %)) (:waiver-columns @rdb/app-db)))
+        "the stored layout keeps them for a league that bids"))
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:1" :sync :waiver :type] "faab")
+  (rf/clear-subscription-cache!)
+  (is (every? (set (map :key @(rf/subscribe [:visible-waiver-columns]))) [:bid :rivals])))

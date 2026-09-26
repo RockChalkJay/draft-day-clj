@@ -1011,7 +1011,9 @@
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true}
    {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start — unlike Upg, which measures him against your worst bench player. This is what the board sorts by" :default? true}
-   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid: about a dollar over the top rival bid likely for him, or the league minimum when nobody else will bid, and never more than he is worth to you. An estimate from your league's bid history and Sleeper-wide auctions. Blank when the league does not run FAAB or your budget is spent" :default? true}
+   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid and its chance to win: about a dollar over the top rival bid he is likely to draw, or the league minimum when nobody else will bid, never more than he is worth to you. Hover a bid for the rivals behind it. An estimate. Blank when the league does not run FAAB or your budget is spent" :default? true}
+   {:key :rivals    :label "Rivals" :tooltip "How many other teams are expected to bid on him — from what he would add to each rival's own lineup, how often that manager claims, and how hard Sleeper is adding him" :default? true}
+   {:key :adds      :label "Adds"   :tooltip "Sleeper trending adds over the last 48 hours, across every Sleeper league. Blank when he is not among the hundred most added" :default? true}
    {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true}
    {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules — what his current role has been worth, against what the projection expects of it" :default? false}
    {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true}
@@ -1068,6 +1070,8 @@
    :upgrade   :upgrade
    :lineup    :lineup-upgrade
    :bid       :bid
+   :rivals    :rivals
+   :adds      :trending/adds
    :trend     :trend
    :form      :form-points
    :gp        #(get-in % [:nflverse/season-to-date :games])
@@ -1080,6 +1084,27 @@
    :ecr       :fantasypros/ecr})
 
 (defn default-waiver-columns [] (default-columns waiver-column-catalog))
+
+(def faab-columns
+  "Waiver columns that only answer in a league that bids for its claims."
+  #{:bid :rivals})
+
+(defn runs-faab?
+  "Does a synced league bid for its waivers? nil before a sync says, which is
+  not the same as no."
+  [sync]
+  (when-let [t (get-in sync [:waiver :type])]
+    (= "faab" (name t))))
+
+(defn waiver-columns-for
+  "The stored waiver columns as a league shows them: in one that does not run
+  FAAB, `faab-columns` are hidden and marked `:faab-only?`, since every cell
+  would be blank. The stored layout is untouched, so a FAAB league gets them
+  back."
+  [cols sync]
+  (if (false? (runs-faab? sync))
+    (mapv #(if (faab-columns (:key %)) (assoc % :visible? false :faab-only? true) %) cols)
+    cols))
 
 (defn repair-lineup
   "One team's `:starter-ids`, with each nil kept in place as `empty-seat`.

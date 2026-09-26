@@ -11,6 +11,7 @@
   week — in preseason the rest-of-season board *is* the draft board, which is the
   honest answer but the one a manager is most likely to misread as live."
   (:require [clojure.string :as str]
+            [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.db :as db]
             [draft-day.views.board :as board]
@@ -31,6 +32,96 @@
 
 (defn format-trend [t]
   (if (number? t) (str (.toFixed t 2) "×") "–"))
+
+;; ---- the bid ----
+
+(defn win-pct
+  "A chance as a whole percent, \"76%\", or nil. Only a certainty prints 100%
+  and only an impossibility 0%: rounding 99.6% up would state what the model
+  does not claim."
+  [p]
+  (when (number? p)
+    (str (cond (>= p 1) 100
+               (<= p 0) 0
+               :else    (-> (js/Math.round (* 100 p)) (max 1) (min 99)))
+         "%")))
+
+(def priced-out
+  "Below this chance a bid rarely lands, and the cell says so in red."
+  0.25)
+
+(defn format-adds
+  "Sleeper's trending count, compact: 152.6k, or the count under a thousand."
+  [n]
+  (cond (not (number? n)) "–"
+        (>= n 1000)       (str (.toFixed (/ n 1000) 1) "k")
+        :else             (str n)))
+
+(defn bid-source
+  "Where the bid's prices came from, off the reply's `:bidding`."
+  [{:keys [source auctions]}]
+  (if (= "league" (some-> source name))
+    (str "From " auctions " league auctions + Sleeper-wide")
+    "From Sleeper-wide auctions"))
+
+(defn bid-title
+  "The Bid cell's tooltip: the top rival bid, the likeliest rivals, the sure bid
+  against the walk-away, and the source. nil where there is no bid."
+  [{:keys [bid walk-away bid-sure competition]} bidding]
+  (when (number? bid)
+    (let [[p50 p90] (:top competition)]
+      (str/join
+       "\n"
+       (concat
+        [(if p50
+           (str "Top rival bid: usually ≤ $" p50 ", rarely over $" p90)
+           "No other team likely to bid")]
+        (map (fn [{:keys [name faab-left p]}]
+               (str name (when (number? faab-left) (str " · $" faab-left " left"))
+                    " · " (win-pct p)))
+             (:threats competition))
+        [(str (if (number? bid-sure) (str "90% sure: $" bid-sure) "90% sure: out of reach")
+              " · worth $" walk-away " to you")
+         (bid-source bidding)])))))
+
+(defonce ^{:doc "The Bid tooltip on screen, `{:text :x :y}`, or nil."}
+  bid-tip (r/atom nil))
+
+(defn show-bid-tip!
+  "Open the Bid tooltip under the hovered cell. The page's own rather than a
+  `title`, which the browser draws at its own small size; fixed to the viewport
+  so the board's scroll container cannot clip it on the bottom rows."
+  [e text]
+  (let [rect (.getBoundingClientRect (.-currentTarget e))]
+    (reset! bid-tip {:text text :x (.-left rect) :y (+ (.-bottom rect) 4)})))
+
+(defn bid-tip-popover
+  "Cleared when the board goes, or a tab switched mid-hover would bring it back
+  open over nothing."
+  []
+  (r/create-class
+   {:component-will-unmount #(reset! bid-tip nil)
+    :reagent-render
+    (fn []
+      (when-let [{:keys [text x y]} @bid-tip]
+        [:div.bid-tip {:style {:left x :top y} :aria-hidden true} text]))}))
+
+(defn bid-cell
+  "`$12 · 76%`, left-aligned so the dollars line up whatever the chance's
+  width, or a dash where there is no bid. A nil bid is \"this league does
+  not bid\" and $0 is a legal bid that wins at the minimum; they must not read
+  alike. Hovering opens `bid-title` in `bid-tip-popover`."
+  [p bidding]
+  (if (number? (:bid p))
+    (let [w   (:win-prob p)
+          tip (bid-title p bidding)]
+      [:td.bid {:aria-label     tip
+                :on-mouse-enter #(show-bid-tip! % tip)
+                :on-mouse-leave #(reset! bid-tip nil)}
+       [:b (str "$" (:bid p))]
+       (when (number? w)
+         [:span {:class (if (< w priced-out) "warn" "muted")} (str " · " (win-pct w))])])
+    [:td.bid "–"]))
 
 ;; ---- this week's game ----
 ;; Two sources answer "who does he play". Sleeper's opponent rides in the same
@@ -92,86 +183,89 @@
   (.stopPropagation e)
   (rf/dispatch [:show-modal {:kind :player-detail :player-id (:player-id p)}]))
 
-(defn cell [k p week]
-  (case k
-    :rank      [:td.num.muted (:rank p)]
-    :name      [:td.player
-                [:button.name-btn.p-name
-                 {:on-click #(open-detail! % p)
-                  :tab-index -1
-                  :title "Player detail"}
-                 (:player-name p)]
-                (when-let [st (:sleeper/injury-status p)]
-                  (when (db/serious-injury? st)
-                    [:span.inj-flag {:title st} " ⚠"]))]
-    :team      [:td (or (:team p) "–")]
-    :position  [:td (util/pos-label p)]
-    :bye       [:td.num (or (:bye p) "–")]
-    :ros       [:td.num (board/format-whole (:ros-points p))]
-    ;; No weekly line is not a weekly zero: he is on bye, or nobody projects
-    ;; him. A 0 would claim he plays and does nothing. Which of the two it is
-    ;; is worth saying here rather than only in Opp, which is off by default —
-    ;; a bye is the common reason this cell is empty.
-    :week      (let [pts (:week-points p)]
-                 [:td.num (cond
-                            (number? pts) (util/week-points pts)
-                            (and week (= week (:bye p))) [:span.muted "Bye"]
-                            :else [:span.muted "–"])])
-    ;; The position travels with the ordinal, because the whole point of the
-    ;; column is that "WR19" means something where "4.2" does not.
-    :week-rank (let [n (:week-pos-rank p)]
-                 [:td.num.muted (if n (str (:position p) n) "–")])
-    :opp       [:td.muted {:title (kickoff-title p)} (week-matchup p week)]
-    ;; The headline. Signed, because a free agent worse than the man you would
-    ;; drop is not an add — and flattening that to zero would make the whole
-    ;; tail of the pool look equally plausible.
-    ;;
-    ;; Rounded ONCE, and both the colour and the digits read from that. Colouring
-    ;; the raw value and printing the rounded one put a green dash on the board
-    ;; for an upgrade of 0.4 — `sign-class` saw a positive number while `signed`
-    ;; dashed out the zero. Same rule `controls/val-cell` states: the colour and
-    ;; the digits have to come from the same value.
-    :upgrade   (let [n (js/Math.round (or (:upgrade p) 0))]
-                 [:td.num {:class (util/sign-class n)} (util/signed n)])
-    ;; Absent when the request carried no roster config, which is a different
-    ;; answer from a lineup this claim would not change.
-    ;; Signed and coloured like Upg, because it goes negative for a real reason:
-    ;; the drop can be a starter, and a claim that costs you lineup points is
-    ;; exactly what this column exists to show. Absent (a request that carried
-    ;; no roster config) is a dash, not a zero.
-    :lineup    (let [n (:lineup-upgrade p)]
-                 (if (number? n)
-                   (let [r (js/Math.round n)]
-                     [:td.num {:class (util/sign-class r)} (util/signed r)])
-                   [:td.num [:span.muted "–"]]))
-    ;; A nil bid and a $0 bid are different answers and must not render the
-    ;; same. nil is "this league does not bid"; $0 is a legal FAAB bid that says
-    ;; he is worth the minimum.
-    :bid       [:td.num (if (number? (:bid p)) (str "$" (:bid p)) "–")]
-    :trend     [:td.num {:class (trend-class (:trend p))
-                         :title (when (:trend p)
-                                  "Recent opportunity per game against his season rate")}
-                (format-trend (:trend p))]
-    ;; One decimal, unlike the whole-number season projections beside it: this
-    ;; is a per-game rate and rounding 8.4 and 8.6 both to 8 hides the comparison
-    ;; the column exists to make.
-    :form      [:td.num.muted (board/format-one-decimal (:form-points p))]
-    :gp        [:td.num.muted (or (get-in p [:nflverse/season-to-date :games]) "–")]
-    :tgt       [:td.num.muted (board/format-whole
-                               (get-in p [:nflverse/season-to-date :usage :targets]))]
-    :car       [:td.num.muted (board/format-whole
-                               (get-in p [:nflverse/season-to-date :usage :carries]))]
-    :ros-vorp  [:td.num (board/format-whole (:ros-vorp p))]
-    :preseason [:td.num.muted (board/format-whole (:points p))]
-    :ecr       [:td.num.muted (or (:fantasypros/ecr p) "–")]
-    :risk      (let [lvl (:injury-risk p)
-                     txt (or (:injury/reason p) "No injury history to judge")]
-                 [:td.risk {:title txt :aria-label txt}
-                  (if lvl [board/risk-bar lvl] [:span.muted "–"])])
-    :inj       (let [st (:sleeper/injury-status p)]
-                 [:td {:class (when (db/serious-injury? st) "inj-serious")}
-                  (or st "–")])
-    [:td "–"]))
+(defn cell
+  "One board cell. `bidding` is the reply's account of where bids came from,
+  which only the Bid cell reads."
+  ([k p week] (cell k p week nil))
+  ([k p week bidding]
+   (case k
+     :rank      [:td.num.muted (:rank p)]
+     :name      [:td.player
+                 [:button.name-btn.p-name
+                  {:on-click #(open-detail! % p)
+                   :tab-index -1
+                   :title "Player detail"}
+                  (:player-name p)]
+                 (when-let [st (:sleeper/injury-status p)]
+                   (when (db/serious-injury? st)
+                     [:span.inj-flag {:title st} " ⚠"]))]
+     :team      [:td (or (:team p) "–")]
+     :position  [:td (util/pos-label p)]
+     :bye       [:td.num (or (:bye p) "–")]
+     :ros       [:td.num (board/format-whole (:ros-points p))]
+     ;; No weekly line is not a weekly zero: he is on bye, or nobody projects
+     ;; him. A 0 would claim he plays and does nothing. Which of the two it is
+     ;; is worth saying here rather than only in Opp, which is off by default —
+     ;; a bye is the common reason this cell is empty.
+     :week      (let [pts (:week-points p)]
+                  [:td.num (cond
+                             (number? pts) (util/week-points pts)
+                             (and week (= week (:bye p))) [:span.muted "Bye"]
+                             :else [:span.muted "–"])])
+     ;; The position travels with the ordinal, because the whole point of the
+     ;; column is that "WR19" means something where "4.2" does not.
+     :week-rank (let [n (:week-pos-rank p)]
+                  [:td.num.muted (if n (str (:position p) n) "–")])
+     :opp       [:td.muted {:title (kickoff-title p)} (week-matchup p week)]
+     ;; The headline. Signed, because a free agent worse than the man you would
+     ;; drop is not an add — and flattening that to zero would make the whole
+     ;; tail of the pool look equally plausible.
+     ;;
+     ;; Rounded ONCE, and both the colour and the digits read from that. Colouring
+     ;; the raw value and printing the rounded one put a green dash on the board
+     ;; for an upgrade of 0.4 — `sign-class` saw a positive number while `signed`
+     ;; dashed out the zero. Same rule `controls/val-cell` states: the colour and
+     ;; the digits have to come from the same value.
+     :upgrade   (let [n (js/Math.round (or (:upgrade p) 0))]
+                  [:td.num {:class (util/sign-class n)} (util/signed n)])
+     ;; Absent when the request carried no roster config, which is a different
+     ;; answer from a lineup this claim would not change.
+     ;; Signed and coloured like Upg, because it goes negative for a real reason:
+     ;; the drop can be a starter, and a claim that costs you lineup points is
+     ;; exactly what this column exists to show. Absent (a request that carried
+     ;; no roster config) is a dash, not a zero.
+     :lineup    (let [n (:lineup-upgrade p)]
+                  (if (number? n)
+                    (let [r (js/Math.round n)]
+                      [:td.num {:class (util/sign-class r)} (util/signed r)])
+                    [:td.num [:span.muted "–"]]))
+     :bid       (bid-cell p bidding)
+     :rivals    [:td.num (if (number? (:rivals p)) (.toFixed (:rivals p) 1) "–")]
+     :adds      [:td.num.muted (format-adds (:trending/adds p))]
+     :trend     [:td.num {:class (trend-class (:trend p))
+                          :title (when (:trend p)
+                                   "Recent opportunity per game against his season rate")}
+                 (format-trend (:trend p))]
+     ;; One decimal, unlike the whole-number season projections beside it: this
+     ;; is a per-game rate and rounding 8.4 and 8.6 both to 8 hides the comparison
+     ;; the column exists to make.
+     :form      [:td.num.muted (board/format-one-decimal (:form-points p))]
+     :gp        [:td.num.muted (or (get-in p [:nflverse/season-to-date :games]) "–")]
+     :tgt       [:td.num.muted (board/format-whole
+                                (get-in p [:nflverse/season-to-date :usage :targets]))]
+     :car       [:td.num.muted (board/format-whole
+                                (get-in p [:nflverse/season-to-date :usage :carries]))]
+     :ros-vorp  [:td.num (board/format-whole (:ros-vorp p))]
+     :preseason [:td.num.muted (board/format-whole (:points p))]
+     :ecr       [:td.num.muted (or (:fantasypros/ecr p) "–")]
+     :risk      (let [lvl (:injury-risk p)
+                      txt (or (:injury/reason p) "No injury history to judge")]
+                  [:td.risk {:title txt :aria-label txt}
+                   (if lvl [board/risk-bar lvl] [:span.muted "–"])])
+     :inj       (let [st (:sleeper/injury-status p)]
+                  [:td {:class (when (db/serious-injury? st) "inj-serious")}
+                   (or st "–")])
+     [:td "–"])))
 
 ;; ---- header ----
 
@@ -330,6 +424,7 @@
         cols    @(rf/subscribe [:visible-waiver-columns])
         sort    @(rf/subscribe [:waiver-sort])
         week    (:week @(rf/subscribe [:waiver-meta]))
+        bidding (:bidding @(rf/subscribe [:waivers]))
         comparing (set @(rf/subscribe [:compare]))]
     [:div.waivers-view
      [status-line]
@@ -354,9 +449,13 @@
                       ;; third evicts the older, so one player can be held while
                       ;; the board is clicked through challengers.
                       :on-click #(rf/dispatch [:compare-toggle (:player-id p)])}
-                 (map (fn [{k :key}] ^{:key k} [cell k p week]) cols)])
+                 (map (fn [{k :key}] ^{:key k} [cell k p week bidding]) cols)])
               players)]]]
       [:aside.waiver-roster-col [my-roster-panel]]]
+     [bid-tip-popover]
+     ;; Sleeper's data, on Sleeper's terms: say whose it is wherever it shows.
+     (when (some #(= :adds (:key %)) cols)
+       [:div.source-note "Adds: Sleeper trending adds, last 48 hours · via Sleeper"])
      (when-let [rostered @(rf/subscribe [:rostered-matches])]
        (when (seq rostered)
          [:div.rostered-note

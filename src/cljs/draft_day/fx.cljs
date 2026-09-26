@@ -10,7 +10,7 @@
 
   Bump this whenever a persisted shape changes; stale blobs are discarded and the
   app opens with defaults."
-  12)
+  13)
 
 (def drafts-key "draft-day-drafts")
 

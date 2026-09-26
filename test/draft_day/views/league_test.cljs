@@ -84,3 +84,24 @@
     (is (re-find #"\$0" (sub-line 0)) "a spent budget is a real $0")
     (is (not (re-find #"\$" (sub-line nil))))
     (is (re-find #"did not report" (sub-line nil)))))
+
+(deftest a-teams-bidding-style-is-a-tag-with-its-evidence
+  (let [card (fn [profile history?]
+               (render (fn [] (league/team-card {:team {:name "T" :faab-left 76}
+                                                 :starters [] :bench [] :parked []
+                                                 :profile profile}
+                                                true {} history?))))
+        p    {:style :zero-flyer :bids 40 :per-week 4.1 :zero-share 0.79 :max-bid 1}]
+    (is (re-find #"style-tag.*\"\$0 flyer\"\]" (card p true)))
+    (is (re-find #"4.1 claims a week, 79% at \$0, top bid \$1" (card p true)) "as the tag's title")
+    (is (re-find #"No bids yet" (card nil true)) "a manager the history holds no bid from")
+    (is (not (re-find #"style-tag" (card nil false))) "no history to read, no tag")
+    (is (re-find #"\[:b \{:title \"FAAB left\"\} \"\$76\"\]" (card nil false)) "the balance, bare")))
+
+(deftest profiles-reach-the-league-tab-with-their-style-a-keyword
+  (synced!)
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:1" :sync :bid-history]
+         {:profiles [{:manager "roster:1" :style "zero-flyer" :bids 3 :per-week 4.1
+                      :zero-share 0.79 :max-bid 1}]})
+  (is (= [:zero-flyer] (mapv :style @(rf/subscribe [:league-bid-profiles]))))
+  (is (re-find #"\$0 flyer" (render league/season-view))))

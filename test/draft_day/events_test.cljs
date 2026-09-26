@@ -263,7 +263,7 @@
     (is (= (db/default-columns) (:columns @rdb/app-db)) "and the rest is default")))
 
 (deftest the-persisted-shape-is-pinned-to-the-version-that-reads-it
-  (is (= 12 fx/storage-version)
+  (is (= 13 fx/storage-version)
       "the shapes below changed: bump fx/storage-version and update this test")
 
   (is (= #{:pass_yd :pass_td :pass_int :pass_2pt :pass_cmp
@@ -301,7 +301,7 @@
       "a stored :columns vector is keyed off this list")
 
   (is (= [:rank :name :team :position :bye :ros :week :week-rank :opp :upgrade
-          :lineup :bid :trend :form :gp :risk :inj :ros-vorp :tgt :car
+          :lineup :bid :rivals :adds :trend :form :gp :risk :inj :ros-vorp :tgt :car
           :preseason :ecr]
          (mapv :key db/waiver-column-catalog))
       "and a stored :waiver-columns vector off this one")

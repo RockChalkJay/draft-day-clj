@@ -441,6 +441,12 @@
 (rf/reg-sub :league-sync :<- [:active-league]
   (fn [lg _] (:sync lg)))
 
+;; Each manager's bidding profile, nil for a host with no history to read.
+;; `:style` crosses JSON as a string; `bid-history` keys its labels by keyword.
+(rf/reg-sub :league-bid-profiles :<- [:league-sync]
+  (fn [ls _]
+    (some->> ls :bid-history :profiles (mapv #(update % :style keyword)))))
+
 (rf/reg-sub :my-roster-id :<- [:active-league]
   (fn [lg _] (:my-roster-id lg)))
 
@@ -490,7 +496,11 @@
 ;; button is absent rather than inert when there is nothing to keep.
 (rf/reg-sub :draft-has-picks? (fn [db _] (db/drafted-anything? db)))
 
-(rf/reg-sub :visible-waiver-columns :<- [:waiver-columns]
+;; The stored columns as the active league shows them — see `db/waiver-columns-for`.
+(rf/reg-sub :league-waiver-columns :<- [:waiver-columns] :<- [:league-sync]
+  (fn [[cols ls] _] (db/waiver-columns-for cols ls)))
+
+(rf/reg-sub :visible-waiver-columns :<- [:league-waiver-columns]
   (fn [cols _] (filterv :visible? cols)))
 
 (rf/reg-sub :waiver-meta :<- [:waivers]

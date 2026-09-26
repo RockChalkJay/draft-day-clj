@@ -7,6 +7,7 @@
   synced rosters, through `db/team-roster`, so a player shows under the team
   the provider says holds him rather than the team that drafted him in August."
   (:require [re-frame.core :as rf]
+            [draft-day.bid-history :as bid-history]
             [draft-day.db :as db]
             [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
@@ -37,18 +38,30 @@
             :else nm))]
    [:td.muted (:team p)]])
 
-(defn team-card [{:keys [team starters bench parked mine?]} faab? openable]
+(defn style-tag
+  "How this team bids, as a tag on its name with the evidence as its title, or
+  nil for a league with no bid history to read. A manager with none in it is
+  \"No bids yet\" rather than untagged, which would read as the history
+  missing."
+  [profile history?]
+  (when history?
+    [:span.style-tag {:title (when profile (bid-history/style-line profile))}
+     (get bid-history/style-labels (if profile (:style profile) :new))]))
+
+(defn team-card [{:keys [team starters bench parked mine? profile]} faab? openable
+                 & [history?]]
   [:div.team-card {:class (when mine? "mine")}
    [:div.team-head.split
     (:name team)
     (when mine? [:span.you " (You)"])
+    [style-tag profile history?]
     (when-let [rec (db/record-label team)] [:span.rec rec])]
    [:div.team-sub
     ;; A balance the host did not report is a dash, not $0: a rival read as
     ;; broke is one the manager thinks cannot outbid him.
     (when faab?
       (if (number? (:faab-left team))
-        [:span "FAAB " [:b (util/faab (:faab-left team))] " left"]
+        [:b {:title "FAAB left"} (util/faab (:faab-left team))]
         [:span.muted {:title "The host did not report this team's FAAB"} "FAAB –"]))
     (when-let [pos (:waiver-position team)] [:span (str "Waiver #" pos)])]
    [:table.roster
@@ -67,6 +80,7 @@
         failed   @(rf/subscribe [:universe-error])
         ls       @(rf/subscribe [:league-sync])
         openable @(rf/subscribe [:comparable-by-id])
+        profiles @(rf/subscribe [:league-bid-profiles])
         faab?   (= "faab" (some-> ls :waiver :type name))]
     (cond
       (not synced?)
@@ -83,5 +97,6 @@
       [:div.league-grid
        (map (fn [r]
               ^{:key (get-in r [:team :roster-id])}
-              [team-card r faab? openable])
+              [team-card (assoc r :profile (bid-history/team-profile (:team r) profiles))
+               faab? openable (some? profiles)])
             rosters)])))

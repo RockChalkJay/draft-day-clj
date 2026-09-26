@@ -324,7 +324,7 @@
     (is (= ["Rest of season"] (labels horizon)))
     (is (= ["Upgrade"] (labels claim)))
     (is (= ["Preseason"] (labels evidence))))
-  (is (= #{"Lineup gain" "Upgrade" "Bid"}
+  (is (= #{"Lineup gain" "Upgrade" "Bid" "Rivals"}
          (set (map :label (metrics/rows-by-band :claim))))))
 
 (deftest an-evidence-band-with-nothing-in-it-is-not-drawn
