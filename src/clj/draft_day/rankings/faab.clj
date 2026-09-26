@@ -276,6 +276,25 @@
                (get-in prior/position-shift [position :log-shift] 0.0)
                log-multiplier)))
 
+(def cap-quantile
+  "Which positive bid, in an auction four or more managers competed for, a
+  walk-away may not exceed: near the expensive end of what the market pays.
+  CHOSEN."
+  0.9)
+
+(defn market-cap
+  "The most a claim at `position` should be worth, in the league's dollars:
+  `cap-quantile` of the backbone's four-or-more-bidder cell for the week's
+  phase, moved by the position's and the budget's measured shifts. A kicker or
+  a defense lands near a sixth of a $100 budget, a quarterback over half. nil
+  without a budget."
+  [position budget week]
+  (when (and (number? budget) (pos? budget))
+    (let [share (get-in prior/bid-share [[4 (prior/phase week)] :positive cap-quantile])
+          shift (+ (get-in prior/position-shift [position :log-shift] 0.0)
+                   (if (== 100 budget) 0.0 (get-in prior/budget-shift [4 :log-shift])))]
+      (* budget share (Math/exp shift)))))
+
 (defn tie-chance
   "The chance I win a tie with a rival: waiver order, the lower position first,
   and even odds when either side's is unknown."

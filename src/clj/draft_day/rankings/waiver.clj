@@ -204,15 +204,32 @@
   Only 0.2-4.8% of a real league's free agents have a positive lineup delta."
   0.15)
 
+(defn over-free-option
+  "What each of `fas` adds by `k` over the best *other* free agent at his
+  position, never below 0, or nil where `k` is. Free agents at one position
+  are substitutes: a claim buys what he adds over the man still on the wire,
+  not over nobody. A streamable position — a defense, a kicker — has a free
+  one nearly as good every week, so its best free agent is worth the gap and
+  not his whole line; a breakout alone at his position keeps nearly all of it."
+  [fas k]
+  (let [top2 (update-vals (group-by :position (filter #(number? (k %)) fas))
+                          (fn [ps] (vec (take 2 (sort > (map #(double (k %)) ps))))))]
+    (mapv (fn [p]
+            (when-let [v (some-> (k p) double)]
+              (let [[best second] (get top2 (:position p))
+                    other (if (== v best) second best)]
+                (max 0.0 (- v (or other 0.0))))))
+          fas)))
+
 (defn weights
-  "`[lineup-weight stash-weight]`; a player is in exactly one pool. With no
-  `:lineup-upgrade` anywhere every lineup weight is 0 and the stash pool takes
-  the whole budget, which is the pre-lineup rule exactly — no special case."
-  [p]
-  (let [lu (max 0.0 (double (or (:lineup-upgrade p) 0.0)))]
-    (if (pos? lu)
-      [lu 0.0]
-      [0.0 (max 0.0 (double (or (:upgrade p) 0.0)))])))
+  "`[lineup-weight stash-weight]` from a player's gains over the free option
+  (`over-free-option`); a player is in exactly one pool, the lineup one when he
+  would start at all. With no `:lineup-upgrade` anywhere every lineup weight is
+  0 and the stash pool takes the whole budget — no special case."
+  [p lineup-margin upgrade-margin]
+  (if (pos? (or (:lineup-upgrade p) 0.0))
+    [(double (or lineup-margin 0.0)) 0.0]
+    [0.0 (double (or upgrade-margin 0.0))]))
 
 (defn bid-pool
   "The total weight the bids are a share of: the best `n` of them. Summing over
@@ -247,25 +264,30 @@
 
 (defn with-bids
   "Assoc `:walk-away` — his share of the remaining budget, from the two pools
-  the ns docstring describes. nil, not 0, for a league that does not run FAAB
-  or a manager with nothing left to spend: 'worth nothing' is a different
-  answer."
-  [fas {:keys [type]} budget-left n]
-  (let [ws    (mapv weights fas)
-        lin   (bid-pool (map first ws) n)
-        stash (bid-pool (map second ws) n)]
-    (if-not (and (faab? type) (number? budget-left) (pos? budget-left)
-                 (pos? (+ lin stash)))
-      (mapv #(assoc % :walk-away nil) fas)
-      (let [lin-budget   (if (pos? stash) (* (- 1.0 stash-share) budget-left) budget-left)
-            stash-budget (if (pos? lin) (* stash-share budget-left) budget-left)]
-        (mapv (fn [p [lu st]]
-                (let [share (cond
-                              (pos? lu) (* (/ lu lin) lin-budget)
-                              (pos? st) (* (/ st stash) stash-budget)
-                              :else     0.0)]
-                  (assoc p :walk-away (-> share (min budget-left) Math/rint long (max 0)))))
-              fas ws)))))
+  the ns docstring describes, and never more than `cap` says the market pays
+  at his position: money a cap holds back stays unspent rather than going to
+  another player. nil, not 0, for a league that does not run FAAB or a manager
+  with nothing left to spend: 'worth nothing' is a different answer."
+  ([fas waiver budget-left n] (with-bids fas waiver budget-left n (constantly nil)))
+  ([fas {:keys [type]} budget-left n cap]
+   (let [ws    (mapv weights fas
+                     (over-free-option fas :lineup-upgrade)
+                     (over-free-option fas :upgrade))
+         lin   (bid-pool (map first ws) n)
+         stash (bid-pool (map second ws) n)]
+     (if-not (and (faab? type) (number? budget-left) (pos? budget-left)
+                  (pos? (+ lin stash)))
+       (mapv #(assoc % :walk-away nil) fas)
+       (let [lin-budget   (if (pos? stash) (* (- 1.0 stash-share) budget-left) budget-left)
+             stash-budget (if (pos? lin) (* stash-share budget-left) budget-left)]
+         (mapv (fn [p [lu st]]
+                 (let [share (cond
+                               (pos? lu) (* (/ lu lin) lin-budget)
+                               (pos? st) (* (/ st stash) stash-budget)
+                               :else     0.0)]
+                   (assoc p :walk-away (-> share (min budget-left) (min (or (cap p) ##Inf))
+                                           Math/rint long (max 0)))))
+               fas ws))))))
 
 (defn rival-needs
   "`[{:roster-id :owner-id :name :faab-left :waiver-position :needs {player-id
@@ -416,7 +438,9 @@
                      (with-lineup-upgrade
                        (vec (keep #(get by-id %) active))
                        drop starting-slots)
-                     (with-bids waiver (:faab-left my-team) n))
+                     (with-bids waiver (:faab-left my-team) n
+                                #(faab/market-cap (:position %) (:budget waiver)
+                                                  (inc (or through-week 0)))))
         habits   (when bidding?
                    (faab/league-habits bid-history (if (seq teams) (count teams) num-teams)))]
     {:players            (-> fas
