@@ -441,6 +441,12 @@
 (rf/reg-sub :league-sync :<- [:active-league]
   (fn [lg _] (:sync lg)))
 
+;; Each manager's bidding profile, nil for a host with no history to read.
+;; `:style` crosses JSON as a string; `bid-history` keys its labels by keyword.
+(rf/reg-sub :league-bid-profiles :<- [:league-sync]
+  (fn [ls _]
+    (some->> ls :bid-history :profiles (mapv #(update % :style keyword)))))
+
 (rf/reg-sub :my-roster-id :<- [:active-league]
   (fn [lg _] (:my-roster-id lg)))
 

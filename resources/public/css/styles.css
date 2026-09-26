@@ -368,6 +368,10 @@ button.undo:hover { color: var(--warn); }
 .team-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
 .team-head { font-weight: 600; margin-bottom: 8px; }
 .team-head .you { color: var(--accent); }
+/* How a rival bids, as a label; the evidence behind it is the title. */
+.style-tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px;
+  margin-left: 8px; cursor: help; }
 
 /* ---- settings ----
    A sidebar and one section at a time. The old single grid put every card in a
@@ -515,6 +519,8 @@ tr.upgrade .p-name { font-weight: 600; }
 .inj-flag { color: var(--warn); cursor: help; }
 
 .drop-note { font-size: 12px; color: var(--muted); padding: 4px 2px; }
+/* Whose data a column is, under the board that shows it. */
+.source-note { font-size: 11px; color: var(--muted); padding: 0 2px; }
 
 /* Search found him, but he is not on the wire. Without this the free-agent
    table just comes back empty and the manager learns nothing. */

@@ -333,6 +333,43 @@
     (is (= "8.4" (txt {:form-points 8.44})))
     (is (= "–" (txt {})))))
 
+(def ^:private contested
+  {:bid 12 :win-prob 0.764 :walk-away 41 :bid-sure 20
+   :competition {:top [8 19]
+                 :threats [{:name "Show me your TDs" :faab-left 89 :p 0.831}
+                           {:name "Quad Squad Monopoly" :faab-left nil :p 0.468}]}})
+
+(deftest the-bid-cell-reads-bid-then-its-chance
+  (let [c (waivers/cell :bid contested nil)]
+    (is (= "$12" (last (nth c 2))))
+    (is (= [:span {:class "muted"} " · 76%"] (nth c 3))))
+  (is (= "warn" (get-in (vec (waivers/cell :bid {:bid 0 :win-prob 0.18} nil)) [3 1 :class]))
+      "a bid that rarely lands says so")
+  (is (= [:td.num "–"] (waivers/cell :bid {:bid nil} nil))
+      "no FAAB is a dash, never $0"))
+
+(deftest the-bid-tooltip-names-who-you-are-bidding-against
+  (is (= (str "Top rival bid: usually ≤ $8, rarely over $19\n"
+              "Show me your TDs · $89 left · 83%\n"
+              "Quad Squad Monopoly · 47%\n"
+              "90% sure: $20 · worth $41 to you\n"
+              "From 461 league auctions + Sleeper-wide")
+         (waivers/bid-title contested {:source "league" :auctions 461})))
+  (is (= (str "No other team likely to bid\n"
+              "90% sure: $0 · worth $1 to you\n"
+              "From Sleeper-wide auctions")
+         (waivers/bid-title {:bid 0 :walk-away 1 :bid-sure 0 :competition {:top nil :threats []}}
+                            {:source "sleeper-wide" :auctions 0})))
+  (is (re-find #"out of reach" (waivers/bid-title (assoc contested :bid-sure nil) nil)))
+  (is (nil? (waivers/bid-title {:bid nil} nil))))
+
+(deftest rivals-and-adds-cells
+  (is (= "4.5" (last (waivers/cell :rivals {:rivals 4.52} nil))))
+  (is (= "–" (last (waivers/cell :rivals {} nil))))
+  (is (= "152.6k" (waivers/format-adds 152600)))
+  (is (= "940" (waivers/format-adds 940)))
+  (is (= "–" (waivers/format-adds nil)) "off Sleeper's list is not zero adds"))
+
 (deftest sorting-puts-players-with-nothing-to-say-last-in-both-directions
   ;; Same rule `sort-players` keeps: a nil is not a low value, it is an absent
   ;; one, and it must not float to the top when the column is reversed.

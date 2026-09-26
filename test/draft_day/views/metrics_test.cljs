@@ -58,6 +58,8 @@
    :lineup    "Lineup gain"
    :upgrade   "Upgrade"
    :bid       "Bid"
+   :rivals    "Rivals"
+   :adds      "Sleeper adds"
    :trend     "Trend"
    :form      "Form / game"
    :gp        "Games played"

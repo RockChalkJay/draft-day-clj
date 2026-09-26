@@ -111,7 +111,11 @@
     :tip (str "Rest-of-season points over the player you would drop, whether or"
               " not he would ever start")}
    {:band :claim    :label "Bid"            :f :bid :bar? false
-    :fmt #(if (number? %) (str "$" %) "–")}
+    :fmt #(if (number? %) (str "$" %) "–")
+    :sub #(some-> (:win-prob %) waivers/win-pct (str " to win"))}
+   {:band :claim    :label "Rivals"         :f :rivals :better :lower
+    :fmt #(if (number? %) (.toFixed % 1) "–")
+    :tip "Other teams expected to bid on him this waiver run"}
    {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend
     :tip (str "Recent opportunity per game against his season rate — above"
               " 1.0× means the role is growing")}
@@ -126,6 +130,9 @@
    {:band :evidence :label "Games played"   :bar? false
     :f #(get-in % [:nflverse/season-to-date :games])
     :fmt number-or-dash}
+   {:band :evidence :label "Sleeper adds"   :f :trending/adds :bar? false
+    :fmt waivers/format-adds
+    :tip "Sleeper trending adds over the last 48 hours, across every Sleeper league"}
    ;; Both preseason, so neither is evidence about now — they are what the
    ;; season so far is disagreeing with, which is the whole waiver-wire case.
    {:band :evidence :label "Preseason"      :f :points :fmt board/format-whole
