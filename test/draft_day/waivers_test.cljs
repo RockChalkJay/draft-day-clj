@@ -1246,3 +1246,17 @@
 (deftest no-kickoff-means-no-tooltip
   (is (nil? (waivers/kickoff-title {})))
   (is (nil? (waivers/kickoff-title {:kickoff/at nil}))))
+
+(deftest a-league-that-does-not-bid-draws-no-bid-columns
+  (reset! rdb/app-db (assoc (db/default-db)
+                            :leagues {"sleeper:1" {:sync {:waiver {:type "rolling"}}}}
+                            :active-league "sleeper:1"))
+  (rf/clear-subscription-cache!)
+  (let [shown (set (map :key @(rf/subscribe [:visible-waiver-columns])))]
+    (is (not-any? shown [:bid :rivals]))
+    (is (contains? shown :adds) "only the columns a bid fills")
+    (is (every? #(get-in % [:visible?]) (filter #(#{:bid :rivals} (:key %)) (:waiver-columns @rdb/app-db)))
+        "the stored layout keeps them for a league that bids"))
+  (swap! rdb/app-db assoc-in [:leagues "sleeper:1" :sync :waiver :type] "faab")
+  (rf/clear-subscription-cache!)
+  (is (every? (set (map :key @(rf/subscribe [:visible-waiver-columns]))) [:bid :rivals])))

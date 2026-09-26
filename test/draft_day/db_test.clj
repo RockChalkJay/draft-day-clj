@@ -935,3 +935,14 @@
   (is (= ["QB" "TE" nil] (mapv :position (sort-by db/seat-rank
                                                   [{:position nil} {:position "TE"} {:position "QB"}])))
       "a starter with no known seat ranks by position; unknown last"))
+
+(deftest a-league-that-does-not-bid-hides-the-bid-columns
+  (let [cols (db/default-waiver-columns)
+        shown (fn [sync] (set (map :key (filter :visible? (db/waiver-columns-for cols sync)))))]
+    (is (not-any? (shown {:waiver {:type "rolling"}}) [:bid :rivals]))
+    (is (every? (shown {:waiver {:type :faab}}) [:bid :rivals]) "either spelling of faab")
+    (is (every? (shown nil) [:bid :rivals]) "a league not yet synced has not said it does not bid")
+    (is (= (mapv :key cols) (mapv :key (db/waiver-columns-for cols {:waiver {:type "rolling"}})))
+        "hidden in place, so the stored order survives")
+    (is (:faab-only? (first (filter #(= :bid (:key %))
+                                    (db/waiver-columns-for cols {:waiver {:type "rolling"}})))))))

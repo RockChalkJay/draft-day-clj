@@ -1085,6 +1085,27 @@
 
 (defn default-waiver-columns [] (default-columns waiver-column-catalog))
 
+(def faab-columns
+  "Waiver columns that only answer in a league that bids for its claims."
+  #{:bid :rivals})
+
+(defn runs-faab?
+  "Does a synced league bid for its waivers? nil before a sync says, which is
+  not the same as no."
+  [sync]
+  (when-let [t (get-in sync [:waiver :type])]
+    (= "faab" (name t))))
+
+(defn waiver-columns-for
+  "The stored waiver columns as a league shows them: in one that does not run
+  FAAB, `faab-columns` are hidden and marked `:faab-only?`, since every cell
+  would be blank. The stored layout is untouched, so a FAAB league gets them
+  back."
+  [cols sync]
+  (if (false? (runs-faab? sync))
+    (mapv #(if (faab-columns (:key %)) (assoc % :visible? false :faab-only? true) %) cols)
+    cols))
+
 (defn repair-lineup
   "One team's `:starter-ids`, with each nil kept in place as `empty-seat`.
 

@@ -251,6 +251,8 @@ button.danger:hover { background: var(--warn); color: #0b0e13; }
 .col-item { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
   padding: 4px 8px; cursor: grab; display: flex; align-items: center; gap: 4px; }
 .drag-handle { color: var(--muted); }
+/* A column this league cannot fill: listed, so it is not a mystery, but off. */
+.col-item.off { opacity: .45; cursor: default; }
 
 /* ---- table ---- */
 .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }

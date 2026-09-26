@@ -17,7 +17,7 @@
    :toggle :toggle-column :move :move-column-onto})
 
 (def waiver-picker
-  {:sub :waiver-columns :labels db/waiver-columns-by-key
+  {:sub :league-waiver-columns :labels db/waiver-columns-by-key
    :toggle :toggle-waiver-column :move :move-waiver-column-onto})
 
 (defn picker
@@ -34,6 +34,8 @@
                   ^{:key k}
                   [:li.col-item
                    {:draggable true
+                    :class     (when (:faab-only? c) "off")
+                    :title     (when (:faab-only? c) "This league doesn't run FAAB")
                     :on-drag-start (fn [e]
                                      (util/column-drag-start! e k)
                                      (reset! drag-key k))
@@ -48,6 +50,7 @@
                    [:span.drag-handle "⠿"]
                    [:label
                     [:input {:type "checkbox" :checked (:visible? c)
+                             :disabled (:faab-only? c)
                              :on-change #(rf/dispatch [toggle k])}]
                     " " (:label (get labels k))]]))
               cols)]))))
