@@ -48,6 +48,15 @@
     (is (near? (/ 2.0 3.0) (rates "hot") 1e-9) "the same need, doubled by the top of the list")
     (is (near? 1.0 (reduce + (vals rates)) 1e-9) "and still no more claims than he makes")))
 
+(deftest a-breakout-no-projection-has-caught-draws-claims-on-heat-alone
+  (let [fas   [{:player-id "backup" :ros-vorp -3.0 :trending/adds 600000}
+               {:player-id "target" :ros-vorp 10.0}
+               {:player-id "other" :trending/adds 20000}]
+        rates (faab/claim-rates {"backup" 0.0 "target" 20.0} fas 1.0 (faab/heat-of fas))]
+    (is (near? 0.5 (rates "backup") 1e-9)
+        "no need and below replacement, yet the top of the list rivals his best target")
+    (is (not (contains? rates "other")) "the bottom of the list adds nothing")))
+
 (deftest a-rivals-bid-is-a-distribution-over-whole-dollars
   (doseq [bucket [1 2 3 4] phase [:early :mid :late] budget [100 1000] scale [0.4 1.0 2.5]]
     (let [pmf (faab/bid-pmf (prior/bid-share [bucket phase]) scale 0.5 budget 0 budget)

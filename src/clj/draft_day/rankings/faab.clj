@@ -23,11 +23,13 @@
   Who bids: a rival makes `:per-week` claims (his `bid-history` profile) and
   aims them by `interest-weight` — what a player adds to his own starting
   lineup, plus a CHOSEN fraction of value over replacement for the stash
-  claimed with no hole to fill, both raised by the player's `heat` on Sleeper's
-  trending list, which is news no projection has caught up with. The count is
-  Poisson, so he bids on a player
-  with chance 1 − e^(−rate); a fixed count, 1 − (1 − share)^λ, would make a
-  rival with one target certain to bid however rarely he bids.
+  claimed with no hole to fill, plus the player's `heat` on Sleeper's trending
+  list, which is news no projection has caught up with. Heat adds rather than
+  multiplies, so a backup the whole site is adding the day his starter goes
+  down draws claims while his projection still says he is nobody. The count is
+  Poisson, so he bids on a player with chance 1 − e^(−rate); a fixed count,
+  1 − (1 − share)^λ, would make a rival with one target certain to bid however
+  rarely he bids.
 
   What he bids: `bid-prior/bid-share` for the predicted bidder count and the
   phase, so a player everybody wants is priced like one, scaled by position,
@@ -54,9 +56,11 @@
   0.9)
 
 (def heat-weight
-  "How far the most-added player on Sleeper raises a rival's interest: at 1.0 it
-  doubles. CHOSEN, and the replay backtest cannot rebuild past trending lists,
-  so it waits on the snapshots `ingestion.sleeper-trending` keeps."
+  "The interest the most-added player on Sleeper draws from heat alone, as a
+  share of what the rival's best target draws on need: at 1.0 the top of the
+  list competes with his best target even with no need at all. CHOSEN, and the
+  replay backtest cannot rebuild past trending lists, so it waits on the
+  snapshots `ingestion.sleeper-trending` keeps."
   1.0)
 
 (def threat-floor
@@ -81,18 +85,22 @@
       (fn [p] (if (:trending/adds p) 1.0 0.0)))))
 
 (defn interest-weight
-  "How much of a rival's attention a free agent draws; see the ns docstring."
-  [need ros-vorp heat]
-  (* (+ (max 0.0 (double (or need 0.0)))
-        (* speculative-weight (max 0.0 (double (or ros-vorp 0.0)))))
-     (+ 1.0 (* heat-weight heat))))
+  "How much of a rival's attention a free agent draws on football alone; see
+  the ns docstring. Heat is added by `claim-rates`, which knows the scale."
+  [need ros-vorp]
+  (+ (max 0.0 (double (or need 0.0)))
+     (* speculative-weight (max 0.0 (double (or ros-vorp 0.0))))))
 
 (defn claim-rates
   "`{player-id rate}`: how many of a rival's `per-week` claims land on each free
   agent on average. The rates sum to `per-week` whenever anybody draws his
-  interest. A player who draws none is absent."
+  interest. A player who draws none is absent. Heat is scaled by the most any
+  free agent draws from this rival on football, so it is in his own points
+  whatever the week and whatever his roster."
   [needs fas per-week heat]
-  (let [ws    (mapv #(interest-weight (get needs (:player-id %)) (:ros-vorp %) (heat %)) fas)
+  (let [base  (mapv #(interest-weight (get needs (:player-id %)) (:ros-vorp %)) fas)
+        top   (reduce max 0.0 base)
+        ws    (mapv #(+ %1 (* heat-weight top (heat %2))) base fas)
         total (reduce + 0.0 ws)]
     (if (pos? total)
       (into {}
