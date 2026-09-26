@@ -154,3 +154,30 @@
         "he takes the SUPER_FLEX seat wr3 (40) held, so 180 - 40")
     (testing "and the one-QB league it was measured against still wants none of him"
       (is (zero? (lineup/upgrade (pts roster) roster qb2 bench-drop slots :ros-points))))))
+
+(deftest upgrades-agree-with-upgrade-one-at-a-time
+  ;; A proof, not an approximation, so the very same numbers: every position,
+  ;; scores either side of each floor and on it, every kind of drop, superflex.
+  (let [cands   (mapcat (fn [pos]
+                          (map #(p (str pos %) pos (double %))
+                               [0 30 39.99 40 60 80 89.99 90 90.01 95 100 120 150 170 180 260 300]))
+                        ["QB" "RB" "WR" "TE" "K" "DST" "LB"])
+        cands   (conj (vec cands) (dissoc (p "ghost" "WR" nil) :ros-points))
+        sf      ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "SUPER_FLEX" "K" "DST"]
+        thin    (vec (take 4 roster))
+        one-by  (fn [r drop s]
+                  (let [before (lineup/lineup-points r s :ros-points)]
+                    (mapv #(lineup/upgrade before r % drop s :ros-points) cands)))]
+    (doseq [[label r drop s] [["bench drop" roster bench-drop slots]
+                              ["starting drop" roster starting-drop slots]
+                              ["open seat" roster nil slots]
+                              ["unfilled seats" thin nil slots]
+                              ["superflex" roster bench-drop sf]]]
+      (is (= (one-by r drop s) (lineup/upgrades r cands drop s :ros-points)) label))))
+
+(deftest a-seat-nobody-holds-has-no-floor
+  (let [seated (lineup/best-lineup [(p "qb1" "QB" 260.0)] slots :ros-points)]
+    (is (= 260.0 (lineup/seat-floor slots seated :ros-points "QB")))
+    (is (nil? (lineup/seat-floor slots seated :ros-points "WR")) "an empty seat takes anybody")
+    (is (= ##Inf (lineup/seat-floor slots seated :ros-points "LB"))
+        "and a position with no seat can never start")))
