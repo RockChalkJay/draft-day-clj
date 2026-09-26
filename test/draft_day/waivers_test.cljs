@@ -363,6 +363,14 @@
   (is (re-find #"out of reach" (waivers/bid-title (assoc contested :bid-sure nil) nil)))
   (is (nil? (waivers/bid-title {:bid nil} nil))))
 
+(deftest only-a-certainty-reads-as-one
+  (is (= "76%" (waivers/win-pct 0.764)))
+  (is (= "99%" (waivers/win-pct 0.996)) "almost is not certain")
+  (is (= "100%" (waivers/win-pct 1.0)))
+  (is (= "1%" (waivers/win-pct 0.004)))
+  (is (= "0%" (waivers/win-pct 0)))
+  (is (nil? (waivers/win-pct nil))))
+
 (deftest rivals-and-adds-cells
   (is (= "4.5" (last (waivers/cell :rivals {:rivals 4.52} nil))))
   (is (= "–" (last (waivers/cell :rivals {} nil))))

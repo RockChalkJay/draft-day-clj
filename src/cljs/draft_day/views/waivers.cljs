@@ -35,9 +35,15 @@
 ;; ---- the bid ----
 
 (defn win-pct
-  "A chance as a whole percent, \"76%\", or nil."
+  "A chance as a whole percent, \"76%\", or nil. Only a certainty prints 100%
+  and only an impossibility 0%: rounding 99.6% up would state what the model
+  does not claim."
   [p]
-  (when (number? p) (str (js/Math.round (* 100 p)) "%")))
+  (when (number? p)
+    (str (cond (>= p 1) 100
+               (<= p 0) 0
+               :else    (-> (js/Math.round (* 100 p)) (max 1) (min 99)))
+         "%")))
 
 (def priced-out
   "Below this chance a bid rarely lands, and the cell says so in red."
