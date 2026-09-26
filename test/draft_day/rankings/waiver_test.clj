@@ -1,6 +1,7 @@
 (ns draft-day.rankings.waiver-test
   (:require [clojure.test :refer [deftest is testing]]
             [draft-day.db :as db]
+            [draft-day.rankings.faab :as faab]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]))
 
@@ -178,17 +179,18 @@
 
 ;; ---- the bid ----
 
-(deftest bids-conserve-the-budget-across-the-claims-still-available
-  ;; The property the whole rule stands on. `claims-left` bounds the pool, so
-  ;; the players a manager could actually still add divide his budget between
-  ;; them rather than every free agent rounding to nothing.
+(deftest the-claims-still-available-never-spend-more-than-is-left
+  ;; `claims-left` bounds the pool, so the players a manager could actually
+  ;; still add divide his budget rather than every free agent rounding to
+  ;; nothing — and a market cap can hold some of it back, never add to it. That
+  ;; the pools conserve without a cap is `each-pool-conserves-…` below.
   (let [{:keys [players faab claims-left]} (run)
         n    claims-left
-        top  (->> players (sort-by #(- (:upgrade %))) (take n))
+        top  (->> players (sort-by #(- (:walk-away %))) (take n))
         spend (reduce + 0 (map :walk-away top))]
     (is (pos? n))
-    (is (<= (- (:left faab) n) spend (+ (:left faab) n))
-        "the top claims sum to the budget, within a dollar of rounding each")))
+    (is (pos? spend))
+    (is (<= spend (+ (:left faab) n)) "within a dollar of rounding each")))
 
 (deftest fewer-runs-left-means-a-bigger-share-each
   ;; How FAAB actually behaves: hold back in September, spend it in December.
@@ -508,8 +510,10 @@
 (defn- bids-for
   "Bids for [lineup-upgrade upgrade] pairs, given a budget and claims left."
   [pairs budget n]
+  ;; Each at a position of his own, so no two are substitutes: these tests are
+  ;; about the pools, and `over-free-option` has its own.
   (->> (map-indexed (fn [i [lu up]]
-                      (cond-> {:player-id (str i) :upgrade up}
+                      (cond-> {:player-id (str i) :position (str "P" i) :upgrade up}
                         lu (assoc :lineup-upgrade lu)))
                     pairs)
        (#(waiver/with-bids % {:type :faab} budget n))
@@ -597,3 +601,37 @@
     (is (= #{"good"} (free (assoc league :provider-players
                                   [{:id "4869461" :name "Trey Smack" :position "K"}])))
         "ESPN's name puts 4869461 back on his owner's roster")))
+
+;; ---- the free option and the market ----
+
+(deftest a-claim-is-worth-what-it-adds-over-the-man-still-free
+  (let [fas [{:player-id "jets" :position "DST" :lineup-upgrade 61.0}
+             {:player-id "pats" :position "DST" :lineup-upgrade 38.0}
+             {:player-id "rb"   :position "RB"  :lineup-upgrade 20.0}
+             {:player-id "none" :position "WR"}]]
+    (is (= [23.0 0.0 20.0 nil] (waiver/over-free-option fas :lineup-upgrade))
+        "the Jets over the Patriots; the Patriots over the Jets is nothing; a back alone keeps all of it")
+    (is (= [0.0 0.0] (waiver/over-free-option [{:position "K" :upgrade 9.0} {:position "K" :upgrade 9.0}] :upgrade))
+        "two equal kickers: either can be had for nothing")))
+
+(deftest a-streamable-defense-no-longer-takes-the-budget
+  ;; The case that prompted it: two free defenses were the only lineup upgrades,
+  ;; so between them they split 85% of the budget, $48 to the better one.
+  (let [bids (->> [{:player-id "jets" :position "DST" :lineup-upgrade 61.0 :upgrade 249.0}
+                   {:player-id "pats" :position "DST" :lineup-upgrade 38.0 :upgrade 224.0}
+                   {:player-id "rb"   :position "RB"  :lineup-upgrade 0.0  :upgrade 40.0}]
+                  (#(waiver/with-bids % {:type :faab} 78 12))
+                  (map (juxt :player-id :walk-away)) (into {}))]
+    (is (zero? (bids "pats")) "the Patriots' seat can be filled by the Jets")
+    (is (< (bids "jets") (* 0.85 78)) "the Jets are still the one lineup upgrade, and priced on 23 points")))
+
+(deftest no-walk-away-exceeds-what-the-market-pays-at-his-position
+  (let [cap-of (fn [pos] (faab/market-cap pos 100 5))
+        rows   (->> [{:player-id "d" :position "DST" :lineup-upgrade 40.0}
+                     {:player-id "w" :position "WR"  :lineup-upgrade 40.0}]
+                    (#(waiver/with-bids % {:type :faab} 100 1 (fn [p] (cap-of (:position p)))))
+                    (map (juxt :player-id :walk-away)) (into {}))]
+    (is (< 10 (cap-of "DST") 20) "a defense tops out near a sixth of the budget")
+    (is (< (cap-of "DST") (cap-of "WR") (cap-of "QB")))
+    (is (= (Math/round (cap-of "DST")) (rows "d")) "capped, and the rest left unspent")
+    (is (<= (rows "w") (Math/round (cap-of "WR"))))))
