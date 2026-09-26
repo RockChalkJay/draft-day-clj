@@ -5,9 +5,11 @@
   (:require [reitit.ring :as ring]
             [reitit.ring.middleware.parameters :as parameters]
             [jsonista.core :as json]
+            [clojure.tools.logging :as log]
             [draft-day.db :as db]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.nflverse :as nflverse]
+            [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.season :as season]
             [draft-day.ingestion.sleeper-trending :as trending]
@@ -310,6 +312,44 @@
                  :kickoff/started?)
         players))
 
+(def nfl-week-ttl-ms
+  "How long Sleeper's answer for the current NFL week is trusted. It turns over
+  once a week, and the waiver board is re-posted on every refresh."
+  (* 10 60 1000))
+
+(defonce ^:private nfl-week-cache (atom nil))
+
+(defn current-nfl-week
+  "The NFL week being played now, off Sleeper's keyless season state and the
+  same for every host's league, or nil offline, between seasons, or when
+  Sleeper does not answer."
+  []
+  (when-not (pipeline/offline?)
+    (let [{:keys [week at]} @nfl-week-cache
+          now (System/currentTimeMillis)]
+      (if (and at (< (- now at) nfl-week-ttl-ms))
+        week
+        (let [wk (try (matchups/current-week :sleeper {})
+                      (catch Exception e
+                        (log/warn "current NFL week unavailable:" (ex-message e))
+                        nil))]
+          (reset! nfl-week-cache {:week wk :at now})
+          wk)))))
+
+(defn waiver-weeks
+  "`{:week :through-week}` for a waiver board: the week being played and the
+  weeks finished before it. Asked of Sleeper rather than derived, because
+  `through-week` is the latest week with *any* stats, and Thursday's game
+  makes that the week still being played — `(inc through-week)` then priced
+  next week's projection and counted this week's game as neither played nor
+  left. A replay (`DRAFTDAY_AS_OF_WEEK`) and a Sleeper that did not answer
+  fall back to the data's own week."
+  [through-week live-week]
+  (let [through (or through-week 0)]
+    (if (and live-week (nil? (nflverse-weekly/as-of-week)))
+      {:week live-week :through-week (min through (dec live-week))}
+      {:week (inc through) :through-week through})))
+
 (defn waivers-handler
   "The in-season board: rest-of-season value over the free agents a synced
   league actually leaves available, and what to bid for them.
@@ -348,10 +388,9 @@
         (let [{:keys [players season through-week]} (universe false)
               season*      (season/resolve-season season)
               season-games (nflverse/games-in-season season*)
-              ;; The next unplayed week, read off the data the way :through-week
-              ;; is, never off the calendar. Loaded per request rather than with
-              ;; the universe: see `pipeline/load-weekly`.
-              week         (inc (or through-week 0))
+              ;; The weekly line is loaded per request rather than with the
+              ;; universe: see `pipeline/load-weekly`.
+              {:keys [week through-week]} (waiver-weeks through-week (current-nfl-week))
               weekly       (pipeline/load-weekly season* week)
               adds         (trending/load-adds)
               ctx      {:league             league
@@ -359,7 +398,7 @@
                         :roster-size        roster-size
                         :num-teams          (or num-teams 12)
                         :replacement-config replacement-config
-                        :through-week       (or through-week 0)
+                        :through-week       through-week
                         :season-games       season-games
                         :playoff-week-start (:playoff-week-start league)
                         ;; The scoring seats, for `waiver/with-lineup-upgrade`.
@@ -401,7 +440,7 @@
                                     :my-roster-players
                                     (some-> (:my-roster-players out)
                                             without-projection-internals)
-                                    :through-week (or through-week 0)
+                                    :through-week through-week
                                     :season-games season-games
                                     ;; nil when there is no weekly line at all;
                                     ;; the board then reads rest-of-season only.

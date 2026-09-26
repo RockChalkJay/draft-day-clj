@@ -331,10 +331,8 @@
 ;; when the rosters were fetched. FAAB off the sync rather than the waiver board,
 ;; so it is there on every season tab and not only once Waivers has loaded.
 ;;
-;; The week only off the matchup reply, which asks the provider. `:through-week`
-;; advances as games finish, so `(inc through-week)` — which is also what the
-;; waiver reply's `:week` is — names next week while this one is still being
-;; played. Nothing is better than that in the one place every tab shares.
+;; The week off the matchup reply, which asks the league's own provider; the
+;; waiver reply's `:week` asks Sleeper and can be nil offline.
 (rf/reg-sub :season-header
   :<- [:active-league] :<- [:matchup]
   (fn [[lg matchup] _]

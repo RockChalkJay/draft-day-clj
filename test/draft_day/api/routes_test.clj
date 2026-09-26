@@ -368,6 +368,7 @@
    (routes/reset-universe!)
    (with-redefs [pipeline/load-universe      (fn [& _] in-season)
                  pipeline/load-weekly        stub-weekly
+                 routes/current-nfl-week     (constantly nil)
                  trending/load-adds          load-adds
                  transactions/cached-history cached-history]
      (routes/waivers-handler {:body (input-stream (json/write-value-as-string body))}))))
@@ -451,6 +452,29 @@
     (is (= 17 (:season-games b)))
     (is (= 6 (:claims-left b)) "week 8 of a league whose playoffs start in 15")))
 
+(deftest the-week-being-played-is-sleepers-not-the-latest-with-stats
+  (is (= {:week 3 :through-week 2} (routes/waiver-weeks 3 3))
+      "Thursday's game published week 3's stats; week 3 is still being played")
+  (is (= {:week 3 :through-week 2} (routes/waiver-weeks 2 3)) "Tuesday: nothing of week 3 yet")
+  (is (= {:week 4 :through-week 3} (routes/waiver-weeks 3 nil)) "Sleeper silent: the data's own week")
+  (is (= {:week 1 :through-week 0} (routes/waiver-weeks nil 1)) "week 1 before a game")
+  (with-redefs [draft-day.ingestion.nflverse-weekly/as-of-week (constantly 5)]
+    (is (= {:week 6 :through-week 5} (routes/waiver-weeks 5 3)) "a replayed week ignores today's")))
+
+(deftest waivers-endpoint-prices-the-week-sleeper-says-is-being-played
+  (routes/reset-universe!)
+  (let [asked (atom nil)]
+    (with-redefs [pipeline/load-universe  (fn [& _] in-season)
+                  pipeline/load-weekly    (fn [season week & more] (reset! asked week) (apply stub-weekly season week more))
+                  routes/current-nfl-week (constantly 8)
+                  trending/load-adds      (constantly nil)]
+      (let [b (parse (routes/waivers-handler
+                      {:body (input-stream (json/write-value-as-string
+                                            {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))}))]
+        (is (= 8 @asked) "this week's projection, not next week's")
+        (is (= 7 (:through-week b)) "week 8 is being played, not finished")
+        (is (= 7 (:claims-left b)) "and its waiver run is still to come")))))
+
 (deftest waivers-endpoint-carries-the-budget-and-what-a-rival-could-outbid-with
   (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
                            :my-roster-id 1 :roster-size 2}))]
@@ -514,6 +538,7 @@
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :through-week 0))
                 pipeline/load-weekly  stub-weekly
+                routes/current-nfl-week (constantly nil)
                 trending/load-adds    (constantly nil)]
     (let [b (parse (routes/waivers-handler
                     {:body (input-stream (json/write-value-as-string
