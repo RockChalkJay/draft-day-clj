@@ -142,3 +142,21 @@
 (deftest an-empty-history-has-no-profiles
   (is (nil? (bh/profiles {:seasons []})))
   (is (empty? (:profiles (bh/profiles {:seasons [(season 100)]})))))
+
+(deftest a-leagues-price-level-starts-where-it-is-told-to
+  (let [quiet {:seasons [(season 100 (auction 1 (bid "u1" 0 true)))]}]
+    (is (close? 0.0 (:log-multiplier (bh/profiles quiet))) "no positive bids, no evidence")
+    (is (close? -0.18 (:log-multiplier (bh/profiles quiet -0.18)))
+        "a big league's level, which a history cannot know: it carries no rosters")
+    (is (close? -0.18 (:log-multiplier (first (:profiles (bh/profiles quiet -0.18)))))
+        "and his league's level is where a manager's starts too")))
+
+(deftest a-manager-who-has-never-bid-reads-quieter-the-longer-he-is-silent
+  (let [p50  (get-in prior/managers [:per-week :p50])
+        weeks (fn [n] {:seasons [(apply season 100 (map #(auction % (bid "u1" 1 true)) (range 1 (inc n))))]})
+        rate  #(:per-week (bh/silent-profile % 0.0))]
+    (is (close? p50 (rate nil)) "with no history, the typical Sleeper manager")
+    (is (< (rate (weeks 6)) (rate (weeks 2)) p50))
+    (is (= :new (:style (bh/silent-profile nil 0.0))))
+    (is (close? -0.2 (:log-multiplier (bh/silent-profile (weeks 2) -0.2)))
+        "and when he does bid, he bids like his league")))

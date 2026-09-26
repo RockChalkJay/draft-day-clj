@@ -994,7 +994,7 @@
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true}
    {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start — unlike Upg, which measures him against your worst bench player. This is what the board sorts by" :default? true}
-   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid. Most of the budget goes to players who would actually crack your starting lineup, with a slice held back so bench stashes stay ordered and cheap — which is why a big Upg with no Lineup gain bids little. Blank when the league does not run FAAB" :default? true}
+   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid: about a dollar over the top rival bid likely for him, or the league minimum when nobody else will bid, and never more than he is worth to you. An estimate from your league's bid history and Sleeper-wide auctions. Blank when the league does not run FAAB or your budget is spent" :default? true}
    {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true}
    {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules — what his current role has been worth, against what the projection expects of it" :default? false}
    {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true}

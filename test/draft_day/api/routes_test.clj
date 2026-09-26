@@ -357,11 +357,17 @@
    :season season :week week :fetched-at "2026-09-01T00:00:00Z"
    :lines {} :kickoffs {}})
 
-(defn- waivers [body]
-  (routes/reset-universe!)
-  (with-redefs [pipeline/load-universe (fn [& _] in-season)
-                pipeline/load-weekly   stub-weekly]
-    (routes/waivers-handler {:body (input-stream (json/write-value-as-string body))})))
+(defn- waivers
+  "POST a waiver board. The bid history is stubbed too: it is read off the disk
+  cache a real sync leaves, and a test that read the developer's would pass or
+  fail on whatever league he synced last."
+  ([body] (waivers body (constantly nil)))
+  ([body cached-history]
+   (routes/reset-universe!)
+   (with-redefs [pipeline/load-universe      (fn [& _] in-season)
+                 pipeline/load-weekly        stub-weekly
+                 transactions/cached-history cached-history]
+     (routes/waivers-handler {:body (input-stream (json/write-value-as-string body))}))))
 
 (deftest waivers-endpoint-ranks-only-the-free-agents
   (let [b   (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
@@ -432,7 +438,8 @@
   (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
                            :my-roster-id 1 :roster-size 2}))
         p (first (:players b))]
-    (is (every? #(contains? p %) [:ros-points :ros-vorp :upgrade :bid]))
+    (is (every? #(contains? p %) [:ros-points :ros-vorp :upgrade :walk-away :bid :win-prob
+                                  :bid-sure :rivals :competition]))
     (is (not-any? #(contains? p %) [:worth :value :bargain :market :edge]))))
 
 (deftest waivers-endpoint-reports-the-week-it-priced-for
@@ -449,11 +456,27 @@
     (is (= "faab" (get-in b [:faab :type])))
     ;; The type crosses the wire as a string, so this is the assertion that
     ;; catches a bid rule which only ever matched the keyword.
-    (is (some #(pos? (:bid %)) (:players b)) "real money on real players")
-    (is (<= (reduce + 0 (map :bid (take (:claims-left b)
-                                        (sort-by #(- (:upgrade %)) (:players b)))))
+    (is (some #(pos? (:walk-away %)) (:players b)) "real money on real players")
+    (is (<= (reduce + 0 (map :walk-away (take (:claims-left b)
+                                              (sort-by #(- (:upgrade %)) (:players b)))))
             (+ 60 (:claims-left b)))
-        "and the claims still available do not overspend the budget")))
+        "and the claims still available do not overspend the budget")
+    (is (every? #(<= (:bid %) (:walk-away %)) (:players b)) "and no bid is past its walk-away")))
+
+(deftest waivers-endpoint-says-what-its-bids-were-priced-from
+  (let [body    {:scoring "ppr" :num-teams 12 :my-roster-id 1 :roster-size 2
+                 :league (assoc synced :league-id "123" :season "2026")}
+        history {:seasons [{:season "2026" :budget 100
+                            :auctions [{:week 3 :player-id "p"
+                                        :bids [{:roster-id 2 :owner-id "u2" :amount 9 :won? true}]}]}]}
+        asked   (atom nil)]
+    (is (= {:source "sleeper-wide" :auctions 0 :seasons [] :league-multiplier 1.0 :min-bid 0}
+           (:bidding (parse (waivers body))))
+        "no cached history: rivals bid like Sleeper at large")
+    (let [b (parse (waivers body (fn [& args] (reset! asked args) history)))]
+      (is (= ["sleeper" "123" "2026"] @asked) "read by the synced league's own id and season")
+      (is (= "league" (get-in b [:bidding :source])))
+      (is (= 1 (get-in b [:bidding :auctions]))))))
 
 (deftest waivers-endpoint-works-before-a-league-is-synced
   ;; Not an error — a manager who has not connected a league yet still gets a
@@ -461,6 +484,7 @@
   (let [b (parse (waivers {:scoring "ppr" :num-teams 12}))]
     (is (= 40 (count (:players b))))
     (is (every? #(nil? (:bid %)) (:players b)))
+    (is (nil? (:bidding b)))
     (is (empty? (:rostered b)))))
 
 (deftest waivers-endpoint-refuses-a-board-that-scores-nothing

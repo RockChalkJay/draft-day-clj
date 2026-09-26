@@ -1,6 +1,6 @@
 (ns draft-day.rankings.waiver
   "The waiver board: who is free, how much better he is than what you would have
-  to drop, and what share of your FAAB he is worth.
+  to drop, what share of your FAAB he is worth, and what to bid for him.
 
   Everything here is measured in **points**, never in auction dollars:
   rest-of-season (`:ros-points`, from `rankings.ros`) for every ranking and
@@ -16,7 +16,7 @@
   and `with-vorp`, which already accept a `score-key` and so run on
   `:ros-points` untouched.
 
-  THE FOUR ANSWERS.
+  THE ANSWERS.
 
   `:lineup-upgrade` is the headline, and the board sorts on it. It is what the
   claim adds to the *starting lineup*: seat the player, re-fill the lineup, and
@@ -34,21 +34,27 @@
   rest-of-season line. It stays signed, since most of a free-agent pool is worse
   than the man you would drop.
 
-  `:bid` is a conserving share of your remaining budget, and what it conserves
-  against is the part worth stating: not every free agent, but the best
-  `claims-left` of them, where `claims-left` is how many waiver runs the season
-  has left. That bound is read off the calendar rather than chosen, and it is
-  what makes the number behave like FAAB actually behaves — many runs left means
-  small bids, one run left means spend it. Over those top claims the bids sum to
-  the budget, which is the property `waiver-test` pins.
+  `:walk-away` is what he is worth to you: a conserving share of your remaining
+  budget, and what it conserves against is the part worth stating — not every
+  free agent, but the best `claims-left` of them, where `claims-left` is how
+  many waiver runs the season has left. That bound is read off the calendar
+  rather than chosen, and it is what makes the number behave like FAAB actually
+  behaves — many runs left means small walk-aways, one run left means spend it.
+  Over those top claims the walk-aways sum to the budget, which is the property
+  `waiver-test` pins.
 
   It is one budget but two pools, because a single pool let bench depth outbid a
-  starter — see BIDS COME FROM TWO POOLS below.
+  starter — see WALK-AWAYS COME FROM TWO POOLS below.
+
+  `:bid` is what to actually bid, and `rankings.faab` sets it, since the
+  walk-away says what a player is worth to you and never what anybody else will
+  pay. What each rival's own lineup would gain from each free agent is football,
+  so it stays here, in `rival-needs`.
 
   A `:bid` of $0 is a real bid, not a refusal. FAAB accepts one, and a player
-  whose upgrade rounds to nothing is honestly worth the minimum — unlike the
-  auction board, where $0 meant a player nobody should draft and the $1 floor
-  existed to say so.
+  nobody else wants is honestly won at the minimum — unlike the auction board,
+  where $0 meant a player nobody should draft and the $1 floor existed to say
+  so.
 
   `:rival-max` is not a formula at all, it is the largest budget anyone else
   still holds. It is the most useful number on the screen precisely because it
@@ -96,7 +102,7 @@
   `:active-ids` for seats and drops, `:player-ids` for availability.
 
   `:lineup-upgrade` IS THE HEADLINE. `db/waiver-rank-key` leads with it and
-  `with-bids` prices most of the budget on it, so it is no longer the
+  `with-bids` prices most of the walk-away on it, so it is no longer the
   display-only signal it shipped as. It earned that: the bench delta it replaces
   put ten quarterbacks on top of a real league's board, none of whom would ever
   start, each carrying an $8 bid. `:upgrade` stays alongside because most of a
@@ -106,12 +112,14 @@
   numerically identical to `:upgrade` beside it, so nothing on screen would say
   it is not answering.
 
-  BIDS COME FROM TWO POOLS (`with-bids`). A player who improves the starting
-  lineup is worth real money; a bench stash is worth keeping ordered and cheap.
-  `stash-share` splits the budget, each pool conserves its own share, and an
-  empty pool hands its share to the other — without that a manager with a single
-  lineup upgrade available would leave `stash-share` of his budget unallocated."
+  WALK-AWAYS COME FROM TWO POOLS (`with-bids`). A player who improves the
+  starting lineup is worth real money; a bench stash is worth keeping ordered
+  and cheap. `stash-share` splits the budget, each pool conserves its own share,
+  and an empty pool hands its share to the other — without that a manager with a
+  single lineup upgrade available would leave `stash-share` of his budget
+  unallocated."
   (:require [draft-day.db :as db]
+            [draft-day.rankings.faab :as faab]
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.replacement :as replacement]
             [draft-day.scoring :as scoring]))
@@ -220,30 +228,35 @@
   [type]
   (= :faab (when type (keyword type))))
 
+(defn lineup-gains
+  "What each of `fas` would add to `roster`'s starting lineup once `drop` has
+  left it (`lineup/upgrades`), or nil with no seats or no roster to measure
+  against."
+  [fas roster drop slots]
+  (when (and (seq slots) (seq roster))
+    (lineup/upgrades roster fas drop slots :ros-points)))
+
 (defn with-lineup-upgrade
   "Assoc `:lineup-upgrade` — what the claim adds to the *starting* lineup, as
   against `:upgrade`'s bench delta. See `rankings.lineup`, and the ns docstring
   for why it is the headline and why it is absent rather than 0 with no lineup."
   [fas roster drop slots]
-  (if-not (and (seq slots) (seq roster))
-    fas
-    (let [before (lineup/lineup-points roster slots :ros-points)]
-      (mapv (fn [p]
-              (assoc p :lineup-upgrade
-                     (lineup/upgrade before roster p drop slots :ros-points)))
-            fas))))
+  (if-let [gains (lineup-gains fas roster drop slots)]
+    (mapv #(assoc %1 :lineup-upgrade %2) fas gains)
+    fas))
 
 (defn with-bids
-  "Assoc `:bid` — his share of the remaining budget, from the two pools the ns
-  docstring describes. **nil**, not 0, for a league that does not run FAAB or a
-  manager with nothing left to spend: 'worth nothing' is a different answer."
+  "Assoc `:walk-away` — his share of the remaining budget, from the two pools
+  the ns docstring describes. nil, not 0, for a league that does not run FAAB
+  or a manager with nothing left to spend: 'worth nothing' is a different
+  answer."
   [fas {:keys [type]} budget-left n]
   (let [ws    (mapv weights fas)
         lin   (bid-pool (map first ws) n)
         stash (bid-pool (map second ws) n)]
     (if-not (and (faab? type) (number? budget-left) (pos? budget-left)
                  (pos? (+ lin stash)))
-      (mapv #(assoc % :bid nil) fas)
+      (mapv #(assoc % :walk-away nil) fas)
       (let [lin-budget   (if (pos? stash) (* (- 1.0 stash-share) budget-left) budget-left)
             stash-budget (if (pos? lin) (* stash-share budget-left) budget-left)]
         (mapv (fn [p [lu st]]
@@ -251,8 +264,30 @@
                               (pos? lu) (* (/ lu lin) lin-budget)
                               (pos? st) (* (/ st stash) stash-budget)
                               :else     0.0)]
-                  (assoc p :bid (-> share (min budget-left) Math/rint long (max 0)))))
+                  (assoc p :walk-away (-> share (min budget-left) Math/rint long (max 0)))))
               fas ws)))))
+
+(defn rival-needs
+  "`[{:roster-id :owner-id :name :faab-left :waiver-position :needs {player-id
+  points}}]` for every team but mine: what his own lineup would gain from each
+  free agent, for `faab/with-market` to aim his claims by. Measured as my
+  `:lineup-upgrade` is — his active roster through `held-ids`, his own
+  `drop-candidate`, the league's seats — and the bench delta with no seats
+  known, as my walk-away falls back to `:upgrade`. A rival holding nobody, as
+  before a draft, needs nobody."
+  [teams my-roster-id xwalk by-id seats slots fas]
+  (->> teams
+       (remove #(= (:roster-id %) my-roster-id))
+       (mapv (fn [team]
+               (let [active (held-ids team xwalk :active-ids)
+                     roster (vec (keep #(get by-id %) active))
+                     drop   (drop-candidate active by-id seats slots)
+                     floor  (double (or (:ros-points drop) 0.0))
+                     gains  (or (lineup-gains fas roster drop slots)
+                                (when (seq roster)
+                                  (map #(- (double (or (:ros-points %) 0.0)) floor) fas)))]
+                 (assoc (select-keys team [:roster-id :owner-id :name :faab-left :waiver-position])
+                        :needs (zipmap (map :player-id fas) gains)))))))
 
 (defn rival-max
   "The largest budget anyone *else* still holds — what it would take to be sure.
@@ -351,9 +386,12 @@
 (defn waiver-board
   "`:players` is the free agents only — `:rostered` is the compact `{player-id
   team-name}` index that answers 'who has him' without re-sending the universe.
-  No synced rosters is not an error: everyone is free."
+  No synced rosters is not an error: everyone is free.
+
+  `:bid-history` is the league's cached history (`transactions/cached-history`),
+  which prices its rivals' bids; without one they bid like Sleeper at large."
   [board {:keys [league my-roster-id roster-size num-teams replacement-config
-                 starting-slots] :as ctx}]
+                 starting-slots through-week bid-history] :as ctx}]
   (let [{:keys [teams waiver]} league
         xwalk    (db/provider->player-id board (:provider league))
         rostered (rostered-index teams xwalk)
@@ -370,13 +408,29 @@
         ;; disagreed, and two call sites that must stay in step is that shape.
         active   (held-ids my-team xwalk :active-ids)
         drop     (when my-team (drop-candidate active by-id seats starting-slots))
-        n        (claims-left ctx)]
-    {:players            (-> (free-agents players rostered)
-                             (with-upgrade drop)
-                             (with-lineup-upgrade
-                               (vec (keep #(get by-id %) active))
-                               drop starting-slots)
-                             (with-bids waiver (:faab-left my-team) n)
+        n        (claims-left ctx)
+        bidding? (faab? (:type waiver))
+        fas      (-> (free-agents players rostered)
+                     (with-upgrade drop)
+                     (with-lineup-upgrade
+                       (vec (keep #(get by-id %) active))
+                       drop starting-slots)
+                     (with-bids waiver (:faab-left my-team) n))
+        habits   (when bidding?
+                   (faab/league-habits bid-history (if (seq teams) (count teams) num-teams)))]
+    {:players            (-> fas
+                             (faab/with-market
+                               {;; Only with a walk-away to bid up to: this asks
+                                ;; every rival's lineup about every free agent.
+                                :rivals (when (and my-team (some :walk-away fas))
+                                          (rival-needs teams my-roster-id xwalk by-id
+                                                       seats starting-slots fas))
+                                :me     my-team
+                                :waiver waiver
+                                :habits habits
+                                ;; A waiver run is filed under the week it is
+                                ;; processed in, the one after the last played.
+                                :week   (inc (or through-week 0))})
                              with-trend)
      ;; The seat a claim would cost, for the browser to mark on the manager's
      ;; roster — which it splits itself, through `db/team-roster`, the one
@@ -391,4 +445,5 @@
      :faab               {:type      (:type waiver)
                           :budget    (:budget waiver)
                           :left      (:faab-left my-team)
-                          :rival-max (rival-max teams my-roster-id)}}))
+                          :rival-max (rival-max teams my-roster-id)}
+     :bidding            (when bidding? (faab/bidding habits waiver))}))
