@@ -26,7 +26,8 @@
                  ;; --- frontend (compiled by shadow-cljs via :lein true) ---
                  [thheller/shadow-cljs "2.28.18"]
                  [reagent "1.2.0"]
-                 [re-frame "1.4.3"]]
+                 [re-frame "1.4.3"]
+                 [nrepl "1.7.0"]]
   :main ^:skip-aot draft-day.server
   :target-path "target/%s"
   ;; `dev/` holds research harnesses (auction replay, rankings benchmark) that are
