@@ -56,7 +56,7 @@
 (def heat-weight
   "How far the most-added player on Sleeper raises a rival's interest: at 1.0 it
   doubles. CHOSEN, and the replay backtest cannot rebuild past trending lists,
-  so it waits on the snapshots `draft-day.tools.trending-snapshot` records."
+  so it waits on the snapshots `ingestion.sleeper-trending` keeps."
   1.0)
 
 (def threat-floor

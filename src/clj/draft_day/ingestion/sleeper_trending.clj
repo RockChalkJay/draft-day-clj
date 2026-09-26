@@ -15,8 +15,14 @@
   (`DRAFTDAY_TRENDING_TTL_HOURS`, default 1): it moves by the hour, and sharing
   either file's freshness would either refetch the universe hourly or serve
   Tuesday's adds on Sunday. A fetch that fails serves the last cached list with
-  its own `:fetched-at`, and offline there is none."
-  (:require [clojure.tools.logging :as log]
+  its own `:fetched-at`, and offline there is none.
+
+  Every live fetch also keeps a copy under `snapshot-dir`, named for when it was
+  taken. Sleeper keeps no past lists, so these are the only record a backtest
+  could ever measure `faab/heat-weight` against, and they accumulate as the
+  board is used rather than on anyone's schedule."
+  (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
             [draft-day.json :refer [mapper]]
@@ -27,6 +33,8 @@
 (def schema-version 1)
 
 (def default-cache-path (str "data/trending_adds.v" schema-version ".transit"))
+
+(def snapshot-dir "data/faab_cache/trending")
 
 (defn trending-url []
   (str "https://api.sleeper.app/v1/players/nfl/trending/add?lookback_hours="
@@ -53,14 +61,22 @@
                   [(str player_id) (long count)])))
         raw))
 
+(defn snapshot-path
+  "Where a list fetched at `iso` is kept, colons out of the name for
+  filesystems that refuse them."
+  [dir iso]
+  (str dir "/adds-" (str/replace iso ":" "-") ".transit"))
+
 (defn live!
-  "Fetch, normalize and cache the list."
-  [path]
+  "Fetch, normalize and cache the list, keeping a snapshot of it. A snapshot
+  that will not write costs the record one list, never the board its list."
+  [path dir]
   (let [env {:schema-version schema-version
              :lookback-hours lookback-hours
              :fetched-at     (pipeline/now-iso)
              :adds           (normalize (fetch-raw))}]
     (pipeline/write-transit! path env)
+    (pipeline/best-effort (pipeline/write-transit! (snapshot-path dir (:fetched-at env)) env))
     env))
 
 (defn read-cached [path]
@@ -76,12 +92,12 @@
   else live, else whatever is cached however old; nil offline or with nothing
   to serve."
   ([] (load-adds {}))
-  ([{:keys [path] :or {path default-cache-path}}]
+  ([{:keys [path dir] :or {path default-cache-path dir snapshot-dir}}]
    (when-not (pipeline/offline?)
      (let [cached (read-cached path)]
        (if (and cached (pipeline/cache-fresh? path (ttl-hours)))
          cached
-         (try (live! path)
+         (try (live! path dir)
               (catch Exception e
                 (log/warn e "trending adds fetch failed:" (ex-message e))
                 cached)))))))
