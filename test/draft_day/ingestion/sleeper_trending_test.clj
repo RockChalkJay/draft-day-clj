@@ -1,6 +1,7 @@
 (ns draft-day.ingestion.sleeper-trending-test
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
+            [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper-trending :as trending]))
 
@@ -18,7 +19,51 @@
 (deftest the-list-is-keyed-by-sleeper-id-a-defense-by-its-team
   (is (= {"4034" 605907 "MIN" 152600} (trending/normalize raw)))
   (is (= {"7" 3} (trending/normalize [{:player_id 7 :count 3} {:player_id nil :count 9}]))
-      "a numeric id is a string, and a row with no id is dropped"))
+      "a numeric id is a string, and a row with no id is dropped")
+  (is (= {"7" 3} (trending/normalize [{:player_id 7 :count 3} {:player_id "8" :count 0}]))
+      "a zero count would collapse the log scale heat is read on"))
+
+(deftest an-empty-answer-is-a-failure-not-a-fresh-list
+  (let [path (temp-path)
+        dir  (temp-dir)]
+    (with-redefs [pipeline/offline? (constantly false)]
+      (with-redefs [trending/fetch-raw (constantly raw)]
+        (trending/load-adds {:path path :dir dir}))
+      (.setLastModified (io/file path) 0)
+      (doseq [body [nil [] {:error "down"}]]
+        (with-redefs [trending/fetch-raw (constantly body)]
+          (reset! @#'trending/failed-at {})
+          (is (= 605907 (get-in (trending/load-adds {:path path :dir dir}) [:adds "4034"]))
+              (str (pr-str body) " keeps the good list"))))
+      (is (= 1 (count (.list (io/file dir)))) "and records no empty snapshot"))))
+
+(deftest a-failure-is-not-retried-on-every-request
+  (let [path  (temp-path)
+        calls (atom 0)]
+    (reset! @#'trending/failed-at {})
+    (with-redefs [pipeline/offline?  (constantly false)
+                  trending/fetch-raw (fn [] (swap! calls inc) (throw (ex-info "timeout" {})))]
+      (trending/load-adds {:path path :dir (temp-dir)})
+      (trending/load-adds {:path path :dir (temp-dir)})
+      (is (= 1 @calls) "every Sleeper caller shares its permits"))
+    (with-redefs [pipeline/offline?        (constantly false)
+                  trending/fetch-raw       (constantly raw)
+                  trending/failure-backoff-ms 0]
+      (is (some? (trending/load-adds {:path path :dir (temp-dir)})) "and is retried once it expires"))))
+
+(deftest a-cache-that-will-not-write-does-not-cost-the-board-its-list
+  (with-redefs [trending/fetch-raw (constantly raw)
+                pipeline/offline?  (constantly false)]
+    (let [blocked (java.io.File/createTempFile "not-a-dir" "")]
+      (.deleteOnExit blocked)
+      (is (= 605907 (get-in (trending/load-adds {:path (str blocked "/cache.transit") :dir (temp-dir)})
+                            [:adds "4034"]))))))
+
+(deftest a-replayed-week-gets-no-list-from-today
+  (with-redefs [pipeline/offline?             (constantly false)
+                nflverse-weekly/as-of-week (constantly 5)
+                trending/fetch-raw            (fn [] (throw (AssertionError. "must not fetch")))]
+    (is (nil? (trending/load-adds {:path (temp-path) :dir (temp-dir)})))))
 
 (deftest a-fresh-cache-is-served-without-asking-sleeper
   (let [path  (temp-path)
@@ -48,6 +93,7 @@
                             [:adds "4034"]))))))
 
 (deftest a-failed-fetch-serves-the-last-list-with-its-own-age
+  (reset! @#'trending/failed-at {})
   (let [path (temp-path)]
     (with-redefs [pipeline/offline? (constantly false)]
       (with-redefs [trending/fetch-raw (constantly raw)]
@@ -58,6 +104,7 @@
           (is (= 605907 (get-in env [:adds "4034"])) "stale beats nothing")
           (is (string? (:fetched-at env)) "and says when it is from")))
       (testing "with nothing cached there is nothing to serve"
+        (reset! @#'trending/failed-at {})
         (with-redefs [trending/fetch-raw (fn [] (throw (ex-info "down" {})))]
           (is (nil? (trending/load-adds {:path (temp-path) :dir (temp-dir)}))))))))
 

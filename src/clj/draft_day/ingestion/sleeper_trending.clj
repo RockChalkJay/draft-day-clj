@@ -14,8 +14,12 @@
   Cached apart from the universe and the weekly line on its own TTL
   (`DRAFTDAY_TRENDING_TTL_HOURS`, default 1): it moves by the hour, and sharing
   either file's freshness would either refetch the universe hourly or serve
-  Tuesday's adds on Sunday. A fetch that fails serves the last cached list with
-  its own `:fetched-at`, and offline there is none.
+  Tuesday's adds on Sunday. A fetch that fails, or answers with an empty list,
+  serves the last cached list with its own `:fetched-at` and is not retried for
+  `failure-backoff-ms`, since every Sleeper caller shares `sleeper-http`'s
+  permits. Offline there is none, and neither is there while
+  `DRAFTDAY_AS_OF_WEEK` replays a past week: today's list is news that week
+  never had.
 
   Every live fetch also keeps a copy under `snapshot-dir`, named for when it was
   taken. Sleeper keeps no past lists, so these are the only record a backtest
@@ -23,6 +27,7 @@
   board is used rather than on anyone's schedule."
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
             [draft-day.json :refer [mapper]]
@@ -35,6 +40,12 @@
 (def default-cache-path (str "data/trending_adds.v" schema-version ".transit"))
 
 (def snapshot-dir "data/faab_cache/trending")
+
+(def failure-backoff-ms
+  "How long a failed fetch keeps the next one from trying."
+  (* 5 60 1000))
+
+(defonce ^:private failed-at (atom {}))
 
 (defn trending-url []
   (str "https://api.sleeper.app/v1/players/nfl/trending/add?lookback_hours="
@@ -53,11 +64,12 @@
       :else          (throw (ex-info "Sleeper trending non-200" {:status status})))))
 
 (defn normalize
-  "`{sleeper-id adds}`, ids as strings."
+  "`{sleeper-id adds}`, ids as strings, and only positive counts: heat is read
+  on a log scale."
   [raw]
   (into {}
         (keep (fn [{:keys [player_id count]}]
-                (when (and player_id (number? count))
+                (when (and player_id (number? count) (pos? count))
                   [(str player_id) (long count)])))
         raw))
 
@@ -68,16 +80,27 @@
   (str dir "/adds-" (str/replace iso ":" "-") ".transit"))
 
 (defn live!
-  "Fetch, normalize and cache the list, keeping a snapshot of it. A snapshot
-  that will not write costs the record one list, never the board its list."
+  "Fetch, normalize and cache the list, keeping a snapshot of it. An empty list
+  throws, since Sleeper always has somebody trending and caching nobody would
+  read as a fresh answer. A write that fails costs the cache or the record one
+  list, never the board the list it just fetched."
   [path dir]
-  (let [env {:schema-version schema-version
-             :lookback-hours lookback-hours
-             :fetched-at     (pipeline/now-iso)
-             :adds           (normalize (fetch-raw))}]
-    (pipeline/write-transit! path env)
+  (let [adds (normalize (fetch-raw))
+        env  {:schema-version schema-version
+              :lookback-hours lookback-hours
+              :fetched-at     (pipeline/now-iso)
+              :adds           adds}]
+    (when (empty? adds)
+      (throw (ex-info "Sleeper trending list empty" {})))
+    (pipeline/best-effort (pipeline/write-transit! path env))
     (pipeline/best-effort (pipeline/write-transit! (snapshot-path dir (:fetched-at env)) env))
     env))
+
+(defn backing-off?
+  "Did a fetch for `path` fail within `failure-backoff-ms`?"
+  [path]
+  (when-let [t (get @failed-at path)]
+    (< (- (System/currentTimeMillis) t) failure-backoff-ms)))
 
 (defn read-cached [path]
   (try
@@ -89,15 +112,19 @@
 
 (defn load-adds
   "`{:fetched-at :lookback-hours :adds {sleeper-id adds}}`, fresh from the cache,
-  else live, else whatever is cached however old; nil offline or with nothing
-  to serve."
+  else live, else whatever is cached however old; nil offline, replaying a past
+  week, or with nothing to serve."
   ([] (load-adds {}))
   ([{:keys [path dir] :or {path default-cache-path dir snapshot-dir}}]
-   (when-not (pipeline/offline?)
+   (when-not (or (pipeline/offline?) (nflverse-weekly/as-of-week))
      (let [cached (read-cached path)]
-       (if (and cached (pipeline/cache-fresh? path (ttl-hours)))
+       (if (or (and cached (pipeline/cache-fresh? path (ttl-hours)))
+               (backing-off? path))
          cached
-         (try (live! path dir)
+         (try (let [env (live! path dir)]
+                (swap! failed-at dissoc path)
+                env)
               (catch Exception e
                 (log/warn e "trending adds fetch failed:" (ex-message e))
+                (swap! failed-at assoc path (System/currentTimeMillis))
                 cached)))))))
