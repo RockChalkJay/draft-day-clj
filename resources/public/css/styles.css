@@ -524,6 +524,12 @@ tr.upgrade .p-name { font-weight: 600; }
 /* Left, not right like the other numbers: the chance after the dollars varies
    in width, and right-aligned it staggers the dollars down the column. */
 td.bid { font-variant-numeric: tabular-nums; }
+td.bid { cursor: help; }
+/* The Bid cell's tooltip, the app's own so it can be read at board size. */
+.bid-tip { position: fixed; z-index: 20; pointer-events: none; white-space: pre-line;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; font-size: 14px; line-height: 1.6;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .5); max-width: 420px; }
 /* Whose data a column is, under the board that shows it. */
 .source-note { font-size: 11px; color: var(--muted); padding: 0 2px; }
 

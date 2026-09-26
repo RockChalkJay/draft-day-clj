@@ -348,6 +348,16 @@
   (is (= [:td.bid "–"] (waivers/cell :bid {:bid nil} nil))
       "no FAAB is a dash, never $0"))
 
+(deftest hovering-a-bid-opens-its-tooltip-and-leaving-closes-it
+  (let [[_ attrs] (waivers/cell :bid contested {:source "league" :auctions 461})
+        cell #js {:getBoundingClientRect (fn [] #js {:left 900 :bottom 180})}]
+    (is (re-find #"^Top rival bid" (:aria-label attrs)) "still read by a screen reader")
+    ((:on-mouse-enter attrs) #js {:currentTarget cell})
+    (is (= {:x 900 :y 184} (select-keys @waivers/bid-tip [:x :y])) "just under the cell")
+    (is (re-find #"Show me your TDs" (:text @waivers/bid-tip)))
+    ((:on-mouse-leave attrs) nil)
+    (is (nil? @waivers/bid-tip))))
+
 (deftest the-bid-tooltip-names-who-you-are-bidding-against
   (is (= (str "Top rival bid: usually ≤ $8, rarely over $19\n"
               "Show me your TDs · $89 left · 83%\n"

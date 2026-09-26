@@ -11,6 +11,7 @@
   week — in preseason the rest-of-season board *is* the draft board, which is the
   honest answer but the one a manager is most likely to misread as live."
   (:require [clojure.string :as str]
+            [reagent.core :as r]
             [re-frame.core :as rf]
             [draft-day.db :as db]
             [draft-day.views.board :as board]
@@ -83,15 +84,40 @@
               " · worth $" walk-away " to you")
          (bid-source bidding)])))))
 
+(defonce ^{:doc "The Bid tooltip on screen, `{:text :x :y}`, or nil."}
+  bid-tip (r/atom nil))
+
+(defn show-bid-tip!
+  "Open the Bid tooltip under the hovered cell. The page's own rather than a
+  `title`, which the browser draws at its own small size; fixed to the viewport
+  so the board's scroll container cannot clip it on the bottom rows."
+  [e text]
+  (let [rect (.getBoundingClientRect (.-currentTarget e))]
+    (reset! bid-tip {:text text :x (.-left rect) :y (+ (.-bottom rect) 4)})))
+
+(defn bid-tip-popover
+  "Cleared when the board goes, or a tab switched mid-hover would bring it back
+  open over nothing."
+  []
+  (r/create-class
+   {:component-will-unmount #(reset! bid-tip nil)
+    :reagent-render
+    (fn []
+      (when-let [{:keys [text x y]} @bid-tip]
+        [:div.bid-tip {:style {:left x :top y} :aria-hidden true} text]))}))
+
 (defn bid-cell
   "`$12 · 76%`, left-aligned so the dollars line up whatever the chance's
   width, or a dash where there is no bid. A nil bid is \"this league does
   not bid\" and $0 is a legal bid that wins at the minimum; they must not read
-  alike."
+  alike. Hovering opens `bid-title` in `bid-tip-popover`."
   [p bidding]
   (if (number? (:bid p))
-    (let [w (:win-prob p)]
-      [:td.bid {:title (bid-title p bidding)}
+    (let [w   (:win-prob p)
+          tip (bid-title p bidding)]
+      [:td.bid {:aria-label     tip
+                :on-mouse-enter #(show-bid-tip! % tip)
+                :on-mouse-leave #(reset! bid-tip nil)}
        [:b (str "$" (:bid p))]
        (when (number? w)
          [:span {:class (if (< w priced-out) "warn" "muted")} (str " · " (win-pct w))])])
@@ -426,6 +452,7 @@
                  (map (fn [{k :key}] ^{:key k} [cell k p week bidding]) cols)])
               players)]]]
       [:aside.waiver-roster-col [my-roster-panel]]]
+     [bid-tip-popover]
      ;; Sleeper's data, on Sleeper's terms: say whose it is wherever it shows.
      (when (some #(= :adds (:key %)) cols)
        [:div.source-note "Adds: Sleeper trending adds, last 48 hours · via Sleeper"])
