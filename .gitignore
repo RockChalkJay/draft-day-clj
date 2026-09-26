@@ -37,6 +37,8 @@ out/
 # this week's projections, cached apart from the universe and on a far shorter
 # TTL — see ingestion/pipeline.clj for why the two cannot share a file
 /data/weekly_projections*.transit
+# Sleeper's trending adds, on its own hourly TTL — see ingestion/sleeper_trending.clj
+/data/trending_adds*.transit
 # each synced league's FAAB auctions, one file per league-season — see
 # ingestion/transactions.clj; re-fetchable by a re-sync
 /data/bid_history.v*/

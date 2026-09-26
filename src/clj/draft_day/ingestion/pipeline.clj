@@ -379,6 +379,18 @@
               p))
           players)))
 
+(defn assoc-trending
+  "Join Sleeper's trending adds onto players as `:trending/adds`, by Sleeper id
+  as `assoc-weekly` joins, leaving a player off the list unannotated."
+  [players adds]
+  (if (empty? adds)
+    players
+    (mapv (fn [p]
+            (if-let [n (get adds (or (get-in p [:ids :sleeper]) (:player-id p)))]
+              (assoc p :trending/adds n)
+              p))
+          players)))
+
 (defn assoc-weekly
   "Join weekly lines onto players, leaving unprojected players unannotated."
   [players lines]

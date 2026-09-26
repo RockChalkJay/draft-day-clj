@@ -8,6 +8,7 @@
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.matchups :as matchups]
+            [draft-day.ingestion.sleeper-trending :as trending]
             [draft-day.ingestion.transactions :as transactions]
             [draft-day.scoring :as scoring]))
 
@@ -362,10 +363,12 @@
   cache a real sync leaves, and a test that read the developer's would pass or
   fail on whatever league he synced last."
   ([body] (waivers body (constantly nil)))
-  ([body cached-history]
+  ([body cached-history] (waivers body cached-history (constantly nil)))
+  ([body cached-history load-adds]
    (routes/reset-universe!)
    (with-redefs [pipeline/load-universe      (fn [& _] in-season)
                  pipeline/load-weekly        stub-weekly
+                 trending/load-adds          load-adds
                  transactions/cached-history cached-history]
      (routes/waivers-handler {:body (input-stream (json/write-value-as-string body))}))))
 
@@ -463,6 +466,17 @@
         "and the claims still available do not overspend the budget")
     (is (every? #(<= (:bid %) (:walk-away %)) (:players b)) "and no bid is past its walk-away")))
 
+(deftest waivers-endpoint-carries-sleepers-trending-adds
+  (let [adds {:fetched-at "2026-09-26T12:00:00Z" :lookback-hours 48 :adds {"rb0" 90000}}
+        b    (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}
+                             (constantly nil) (constantly adds)))
+        by   (into {} (map (juxt :player-id identity)) (:players b))]
+    (is (= 90000 (:trending/adds (by "rb0"))))
+    (is (not (contains? (by "rb1") :trending/adds)) "off the list is absent, not zero")
+    (is (= {:fetched-at "2026-09-26T12:00:00Z" :lookback-hours 48} (:trending b))))
+  (is (nil? (:trending (parse (waivers {:scoring "ppr" :num-teams 12}))))
+      "offline, or Sleeper never answered"))
+
 (deftest waivers-endpoint-says-what-its-bids-were-priced-from
   (let [body    {:scoring "ppr" :num-teams 12 :my-roster-id 1 :roster-size 2
                  :league (assoc synced :league-id "123" :season "2026")}
@@ -499,7 +513,8 @@
   ;; season, so this is the draft board asked a different question.
   (routes/reset-universe!)
   (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :through-week 0))
-                pipeline/load-weekly  stub-weekly]
+                pipeline/load-weekly  stub-weekly
+                trending/load-adds    (constantly nil)]
     (let [b (parse (routes/waivers-handler
                     {:body (input-stream (json/write-value-as-string
                                           {:scoring "ppr" :num-teams 12}))}))]

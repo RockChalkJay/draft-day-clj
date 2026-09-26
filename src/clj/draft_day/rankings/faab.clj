@@ -23,9 +23,13 @@
   Who bids: a rival makes `:per-week` claims (his `bid-history` profile) and
   aims them by `interest-weight` — what a player adds to his own starting
   lineup, plus a CHOSEN fraction of value over replacement for the stash
-  claimed with no hole to fill. The count is Poisson, so he bids on a player
-  with chance 1 − e^(−rate); a fixed count, 1 − (1 − share)^λ, would make a
-  rival with one target certain to bid however rarely he bids.
+  claimed with no hole to fill, plus the player's `heat` on Sleeper's trending
+  list, which is news no projection has caught up with. Heat adds rather than
+  multiplies, so a backup the whole site is adding the day his starter goes
+  down draws claims while his projection still says he is nobody. The count is
+  Poisson, so he bids on a player with chance 1 − e^(−rate); a fixed count,
+  1 − (1 − share)^λ, would make a rival with one target certain to bid however
+  rarely he bids.
 
   What he bids: `bid-prior/bid-share` for the predicted bidder count and the
   phase, so a player everybody wants is priced like one, scaled by position,
@@ -51,6 +55,14 @@
   "The chance of winning that `:bid-sure` buys."
   0.9)
 
+(def heat-weight
+  "The interest the most-added player on Sleeper draws from heat alone, as a
+  share of what the rival's best target draws on need: at 1.0 the top of the
+  list competes with his best target even with no need at all. CHOSEN, and the
+  replay backtest cannot rebuild past trending lists, so it waits on the
+  snapshots `ingestion.sleeper-trending` keeps."
+  1.0)
+
 (def threat-floor
   "The least chance of bidding that names a rival in `:competition`. CHOSEN."
   0.05)
@@ -59,8 +71,22 @@
   (let [k (Math/pow 10.0 places)]
     (/ (Math/round (* (double x) k)) k)))
 
+(defn heat-of
+  "`player -> 0..1`: where his `:trending/adds` sits on Sleeper's list, on a log
+  scale from its least-added player to its most. Off the list, 0. Read over the
+  whole `board` and not the free agents, since the most-added are mostly
+  rostered and the hottest free agent would otherwise always read as the top."
+  [board]
+  (let [adds (keep :trending/adds board)]
+    (if (< 1 (count (distinct adds)))
+      (let [lo (Math/log (apply min adds))
+            span (- (Math/log (apply max adds)) lo)]
+        (fn [p] (if-let [n (:trending/adds p)] (/ (- (Math/log n) lo) span) 0.0)))
+      (fn [p] (if (:trending/adds p) 1.0 0.0)))))
+
 (defn interest-weight
-  "How much of a rival's attention a free agent draws; see the ns docstring."
+  "How much of a rival's attention a free agent draws on football alone; see
+  the ns docstring. Heat is added by `claim-rates`, which knows the scale."
   [need ros-vorp]
   (+ (max 0.0 (double (or need 0.0)))
      (* speculative-weight (max 0.0 (double (or ros-vorp 0.0))))))
@@ -68,9 +94,13 @@
 (defn claim-rates
   "`{player-id rate}`: how many of a rival's `per-week` claims land on each free
   agent on average. The rates sum to `per-week` whenever anybody draws his
-  interest. A player who draws none is absent."
-  [needs fas per-week]
-  (let [ws    (mapv #(interest-weight (get needs (:player-id %)) (:ros-vorp %)) fas)
+  interest. A player who draws none is absent. Heat is scaled by the most any
+  free agent draws from this rival on football, so it is in his own points
+  whatever the week and whatever his roster."
+  [needs fas per-week heat]
+  (let [base  (mapv #(interest-weight (get needs (:player-id %)) (:ros-vorp %)) fas)
+        top   (reduce max 0.0 base)
+        ws    (mapv #(+ %1 (* heat-weight top (heat %2))) base fas)
         total (reduce + 0.0 ws)]
     (if (pos? total)
       (into {}
@@ -333,7 +363,7 @@
 (defn bidders
   "The rivals able to bid at all, each with his habits, his claim rates, his cap
   and his tie odds against me."
-  [rivals me fas habits budget min-bid]
+  [rivals me fas habits budget min-bid heat]
   (->> rivals
        (map (fn [r]
               (let [h (rival-habits r habits)]
@@ -341,7 +371,7 @@
                        :style (:style h)
                        :habits h
                        :cap (long (min budget (or (:faab-left r) budget)))
-                       :rates (claim-rates (:needs r) fas (:per-week h))
+                       :rates (claim-rates (:needs r) fas (:per-week h) heat)
                        :tie (tie-chance (:waiver-position me) (:waiver-position r))))))
        (filterv #(<= min-bid (:cap %)))))
 
@@ -372,13 +402,14 @@
   "Assoc `competition` onto every free agent with a `:walk-away`; the rest get a
   nil `:bid`, since a league that does not run FAAB, or a budget already spent,
   has nothing to bid. `rivals` is `waiver/rival-needs`, `me` the manager's own
-  team, `habits` `league-habits`, and `week` the week claims are decided in."
-  [fas {:keys [rivals me waiver habits week]}]
+  team, `habits` `league-habits`, `week` the week claims are decided in, and
+  `heat` is `heat-of` over the whole board, or none."
+  [fas {:keys [rivals me waiver habits week heat] :or {heat (constantly 0.0)}}]
   (let [budget  (long (or (:budget waiver) 0))
         min-bid (long (or (:min-bid waiver) 0))
         left    (some-> (:faab-left me) long (min budget))
         phase   (prior/phase week)
-        rivals  (bidders rivals me fas habits budget min-bid)
+        rivals  (bidders rivals me fas habits budget min-bid heat)
         ;; One distribution per rival, position and bidder count, not per
         ;; player: a few dozen, where there are hundreds of free agents.
         dist    (memoize

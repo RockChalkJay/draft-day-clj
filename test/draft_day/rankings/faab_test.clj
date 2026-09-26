@@ -16,20 +16,46 @@
 (deftest a-rivals-claims-are-shared-out-and-sum-to-his-rate
   (let [fas   [{:player-id "a" :ros-vorp 20.0} {:player-id "b" :ros-vorp -5.0}
                {:player-id "c"} {:player-id "d" :ros-vorp 0.0}]
-        rates (faab/claim-rates {"a" 10.0 "b" 30.0 "c" -12.0} fas 1.5)]
+        rates (faab/claim-rates {"a" 10.0 "b" 30.0 "c" -12.0} fas 1.5 (constantly 0.0))]
     (is (near? 1.5 (reduce + (vals rates)) 1e-9) "every claim he makes lands somewhere")
     (is (near? (* 1.5 (/ 20.0 50.0)) (rates "a") 1e-9)
         "need 10 plus half the 20 he clears replacement by, out of 50")
     (is (= #{"a" "b"} (set (keys rates)))
         "a negative need and nothing over replacement draw nothing"))
-  (is (= {} (faab/claim-rates {} [{:player-id "b" :ros-vorp -5.0}] 1.5))
+  (is (= {} (faab/claim-rates {} [{:player-id "b" :ros-vorp -5.0}] 1.5 (constantly 0.0)))
       "a rival nobody interests claims nobody"))
 
 (deftest a-quiet-rival-with-one-target-can-still-sit-the-week-out
-  (let [rate (get (faab/claim-rates {"a" 25.0} [{:player-id "a"}] 0.3) "a")]
+  (let [rate (get (faab/claim-rates {"a" 25.0} [{:player-id "a"}] 0.3 (constantly 0.0)) "a")]
     (is (near? 0.3 rate 1e-9))
     (is (< 0.25 (faab/bid-chance rate) 0.27)
         "a claim every three weeks is not a certain bid, as a fixed count makes it")))
+
+(deftest heat-is-a-players-place-on-sleepers-trending-list
+  (let [fas  [{:player-id "top" :trending/adds 600000} {:player-id "mid" :trending/adds 120000}
+              {:player-id "last" :trending/adds 20000} {:player-id "off"}]
+        heat (faab/heat-of fas)]
+    (is (near? 1.0 (heat (fas 0)) 1e-9))
+    (is (near? (/ (Math/log 6.0) (Math/log 30.0)) (heat (fas 1)) 1e-9) "on a log scale")
+    (is (near? 0.0 (heat (fas 2)) 1e-9) "the least-added on the list")
+    (is (= 0.0 (heat (fas 3))) "and nobody off it"))
+  (is (= 1.0 ((faab/heat-of [{:trending/adds 5}]) {:trending/adds 5})) "a list of one is its top")
+  (is (= 0.0 ((faab/heat-of []) {})) "no list, no heat"))
+
+(deftest a-player-the-site-is-adding-draws-more-of-a-rivals-claims
+  (let [fas   [{:player-id "hot" :trending/adds 500000} {:player-id "cold"}]
+        rates (faab/claim-rates {"hot" 20.0 "cold" 20.0} fas 1.0 (faab/heat-of fas))]
+    (is (near? (/ 2.0 3.0) (rates "hot") 1e-9) "the same need, doubled by the top of the list")
+    (is (near? 1.0 (reduce + (vals rates)) 1e-9) "and still no more claims than he makes")))
+
+(deftest a-breakout-no-projection-has-caught-draws-claims-on-heat-alone
+  (let [fas   [{:player-id "backup" :ros-vorp -3.0 :trending/adds 600000}
+               {:player-id "target" :ros-vorp 10.0}
+               {:player-id "other" :trending/adds 20000}]
+        rates (faab/claim-rates {"backup" 0.0 "target" 20.0} fas 1.0 (faab/heat-of fas))]
+    (is (near? 0.5 (rates "backup") 1e-9)
+        "no need and below replacement, yet the top of the list rivals his best target")
+    (is (not (contains? rates "other")) "the bottom of the list adds nothing")))
 
 (deftest a-rivals-bid-is-a-distribution-over-whole-dollars
   (doseq [bucket [1 2 3 4] phase [:early :mid :late] budget [100 1000] scale [0.4 1.0 2.5]]

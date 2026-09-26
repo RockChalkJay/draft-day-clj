@@ -21,6 +21,7 @@
             [draft-day.ingestion.matchups.sleeper]
             [draft-day.ingestion.nflverse-weekly :as weekly]
             [draft-day.ingestion.sleeper :as sleeper]
+            [draft-day.ingestion.sleeper-trending :as trending]
             [draft-day.ingestion.teams :as teams]))
 
 (def ^:private season 2025)
@@ -86,3 +87,10 @@
   (let [wk (matchups/current-week :sleeper {})]
     (is (number? wk) "display_week, or week as the fallback")
     (is (<= 1 wk 22) "a plausible NFL week rather than a parsed string")))
+
+(deftest ^:integration sleepers-trending-list-still-names-players-and-counts
+  ;; The one live-only contract here: Sleeper keeps no past trending lists.
+  (let [adds (trending/normalize (trending/fetch-raw))]
+    (is (< 50 (count adds)) "the list, not an empty or error body")
+    (is (every? pos? (vals adds)))
+    (is (some #(re-matches #"\d+" %) (keys adds)) "players by Sleeper id")))
