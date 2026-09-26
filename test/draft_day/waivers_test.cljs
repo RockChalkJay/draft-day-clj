@@ -345,7 +345,7 @@
     (is (= [:span {:class "muted"} " · 76%"] (nth c 3))))
   (is (= "warn" (get-in (vec (waivers/cell :bid {:bid 0 :win-prob 0.18} nil)) [3 1 :class]))
       "a bid that rarely lands says so")
-  (is (= [:td.num "–"] (waivers/cell :bid {:bid nil} nil))
+  (is (= [:td.bid "–"] (waivers/cell :bid {:bid nil} nil))
       "no FAAB is a dash, never $0"))
 
 (deftest the-bid-tooltip-names-who-you-are-bidding-against

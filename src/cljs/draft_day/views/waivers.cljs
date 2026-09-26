@@ -84,17 +84,18 @@
          (bid-source bidding)])))))
 
 (defn bid-cell
-  "`$12 · 76%`, or a dash where there is no bid. A nil bid is \"this league does
+  "`$12 · 76%`, left-aligned so the dollars line up whatever the chance's
+  width, or a dash where there is no bid. A nil bid is \"this league does
   not bid\" and $0 is a legal bid that wins at the minimum; they must not read
   alike."
   [p bidding]
   (if (number? (:bid p))
     (let [w (:win-prob p)]
-      [:td.num {:title (bid-title p bidding)}
+      [:td.bid {:title (bid-title p bidding)}
        [:b (str "$" (:bid p))]
        (when (number? w)
          [:span {:class (if (< w priced-out) "warn" "muted")} (str " · " (win-pct w))])])
-    [:td.num "–"]))
+    [:td.bid "–"]))
 
 ;; ---- this week's game ----
 ;; Two sources answer "who does he play". Sleeper's opponent rides in the same
