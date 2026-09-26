@@ -40,8 +40,8 @@
   many waiver runs the season has left. That bound is read off the calendar
   rather than chosen, and it is what makes the number behave like FAAB actually
   behaves — many runs left means small walk-aways, one run left means spend it.
-  Over those top claims the walk-aways sum to the budget, which is the property
-  `waiver-test` pins.
+  Over those top claims the walk-aways sum to the budget, less whatever a
+  market cap holds back (see WALK-AWAYS COME FROM TWO POOLS below).
 
   It is one budget but two pools, because a single pool let bench depth outbid a
   starter — see WALK-AWAYS COME FROM TWO POOLS below.
@@ -117,7 +117,8 @@
   and cheap. `stash-share` splits the budget, each pool conserves its own share,
   and an empty pool hands its share to the other — without that a manager with a
   single lineup upgrade available would leave `stash-share` of his budget
-  unallocated."
+  unallocated. Both weigh a claim over the free option (`over-free-option`), and
+  `faab/market-cap` bounds every walk-away; what it holds back stays unspent."
   (:require [draft-day.db :as db]
             [draft-day.rankings.faab :as faab]
             [draft-day.rankings.lineup :as lineup]
