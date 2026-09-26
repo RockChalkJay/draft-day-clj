@@ -409,9 +409,11 @@
           (println (format "  median |p50 - actual| $%.1f"
                            (report/quantile (map #(Math/abs (double (- (:top %) (first (:top-range %))))) ranged) 0.5))))))
     (println "\n-- Each winner's bid under three rules --")
+    (println (format "  over the %d winners every rule can bid for; %d had spent out and won at $0"
+                     (count (filter :walk-away winners)) (count (remove :walk-away winners))))
     (println "  rule          saved a claim   claims kept   (paid less than the winner did, kept = still wins)")
     (let [rule-row (fn [label k]
-                     (let [rs  (filter k winners)
+                     (let [rs  (filter :walk-away winners)
                            win (map #(outcome (k %) (:top %)) rs)
                            sav (map (fn [r o] (* o (- (:amount r) (k r)))) rs win)]
                        (println (format "  %-12s  $%6.2f        %5.1f%% of %d" label (mean sav)
