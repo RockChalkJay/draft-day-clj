@@ -375,20 +375,53 @@
                        :tie (tie-chance (:waiver-position me) (:waiver-position r))))))
        (filterv #(<= min-bid (:cap %)))))
 
+(defn market
+  "What pricing one manager's claims needs, built once for all his free agents:
+  the league's budget and minimum, what he has left, every rival able to bid
+  (`bidders`) and `:dist`, each rival's bid distribution by position and bidder
+  count. `rivals` is `waiver/rival-needs`, `me` the manager's own team, `habits`
+  `league-habits`, `week` the week claims are decided in, and `heat` is
+  `heat-of` over the whole board, or none."
+  [fas {:keys [rivals me waiver habits week heat] :or {heat (constantly 0.0)}}]
+  (let [budget  (long (or (:budget waiver) 0))
+        min-bid (long (or (:min-bid waiver) 0))
+        phase   (prior/phase week)
+        rivals  (bidders rivals me fas habits budget min-bid heat)]
+    {:budget  budget
+     :min-bid min-bid
+     :left    (some-> (:faab-left me) long (min budget))
+     :rivals  rivals
+     ;; One distribution per rival, position and bidder count, not per
+     ;; player: a few dozen, where there are hundreds of free agents.
+     :dist    (memoize
+               (fn [i position bucket]
+                 (let [{:keys [habits cap]} (rivals i)
+                       pmf (bid-pmf (get prior/bid-share [bucket phase])
+                                    (bid-scale bucket position budget (:log-multiplier habits))
+                                    (:zero-share habits) budget min-bid cap)]
+                   [pmf (cumulative pmf)])))}))
+
+(defn active-rivals
+  "The rivals who might bid for `p`, each with `:p`, the chance he does, and
+  `:pmf`/`:cdf` over what he would bid. The bidder count that picks their
+  distributions is the one predicted for this player."
+  [p {:keys [rivals dist]}]
+  (let [ps     (mapv #(bid-chance (get (:rates %) (:player-id p) 0.0)) rivals)
+        bucket (prior/bucket (max 1 (Math/round (+ 1.0 (reduce + 0.0 ps)))))]
+    (into []
+          (keep-indexed (fn [i r]
+                          (let [pi (ps i)]
+                            (when (pos? pi)
+                              (let [[pmf cdf] (dist i (:position p) bucket)]
+                                (assoc (select-keys r [:roster-id :name :faab-left :style :tie])
+                                       :p pi :pmf pmf :cdf cdf))))))
+          rivals)))
+
 (defn competition
   "One free agent's `:bid`, `:win-prob`, `:bid-sure`, `:rivals` and
-  `:competition`, against the rivals who might bid for him."
-  [p worth rivals dist min-bid left budget]
-  (let [ps     (mapv #(bid-chance (get (:rates %) (:player-id p) 0.0)) rivals)
-        bucket (prior/bucket (max 1 (Math/round (+ 1.0 (reduce + 0.0 ps)))))
-        active (into []
-                     (keep-indexed (fn [i r]
-                                     (let [pi (ps i)]
-                                       (when (pos? pi)
-                                         (let [[pmf cdf] (dist i (:position p) bucket)]
-                                           (assoc (select-keys r [:roster-id :name :faab-left :style :tie])
-                                                  :p pi :pmf pmf :cdf cdf))))))
-                     rivals)
+  `:competition` in `market` `m`, bidding up to `worth`."
+  [p worth {:keys [min-bid left budget] :as m}]
+  (let [active (active-rivals p m)
         bid    (value-bid active worth min-bid left)]
     {:bid         bid
      :win-prob    (when bid (round-to 3 (win-chance active bid)))
@@ -401,28 +434,13 @@
 (defn with-market
   "Assoc `competition` onto every free agent with a `:walk-away`; the rest get a
   nil `:bid`, since a league that does not run FAAB, or a budget already spent,
-  has nothing to bid. `rivals` is `waiver/rival-needs`, `me` the manager's own
-  team, `habits` `league-habits`, `week` the week claims are decided in, and
-  `heat` is `heat-of` over the whole board, or none."
-  [fas {:keys [rivals me waiver habits week heat] :or {heat (constantly 0.0)}}]
-  (let [budget  (long (or (:budget waiver) 0))
-        min-bid (long (or (:min-bid waiver) 0))
-        left    (some-> (:faab-left me) long (min budget))
-        phase   (prior/phase week)
-        rivals  (bidders rivals me fas habits budget min-bid heat)
-        ;; One distribution per rival, position and bidder count, not per
-        ;; player: a few dozen, where there are hundreds of free agents.
-        dist    (memoize
-                 (fn [i position bucket]
-                   (let [{:keys [habits cap]} (rivals i)
-                         pmf (bid-pmf (get prior/bid-share [bucket phase])
-                                      (bid-scale bucket position budget (:log-multiplier habits))
-                                      (:zero-share habits) budget min-bid cap)]
-                     [pmf (cumulative pmf)])))]
+  has nothing to bid. `ctx` is `market`'s."
+  [fas ctx]
+  (let [{:keys [left budget] :as m} (market fas ctx)]
     (mapv (fn [p]
             (let [worth (:walk-away p)]
               (if (and worth left (pos? budget))
-                (merge p (competition p worth rivals dist min-bid left budget))
+                (merge p (competition p worth m))
                 (assoc p :bid nil))))
           fas)))
 

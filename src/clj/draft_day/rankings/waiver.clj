@@ -383,13 +383,11 @@
   (when my-team
     (with-trend (keep #(get by-id %) (held-ids my-team xwalk :player-ids)))))
 
-(defn waiver-board
-  "`:players` is the free agents only — `:rostered` is the compact `{player-id
-  team-name}` index that answers 'who has him' without re-sending the universe.
-  No synced rosters is not an error: everyone is free.
-
-  `:bid-history` is the league's cached history (`transactions/cached-history`),
-  which prices its rivals' bids; without one they bid like Sleeper at large."
+(defn market-inputs
+  "Everything `waiver-board` prices from, and the one road to it: the backtest in
+  `dev/` walks it too, so what it scores is what the board ships. `:fas` are
+  the free agents with their walk-aways, `:market` is `faab/market`'s context,
+  and the rest is what the envelope reports. See `waiver-board` for `ctx`."
   [board {:keys [league my-roster-id roster-size num-teams replacement-config
                  starting-slots through-week bid-history] :as ctx}]
   (let [{:keys [teams waiver]} league
@@ -419,21 +417,43 @@
                      (with-bids waiver (:faab-left my-team) n))
         habits   (when bidding?
                    (faab/league-habits bid-history (if (seq teams) (count teams) num-teams)))]
-    {:players            (-> fas
-                             (faab/with-market
-                               {;; Only with a walk-away to bid up to: this asks
-                                ;; every rival's lineup about every free agent.
-                                :rivals (when (and my-team (some :walk-away fas))
-                                          (rival-needs teams my-roster-id xwalk by-id
-                                                       seats starting-slots fas))
-                                :me     my-team
-                                :waiver waiver
-                                :habits habits
-                                :heat   (faab/heat-of players)
-                                ;; A waiver run is filed under the week it is
-                                ;; processed in, the one after the last played.
-                                :week   (inc (or through-week 0))})
-                             with-trend)
+    {:players  players
+     :levels   levels
+     :rostered rostered
+     :xwalk    xwalk
+     :by-id    by-id
+     :seats    seats
+     :my-team  my-team
+     :drop     drop
+     :claims-left n
+     :bidding? bidding?
+     :habits   habits
+     :fas      fas
+     :market   {;; Only with a walk-away to bid up to: this asks every rival's
+                ;; lineup about every free agent.
+                :rivals (when (and my-team (some :walk-away fas))
+                          (rival-needs teams my-roster-id xwalk by-id
+                                       seats starting-slots fas))
+                :me     my-team
+                :waiver waiver
+                :habits habits
+                :heat   (faab/heat-of players)
+                ;; A waiver run is filed under the week it is processed in, the
+                ;; one after the last played.
+                :week   (inc (or through-week 0))}}))
+
+(defn waiver-board
+  "`:players` is the free agents only — `:rostered` is the compact `{player-id
+  team-name}` index that answers 'who has him' without re-sending the universe.
+  No synced rosters is not an error: everyone is free.
+
+  `:bid-history` is the league's cached history (`transactions/cached-history`),
+  which prices its rivals' bids; without one they bid like Sleeper at large."
+  [board {:keys [league my-roster-id] :as ctx}]
+  (let [{:keys [teams waiver]} league
+        {:keys [fas market my-team drop xwalk by-id rostered levels claims-left
+                bidding? habits]} (market-inputs board ctx)]
+    {:players            (-> fas (faab/with-market market) with-trend)
      ;; The seat a claim would cost, for the browser to mark on the manager's
      ;; roster — which it splits itself, through `db/team-roster`, the one
      ;; reader the League tab uses too. On the envelope and not only on each
@@ -443,7 +463,7 @@
      :my-roster-players  (my-roster-players my-team xwalk by-id)
      :rostered           rostered
      :replacement-levels levels
-     :claims-left        n
+     :claims-left        claims-left
      :faab               {:type      (:type waiver)
                           :budget    (:budget waiver)
                           :left      (:faab-left my-team)
