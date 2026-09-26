@@ -93,3 +93,36 @@
                 roster)
         after (lineup-points (conj (vec kept) candidate) slots score-key)]
     (- after before)))
+
+(defn seat-floor
+  "The score a player of `position` must beat to change `seated`, a
+  `best-lineup`: the least among those seated where he could sit. nil when one
+  of those seats is empty, since any score takes it, and infinite when the
+  lineup has no seat for him at all."
+  [slots seated score-key position]
+  (let [seats (count (filter #(db/slot-accepts? % position) slots))
+        taken (filter (fn [[slot _]] (db/slot-accepts? slot position)) seated)]
+    (when (= seats (count taken))
+      (reduce min ##Inf (map #(double (score-key (second %))) taken)))))
+
+(defn upgrades
+  "`upgrade` for each of `candidates` against one roster and one drop: the same
+  numbers for a fraction of the fills. A candidate scoring no more than his
+  `seat-floor` cannot change a greedy fill — it reaches each seat he could take
+  with the players it had without him, and a tie keeps the man already there,
+  since the candidate is appended after them — so he adds exactly what losing
+  the drop costs. Only the few above their floor are seated one by one, which
+  is what makes asking this of every team in a league affordable."
+  [roster candidates drop slots score-key]
+  (let [before (lineup-points roster slots score-key)
+        kept   (vec (if drop (remove #(= (:player-id %) (:player-id drop)) roster) roster))
+        seated (best-lineup kept slots score-key)
+        base   (- (reduce (fn [t [_ p]] (+ t (double (score-key p)))) 0.0 seated) before)
+        floor  (memoize #(seat-floor slots seated score-key %))]
+    (mapv (fn [c]
+            (let [s (score-key c)
+                  f (floor (:position c))]
+              (if (or (not (number? s)) (and f (<= s f)))
+                base
+                (- (lineup-points (conj kept c) slots score-key) before))))
+          candidates)))

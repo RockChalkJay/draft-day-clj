@@ -90,7 +90,9 @@
   (let [out (waiver/waiver-board board {:league nil :num-teams 12
                                         :through-week 8 :season-games 17})]
     (is (= (count board) (count (:players out))))
-    (is (every? #(nil? (:bid %)) (:players out)))))
+    (is (every? #(nil? (:bid %)) (:players out)))
+    (is (every? #(nil? (:walk-away %)) (:players out)))
+    (is (nil? (:bidding out)) "nothing to price bids from without a league")))
 
 ;; ---- what a claim costs ----
 
@@ -172,7 +174,7 @@
     (is (nil? worse) "he is rostered")
     (let [tail (filter #(neg? (:upgrade %)) players)]
       (is (seq tail))
-      (is (every? #(zero? (:bid %)) tail) "and none of them is worth bidding on"))))
+      (is (every? #(zero? (:walk-away %)) tail) "and none of them is worth bidding on"))))
 
 ;; ---- the bid ----
 
@@ -183,15 +185,15 @@
   (let [{:keys [players faab claims-left]} (run)
         n    claims-left
         top  (->> players (sort-by #(- (:upgrade %))) (take n))
-        spend (reduce + 0 (map :bid top))]
+        spend (reduce + 0 (map :walk-away top))]
     (is (pos? n))
     (is (<= (- (:left faab) n) spend (+ (:left faab) n))
         "the top claims sum to the budget, within a dollar of rounding each")))
 
 (deftest fewer-runs-left-means-a-bigger-share-each
   ;; How FAAB actually behaves: hold back in September, spend it in December.
-  (let [early (:bid (first (filter #(= "good" (:player-id %)) (:players (run :through-week 2)))))
-        late  (:bid (first (filter #(= "good" (:player-id %)) (:players (run :through-week 15)))))]
+  (let [early (:walk-away (first (filter #(= "good" (:player-id %)) (:players (run :through-week 2)))))
+        late  (:walk-away (first (filter #(= "good" (:player-id %)) (:players (run :through-week 15)))))]
     (is (< early late))))
 
 (deftest the-fantasy-playoffs-end-the-bidding-season-not-the-nfls
@@ -206,10 +208,12 @@
   ;; bid". Same distinction league-sync keeps by reporting :faab-left nil.
   (let [lg  (assoc league :waiver {:type :rolling :budget 0})
         lg  (update lg :teams (fn [ts] (mapv #(dissoc % :faab-left) ts)))
-        {:keys [players faab]} (run :league lg)]
+        {:keys [players faab bidding]} (run :league lg)]
     (is (every? #(nil? (:bid %)) players))
+    (is (every? #(nil? (:walk-away %)) players))
     (is (= :rolling (:type faab)))
-    (is (nil? (:rival-max faab)))))
+    (is (nil? (:rival-max faab)))
+    (is (nil? bidding))))
 
 (deftest the-wire-spelling-of-faab-still-buys-players
   ;; The league round-trips through the browser as JSON, and `read-json-body`
@@ -223,13 +227,15 @@
   (is (not (waiver/faab? nil)))
   (let [lg (assoc league :waiver {:type "faab" :budget 100})
         {:keys [players]} (run :league lg)]
-    (is (some #(pos? (:bid %)) players)
-        "somebody is worth real money under the string spelling too")))
+    (is (some #(pos? (:walk-away %)) players)
+        "somebody is worth real money under the string spelling too")
+    (is (every? #(number? (:bid %)) players) "and every one of them gets a bid")))
 
 (deftest a-spent-budget-has-no-bid-left-to-make
   (let [lg (assoc-in league [:teams 0 :faab-left] 0)
         {:keys [players]} (run :league lg)]
-    (is (every? #(nil? (:bid %)) players))))
+    (is (every? #(nil? (:bid %)) players))
+    (is (every? #(nil? (:walk-away %)) players))))
 
 (deftest zero-is-a-real-bid-not-a-refusal
   ;; FAAB accepts $0, unlike the auction board where $0 meant undraftable and
@@ -241,6 +247,7 @@
 
 (deftest no-bid-ever-exceeds-what-is-left-to-spend
   (let [{:keys [players faab]} (run :through-week 17)]
+    (is (every? #(<= (:walk-away %) (:left faab)) players))
     (is (every? #(<= (:bid %) (:left faab)) players))))
 
 ;; ---- rivals ----
@@ -250,6 +257,73 @@
   (testing "my own budget is not a rival's"
     (let [lg (assoc-in league [:teams 0 :faab-left] 999)]
       (is (= 95 (:rival-max (:faab (run :league lg))))))))
+
+(def ^:private two-seats ["WR" "RB"])
+
+(defn- needs-of
+  "`rival-needs` for one rival holding `active` (board ids), against `fas`."
+  [board fas active & {:keys [seats slots player-ids] :or {seats 3 slots two-seats}}]
+  (let [by-id (db/index-by-id board)
+        teams [{:roster-id 1 :name "Mine" :active-ids []}
+               {:roster-id 2 :name "Rival" :owner-id "u2" :faab-left 70 :waiver-position 4
+                :player-ids (apply held (or player-ids active)) :active-ids (apply held active)}]]
+    (waiver/rival-needs teams 1 (db/provider->player-id board :sleeper) by-id seats slots
+                        (mapv by-id fas))))
+
+(def ^:private rival-board
+  [(p "r-wr" "WR" 50.0) (p "r-rb" "RB" 60.0) (p "good" "WR" 140.0) (p "meh" "RB" 40.0)])
+
+(deftest a-rivals-needs-are-read-off-his-own-roster-through-the-crosswalk
+  (let [[r & more] (needs-of rival-board ["good" "meh"] ["r-wr" "r-rb"])]
+    (is (empty? more) "my own team is not a rival")
+    (is (= {:roster-id 2 :owner-id "u2" :name "Rival" :faab-left 70 :waiver-position 4}
+           (dissoc r :needs)))
+    (is (= {"good" 90.0 "meh" 0.0} (:needs r))
+        "140 takes the WR seat his 50 held; 40 starts nowhere")))
+
+(deftest a-rival-with-a-starter-on-ir-needs-whoever-fills-the-seat
+  (let [[r] (needs-of rival-board ["good" "meh"] ["r-wr"] :player-ids ["r-wr" "r-rb"])]
+    (is (= 40.0 (get-in r [:needs "meh"])) "his back is parked, so a 40-point back starts")))
+
+(deftest with-no-seats-known-a-rivals-need-is-his-bench-delta
+  (let [[r] (needs-of rival-board ["good" "meh"] ["r-wr" "r-rb"] :seats 2 :slots nil)]
+    (is (= {"good" 90.0 "meh" -10.0} (:needs r))
+        "against his 50-point drop, as my own walk-away falls back")))
+
+(deftest a-rival-holding-nobody-needs-nobody
+  (is (= {} (:needs (first (needs-of rival-board ["good" "meh"] []))))
+      "before a draft there is no waiver run to bid in"))
+
+(deftest the-board-bids-against-its-rivals-and-says-what-it-priced-from
+  (let [{:keys [players bidding]} (run)]
+    (is (= {:source :sleeper-wide :auctions 0 :seasons [] :league-multiplier 1.0 :min-bid 0}
+           bidding)
+        "no history: rivals bid like Sleeper at large")
+    (is (every? #(<= (:bid %) (:walk-away %)) players) "never past the walk-away")
+    (is (every? #(<= 0.0 (:win-prob %) 1.0) players))
+    (is (every? #(contains? % :competition) players))))
+
+(deftest a-rival-with-a-hole-to-fill-is-a-bidder
+  ;; Only the 140 would start over his 90. The fillers draw a little too: on a
+  ;; board this small most of them clear replacement.
+  (let [lg  (-> league
+                (assoc-in [:teams 1 :player-ids] (held "ok"))
+                (assoc-in [:teams 1 :active-ids] (held "ok")))
+        {:keys [players]} (run :league lg :starting-slots two-seats)
+        by  (into {} (map (juxt :player-id identity)) players)]
+    (is (< (:rivals (by "filler0")) (:rivals (by "good"))) "the man who would start for him")
+    (is (= ["Rivals"] (mapv :name (get-in (by "good") [:competition :threats]))))
+    (is (= 0.0 (:rivals (by "filler39")))
+        "and one who starts for nobody and clears nothing draws nobody")))
+
+(deftest a-league-with-a-history-prices-from-it
+  (let [history {:seasons [{:season "2026" :budget 100
+                            :auctions [{:week 3 :player-id "s-x"
+                                        :bids [{:roster-id 2 :owner-id "u2" :amount 12 :won? true}]}]}]}
+        {:keys [bidding]} (run :bid-history history)]
+    (is (= :league (:source bidding)))
+    (is (= 1 (:auctions bidding)))
+    (is (= ["2026"] (:seasons bidding)))))
 
 ;; ---- replacement, computed over the whole league ----
 
@@ -425,7 +499,7 @@
                         lu (assoc :lineup-upgrade lu)))
                     pairs)
        (#(waiver/with-bids % {:type :faab} budget n))
-       (mapv :bid)))
+       (mapv :walk-away)))
 
 (deftest each-pool-conserves-its-own-share-and-together-the-budget
   ;; The restated form of the property the old single-pool rule had. Two

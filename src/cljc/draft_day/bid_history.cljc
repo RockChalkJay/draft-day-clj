@@ -138,11 +138,13 @@
 
 (defn league-log-multiplier
   "How far the league's positive bids sit from the backbone, as a natural log,
-  shrunk toward none."
-  [bids]
-  (let [pos (filter :log-ratio bids)]
-    (blend (weighted-sum :log-ratio pos) (weighted-sum (constantly 1.0) pos)
-           pseudo-league-bids 0.0)))
+  shrunk toward `center`: none, or what the backbone expects of a league of
+  its size, which a history cannot say because it carries no rosters."
+  ([bids] (league-log-multiplier bids 0.0))
+  ([bids center]
+   (let [pos (filter :log-ratio bids)]
+     (blend (weighted-sum :log-ratio pos) (weighted-sum (constantly 1.0) pos)
+            pseudo-league-bids center))))
 
 (defn win-over-second
   "The median of what this manager's contested wins this season cost over the
@@ -219,22 +221,43 @@
   "A history's profiles: `{:log-multiplier league-log :weeks-run n :profiles
   [profile]}`, every manager who bid in it, each with his `:style`. A vector
   rather than a map keyed by manager, because the browser keywordizes the keys
-  of what it is sent and a manager id is a number."
-  [{:keys [seasons]}]
-  (when (seq seasons)
-    (let [bids      (weighted-bids seasons)
-          league    (league-log-multiplier bids)
-          exposure-of (exposure seasons)
-          current   (first seasons)
-          weeks-run (count (distinct (map :week (:auctions current))))]
-      {:log-multiplier league
-       :weeks-run      weeks-run
-       :profiles       (->> (group-by :manager bids)
-                            (map (fn [[m bs]]
-                                   (let [p (profile m bs exposure-of league current)]
-                                     (assoc p :style (style p weeks-run)))))
-                            (sort-by :manager)
-                            vec)})))
+  of what it is sent and a manager id is a number. `center` is where the
+  league's price level starts before its bids say otherwise; see
+  `league-log-multiplier`."
+  ([history] (profiles history 0.0))
+  ([{:keys [seasons]} center]
+   (when (seq seasons)
+     (let [bids      (weighted-bids seasons)
+           league    (league-log-multiplier bids center)
+           exposure-of (exposure seasons)
+           current   (first seasons)
+           weeks-run (count (distinct (map :week (:auctions current))))]
+       {:log-multiplier league
+        :weeks-run      weeks-run
+        :profiles       (->> (group-by :manager bids)
+                             (map (fn [[m bs]]
+                                    (let [p (profile m bs exposure-of league current)]
+                                      (assoc p :style (style p weeks-run)))))
+                             (sort-by :manager)
+                             vec)}))))
+
+(defn silent-profile
+  "The profile of a manager the history holds no bid from, so that every
+  manager has one. He has been silent through every week of auctions the
+  current season has run, which starts his rate at the Sleeper-wide median and
+  shrinks it toward none as the season goes on, and when he does bid he bids
+  like his league. With no history, the typical Sleeper manager."
+  [{:keys [seasons]} league-log]
+  (let [current (first seasons)
+        weeks   (if current (season-exposure current (first (weights current))) 0.0)]
+    {:bids           0
+     :current-bids   0
+     :recent-bids    0
+     :per-week       (blend 0.0 weeks pseudo-weeks (get-in prior/managers [:per-week :p50]))
+     :zero-share     (get-in prior/managers [:zero-share :p50])
+     :aggression     0.0
+     :log-multiplier league-log
+     :style          :new}))
 
 (defn team-profile
   "The profile of whoever manages `team` — its owner, else whatever bid under

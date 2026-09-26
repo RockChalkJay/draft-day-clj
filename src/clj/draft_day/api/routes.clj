@@ -366,7 +366,11 @@
                         ;; because replacement prices neither, which is right
                         ;; there and wrong here — both fill a starting slot and
                         ;; both score.
-                        :starting-slots (when roster (db/starting-slots roster))}
+                        :starting-slots (when roster (db/starting-slots roster))
+                        ;; The disk cache the last sync left: this board makes
+                        ;; no provider call and carries no credential.
+                        :bid-history (transactions/cached-history
+                                      (:provider league) (:league-id league) (:season league))}
               board    (-> players
                            (vendor/for-scoring scoring*)
                            without-history
