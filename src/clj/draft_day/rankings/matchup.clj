@@ -285,8 +285,8 @@
   All of them rather than the pair asked for, so switching matchups costs no
   round trip. `:teams` is a vector, not a map keyed by roster id: an integer key
   round-trips through JSON as a string and comes back keywordized."
-  [board {:keys [league matchups scores slots provider]}]
-  (let [xwalk (db/provider->player-id board (or provider :sleeper))
+  [board {:keys [league matchups scores slots provider provider-players]}]
+  (let [xwalk (db/provider->player-id board (or provider :sleeper) provider-players)
         by-id (db/index-by-id board)]
     {:matchups (vec matchups)
      :teams    (mapv #(team-board % (get scores (:roster-id %)) xwalk by-id slots)

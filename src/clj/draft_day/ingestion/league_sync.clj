@@ -46,7 +46,8 @@
      :waiver {:type :faab|:rolling|:reverse-standings :budget n :min-bid n}}
 
   `:min-bid` is optional: a host whose floor is not read leaves it out (ESPN's
-  is not), and absent reads as $0.
+  is not), and absent reads as $0. So is `:provider-players`, `[{:id :name
+  :position}]`, which `db/provider->player-id` falls back on for an id it lacks.
 
   `:active-ids` is required, not optional, and it is `:player-ids` minus anyone
   the provider parks — IR, taxi, whatever the host calls it. Both readers of a
@@ -140,7 +141,9 @@
   ;; a provider that answered with no teams at all into a league everybody has
   ;; left — exactly the shape `db/reconcile-league-sync` drops on arrival.
   (cond-> (assoc league :provider provider)
-    (sequential? (:teams league)) (update :teams #(mapv string-ids %))))
+    (sequential? (:teams league)) (update :teams #(mapv string-ids %))
+    (sequential? (:provider-players league))
+    (update :provider-players #(into [] (comp (filter :id) (map (fn [p] (update p :id str)))) %))))
 
 (defn sync-league
   "{:provider :league-id :season :credentials} -> {:ok true :league {...}}

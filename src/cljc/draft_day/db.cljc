@@ -2,6 +2,7 @@
   "app-db shape, the column catalog, and roster/league helpers. No reagent here —
   pure data + functions so it can be required from events and views alike."
   (:require [clojure.string :as str]
+            [draft-day.ingestion.match :as match]
             [draft-day.providers :as providers]))
 
 ;; ---- roster / teams ----
@@ -854,15 +855,31 @@
 
   A live translation between the two id spaces that coexist at runtime, not a
   migration — see `rankings.waiver`'s ns docstring. Ids with no entry map to
-  themselves at the call site, so a provider whose `[:ids <provider>]` column is
-  not ingested yet resolves nothing rather than resolving wrongly."
-  [players provider]
-  ;; Keyed once, not per player: ~600 rows on every in-season request.
-  (let [k (keyword provider)]
-    (into {}
-          (keep (fn [p] (when-let [s (get-in p [:ids k])]
-                          [s (:player-id p)])))
-          players)))
+  themselves at the call site, so an unknown id resolves nobody, never wrongly.
+
+  `named` (`{:id :name :position}`, a sync's `:provider-players`) covers ids the
+  `[:ids <provider>]` column lacks — see `league-sync.espn`. A name and position
+  resolve only when one such id and one player with no id here share them: a
+  miss reads as unvalued, a wrong hit as the wrong man."
+  ([players provider] (provider->player-id players provider nil))
+  ([players provider named]
+   ;; Keyed once, not per player: ~600 rows on every in-season request.
+   (let [k       (keyword provider)
+         by-id   (into {}
+                       (keep (fn [p] (when-let [s (get-in p [:ids k])]
+                                       [s (:player-id p)])))
+                       players)
+         unknown (group-by #(match/key-for (:name %) (:position %))
+                           (remove #(contains? by-id (:id %)) named))
+         by-key  (when (seq unknown)
+                   (group-by #(match/key-for (:player-name %) (:position %))
+                             (remove #(get-in % [:ids k]) players)))]
+     (into by-id
+           (keep (fn [[nk rows]]
+                   (let [[id & others] (distinct (map :id rows))
+                         [p & more]    (get by-key nk)]
+                     (when (and p (not more) (not others)) [id (:player-id p)]))))
+           unknown))))
 
 (defn held-ids
   "One team's roster ids in the board's id space: each provider id through

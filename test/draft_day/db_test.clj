@@ -670,6 +670,53 @@
   (is (= {"4034" "00-1"}
          (db/provider->player-id [{:player-id "00-1" :ids {:sleeper "4034"}}] "sleeper"))))
 
+(def ^:private smack
+  "A rookie the id file has not caught up with: no ESPN id on the board."
+  {:player-id "13545" :player-name "Trey Smack" :position "K" :ids {:sleeper "13545"}})
+
+(deftest an-id-the-crosswalk-misses-resolves-by-the-providers-own-name
+  (let [players [{:player-id "00-1" :player-name "Evan McPherson" :position "K"
+                  :ids {:sleeper "7839" :espn "4360234"}}
+                 smack]
+        named   [{:id "4869461" :name "Trey Smack" :position "K"}]]
+    (is (= "13545" (get (db/provider->player-id players :espn named) "4869461"))
+        "the live case: ESPN's 4869461, drawn as a bare id with no projection")
+    (is (= "00-1" (get (db/provider->player-id players :espn named) "4360234"))
+        "the id column still answers for everyone it knows")
+    (is (= {"4360234" "00-1"} (db/provider->player-id players :espn))
+        "with no names to fall back on, nothing changes")))
+
+(deftest a-name-never-resolves-onto-a-player-the-id-column-already-places
+  (let [players [{:player-id "00-9" :player-name "Mike Williams" :position "WR"
+                  :ids {:espn "3045138"}}]]
+    (is (not (contains? (db/provider->player-id
+                         players :espn [{:id "9999999" :name "Mike Williams" :position "WR"}])
+                        "9999999"))
+        "he has an ESPN id of his own, so an unknown id with his name is somebody else")))
+
+(deftest an-ambiguous-name-stays-unresolved
+  (let [twin  (assoc smack :player-id "13546" :ids {:sleeper "13546"})
+        named [{:id "4869461" :name "Trey Smack" :position "K"}]]
+    (is (not (contains? (db/provider->player-id [smack twin] :espn named) "4869461"))
+        "an unvalued row is a gap; picking one of two is the wrong man, confidently")
+    (is (= {} (db/provider->player-id [smack] :espn
+                                      (conj named {:id "4999999" :name "Trey Smack" :position "K"})))
+        "nor may two unknown ids that share his name both put him on a roster")
+    (is (= "13545" (get (db/provider->player-id [smack] :espn (into named named)) "4869461"))
+        "one id named twice, by the sync and by the matchup, is still one id")
+    (is (not (contains? (db/provider->player-id [smack] :espn
+                                                [{:id "4869461" :name "Trey Smack" :position "P"}])
+                        "4869461"))
+        "a name matches only at its own position")))
+
+(deftest an-id-the-column-knows-wins-over-a-name
+  (let [players [{:player-id "00-1" :player-name "Evan McPherson" :position "K"
+                  :ids {:espn "4360234"}}
+                 {:player-id "13" :player-name "Evan McPherson" :position "K"}]]
+    (is (= "00-1" (get (db/provider->player-id
+                        players :espn [{:id "4360234" :name "Evan McPherson" :position "K"}])
+                       "4360234")))))
+
 (deftest a-league-owns-what-its-import-sets
   (is (= #{} (db/league-owned-keys (db/default-db)))
       "with no league, everything is the manager's")

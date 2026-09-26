@@ -108,6 +108,16 @@
           "no defense resolved: proTeamId moved, and every league's defenses
            would sit on the free-agent board while their owners hold them"))))
 
+(deftest ^:integration espn-still-names-every-rostered-player
+  (with-league [req]
+    (let [{:keys [teams provider-players]} (:league (league-sync/sync-league req))
+          named (set (map :id provider-players))
+          held  (remove teams/app-teams (mapcat :player-ids teams))]
+      (is (seq held))
+      (is (every? named held)
+          "a player the id file has not caught up with resolves by this name
+           or not at all: fullName or defaultPositionId moved"))))
+
 (deftest ^:integration espn-still-fills-one-weeks-rosters-into-the-schedule
   (with-league [req]
     (let [week (matchups/current-week :espn req)]
@@ -136,7 +146,7 @@
 (deftest ^:integration espn-matchup-roster-ids-are-the-ones-the-sync-reports
   (with-league [req]
     (let [{:keys [teams roster-positions]} (:league (league-sync/sync-league req))
-          {:keys [ok week scores]} (matchups/fetch-matchups req)]
+          {:keys [ok week scores provider-players]} (matchups/fetch-matchups req)]
       (is ok)
       (is (number? week))
       (is (seq scores))
@@ -145,4 +155,10 @@
       (testing "and each lineup fills the seats the sync names"
         (let [seats (count (db/scoring-slots roster-positions))]
           (is (every? #(= seats (count (:starter-ids %))) (vals scores))
-              "a lineup shorter than the seat list slides every seat below it up"))))))
+              "a lineup shorter than the seat list slides every seat below it up")))
+      (testing "and names every player on it, a view the sync's check does not reach"
+        (let [named (set (map :id provider-players))
+              held  (remove teams/app-teams (mapcat :player-ids (vals scores)))]
+          (is (seq held))
+          (is (every? named held)
+              "rosterForCurrentScoringPeriod's entries stopped carrying fullName"))))))

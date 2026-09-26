@@ -339,6 +339,18 @@
       (is (= ["4034"] (:active-ids team)))
       (is (= ["4034"] (:starter-ids team))))))
 
+(deftest a-named-players-id-comes-back-as-a-string-too
+  (with-redefs [league-sync/normalize-rosters
+                (fn [_ _] {:teams []
+                           :provider-players [{:id 4869461 :name "Trey Smack" :position "K"}
+                                              {:id nil :name "Nobody" :position "K"}]})
+                league-sync/fetch-raw-rosters (fn [_ _] {})]
+    (is (= [{:id "4869461" :name "Trey Smack" :position "K"}]
+           (:provider-players (:league (league-sync/sync-league
+                                        {:provider "sleeper" :league-id "1"}))))
+        "an integer id misses the string-keyed crosswalk and is named onto a key
+         held-ids never looks up")))
+
 (deftest a-lineup-keeps-its-empty-seats-rather-than-closing-the-gap
   (with-redefs [league-sync/normalize-rosters
                 (fn [_ _] {:teams [{:roster-id 1

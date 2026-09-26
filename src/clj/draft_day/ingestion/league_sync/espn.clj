@@ -21,6 +21,12 @@
   id space the board already uses, and `db/held-ids`' identity fallback
   carries it the rest of the way.
 
+  Players the crosswalk has no ESPN id for yet are the other gap: its ESPN ids
+  come from DynastyProcess, which maps only the rows it can reach from a
+  Sleeper id and so lags on rookies. The sync ships ESPN's own name and position
+  for every rostered player as `:provider-players`, for `db/provider->player-id`
+  to fall back on.
+
   Discovery is deliberately the weak half. ESPN's fan endpoint is undocumented
   and is the only thing here that could change shape without warning, so
   `find-user` never touches it: the SWID *is* the identity, so a listing that
@@ -29,6 +35,7 @@
   (:require [clojure.string :as str]
             [jsonista.core :as json]
             [org.httpkit.client :as http]
+            [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.league-import.espn :as import-espn]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.teams :as teams]
@@ -60,6 +67,24 @@
     (if (= import-espn/dst-position-id (:defaultPositionId p))
       (teams/normalize :espn (pro-team-abbrev (:proTeamId p)))
       (some-> (:playerId entry) str not-empty))))
+
+(defn provider-player
+  "Pure: one roster entry -> `{:id :name :position}`, ESPN's own account of
+  whom its id names, or nil. A defense gets none, since its id is already the
+  board's, and neither does a position the board does not carry."
+  [entry]
+  (let [p   (get-in entry [:playerPoolEntry :player])
+        pos (espn/position-map (:defaultPositionId p))
+        id  (entry-player-id entry)]
+    (when (and id pos (not= "DST" pos) (not-empty (:fullName p)))
+      {:id id :name (:fullName p) :position pos})))
+
+(defn provider-players
+  "Pure: roster entries -> `provider-player` for each, for
+  `db/provider->player-id` to fall back on. A vector rather than a map keyed by
+  id, because the browser keywordizes the keys it receives."
+  [entries]
+  (into [] (comp (keep provider-player) (distinct)) entries))
 
 (defn team-name
   "Pure: what everyone in the league calls this team.
@@ -123,6 +148,8 @@
         seats  (import-espn/roster-positions
                 (get-in raw [:settings :rosterSettings :lineupSlotCounts]))]
     {:teams            (mapv #(normalize-team waiver %) (:teams raw))
+     :provider-players (provider-players
+                        (mapcat #(get-in % [:roster :entries]) (:teams raw)))
      :waiver           waiver
      ;; Seats a claim can land in, so IR is not one of them — see
      ;; `import-espn/ir-slot`. It stays in `:roster-positions`, which is the

@@ -59,6 +59,17 @@
   (is (every? string? (:player-ids (mine))))
   (is (some #{"4034"} (:player-ids (mine)))))
 
+(deftest the-sync-names-every-rostered-player-in-espns-own-words
+  (let [named (fn [e nm] (assoc-in e [:playerPoolEntry :player :fullName] nm))
+        r     (assoc-in raw [:teams 1 :roster :entries]
+                        [(named (entry 4869461 20 5) "Trey Smack")
+                         (named (entry -16022 16 import-espn/dst-position-id) "Cardinals D/ST")
+                         (named (entry 5001 20 11) "An Edge Rusher")])]
+    (is (= [{:id "4869461" :name "Trey Smack" :position "K"}]
+           (:provider-players (sync-of r)))
+        "a defense is already keyed by its team, and nobody on the board plays
+         a position the board does not carry")))
+
 (deftest injured-reserve-holds-a-player-without-holding-a-seat
   ;; He is rostered, so he is not a free agent — but he frees no seat a claim
   ;; could take, and counting him fills a roster that is not actually full.
