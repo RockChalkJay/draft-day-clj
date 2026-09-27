@@ -301,3 +301,16 @@
     (is (= ["2026" "2025"] (:seasons b)))
     (testing "the league's price level moves off 1.0 only as far as its bids carry it"
       (is (< 1.0 (:league-multiplier b) 1.2)))))
+
+(deftest a-rival-with-one-chance-holds-it-at-every-hotness-point
+  (let [hot {:ps (double-array [0.0 0.8]) :p 0.4}
+        flat {:p 0.5}]
+    (is (near? (/ (+ (* 1.0 0.5) (* 0.2 0.5)) 2.0) (faab/uncontested [hot flat]) 1e-12))
+    (is (near? (faab/uncontested [hot flat]) (faab/uncontested [flat hot]) 1e-12)
+        "whichever comes first")))
+
+(deftest first-true-finds-where-a-rising-test-turns
+  (is (= 7 (faab/first-true #(>= % 7) 0 100)))
+  (is (= 0 (faab/first-true (constantly true) 0 100)))
+  (is (nil? (faab/first-true (constantly false) 0 100)))
+  (is (nil? (faab/first-true (constantly true) 5 4)) "an empty range"))

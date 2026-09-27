@@ -237,7 +237,7 @@
 
 (defn logistic [x] (/ 1.0 (+ 1.0 (Math/exp (- x)))))
 
-(defn clamp-p [p] (min 0.99 (max 0.01 (double p))))
+(defn clamp-p [p] (clamp 0.01 0.99 p))
 
 (defn zero-chance
   "How often a rival's bid is $0: his cell's rate, moved by how far his own $0
@@ -427,17 +427,18 @@
   "The chance that every rival either sits it out or, bidding, does what `f`
   gives the chance of — averaged over the player's hotness, since the rivals
   move together with it. Each rival carries `:ps`, his chance of bidding at
-  each hotness point, or a single `:p`."
+  each hotness point, or a single `:p` that holds at every point."
   [rivals f]
   (if (empty? rivals)
     1.0
-    (let [k   (count (or (:ps (first rivals)) [0]))
+    (let [k   (reduce max 1 (keep #(some-> ^doubles (:ps %) alength) rivals))
           acc (double-array k 1.0)]
       (doseq [r rivals]
         (let [x  (double (f r))
-              ps (or (:ps r) (double-array [(:p r)]))]
+              ^doubles ps (:ps r)
+              p1 (double (or (:p r) 0.0))]
           (dotimes [i k]
-            (let [p (aget ^doubles ps i)]
+            (let [p (if ps (aget ps i) p1)]
               (aset acc i (* (aget acc i) (+ (- 1.0 p) (* p x))))))))
       (/ (areduce acc i sum 0.0 (+ sum (aget acc i))) k))))
 
@@ -472,11 +473,23 @@
                      [nil ##-Inf]
                      (range min-bid (inc cap)))))))
 
+(defn first-true
+  "The least whole number in `lo`..`hi` that `pred` holds for, or nil, `pred`
+  being false and then true across that range: a binary search, since each
+  test here averages every rival over every hotness point."
+  [pred lo hi]
+  (when (and (<= lo hi) (pred hi))
+    (loop [lo lo hi hi]
+      (if (= lo hi)
+        lo
+        (let [mid (quot (+ lo hi) 2)]
+          (if (pred mid) (recur lo mid) (recur (inc mid) hi)))))))
+
 (defn sure-bid
   "The cheapest bid that wins `sure-win` of the time, or nil when nothing up to
-  what is left does."
+  what is left does. The chance only rises with the bid."
   [rivals min-bid left]
-  (first (filter #(>= (win-chance rivals %) sure-win) (range min-bid (inc left)))))
+  (first-true #(>= (win-chance rivals %) sure-win) min-bid left))
 
 (defn top-bid
   "`[p50 p90]` of the highest rival bid, given that somebody bids, or nil when
@@ -489,7 +502,7 @@
                                          (aget cdf (min b (dec (alength cdf))))))
                          none)
                       (- 1.0 none)))
-            at   (fn [q] (first (filter #(>= (upto %) (- q 1e-9)) (range 0 (inc budget)))))]
+            at   (fn [q] (first-true #(>= (upto %) (- q 1e-9)) 0 budget))]
         [(at 0.5) (at 0.9)]))))
 
 (defn threats
@@ -547,16 +560,17 @@
   (let [budget  (long (or (:budget waiver) 0))
         min-bid (long (or (:min-bid waiver) 0))
         phase   (prior/phase week)
-        shared  (mapv #(shared-utility % week heat) fas)
+        shared  (when (seq rivals) (mapv #(shared-utility % week heat) fas))
         rivals  (bidders rivals me fas habits budget min-bid shared)]
     {:budget  budget
      :min-bid min-bid
      :left    (some-> (:faab-left me) long (min budget))
      :rivals  rivals
-     ;; Mine, with my lineup gain as my need: part of the league's interest in
-     ;; a player, which sets how much a claim on him says about his week.
-     :mine    (claim-rates (zipmap (map :player-id fas) (map :lineup-upgrade fas))
-                           fas (:per-week (rival-habits me habits)) shared)
+     ;; Mine, with my need read as `waiver/rival-needs` reads a rival's: part
+     ;; of the league's interest in a player, which sets what a claim says.
+     :mine    (when (seq rivals)
+                (claim-rates (zipmap (map :player-id fas) (map #(or (:lineup-upgrade %) (:upgrade %)) fas))
+                             fas (:per-week (rival-habits me habits)) shared))
      ;; One distribution per rival, position and bidder count, not per
      ;; player: a few dozen, where there are hundreds of free agents.
      :dist    (memoize
