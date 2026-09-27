@@ -1,6 +1,8 @@
 (ns draft-day.faab.interest-test
-  (:require [clojure.test :refer [deftest is testing]]
-            [draft-day.faab.interest :as interest]))
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing]]
+            [draft-day.faab.interest :as interest]
+            [draft-day.faab.replay :as replay]))
 
 (defn- near? [a b tolerance] (< (Math/abs (- (double a) (double b))) tolerance))
 
@@ -62,22 +64,48 @@
                                                          {:needs  needs
                                                           :chosen [(pick (mapv #(+ (* a (:a %1)) (* b (:b %2))) features needs))]}))))}))))))
 
+(defn- compact [weeks] (mapv #(interest/compact-week % [:a] :b) weeks))
+
 (deftest the-fit-recovers-the-weights-that-made-the-choices
-  (let [data (simulated 1.2 -0.7 400 30 7)
-        ks   (interest/feature-keys data)
-        {:keys [weights se]} (interest/fit ks (interest/choice-sets data ks))]
-    (is (= [:a :b] ks))
+  (let [sets (interest/choice-sets (compact (simulated 1.2 -0.7 400 30 7)))
+        {:keys [weights se]} (interest/fit [:a :b] sets)]
     (is (near? 1.2 (:a weights) (* 3 (:se se 0.1))) (str "a " weights " ± " se))
     (is (near? -0.7 (:b weights) 0.25) (str "b " weights))
     (is (< (:a se) 0.1) "sixteen hundred choices pin a weight down")))
 
+(deftest a-family-left-out-stays-at-zero
+  (let [sets (interest/choice-sets (compact (simulated 1.2 -0.7 200 30 8)))
+        {:keys [weights se]} (interest/fit [:a :b] sets #{:a})]
+    (is (= 0.0 (:b weights)))
+    (is (not (contains? se :b)))
+    (is (near? 1.2 (:a weights) 0.3) "and the rest is fit without it")))
+
 (deftest a-choice-scores-against-the-uniform-guess
-  (let [data [{:features [{:a 0.0} {:a 0.0} {:a 0.0} {:a 0.0}]
-               :rivals   [{:needs [{} {} {} {}] :chosen [2]} {:needs [{} {} {} {}] :chosen []}]}]
-        {:keys [model uniform choices]} (interest/per-choice {:a 1.0} [:a] (interest/choice-sets data [:a]))]
+  (let [weeks (compact [{:features [{:a 0.0} {:a 0.0} {:a 0.0} {:a 0.0}]
+                         :rivals   [{:needs [{} {} {} {}] :chosen [2]} {:needs [{} {} {} {}] :chosen []}]}])
+        {:keys [model uniform choices]} (interest/per-choice {:a 1.0} [:a :b] (interest/choice-sets weeks))]
     (is (= 1 choices) "a rival who chose nobody is no choice")
     (is (near? (- (Math/log 4.0)) uniform 1e-12))
     (is (near? uniform model 1e-12) "features that do not vary say nothing")))
+
+(deftest choices-survive-the-disk
+  (let [weeks (compact (map-indexed #(assoc %2 :week (inc %1)) (simulated 1.0 1.0 3 5 9)))
+        path  (str (System/getProperty "java.io.tmpdir") "/choices-" (random-uuid) ".bin")
+        back  (do (interest/write-choices! path weeks) (interest/read-choices path))
+        shape (fn [ws] (mapv (fn [{:keys [week x rivals]}]
+                               [week (mapv vec x) (mapv (fn [r] (update r :extra vec)) rivals)])
+                             ws))]
+    (io/delete-file path)
+    (is (= (shape weeks) (shape back)))))
+
+(deftest a-players-rate-is-every-rivals-share-of-his-claims
+  (let [weeks (compact [{:features [{:a 0.0} {:a 0.0}]
+                         :rivals   [{:needs [{:b 1.0} {}] :chosen [0] :per-week 2.0}
+                                    {:needs [{} {}] :chosen [] :per-week 1.0}]}])
+        [p q] (interest/player-weeks weeks {:b (Math/log 3.0)} [:a :b])]
+    (is (near? (+ (* 2.0 0.75) 0.5) (:rate p) 1e-12) "three to one his way for the first, even for the second")
+    (is (near? (+ (* 2.0 0.25) 0.5) (:rate q) 1e-12))
+    (is (= [1 0] [(:bidders p) (:bidders q)]))))
 
 (deftest the-spread-tells-piled-up-bids-from-scattered-ones
   (let [scattered (concat (repeat 600 {:rate 0.5 :bidders 0}) (repeat 300 {:rate 0.5 :bidders 1})
@@ -92,16 +120,24 @@
     (is (>= (interest/nb-ll p piled) (interest/nb-ll (/ p 1.2) piled)) "and it is the maximum")))
 
 (defn- a-set
-  "A choice set of `rows` feature vectors with `chosen` indices."
-  [rows chosen]
-  {:x (into-array (map double-array rows)) :chosen chosen})
+  "A choice set of `rows` feature vectors with `chosen` indices, its last
+  column as the byte `:extra` when `extra?`."
+  ([rows chosen] (a-set rows chosen false))
+  ([rows chosen extra?]
+   (if extra?
+     {:x      (into-array (map #(float-array (butlast %)) rows))
+      :extra  (byte-array (map #(byte (last %)) rows))
+      :chosen chosen}
+     {:x (into-array (map float-array rows)) :chosen chosen})))
 
 (deftest set-stats-scores-the-choice-as-a-softmax-does
-  (let [s     (a-set [[1.0 0.0] [0.0 1.0] [0.5 0.5]] [0])
-        theta (double-array [0.4 -0.3])
-        us    [0.4 -0.3 0.05]
-        [ll]  (interest/set-stats theta s)]
-    (is (near? (- (first us) (Math/log (reduce + (map #(Math/exp %) us)))) ll 1e-12))))
+  (doseq [extra? [false true]]
+    (let [s     (a-set [[1.0 0.0] [0.0 1.0] [0.5 1.0]] [0] extra?)
+          theta (double-array [0.4 -0.3])
+          us    [0.4 -0.3 -0.1]
+          [ll]  (interest/set-stats theta s)]
+      (is (near? (- (first us) (Math/log (reduce + (map #(Math/exp %) us)))) ll 1e-7)
+          (str "the last column " (if extra? "as a byte" "as a float"))))))
 
 (defn- numeric-grad
   "Each weight's partial derivative of `f` by central difference."
@@ -113,18 +149,36 @@
 
 (deftest set-stats-derivatives-agree-with-finite-differences
   (let [rng  (java.util.Random. 11)
-        rows (vec (repeatedly 6 (fn [] (vec (repeatedly 3 #(.nextGaussian rng))))))
+        rows (vec (repeatedly 6 (fn [] (conj (vec (repeatedly 2 #(.nextGaussian rng)))
+                                             (if (.nextBoolean rng) 1.0 0.0)))))
         h    1e-5]
-    (doseq [chosen [[2] [0 4 4]]
+    (doseq [extra? [false true]
+            chosen [[2] [0 4 4]]
             theta  (repeatedly 3 (fn [] (vec (repeatedly 3 #(.nextGaussian rng)))))]
-      (let [s          (a-set rows chosen)
+      (let [s          (a-set rows chosen extra?)
             [_ g hess] (interest/set-stats (double-array theta) s)
             ll         #(first (interest/set-stats % s))
             grad       #(vec (second (interest/set-stats % s)))]
         (is (every? true? (map #(near? %1 %2 1e-6) (vec g) (numeric-grad ll theta h)))
             (str "gradient, chosen " chosen))
+        (is (near? (ll (double-array theta)) (interest/set-ll (double-array theta) s) 1e-12)
+            "the line search's likelihood is the same one")
         (doseq [i (range 3)]
           (is (every? true? (map #(near? %1 %2 1e-5)
                                  (vec (aget ^objects hess i))
                                  (numeric-grad #(nth (grad %) i) theta h)))
               (str "Hessian row " i ", chosen " chosen)))))))
+
+(deftest leagues-extracted-at-once-keep-their-own-weeks
+  (with-redefs [replay/replay               (fn [id _]
+                                              (dotimes [w 6]
+                                                (Thread/sleep (long (rand-int 3)))
+                                                (replay/who-bids-rows id nil #{} w)))
+                interest/week-choices       (fn [board _ _ w] {:week w :from board})
+                interest/write-choices!     (fn [& _])
+                interest/choices-dir        (str (System/getProperty "java.io.tmpdir") "/no-such-" (random-uuid))]
+    (let [ids  (map str (range 40))
+          data (interest/load-leagues {} (map #(hash-map :league-id %) ids))]
+      (is (= (set ids) (set (keys data))))
+      (is (every? (fn [[id weeks]] (and (= 6 (count weeks)) (every? #(= id (:from %)) weeks))) data)
+          "the replay's hook is shared by every thread; what it captures must not be"))))

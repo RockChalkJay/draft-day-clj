@@ -1,12 +1,12 @@
 (ns draft-day.faab.sweep
   "Score every CHOSEN constant the bid model reads, one at a time, against real
-  waiver auctions: `draft-day.faab.replay` run over several finished leagues
-  with the constant moved and everything else as shipped.
+  waiver auctions: `draft-day.faab.replay` run over the frozen league set
+  (`draft-day.faab.leagues`) with the constant moved and everything else as
+  shipped.
 
   Each value is scored against the shipped one on the same auctions, so every
-  difference is paired, and its interval resamples whole league-weeks, since
-  the auctions in a week share its news. Three things are scored, lower being
-  better for the first two:
+  difference is paired. Three things are scored, lower being better for the
+  first two:
 
   - Who bids: log loss of each team's chance of bidding on each free agent
     that week, against whether he did.
@@ -15,34 +15,40 @@
   - Value bid: over every auction's winner, what the value bid would have
     saved him against what he paid, a lost claim costed at `lost-claim`.
 
+  An interval is computed twice, once resampling leagues — a league's managers
+  are the same all season — and once resampling season-weeks — every league in
+  a season reads the same week's news — and the wider is reported, so neither
+  dependence can make a difference look surer than it is.
+
+  Constants are moved by `with-redefs`, which holds for every thread at once,
+  so every configuration runs over one chunk of `chunk-size` leagues, in
+  parallel, before the next chunk starts. Each chunk's sums are written under
+  `run-dir` as it finishes, so a run of many hours resumes where it stopped
+  (`--fresh` starts over, which a change to the code needs), and the rival
+  needs cached across a chunk's configurations are dropped with it, so memory
+  does not grow with the league count.
+
   Not swept: `faab/heat-weight`, since the replay has no past trending lists;
   `faab/sure-win` and `faab/threat-floor`, which define what is displayed
-  rather than estimate anything; and the bidding-style thresholds, which are
-  display only.
+  rather than estimate anything; the bidding-style thresholds, which are
+  display only; and `faab/claim-weights` and `faab/cluster-spread`, which
+  `draft-day.faab.interest` fits. The Sleeper-wide backbone is refit without
+  every league in the half being replayed and the season each continues
+  (`half-prior`).
 
-  The Sleeper-wide backbone is refit once without every replayed league, and
-  the season each one continues, so no league is scored against a prior it
-  helped measure.
-
-    lein run -m draft-day.faab.sweep                     ; every setting
-    lein run -m draft-day.faab.sweep -- --only pseudo-bids
-    lein run -m draft-day.faab.sweep -- --set pseudo-bids=16 --set half-life-weeks=2"
-  (:require [clojure.string :as str]
+    lein run -m draft-day.faab.sweep                          ; fit half, every setting
+    lein run -m draft-day.faab.sweep -- --sample 200 --only pseudo-bids
+    lein run -m draft-day.faab.sweep -- --half score --set pseudo-bids=16"
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [draft-day.benchmark.metrics :as bm]
             [draft-day.bid-history :as bid-history]
+            [draft-day.faab.leagues :as leagues]
             [draft-day.faab.replay :as replay]
+            [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.rankings.faab :as faab]
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.waiver :as waiver]))
-
-(def leagues
-  "Finished 2025 redraft leagues on $100 budgets, each continuing a 2024 season:
-  the author's, then the ten of the crawl's with the most contested auctions."
-  [replay/default-league
-   "1254136828143861760" "1257448686758150145" "1259629887963017216"
-   "1257102513774022656" "1251648114230571008" "1212496537347690496"
-   "1180572868652548096" "1211429358888030208" "1255201654840508416"
-   "1263306727697154048"])
 
 (def settings
   "Each swept constant, the values tried, the shipped one among them. A
@@ -65,6 +71,10 @@
   "How close to certain a chance is taken to be before its log loss is scored."
   1e-4)
 
+(def chunk-size
+  "Leagues replayed together under one configuration; see the ns docstring."
+  40)
+
 (defn log-loss
   "The log loss of chance `p` for an outcome `y` of 1 or 0."
   [p y]
@@ -79,33 +89,42 @@
   (let [o (replay/outcome value top)]
     (- (* o (- amount (or value 0))) (* (- 1.0 o) lost-claim))))
 
+(defn who-sums
+  "One who-bids row as sums."
+  [{:keys [p bid?]}]
+  (let [y (if bid? 1.0 0.0)]
+    {:who-n 1 :who-ll (log-loss p y) :who-p (double p) :who-y y}))
 
-(defn block-of [league-id week] (str league-id ":w" week))
+(defn bid-sums
+  "One scored bid as sums. A winner the value bid priced adds to the gain."
+  [{:keys [won? p-win p-none top top-range value walk-away] :as r}]
+  (let [contested? (boolean (and top top-range))
+        priced?    (boolean (and won? value walk-away))]
+    {:win-n     1
+     :win-ll    (log-loss p-win (if won? 1.0 0.0))
+     :none-p    (double p-none)
+     :none-y    (if top 0.0 1.0)
+     :contest-n (if contested? 1 0)
+     :p50       (if (and contested? (<= top (first top-range))) 1.0 0.0)
+     :p90       (if (and contested? (<= top (second top-range))) 1.0 0.0)
+     :gain-n    (if priced? 1 0)
+     :gain      (if priced? (value-gain r) 0.0)
+     :kept      (if priced? (replay/outcome value top) 0.0)}))
 
-(defn who-blocks
-  "`{block {:n :ll :p :y}}` over the who-bids rows: sums, since a league-season
-  holds some ninety thousand of them."
-  [league-id who]
-  (reduce (fn [acc {:keys [week p bid?]}]
-            (let [y (if bid? 1.0 0.0)]
-              (update acc (block-of league-id week)
-                      (fn [s] (-> (or s {:n 0 :ll 0.0 :p 0.0 :y 0.0})
-                                  (update :n inc)
-                                  (update :ll + (log-loss p y))
-                                  (update :p + p)
-                                  (update :y + y))))))
-          {} who))
+(defn add-sums [a b] (merge-with + a b))
 
-(defn bid-row
-  "What the sweep keeps of one scored bid."
-  [league-id {:keys [week won? p-win value walk-away] :as r}]
-  (let [y (if won? 1.0 0.0)]
-    (merge (select-keys r [:week :won? :amount :top :top-range :p-none :value :walk-away])
-           {:league  league-id
-            :block   (block-of league-id week)
-            :win-ll  (log-loss p-win y)
-            :gain    (when (and won? value walk-away) (value-gain r))})))
+(defn league-sums
+  "One league's replay as sums in the two ways it is resampled: `:by-league`,
+  one entry, and `:by-week`, keyed `[season week]`."
+  [{:keys [league-id stratum]} {:keys [who bids]}]
+  (let [season (:season stratum)
+        rows   (concat (map (juxt :week who-sums) who) (map (juxt :week bid-sums) bids))]
+    {:by-league {league-id (reduce add-sums {} (map second rows))}
+     :by-week   (reduce (fn [acc [week s]] (update acc [season week] add-sums s)) {} rows)}))
 
+(defn merge-sums [a b]
+  {:by-league (merge-with add-sums (:by-league a) (:by-league b))
+   :by-week   (merge-with add-sums (:by-week a) (:by-week b))})
 
 (def needs-cache
   "`{key gains}`: one rival's lineup gain from every free agent, which no swept
@@ -135,11 +154,10 @@
                      (assoc (select-keys team [:roster-id :owner-id :name :faab-left :waiver-position])
                             :needs (zipmap ids gains)))))))))
 
-
 (defn backbone-without
   "`replay/backbone-without`, cached under a hash of the ids rather than the
-  ids themselves, which for a sweep's worth of leagues is past the longest
-  name a file may have."
+  ids themselves, which for a set's worth of leagues is past the longest name
+  a file may have."
   [league-ids]
   (let [ids (vec (sort league-ids))]
     (replay/cached! (format "%s/backbone-without-%d-%08x.transit"
@@ -147,66 +165,95 @@
                     #(with-redefs [replay/cached! (fn [_ f] (f))]
                        (replay/backbone-without ids)))))
 
+(defn half-prior
+  "The backbone refit without every league in the frozen set's `half` and each
+  one's previous season, as `replay/prior-vars`: no league is scored against a
+  prior it helped measure, and the other half stays in it. Leaving out the
+  whole set would leave out most of the corpus."
+  [half]
+  (let [rows (leagues/pick (leagues/load-set) half nil)]
+    (replay/prior-vars (backbone-without (distinct (mapcat (juxt :league-id :previous) rows))))))
+
 (defn replay-league
-  "One league's replay reduced to who-bids sums and bid rows."
-  [league-id]
-  (let [{:keys [who bids]} (replay/replay league-id {:league-prior? true})]
-    {:who  (who-blocks league-id who)
-     :bids (mapv #(bid-row league-id %) bids)}))
+  "One league's replay as sums, or nil when it cannot be replayed — logged, so
+  a league Sleeper served in a shape the replay cannot read costs one league
+  and not the run."
+  [row]
+  (try
+    (league-sums row (replay/replay (:league-id row) {:league-prior? true}))
+    (catch Exception e
+      (binding [*out* *err*]
+        (println "  skipped" (:league-id row) (ex-message e)))
+      nil)))
 
-(defn run-all
-  "Every league replayed with `overrides` (`{var value}`) in force, under the
-  pooled backbone `prior`."
-  [prior league-ids overrides]
-  (with-redefs-fn (merge prior overrides)
-    #(let [outs (doall (pmap replay-league league-ids))]
-       {:who  (apply merge (map :who outs))
-        :bids (vec (mapcat :bids outs))})))
+(defn run-dir
+  "Where a run's chunks are kept: named for its leagues and configurations."
+  [rows configs]
+  (format "data/faab_cache/sweep/%08x"
+          (hash [(mapv :league-id rows) (mapv (fn [[label o]] [label (update-keys o str)]) configs)])))
 
-(defn mean [xs] (when (seq xs) (/ (reduce + 0.0 xs) (count xs))))
+(defn run-configs
+  "`{label sums}` for every `[label overrides]` in `configs` over `rows`, under
+  the backbone `prior`: a chunk at a time, every configuration over a chunk
+  before the next (see the ns docstring), each chunk read back from `dir`
+  when a previous run finished it."
+  [prior rows configs dir]
+  (with-redefs [waiver/rival-needs (cached-rival-needs waiver/rival-needs)]
+    (let [chunks (vec (partition-all chunk-size rows))]
+      (reduce
+       (fn [acc [i chunk]]
+         (let [path (str dir "/chunk-" i ".transit")
+               done (when (.exists (io/file path)) (pipeline/read-transit path))
+               sums (or done
+                        (let [s (into {}
+                                      (map (fn [[label overrides]]
+                                             [label (with-redefs-fn (merge prior overrides)
+                                                      #(reduce merge-sums {} (keep identity (pmap replay-league chunk))))]))
+                                      configs)]
+                          (reset! needs-cache {})
+                          (io/make-parents path)
+                          (pipeline/write-transit! path s)
+                          s))]
+           (binding [*out* *err*]
+             (println (format "  chunk %d of %d%s" (inc i) (count chunks) (if done " (from disk)" ""))))
+           (merge-with merge-sums acc sums)))
+       {}
+       (map-indexed vector chunks)))))
+
+(defn total [sums] (reduce add-sums {} (vals (:by-league sums))))
+
+(defn ratio [s k n] (let [d (get s n 0)] (when (pos? d) (/ (double (get s k 0.0)) d))))
 
 (defn summary
-  "One run's headline figures."
-  [{:keys [who bids]}]
-  (let [w       (vals who)
-        n       (reduce + 0 (map :n w))
-        contest (filter #(and (:top %) (:top-range %)) bids)
-        gains   (keep :gain bids)]
-    {:who-ll    (/ (reduce + 0.0 (map :ll w)) n)
-     :who-p     (/ (reduce + 0.0 (map :p w)) n)
-     :who-y     (/ (reduce + 0.0 (map :y w)) n)
-     :win-ll    (mean (map :win-ll bids))
-     :none-p    (mean (map :p-none bids))
-     :none-y    (mean (map #(if (:top %) 0.0 1.0) bids))
-     :p50       (mean (map #(if (<= (:top %) (first (:top-range %))) 1.0 0.0) contest))
-     :p90       (mean (map #(if (<= (:top %) (second (:top-range %))) 1.0 0.0) contest))
-     :gain      (mean gains)
-     :kept      (mean (map #(replay/outcome (:value %) (:top %))
-                           (filter :gain bids)))
-     :bids      (count bids)
-     :winners   (count gains)}))
+  "One configuration's headline figures."
+  [sums]
+  (let [t (total sums)]
+    {:who-ll  (ratio t :who-ll :who-n)
+     :who-p   (ratio t :who-p :who-n)
+     :who-y   (ratio t :who-y :who-n)
+     :win-ll  (ratio t :win-ll :win-n)
+     :none-p  (ratio t :none-p :win-n)
+     :none-y  (ratio t :none-y :win-n)
+     :p50     (ratio t :p50 :contest-n)
+     :p90     (ratio t :p90 :contest-n)
+     :gain    (ratio t :gain :gain-n)
+     :kept    (ratio t :kept :gain-n)
+     :leagues (count (:by-league sums))
+     :bids    (get t :win-n 0)
+     :winners (get t :gain-n 0)}))
 
-(defn paired-blocks
-  "One row per league-week holding the candidate's and the baseline's sums,
-  for `bm/block-bootstrap-ci`: each row is a block, so resampling rows
-  resamples blocks."
+(defn paired-rows
+  "One row per block holding the candidate's and the baseline's sums, as
+  `bm/block-bootstrap-ci` resamples them."
   [base cand]
-  (let [bid-sums (fn [bids] (update-vals (group-by :block bids)
-                                         (fn [rs] {:win-n  (count rs)
-                                                   :win-ll (reduce + 0.0 (map :win-ll rs))
-                                                   :gain-n (count (keep :gain rs))
-                                                   :gain   (reduce + 0.0 (keep :gain rs))})))
-        bb (bid-sums (:bids base))
-        cb (bid-sums (:bids cand))]
-    (mapv (fn [k]
+  (mapv (fn [k]
+          (let [b (get base k {}) c (get cand k {})
+                d #(- (double (get c % 0.0)) (double (get b % 0.0)))]
             {:season k
-             :who-n  (get-in base [:who k :n] 0)
-             :who-d  (- (get-in cand [:who k :ll] 0.0) (get-in base [:who k :ll] 0.0))
-             :win-n  (get-in bb [k :win-n] 0)
-             :win-d  (- (get-in cb [k :win-ll] 0.0) (get-in bb [k :win-ll] 0.0))
-             :gain-n (get-in bb [k :gain-n] 0)
-             :gain-d (- (get-in cb [k :gain] 0.0) (get-in bb [k :gain] 0.0))})
-          (distinct (concat (keys (:who base)) (keys bb))))))
+             :who-n  (get b :who-n 0)  :who-d  (d :who-ll)
+             :win-n  (get b :win-n 0)  :win-d  (d :win-ll)
+             :gain-n (get b :gain-n 0) :gain-d (d :gain)}))
+        (distinct (concat (keys base) (keys cand)))))
 
 (defn ratio-stat
   "The pooled difference per row: a sum of differences over a sum of counts."
@@ -215,16 +262,22 @@
     (let [n (reduce + 0 (map n-key rows))]
       (if (pos? n) (/ (reduce + 0.0 (map d-key rows)) n) 0.0))))
 
-(defn compare-runs
-  "The candidate less the baseline on the three scored figures, each with a
-  95% interval over league-weeks."
-  [base cand]
-  (let [rows (paired-blocks base cand)
-        ci   #(bm/block-bootstrap-ci rows (ratio-stat %1 %2) {:iterations 1000})]
-    {:who  (ci :who-d :who-n)
-     :win  (ci :win-d :win-n)
-     :gain (ci :gain-d :gain-n)}))
+(defn wider
+  "Of two intervals on one difference, the wider."
+  [a b]
+  (let [w #(if (:lo %) (- (:hi %) (:lo %)) ##Inf)]
+    (if (>= (w a) (w b)) a b)))
 
+(defn compare-runs
+  "The candidate less the baseline on the three scored figures, each with the
+  wider of its 95% intervals over leagues and over season-weeks."
+  [base cand]
+  (let [ci (fn [by d n]
+             (bm/block-bootstrap-ci (paired-rows (by base) (by cand)) (ratio-stat d n) {:iterations 1000}))
+        both (fn [d n] (wider (ci :by-league d n) (ci :by-week d n)))]
+    {:who  (both :who-d :who-n)
+     :win  (both :win-d :win-n)
+     :gain (both :gain-d :gain-n)}))
 
 (defn ci-str
   "`+0.0123 [-0.0010, +0.0200]`, starred when the interval excludes zero."
@@ -244,7 +297,7 @@
                    (if cmp (ci-str 4 (:who cmp)) (format "%.4f (abs)" (:who-ll s)))
                    (if cmp (ci-str 4 (:win cmp)) (format "%.4f (abs)" (:win-ll s)))
                    (if cmp (ci-str 2 (:gain cmp)) (format "%.2f (abs)" (:gain s)))
-                   (* 100 (:none-p s)) (* 100 (:none-y s))
+                   (* 100 (or (:none-p s) 0)) (* 100 (or (:none-y s) 0))
                    (* 100 (or (:p50 s) 0)) (* 100 (or (:p90 s) 0))
                    (* 100 (or (:kept s) 0)))))
 
@@ -261,48 +314,64 @@
 (defn flag-values [args flag]
   (map second (filter #(= flag (first %)) (partition 2 1 args))))
 
-(defn -main [& args]
-  (let [only      (set (flag-values args "--only"))
-        sets      (into {} (map parse-set (flag-values args "--set")))
-        league-ids (or (seq (flag-values args "--league")) leagues)
-        ;; Every replayed league and the season each continues, fetched here
-        ;; one at a time rather than by the replays at once.
-        excluded  (distinct (mapcat (fn [id]
-                                      (let [prev (some-> (replay/league-docs id) :league
-                                                         :previous_league_id str)]
-                                        (when prev (replay/league-docs prev))
-                                        (cond-> [id] prev (conj prev))))
-                                    league-ids))
-        prior     (replay/prior-vars (backbone-without excluded))
-        timed     (fn [label f]
-                    (let [t0 (System/nanoTime) v (f)]
-                      (binding [*out* *err*]
-                        (println (format "  [%s: %.0fs]" label (/ (- (System/nanoTime) t0) 1e9))))
-                      v))]
-    (with-redefs [waiver/rival-needs (cached-rival-needs waiver/rival-needs)]
-      (let [base   (timed "baseline" #(run-all prior league-ids {}))
-            bs     (summary base)]
-        (println (format "\n%d leagues, %d bids, %d winners priced; backbone refit without %d league-seasons"
-                         (count league-ids) (:bids bs) (:winners bs) (count excluded)))
-        (println (format "Shipped: who-bids LL %.4f (predicted %.2f%% bid, observed %.2f%%), win LL %.4f, gain $%.2f/winner"
-                         (:who-ll bs) (* 100 (:who-p bs)) (* 100 (:who-y bs)) (:win-ll bs) (:gain bs)))
+(defn flag-value [args flag] (first (flag-values args flag)))
+
+(defn replayable
+  "The frozen set's `half`, its first `n` when given, less every league the
+  fetch skipped or has not reached — so a run can start while a fetch is still
+  under way, on the leagues it has."
+  [half n]
+  (let [skipped (leagues/skipped)
+        ready?  #(and (not (skipped (:league-id %)))
+                      (every? (fn [id] (.exists (io/file (str replay/cache-dir "/league-" id ".transit"))))
+                              [(:league-id %) (:previous %)]))]
+    (vec (cond->> (filter ready? (leagues/pick (leagues/load-set) half nil))
+           n (take n)))))
+
+(defn configs-for
+  "`[label overrides]`: the shipped constants first, then either the one
+  combination `sets` names or every value of every setting in `only` (all of
+  them when empty) other than the shipped one."
+  [only sets]
+  (into [["shipped" {}]]
         (if (seq sets)
-          (let [cand (timed "combined" #(run-all prior league-ids sets))]
-            (println (str "\nCombined: " (str/join ", " (map (fn [[v x]] (str (:name (meta v) (str v)) "=" x)) sets))))
-            (print-header)
+          [["combined" sets]]
+          (for [{:keys [name var values]} settings
+                :when (or (empty? only) (only name))
+                v values
+                :when (not (== v @var))]
+            [(str name "=" (value-str v)) {var v}]))))
+
+(defn -main [& args]
+  (let [flags   (set args)
+        half    (keyword (or (flag-value args "--half") "fit"))
+        n       (some-> (flag-value args "--sample") parse-long)
+        only    (set (flag-values args "--only"))
+        sets    (into {} (map parse-set (flag-values args "--set")))
+        rows    (replayable half n)
+        configs (configs-for only sets)
+        dir     (run-dir rows configs)]
+    (when (flags "--fresh")
+      (run! io/delete-file (reverse (file-seq (io/file dir)))))
+    (println (format "%d leagues (%s half), %d configurations, chunks under %s"
+                     (count rows) (name half) (count configs) dir))
+    (let [out  (run-configs (half-prior half) rows configs dir)
+          base (get out "shipped")
+          bs   (summary base)]
+      (println (format "\n%d leagues replayed, %d bids, %d winners priced" (:leagues bs) (:bids bs) (:winners bs)))
+      (println (format "Shipped: who-bids LL %.4f (predicted %.2f%% bid, observed %.2f%%), win LL %.4f, gain $%.2f/winner"
+                       (:who-ll bs) (* 100 (:who-p bs)) (* 100 (:who-y bs)) (:win-ll bs) (:gain bs)))
+      (if (seq sets)
+        (do (print-header)
             (print-row "shipped" true bs nil)
-            (print-row "combined" false (summary cand) (compare-runs base cand)))
-          (doseq [{:keys [name var values]} settings
-                  :when (or (empty? only) (only name))]
-            ;; Each setting refills the cache once, so the boards a setting
-            ;; moves do not outlive it.
-            (reset! needs-cache {})
-            (println (str "\n-- " name " (shipped " (value-str @var) ") --"))
-            (print-header)
-            (doseq [v values]
-              (if (== v @var)
-                (print-row (value-str v) true bs nil)
-                (let [cand (timed (str name "=" (value-str v)) #(run-all prior league-ids {var v}))]
-                  (print-row (value-str v) false (summary cand) (compare-runs base cand))))
-              (flush))))))
+            (print-row "combined" false (summary (get out "combined")) (compare-runs base (get out "combined"))))
+        (doseq [{:keys [name var values]} settings
+                :when (or (empty? only) (only name))]
+          (println (str "\n-- " name " (shipped " (value-str @var) ") --"))
+          (print-header)
+          (doseq [v values]
+            (if (== v @var)
+              (print-row (value-str v) true bs nil)
+              (let [cand (get out (str name "=" (value-str v)))]
+                (print-row (value-str v) false (summary cand) (compare-runs base cand))))))))
     (shutdown-agents)))

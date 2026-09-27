@@ -16,33 +16,60 @@
          (sweep/value-gain {:value 4 :amount 12 :top 4}))
       "a tie is half of each"))
 
-(deftest who-blocks-sum-by-league-week
-  (let [bs (sweep/who-blocks "L" [{:week 1 :p 0.5 :bid? true}
-                                  {:week 1 :p 0.1 :bid? false}
-                                  {:week 2 :p 0.2 :bid? false}])]
-    (is (= #{"L:w1" "L:w2"} (set (keys bs))))
-    (is (= 2 (get-in bs ["L:w1" :n])))
-    (is (= 1.0 (get-in bs ["L:w1" :y])))
-    (is (< (Math/abs (- 0.6 (get-in bs ["L:w1" :p]))) 1e-12))))
+(defn- near? [a b] (< (Math/abs (- (double a) (double b))) 1e-12))
+
+(def ^:private row {:league-id "L" :stratum {:season "2025"}})
+
+(def ^:private run
+  {:who  [{:week 1 :p 0.5 :bid? true} {:week 1 :p 0.1 :bid? false} {:week 2 :p 0.2 :bid? false}]
+   :bids [{:week 1 :won? true :p-win 0.8 :p-none 0.6 :top 4 :top-range [3 9] :value 5 :walk-away 9 :amount 12}
+          {:week 2 :won? false :p-win 0.3 :p-none 0.4 :top nil :top-range nil}]})
+
+(deftest a-league-is-summed-by-league-and-by-season-week
+  (let [{:keys [by-league by-week]} (sweep/league-sums row run)
+        l (by-league "L")]
+    (is (= #{["2025" 1] ["2025" 2]} (set (keys by-week))) "weeks are keyed by season, which shares its news")
+    (is (= [3 2 2] [(:who-n l) (:win-n l) (get-in by-week [["2025" 1] :who-n])]))
+    (is (near? 0.8 (:who-p l)))
+    (is (= 1.0 (:who-y l)))
+    (is (= [1 0.0 1.0] [(:contest-n l) (:p50 l) (:p90 l)]) "a top rival bid of 4: over the p50 of 3, under the p90 of 9")
+    (is (= [1 7.0 1.0] [(:gain-n l) (:gain l) (:kept l)]) "a winner the value bid kept at 5 against his 12")
+    (is (= 1.0 (:none-y l)) "one of the two bids had nobody else")))
+
+(deftest the-summary-divides-the-sums
+  (let [s (sweep/summary (sweep/league-sums row run))]
+    (is (near? (/ 0.8 3) (:who-p s)))
+    (is (near? 0.5 (:none-y s)))
+    (is (near? 0.5 (:none-p s)))
+    (is (= [1 2 1] [(:leagues s) (:bids s) (:winners s)]))
+    (is (nil? (:p50 (sweep/summary {:by-league {"L" {:win-n 1}}}))) "no contested bid, no coverage")))
 
 (deftest ratio-stat-pools-over-counts-not-blocks
   (is (= 0.25 ((sweep/ratio-stat :d :n) [{:d 1.0 :n 1} {:d 0.0 :n 3}]))
       "a block of three outweighs a block of one")
   (is (= 0.0 ((sweep/ratio-stat :d :n) [])) "nothing to pool"))
 
-(deftest paired-blocks-difference-the-same-auctions
-  (let [base {:who  {"L:w1" {:n 10 :ll 2.0}}
-              :bids [{:block "L:w1" :win-ll 1.0 :gain 3.0}
-                     {:block "L:w1" :win-ll 0.5 :gain nil}]}
-        cand {:who  {"L:w1" {:n 10 :ll 1.5}}
-              :bids [{:block "L:w1" :win-ll 0.8 :gain 4.0}
-                     {:block "L:w1" :win-ll 0.5 :gain nil}]}
-        [row] (sweep/paired-blocks base cand)]
-    (is (= "L:w1" (:season row)) "the bootstrap's block")
-    (is (= [10 -0.5] [(:who-n row) (:who-d row)]))
-    (is (= 2 (:win-n row)))
-    (is (< (Math/abs (- -0.2 (:win-d row))) 1e-12))
-    (is (= [1 1.0] [(:gain-n row) (:gain-d row)]) "only winners the value bid priced")))
+(deftest paired-rows-difference-the-same-blocks
+  (let [[r] (sweep/paired-rows {"L" {:who-n 10 :who-ll 2.0 :win-n 2 :win-ll 1.5 :gain-n 1 :gain 3.0}}
+                               {"L" {:who-n 10 :who-ll 1.5 :win-n 2 :win-ll 1.3 :gain-n 1 :gain 4.0}})]
+    (is (= "L" (:season r)) "the bootstrap's block")
+    (is (= [10 -0.5] [(:who-n r) (:who-d r)]))
+    (is (< (Math/abs (- -0.2 (:win-d r))) 1e-12))
+    (is (= [1 1.0] [(:gain-n r) (:gain-d r)]))))
+
+(deftest the-wider-interval-is-the-one-reported
+  (is (= {:lo -1.0 :hi 2.0} (sweep/wider {:lo -1.0 :hi 2.0} {:lo 0.0 :hi 1.0})))
+  (is (= {:point 1.0} (sweep/wider {:lo 0.0 :hi 1.0} {:point 1.0})) "too few blocks for one is no interval"))
+
+(deftest a-sweep-runs-the-shipped-constants-then-every-other-value
+  (let [cs (sweep/configs-for #{"pseudo-bids"} {})]
+    (is (= ["shipped" {}] (first cs)))
+    (is (= (dec (count (:values (first (filter #(= "pseudo-bids" (:name %)) sweep/settings)))))
+           (count (rest cs)))
+        "every value but the shipped one")
+    (is (every? #(re-matches #"pseudo-bids=.*" (first %)) (rest cs))))
+  (is (= [["shipped" {}] ["combined" {#'clojure.core/*print-length* 3}]]
+         (sweep/configs-for #{} {#'clojure.core/*print-length* 3}))))
 
 (deftest cached-rival-needs-reuses-a-team-only-on-the-same-board
   (let [calls    (atom 0)
