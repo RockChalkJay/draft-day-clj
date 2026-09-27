@@ -198,6 +198,16 @@
     ("in_season" "complete") true
     nil))
 
+(defn league-kind
+  "Redraft, keeper or dynasty, from Sleeper's `settings.type`; nil when it
+  says none of them."
+  [league]
+  (case (get-in league [:settings :type])
+    0 :redraft
+    1 :keeper
+    2 :dynasty
+    nil))
+
 (defmethod league-sync/normalize-rosters :sleeper
   [_ {:keys [rosters users league]}]
   (let [waiver (import-sleeper/waiver-settings league)
@@ -223,5 +233,8 @@
      ;; The host's word on its own draft, which `db/derived-phase` reads so a
      ;; league drafted here opens in season before a week has been played.
      :drafted? (drafted? (:status league))
+     ;; Rivals in a dynasty league aim their claims differently from a
+     ;; redraft league's; `faab/model-for` reads it.
+     :kind   (league-kind league)
      :name   (:name league)
      :season (:season league)}))

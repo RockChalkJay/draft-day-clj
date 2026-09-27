@@ -136,6 +136,11 @@
   (is (nil? (:drafted? (sync-of (assoc-in raw [:league :status] "archived"))))
       "and so is one this does not know"))
 
+(deftest the-sync-says-what-kind-of-league-it-is
+  (is (= [:redraft :keeper :dynasty]
+         (map #(:kind (sync-of (assoc-in raw [:league :settings :type] %))) [0 1 2])))
+  (is (nil? (:kind (sync-of raw))) "a league that does not say is not guessed at here"))
+
 (deftest the-leagues-own-seat-count-comes-back-with-it
   ;; Whether a claim costs a drop turns on this number, and the browser's
   ;; fallback is the draft config — which a manager who synced without importing

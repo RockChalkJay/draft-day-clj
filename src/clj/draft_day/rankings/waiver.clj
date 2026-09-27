@@ -522,7 +522,8 @@
                 :heat   (faab/heat-of players)
                 ;; A waiver run is filed under the week it is processed in, the
                 ;; one after the last played.
-                :week   week}}))
+                :week   week
+                :kind   (:kind league)}}))
 
 (defn waiver-board
   "`:players` is the free agents only — `:rostered` is the compact `{player-id

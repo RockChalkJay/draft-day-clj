@@ -279,8 +279,9 @@
         waiver-s (:waiver league)
         needs    (waiver/rival-needs (:teams league) nil xwalk by-id seats starting-slots fas)
         heat     (faab/heat-of board)
-        teams    (faab/bidders needs {} fas habits (:budget waiver-s) (or (:min-bid waiver-s) 0)
-                               (mapv #(faab/shared-utility % w heat) fas))
+        {:keys [weights spread]} (faab/model-for (:kind league))
+        teams    (faab/bidders weights needs {} fas habits (:budget waiver-s) (or (:min-bid waiver-s) 0)
+                               (mapv #(faab/shared-utility weights % w heat) fas))
         totals   (apply merge-with + (map :rates teams))]
     (for [t teams, p fas]
       {:season (str "w" w)
@@ -288,7 +289,7 @@
        :player (:player-id p)
        :vorp   (:ros-vorp p)
        :form   (:form-points p)
-       :p      (faab/marginal-bid-chance (get (:rates t) (:player-id p) 0.0)
+       :p      (faab/marginal-bid-chance spread (get (:rates t) (:player-id p) 0.0)
                                          (get totals (:player-id p) 0.0))
        :bid?   (contains? week-bids [(:roster-id t) (:player-id p)])})))
 

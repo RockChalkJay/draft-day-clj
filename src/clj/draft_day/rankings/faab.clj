@@ -56,31 +56,71 @@
             [draft-day.bid-prior :as prior]))
 
 (def claim-weights
-  "How a rival aims his claims: the weights of a conditional logit over
-  `claim-features` and `need-features`. MEASURED by `draft-day.faab.interest`
-  — see its docstring for the leagues, the fit and its held-out score."
-  {:played    1.316
-   :last-game 0.459
-   :season    0.627
-   :vorp      -0.865
-   :vorp-sq   -0.788
-   :dropped   0.892
-   :pos/QB    -0.994
-   :pos/RB    0.610
-   :pos/TE    -0.326
-   :pos/K     -1.921
-   :pos/DST   -0.038
-   :need?     0.644})
+  "How a rival aims his claims, by league kind: the weights of a conditional
+  logit over `claim-features` and `need-features`. MEASURED by
+  `draft-day.faab.interest` — see its docstring for the leagues, the fit and
+  its held-out score."
+  {:redraft {:played    1.316
+     :last-game 0.459
+     :season    0.627
+     :vorp      -0.865
+     :vorp-sq   -0.788
+     :dropped   0.892
+     :pos/QB    -0.994
+     :pos/RB    0.610
+     :pos/TE    -0.326
+     :pos/K     -1.921
+     :pos/DST   -0.038
+     :need?     0.644}
+   :keeper  {:played    1.316
+     :last-game 0.459
+     :season    0.627
+     :vorp      -0.865
+     :vorp-sq   -0.788
+     :dropped   0.892
+     :pos/QB    -0.994
+     :pos/RB    0.610
+     :pos/TE    -0.326
+     :pos/K     -1.921
+     :pos/DST   -0.038
+     :need?     0.644}
+   :dynasty {:played    1.316
+     :last-game 0.459
+     :season    0.627
+     :vorp      -0.865
+     :vorp-sq   -0.788
+     :dropped   0.892
+     :pos/QB    -0.994
+     :pos/RB    0.610
+     :pos/TE    -0.326
+     :pos/K     -1.921
+     :pos/DST   -0.038
+     :need?     0.644}})
 
 (def cluster-spread
-  "How many more bidders a claim draws than the claim rates alone would say:
-  one player's week multiplies every claim rate on him by a gamma of mean one
-  and shape (the league's total rate on him) / `cluster-spread`, so once
-  somebody claims him the others expect about this many more bids, spread by
-  their share of the interest, however likely he looked beforehand — which is
-  what real bids do. MEASURED by `draft-day.faab.interest` — see its
-  docstring."
-  1.43)
+  "How many more bidders a claim draws than the claim rates alone would say,
+  by league kind: one player's week multiplies every claim rate on him by a
+  gamma of mean one and shape (the league's total rate on him) / the spread,
+  so once somebody claims him the others expect about this many more bids,
+  spread by their share of the interest, however likely he looked beforehand —
+  which is what real bids do. MEASURED by `draft-day.faab.interest`."
+  {:redraft 1.43 :keeper 1.43 :dynasty 1.43})
+
+(defn kind-of
+  "A league kind as `claim-weights` keys it: redraft, keeper or dynasty,
+  whichever spelling it crossed the wire in, and redraft for a league that
+  did not say — an ESPN league, or a sync stored before syncs said."
+  [kind]
+  (case (some-> kind name)
+    "dynasty" :dynasty
+    "keeper"  :keeper
+    :redraft))
+
+(defn model-for
+  "`{:weights :spread}` for a league of `kind`."
+  [kind]
+  (let [k (kind-of kind)]
+    {:weights (claim-weights k) :spread (cluster-spread k)}))
 
 (def hotness-points
   "How many equally likely values of that multiplier a price averages over."
@@ -156,9 +196,9 @@
 
 (defn shared-utility
   "The part of every rival's utility for `p` that is the same for all of them,
-  heat included."
-  [p week heat]
-  (+ (utility claim-weights (claim-features p week))
+  heat included, under one kind's `weights`."
+  [weights p week heat]
+  (+ (utility weights (claim-features p week))
      (* heat-weight (heat p))))
 
 (defn claim-rates
@@ -166,9 +206,9 @@
   agent on average — shared out in proportion to e^utility, his own need added
   to the `shared` utilities (one per free agent, in order), so they sum to
   `per-week` and no free agent draws none."
-  [needs fas per-week shared]
+  [weights needs fas per-week shared]
   (if (and (seq fas) (pos? (double (or per-week 0.0))))
-    (let [us    (mapv (fn [p s] (+ s (utility claim-weights (need-features (get needs (:player-id p))))))
+    (let [us    (mapv (fn [p s] (+ s (utility weights (need-features (get needs (:player-id p))))))
                       fas shared)
           top   (reduce max us)
           ws    (mapv #(Math/exp (- % top)) us)
@@ -183,16 +223,16 @@
 
 (defn hotness-shape
   "The shape of a player's week multiplier when the league claims him at
-  `total` a week: see `cluster-spread`."
-  [total]
-  (max 1e-6 (/ (double (or total 0.0)) cluster-spread)))
+  `total` a week, under a kind's `spread`: see `cluster-spread`."
+  [spread total]
+  (max 1e-6 (/ (double (or total 0.0)) spread)))
 
 (defn marginal-bid-chance
   "The chance of at least one claim at `rate` before anything is known about
   the player's week: `bid-chance` averaged over his multiplier, `total` being
   the league's rate on him."
-  [rate total]
-  (let [a (hotness-shape total)]
+  [spread rate total]
+  (let [a (hotness-shape spread total)]
     (- 1.0 (Math/pow (/ a (+ a (double rate))) a))))
 
 (defn equal-mass
@@ -238,10 +278,10 @@
   claim rate for a player I am claiming at `mine` a week, the league, me
   included, at `total`: his week's gamma of shape a (`hotness-shape`) and mean
   one, conditioned on my claim. Tabulated on a to three figures and my rate
-  over a to two places, which `cluster-spread` bounds, so a board computes a
-  few hundred tables rather than one a player."
-  [total mine]
-  (let [a (round-figures (hotness-shape total))
+  over a to two places, which `spread` bounds, so a board computes a few
+  hundred tables rather than one a player."
+  [spread total mine]
+  (let [a (round-figures (hotness-shape spread total))
         c (/ (Math/round (* 100.0 (/ (max 0.0 (double (or mine 0.0))) a))) 100.0)]
     (mapv #(/ % a) (claimed-points a c))))
 
@@ -546,9 +586,9 @@
       (bid-history/silent-profile history league-log)))
 
 (defn bidders
-  "The rivals able to bid at all, each with his habits, his claim rates, his cap
-  and his tie odds against me."
-  [rivals me fas habits budget min-bid shared]
+  "The rivals able to bid at all, each with his habits, his claim rates under
+  `weights`, his cap and his tie odds against me."
+  [weights rivals me fas habits budget min-bid shared]
   (->> rivals
        (map (fn [r]
               (let [h (rival-habits r habits)]
@@ -556,7 +596,7 @@
                        :style (:style h)
                        :habits h
                        :cap (long (min budget (or (:faab-left r) budget)))
-                       :rates (claim-rates (:needs r) fas (:per-week h) shared)
+                       :rates (claim-rates weights (:needs r) fas (:per-week h) shared)
                        :tie (tie-chance (:waiver-position me) (:waiver-position r))))))
        (filterv #(<= min-bid (:cap %)))))
 
@@ -566,22 +606,25 @@
   (`bidders`) and `:dist`, each rival's bid distribution by position and bidder
   count. `rivals` is `waiver/rival-needs`, `me` the manager's own team, `habits`
   `league-habits`, `week` the week claims are decided in, and `heat` is
-  `heat-of` over the whole board, or none. `:mine` is my own claim rate on
-  each free agent, my part of the league's interest in him."
-  [fas {:keys [rivals me waiver habits week heat] :or {heat (constantly 0.0)}}]
+  `heat-of` over the whole board, or none. `kind` picks the weights and the
+  spread (`model-for`). `:mine` is my own claim rate on each free agent, my
+  part of the league's interest in him."
+  [fas {:keys [rivals me waiver habits week heat kind] :or {heat (constantly 0.0)}}]
   (let [budget  (long (or (:budget waiver) 0))
         min-bid (long (or (:min-bid waiver) 0))
         phase   (prior/phase week)
-        shared  (when (seq rivals) (mapv #(shared-utility % week heat) fas))
-        rivals  (bidders rivals me fas habits budget min-bid shared)]
+        {:keys [weights spread]} (model-for kind)
+        shared  (when (seq rivals) (mapv #(shared-utility weights % week heat) fas))
+        rivals  (bidders weights rivals me fas habits budget min-bid shared)]
     {:budget  budget
+     :spread  spread
      :min-bid min-bid
      :left    (some-> (:faab-left me) long (min budget))
      :rivals  rivals
      ;; Mine, with my need read as `waiver/rival-needs` reads a rival's: part
      ;; of the league's interest in a player, which sets what a claim says.
      :mine    (when (seq rivals)
-                (claim-rates (zipmap (map :player-id fas) (map #(or (:lineup-upgrade %) (:upgrade %)) fas))
+                (claim-rates weights (zipmap (map :player-id fas) (map #(or (:lineup-upgrade %) (:upgrade %)) fas))
                              fas (:per-week (rival-habits me habits)) shared))
      ;; One distribution per rival, position and bidder count, not per
      ;; player: a few dozen, where there are hundreds of free agents.
@@ -598,10 +641,10 @@
   his chance of bidding at each of the player's `hotness` points, `:p` their
   mean, and `:pmf`/`:cdf` over what he would bid. The bidder count that picks
   their distributions is the one predicted for this player."
-  [p {:keys [rivals dist mine]}]
+  [p {:keys [rivals dist mine spread]}]
   (let [rates  (mapv #(double (get (:rates %) (:player-id p) 0.0)) rivals)
         mine   (double (get mine (:player-id p) 0.0))
-        etas   (hotness (+ (reduce + 0.0 rates) mine) mine)
+        etas   (hotness spread (+ (reduce + 0.0 rates) mine) mine)
         pss    (mapv (fn [rate] (double-array (map #(bid-chance (* rate %)) etas))) rates)
         ps     (mapv (fn [^doubles a] (/ (areduce a i s 0.0 (+ s (aget a i))) (alength a))) pss)
         bucket (prior/bucket (max 1 (Math/round (+ 1.0 (reduce + 0.0 ps)))))]

@@ -18,8 +18,11 @@
   choice, against the uniform guess, by stratum, and beside fits with a family
   of features left out, which is what says each family earns its place.
   `--curve` refits on nested samples of the fit half, so the score says how
-  much another doubling of leagues is worth; `--by-kind` fits redraft, keeper
-  and dynasty apart, to say whether one set of weights serves them all.
+  much another doubling of leagues is worth. Redraft, keeper and dynasty are
+  fit apart, weights and spread, and each is scored on its own score-half
+  leagues against the pooled fit and the shipped weights: managers who hold a
+  player for years chase different free agents from ones who hold him for a
+  season.
 
   How far bids pile onto one player beyond what the features see is
   `faab/cluster-spread`: every free agent's week multiplies every rival's rate
@@ -42,7 +45,7 @@
   shipped constants and with the refit ones, and scores them paired.
 
     JVM_OPTS=-Xmx10g lein run -m draft-day.faab.interest
-    JVM_OPTS=-Xmx10g lein run -m draft-day.faab.interest -- --curve --by-kind --replay"
+    JVM_OPTS=-Xmx10g lein run -m draft-day.faab.interest -- --curve --replay"
   (:require [clojure.java.io :as io]
             [draft-day.faab.replay :as replay]
             [draft-day.faab.sweep :as sweep]
@@ -315,9 +318,11 @@
                              (recur (+ ll l) more))
                            [ll g h]))))
                    (partition-all size sets))
-        ll   (reduce + (map first sums))
-        g    (apply mapv + (map (comp vec second) sums))
-        h    (apply mapv (fn [& rows] (apply mapv + rows)) (map (fn [[_ _ h]] (mapv vec h)) sums))]
+        zero (vec (repeat k 0.0))
+        ll   (reduce + 0.0 (map first sums))
+        g    (reduce #(mapv + %1 %2) zero (map (comp vec second) sums))
+        h    (reduce (fn [acc [_ _ h]] (mapv #(mapv + %1 %2) acc (map vec h)))
+                     (vec (repeat k zero)) sums)]
     [(- ll (* 0.5 ridge (reduce + (map #(* % %) theta))))
      (mapv - g (map #(* ridge %) theta))
      (vec (map-indexed (fn [i r] (update r i - ridge)) h))]))
@@ -456,64 +461,95 @@
 (defn stratum-label [{:keys [season kind budget superflex?]}]
   (format "%s %-8s %-6s %s" season (name kind) (name budget) (if superflex? "superflex" "1QB")))
 
+(def kinds [:redraft :keeper :dynasty])
+
+(def min-kind-leagues
+  "Fewest fit-half leagues of a kind for it to get weights of its own; a kind
+  with fewer is given the pooled fit."
+  20)
+
+(defn of-kind [kind rows] (filterv #(= kind (get-in % [:stratum :kind])) rows))
+
+(defn rounded [w] (into (sorted-map) (update-vals w #(/ (Math/round (* 1000.0 %)) 1000.0))))
+
 (defn -main [& args]
-  (let [flags  (set args)
-        n      (some-> (sweep/flag-value args "--sample") parse-long)
-        fit-r  (sweep/replayable :fit n)
+  (let [flags   (set args)
+        n       (some-> (sweep/flag-value args "--sample") parse-long)
+        fit-r   (sweep/replayable :fit n)
         score-r (sweep/replayable :score n)
-        _      (println (format "Extracting choices: %d fit and %d score leagues" (count fit-r) (count score-r)))
-        data   (merge (load-leagues (sweep/half-prior :fit) fit-r)
-                      (load-leagues (sweep/half-prior :score) score-r))
-        fit-r  (filterv #(data (:league-id %)) fit-r)
+        _       (println (format "Extracting choices: %d fit and %d score leagues" (count fit-r) (count score-r)))
+        data    (merge (load-leagues (sweep/half-prior :fit) fit-r)
+                       (load-leagues (sweep/half-prior :score) score-r))
+        fit-r   (filterv #(data (:league-id %)) fit-r)
         score-r (filterv #(data (:league-id %)) score-r)
-        fit-s  (sets-of data fit-r)
+        fit-s   (sets-of data fit-r)
         score-s (sets-of data score-r)
-        all    (fit all-keys fit-s)
-        w      (:weights all)
-        p      (per-choice w all-keys score-s)
-        spread (fit-spread (player-weeks (weeks-of data fit-r) w all-keys))]
+        pooled  (fit all-keys fit-s)
+        w       (:weights pooled)
+        spread  (fit-spread (player-weeks (weeks-of data fit-r) w all-keys))
+        p       (per-choice w all-keys score-s)
+        by-kind (into {}
+                      (map (fn [kind]
+                             (let [rows (of-kind kind fit-r)]
+                               [kind (if (< (count rows) min-kind-leagues)
+                                       (assoc pooled :spread spread :leagues (count rows) :pooled? true)
+                                       (let [f (fit all-keys (sets-of data rows))]
+                                         (assoc f :spread (fit-spread (player-weeks (weeks-of data rows) (:weights f) all-keys))
+                                                  :leagues (count rows))))])))
+                      kinds)
+        own     #(get-in by-kind [% :weights])]
     (println (format "\nFit on %d leagues (%d choices), scored on %d leagues (%d choices)"
                      (count fit-r) (reduce + (map (comp count :chosen) fit-s)) (count score-r) (:choices p)))
-    (println "\nWeights (± standard error):")
+    (println "\nWeights by kind (± standard error), and pooled:")
+    (println (format "  %-12s %s   %s" "" (apply str (map #(format "%-18s" (name %)) kinds)) "pooled"))
     (doseq [k all-keys]
-      (println (format "  %-12s %+7.3f  ± %.3f" (str k) (get w k) (get-in all [:se k]))))
-    (println (format "\nScore half: %.4f a choice, against %.4f for the uniform guess (%+.4f)"
-                     (:model p) (:uniform p) (- (:model p) (:uniform p))))
-    (println (format "Shipped weights on the score half: %.4f a choice" (:model (per-choice faab/claim-weights all-keys score-s))))
-    (println "\nBy stratum, on the score half:")
+      (println (format "  %-12s %s   %+7.3f" (str k)
+                       (apply str (map #(format "%+7.3f ± %.3f   " (get (own %) k) (get-in by-kind [% :se k])) kinds))
+                       (get w k))))
+    (println (format "  %-12s %s   %7.3f" "spread" (apply str (map #(format "%7.3f           " (get-in by-kind [% :spread])) kinds)) spread))
+    (println (format "  %-12s %s" "leagues" (apply str (map #(format "%7d%-11s" (get-in by-kind [% :leagues]) (if (get-in by-kind [% :pooled?]) " (pooled)" "")) kinds))))
+    (println "\nOn the score half, a choice's log likelihood under each kind's own fit, the pooled fit, the shipped weights and the uniform guess:")
+    (doseq [kind kinds]
+      (let [sets (sets-of data (of-kind kind score-r))]
+        (when (seq sets)
+          (println (format "  %-8s own %.4f  pooled %.4f  shipped %.4f  uniform %.4f  (%d choices)" (name kind)
+                           (:model (per-choice (own kind) all-keys sets)) (:model (per-choice w all-keys sets))
+                           (:model (per-choice (get faab/claim-weights kind) all-keys sets))
+                           (:uniform (per-choice w all-keys sets)) (reduce + (map (comp count :chosen) sets)))))))
+    (println "\nBy stratum, on the score half, under its kind's own fit:")
     (doseq [[s rows] (sort-by (comp stratum-label key) (group-by :stratum score-r))]
-      (let [q (per-choice w all-keys (sets-of data rows))]
+      (let [q (per-choice (own (:kind s)) all-keys (sets-of data rows))]
         (println (format "  %-34s %4d leagues %7d choices  %.4f  (uniform %.4f, %+.4f)"
                          (stratum-label s) (count rows) (:choices q) (:model q) (:uniform q) (- (:model q) (:uniform q))))))
-    (println "\nLeaving a family out, on the score half (a lower likelihood means it earns its place):")
+    (println "\nLeaving a family out of the pooled fit, on the score half (a lower likelihood means it earns its place):")
     (doseq [[family drop] families]
       (let [q (per-choice (:weights (fit all-keys fit-s (set (remove drop all-keys)))) all-keys score-s)]
         (println (format "  without %-9s %.4f a choice  (%+.4f against the full model)" family (:model q) (- (:model q) (:model p))))))
-    (println (format "\nBids pile up: cluster-spread %.3f (shipped %.3f)" spread faab/cluster-spread))
     (when (flags "--curve")
-      (println "\nLearning curve: fit on the first n fit-half leagues, scored on the whole score half")
+      (println "\nLearning curve: the pooled fit on the first n fit-half leagues, scored on the whole score half")
       (doseq [n (concat (filter #(< % (count fit-r)) curve-sizes) [(count fit-r)])]
         (let [rows (take n fit-r)
               f    (fit all-keys (sets-of data rows))
               q    (per-choice (:weights f) all-keys score-s)]
           (println (format "  %5d leagues  %.4f a choice  spread %.3f" n (:model q)
                            (fit-spread (player-weeks (weeks-of data rows) (:weights f) all-keys)))))))
-    (when (flags "--by-kind")
-      (println "\nBy kind: each kind's score half under its own fit and under the pooled one")
-      (doseq [[kind rows] (group-by (comp :kind :stratum) fit-r)]
-        (let [own    (:weights (fit all-keys (sets-of data rows)))
-              scored (sets-of data (filter #(= kind (get-in % [:stratum :kind])) score-r))]
-          (when (seq scored)
-            (println (format "  %-8s own %.4f  pooled %.4f a choice" (name kind)
-                             (:model (per-choice own all-keys scored)) (:model (per-choice w all-keys scored))))))))
-    (println "\nclaim-weights:" (into (sorted-map) (update-vals w #(/ (Math/round (* 1000.0 %)) 1000.0))))
+    (println "\nclaim-weights:" (into (sorted-map) (map (fn [k] [k (rounded (own k))]) kinds)))
+    (println "cluster-spread:" (into (sorted-map) (map (fn [k] [k (/ (Math/round (* 1000.0 (get-in by-kind [k :spread]))) 1000.0)]) kinds)))
     (when (flags "--replay")
-      (let [configs [["shipped" {}]
-                     ["refit" {#'faab/claim-weights w #'faab/cluster-spread spread}]]
-            out     (sweep/run-configs (sweep/half-prior :score) score-r configs (sweep/run-dir score-r configs))
-            base    (get out "shipped")]
-        (println "\nReplayed on the score half, the refit against the shipped constants:")
+      (let [per-kind {#'faab/claim-weights  (into {} (map (fn [k] [k (own k)]) kinds))
+                      #'faab/cluster-spread (into {} (map (fn [k] [k (get-in by-kind [k :spread])]) kinds))}
+            configs  [["shipped" {}]
+                      ["pooled" {#'faab/claim-weights  (zipmap kinds (repeat w))
+                                 #'faab/cluster-spread (zipmap kinds (repeat spread))}]
+                      ["per-kind" per-kind]]
+            out      (sweep/run-configs (sweep/half-prior :score) score-r configs (sweep/run-dir score-r configs))
+            base     (get out "shipped")]
+        (println "\nReplayed on the score half, against the shipped constants:")
         (sweep/print-header)
         (sweep/print-row "shipped" true (sweep/summary base) nil)
-        (sweep/print-row "refit" false (sweep/summary (get out "refit")) (sweep/compare-runs base (get out "refit")))))
+        (doseq [label ["pooled" "per-kind"]]
+          (sweep/print-row label false (sweep/summary (get out label)) (sweep/compare-runs base (get out label))))
+        (println "\nPer-kind against pooled:")
+        (sweep/print-row "per-kind" false (sweep/summary (get out "per-kind"))
+                         (sweep/compare-runs (get out "pooled") (get out "per-kind")))))
     (shutdown-agents)))

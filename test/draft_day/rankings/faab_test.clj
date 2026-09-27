@@ -13,7 +13,16 @@
     (doseq [[b v] amounts] (aset pmf b (double v)))
     {:p p :pmf pmf :cdf (faab/cumulative pmf) :tie tie}))
 
-(defn- shared [fas week heat] (mapv #(faab/shared-utility % week heat) fas))
+(def ^:private w
+  "The weights the claim tests aim by."
+  (:weights (faab/model-for :redraft)))
+
+(def ^:private sp
+  "The spread the hotness tests price with: fixed here, so a refit of
+  `faab/cluster-spread` does not move what they check."
+  1.43)
+
+(defn- shared [fas week heat] (mapv #(faab/shared-utility w % week heat) fas))
 
 (def ^:private no-heat (constantly 0.0))
 
@@ -45,17 +54,17 @@
                {:player-id "warm" :form-points 6.0 :last-points 6.0 :last-week 4 :season-ppg 6.0
                 :ros-vorp -20.0 :position "WR"}
                {:player-id "cold" :ros-vorp -80.0 :position "K"}]
-        rates (faab/claim-rates {} fas 1.5 (shared fas 5 no-heat))]
+        rates (faab/claim-rates w {} fas 1.5 (shared fas 5 no-heat))]
     (is (< (Math/abs (- 1.5 (reduce + (vals rates)))) 1e-9) "every claim he makes lands somewhere")
     (is (> (rates "hot") (rates "warm") (rates "cold")))
     (is (every? pos? (vals rates)) "and no free agent draws none")
-    (let [needy (faab/claim-rates {"warm" 20.0} fas 1.5 (shared fas 5 no-heat))]
+    (let [needy (faab/claim-rates w {"warm" 20.0} fas 1.5 (shared fas 5 no-heat))]
       (is (> (needy "warm") (rates "warm")) "a rival he would start for aims more at him")))
-  (is (= {} (faab/claim-rates {} [{:player-id "x"}] 0.0 [0.0])) "a rival who never claims")
-  (is (= {} (faab/claim-rates {} [] 1.0 [])) "an empty wire"))
+  (is (= {} (faab/claim-rates w {} [{:player-id "x"}] 0.0 [0.0])) "a rival who never claims")
+  (is (= {} (faab/claim-rates w {} [] 1.0 [])) "an empty wire"))
 
 (deftest a-quiet-rival-with-one-target-can-still-sit-the-week-out
-  (let [rate (get (faab/claim-rates {"a" 25.0} [{:player-id "a"}] 0.3 [0.0]) "a")]
+  (let [rate (get (faab/claim-rates w {"a" 25.0} [{:player-id "a"}] 0.3 [0.0]) "a")]
     (is (< (Math/abs (- 0.3 rate)) 1e-9))
     (is (< 0.25 (faab/bid-chance rate) 0.27)
         "a claim every three weeks is not a certain bid, as a fixed count makes it")))
@@ -73,16 +82,16 @@
 
 (deftest a-player-the-site-is-adding-draws-more-of-a-rivals-claims
   (let [fas   [{:player-id "hot" :trending/adds 500000} {:player-id "cold"} {:player-id "also" :trending/adds 1000}]
-        rates (faab/claim-rates {} fas 1.0 (shared fas 5 (faab/heat-of fas)))]
+        rates (faab/claim-rates w {} fas 1.0 (shared fas 5 (faab/heat-of fas)))]
     (is (near? (Math/exp faab/heat-weight) (/ (rates "hot") (rates "cold")) 1e-9)
         "the top of the list, heat-weight higher on the utility scale")
     (is (near? 1.0 (reduce + (vals rates)) 1e-9) "and still no more claims than he makes")))
 
 (deftest a-bid-before-anything-is-known-is-rarer-than-at-an-average-week
-  (is (< (faab/marginal-bid-chance 0.2 0.5) (faab/bid-chance 0.2))
+  (is (< (faab/marginal-bid-chance sp 0.2 0.5) (faab/bid-chance 0.2))
       "most weeks a player is nobody's, a few he is everybody's")
   (is (near? (faab/bid-chance 0.2)
-             (with-redefs [faab/cluster-spread 1e-7] (faab/marginal-bid-chance 0.2 0.5)) 1e-5)
+             (faab/marginal-bid-chance 1e-7 0.2 0.5) 1e-5)
       "with no clustering at all the two agree"))
 
 (deftest equal-mass-points-carry-a-kth-of-the-mass-each
@@ -93,16 +102,16 @@
 (deftest a-claim-says-the-players-week-is-a-hot-one
   (let [mean #(/ (reduce + %) (count %))]
     (doseq [total [0.01 0.3 3.0]]
-      (let [a (faab/round-figures (faab/hotness-shape total))]
-        (is (= faab/hotness-points (count (faab/hotness total 0.0))))
-        (is (near? (/ (+ a 1.0) a) (mean (faab/hotness total 0.0)) (* 0.01 (/ (+ a 1.0) a)))
+      (let [a (faab/round-figures (faab/hotness-shape sp total))]
+        (is (= faab/hotness-points (count (faab/hotness sp total 0.0))))
+        (is (near? (/ (+ a 1.0) a) (mean (faab/hotness sp total 0.0)) (* 0.01 (/ (+ a 1.0) a)))
             "a claim at a vanishing rate: the gamma's posterior mean, (a + 1) / a")))
-    (is (near? (+ 0.3 faab/cluster-spread) (* 0.3 (mean (faab/hotness 0.3 0.0))) 0.02)
+    (is (near? (+ 0.3 sp) (* 0.3 (mean (faab/hotness sp 0.3 0.0))) 0.02)
         "so once he is claimed, rivals who hold all of a 0.3 interest in him
         expect the spread more bids than they did")
-    (is (< (mean (faab/hotness 3.0 0.0)) (mean (faab/hotness 0.01 0.0)))
+    (is (< (mean (faab/hotness sp 3.0 0.0)) (mean (faab/hotness sp 0.01 0.0)))
         "a player the whole league was expected to want moves less")
-    (is (< (mean (faab/hotness 0.3 0.25)) (mean (faab/hotness 0.3 0.01)))
+    (is (< (mean (faab/hotness sp 0.3 0.25)) (mean (faab/hotness sp 0.3 0.01)))
         "and a claim I was likely to make says less than one I was not")))
 
 (deftest nobody-else-bidding-matches-its-closed-form
@@ -113,9 +122,9 @@
     (doseq [total [0.01 0.1 0.5 2.0] share [0.05 0.3 0.7]]
       (let [mine    (* share total)
             others  (- total mine)
-            a       (faab/round-figures (faab/hotness-shape total))
+            a       (faab/round-figures (faab/hotness-shape sp total))
             exact   (/ (- (laplace a others) (laplace a total)) (- 1.0 (laplace a mine)))
-            pts     (faab/hotness total mine)
+            pts     (faab/hotness sp total mine)
             points  (/ (reduce + (map #(Math/exp (- (* others %))) pts)) (count pts))]
         (is (near? exact points 0.002) (str "total " total " my share " share))))))
 
@@ -373,3 +382,10 @@
   (is (= 0 (faab/first-true (constantly true) 0 100)))
   (is (nil? (faab/first-true (constantly false) 0 100)))
   (is (nil? (faab/first-true (constantly true) 5 4)) "an empty range"))
+
+(deftest a-leagues-kind-picks-its-weights-and-spread
+  (is (= [:redraft :keeper :dynasty :redraft :redraft]
+         (map faab/kind-of [:redraft "keeper" "dynasty" nil "something-else"]))
+      "whichever spelling it crossed the wire in, and redraft when it did not say")
+  (is (= {:weights (get faab/claim-weights :dynasty) :spread (get faab/cluster-spread :dynasty)}
+         (faab/model-for "dynasty"))))

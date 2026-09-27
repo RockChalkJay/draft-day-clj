@@ -22,6 +22,7 @@
   (:require [clojure.java.io :as io]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.transactions :as transactions]
+            [draft-day.ingestion.league-sync.sleeper :as sync-sleeper]
             [draft-day.ingestion.transactions.sleeper]
             [draft-day.replay.sleeper :as sleeper]))
 
@@ -60,11 +61,7 @@
 (defn league-kind
   "Redraft, keeper or dynasty, from Sleeper's `settings.type`."
   [lg]
-  (case (get-in lg [:settings :type])
-    0 :redraft
-    1 :keeper
-    2 :dynasty
-    :unknown))
+  (or (sync-sleeper/league-kind lg) :unknown))
 
 (defn league-meta
   "What the report slices a league-season by."
