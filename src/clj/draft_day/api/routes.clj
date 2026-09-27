@@ -418,7 +418,7 @@
                            (vendor/for-scoring scoring*)
                            ;; Before the log goes: rivals' claims are aimed
                            ;; partly by last week's game.
-                           waiver/with-last-game
+                           (waiver/with-last-game through-week)
                            without-history
                            (waiver-board-inputs scoring*)
                            (ros/with-ros scoring* ctx)

@@ -409,12 +409,12 @@
 
 (deftest the-last-game-and-the-season-ride-beside-form
   (let [ppr (scoring/resolve-config :ppr)
-        [a b] (waiver/with-form-points
-                [{:player-id "a"
-                  :realized/game-log [{:week 6 :stats {:rec 2.0}} {:week 7 :stats {:rec 5.0 :rec_yd 60.0}}]
-                  :realized/season-to-date {:games 2 :stats {:rec 7.0 :rec_yd 60.0}}}
-                 {:player-id "b"}]
-                ppr)]
+        [a b] (-> [{:player-id "a"
+                    :realized/game-log [{:week 6 :stats {:rec 2.0}} {:week 7 :stats {:rec 5.0 :rec_yd 60.0}}]
+                    :realized/season-to-date {:games 2 :stats {:rec 7.0 :rec_yd 60.0}}}
+                   {:player-id "b"}]
+                  (waiver/with-last-game 7)
+                  (waiver/with-form-points ppr))]
     (is (= [11.0 7] ((juxt :last-points :last-week) a)) "the latest game, with its week")
     (is (< (abs (- 6.5 (:season-ppg a))) 1e-9) "13 points over 2 games")
     (is (not-any? #(contains? b %) [:last-points :last-week :season-ppg])
@@ -422,12 +422,21 @@
 
 (deftest the-last-game-outlives-the-log
   (let [ppr (scoring/resolve-config :ppr)
-        [a] (->> [{:player-id "a" :realized/game-log [{:week 6 :stats {:rec 2.0}} {:week 7 :stats {:rec 5.0}}]}]
-                 waiver/with-last-game
-                 (mapv #(dissoc % :realized/game-log))
-                 (#(waiver/with-form-points % ppr)))]
+        [a] (-> [{:player-id "a" :realized/game-log [{:week 6 :stats {:rec 2.0}} {:week 7 :stats {:rec 5.0}}]}]
+                (waiver/with-last-game 7)
+                (->> (mapv #(dissoc % :realized/game-log)))
+                (waiver/with-form-points ppr))]
     (is (= [5.0 7] ((juxt :last-points :last-week) a))
-        "the waiver route strips the log before scoring, so the latest game is kept apart")))
+        "the waiver route strips the log before scoring, so the game is kept apart")))
+
+(deftest the-last-game-is-the-finished-weeks-not-thursdays
+  (let [log [{:week 6 :stats {:rec 2.0}} {:week 7 :stats {:rec 5.0}} {:week 8 :stats {:rec 9.0}}]
+        [a b] (waiver/with-last-game [{:player-id "a" :realized/game-log log}
+                                      {:player-id "b" :realized/game-log (subvec log 0 1)}]
+                                     7)]
+    (is (= 7 (get-in a [:realized/last-game :week]))
+        "week 8 is being played; its Thursday game is not last week's")
+    (is (nil? (:realized/last-game b)) "a player who sat out week 7 has no last game")))
 
 (deftest a-player-let-go-this-week-or-last-is-news
   (let [history {:seasons [{:drops [{:week 3 :player-id "old"} {:week 7 :player-id "last"}

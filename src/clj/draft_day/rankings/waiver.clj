@@ -387,18 +387,22 @@
                    scoring))
 
 (defn with-last-game
-  "Keep each player's latest game as `:realized/last-game`, for a board that
-  strips the game log before it is scored (`routes/without-history`)."
-  [players]
-  (mapv #(if-let [g (peek (:realized/game-log %))] (assoc % :realized/last-game g) %) players))
+  "Keep each player's game in `through-week`, the last one finished, as
+  `:realized/last-game`. Looked up by week rather than taken as the latest:
+  live, the log already holds Thursday's game of the week being played. Run
+  before the log is stripped (`routes/without-history`)."
+  [players through-week]
+  (mapv (fn [p]
+          (if-let [g (some #(when (= through-week (:week %)) %) (rseq (vec (:realized/game-log p))))]
+            (assoc p :realized/last-game g)
+            p))
+        players))
 
 (defn last-game
-  "`{:week :points}` for the player's latest game, under the league's weights,
-  or nil when there is none. The week rides along so a reader can tell last
-  week's game from one a month old."
+  "`{:week :points}` for the game `with-last-game` kept, under the league's
+  weights, or nil when he did not play that week."
   [player scoring]
-  (when-let [{:keys [week stats]} (or (:realized/last-game player)
-                                      (peek (:realized/game-log player)))]
+  (when-let [{:keys [week stats]} (:realized/last-game player)]
     {:week week :points (scoring/resolved-points {:stats stats} scoring)}))
 
 (defn with-form-points

@@ -186,6 +186,7 @@
               players)
         (ros/with-ros scoring {:through-week through
                                :season-games (nflverse/games-in-season season)})
+        (waiver/with-last-game through)
         (waiver/with-form-points scoring))))
 
 
