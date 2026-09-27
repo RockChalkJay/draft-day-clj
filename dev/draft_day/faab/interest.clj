@@ -201,53 +201,60 @@
                            rivals)))
         weeks))
 
+(defn row-into!
+  "Free agent `j`'s features into `out`: his shared floats, then his `extra`
+  byte when there is one."
+  [^doubles out ^objects rows ^bytes extra ^long j]
+  (let [^floats row (aget rows j)
+        kx          (alength row)]
+    (dotimes [i kx] (aset out i (double (aget row i))))
+    (when extra (aset out kx (double (aget extra j))))
+    out))
+
 (defn set-stats
   "One choice set's log likelihood, gradient and Hessian contribution at
   `theta`: `[ll grad hess]`. A row is the free agent's shared floats, then
-  his `:extra` byte when the set has one, which `theta`'s last weight reads."
+  his `:extra` byte when the set has one, which `theta`'s last weight reads.
+  The Hessian is symmetric, so only its upper half is summed."
   [^doubles theta {:keys [x extra chosen]}]
   (let [rows  ^objects x
         ex    ^bytes extra
         k     (alength theta)
-        kx    (if ex (dec k) k)
         n     (alength rows)
-        feat  (fn ^double [^long j ^long i]
-                (if (< i kx)
-                  (double (aget ^floats (aget rows j) i))
-                  (double (aget ex j))))
+        xj    (double-array k)
         u     (double-array n)
         _     (dotimes [j n]
-                (let [^floats row (aget rows j)]
-                  (aset u j (+ (double (loop [i 0 acc 0.0]
-                                         (if (< i kx)
-                                           (recur (inc i) (+ acc (* (aget theta i) (aget row i))))
-                                           acc)))
-                               (if ex (* (aget theta kx) (aget ex j)) 0.0)))))
+                (row-into! xj rows ex j)
+                (aset u j (double (loop [i 0 acc 0.0]
+                                    (if (< i k) (recur (inc i) (+ acc (* (aget theta i) (aget xj i)))) acc)))))
         top   (areduce u j m Double/NEGATIVE_INFINITY (max m (aget u j)))
         z     (areduce u j acc 0.0 (+ acc (Math/exp (- (aget u j) top))))
         lse   (+ top (Math/log z))
         m     (double (count chosen))
         mean  (double-array k)
-        outer (make-array Double/TYPE k k)
-        xj    (double-array k)]
+        outer (double-array (* k k))]
     (dotimes [j n]
       (let [s (Math/exp (- (aget u j) lse))]
-        (dotimes [a k] (aset xj a (feat j a)))
+        (row-into! xj rows ex j)
         (dotimes [a k]
-          (let [sa (* s (aget xj a))]
+          (let [sa (* s (aget xj a))
+                ak (* a k)]
             (aset mean a (+ (aget mean a) sa))
-            (let [^doubles oa (aget ^objects outer a)]
-              (dotimes [b k]
-                (aset oa b (+ (aget oa b) (* sa (aget xj b))))))))))
+            (loop [b a]
+              (when (< b k)
+                (aset outer (+ ak b) (+ (aget outer (+ ak b)) (* sa (aget xj b))))
+                (recur (inc b))))))))
     (let [grad (double-array k)
           hess (make-array Double/TYPE k k)]
       (doseq [c chosen]
-        (dotimes [a k] (aset grad a (+ (aget grad a) (feat c a)))))
+        (row-into! xj rows ex c)
+        (dotimes [a k] (aset grad a (+ (aget grad a) (aget xj a)))))
       (dotimes [a k]
         (aset grad a (- (aget grad a) (* m (aget mean a))))
-        (let [^doubles ha (aget ^objects hess a) ^doubles oa (aget ^objects outer a)]
-          (dotimes [b k]
-            (aset ha b (- (* m (- (aget oa b) (* (aget mean a) (aget mean b)))))))))
+        (dotimes [b k]
+          (let [o (if (<= a b) (aget outer (+ (* a k) b)) (aget outer (+ (* b k) a)))]
+            (aset ^doubles (aget ^objects hess a) b
+                  (- (* m (- o (* (aget mean a) (aget mean b)))))))))
       [(- (reduce + (map #(aget u (long %)) chosen)) (* m lse)) grad hess])))
 
 (defn set-ll
