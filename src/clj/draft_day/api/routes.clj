@@ -305,10 +305,12 @@
   nflverse's to answer.
 
   `:kickoff/started?` goes too: it is a function of `:kickoff/status`, which
-  ships beside it, and only the matchup board reads the boolean."
+  ships beside it, and only the matchup board reads the boolean. So do the
+  inputs `faab/claim-features` aims rivals by, which the client never draws."
   [players]
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
                  :nflverse/recent :realized/recent :realized/season-to-date
+                 :realized/last-game :last-points :last-week :season-ppg :dropped?
                  :kickoff/started?)
         players))
 
@@ -414,6 +416,9 @@
                                       (:provider league) (:league-id league) (:season league))}
               board    (-> players
                            (vendor/for-scoring scoring*)
+                           ;; Before the log goes: rivals' claims are aimed
+                           ;; partly by last week's game.
+                           waiver/with-last-game
                            without-history
                            (waiver-board-inputs scoring*)
                            (ros/with-ros scoring* ctx)

@@ -365,32 +365,41 @@
 ;; vendor has got round to saying — so this sits beside `:week-points` rather
 ;; than being blended into it. Blending was measured and bought +0.37%.
 
+(defn per-game-points
+  "A `{:games :stats}` line's points per game under the league's weights, or
+  nil for a line with no game in it."
+  [{:keys [games stats]} scoring]
+  (when (and games (pos? games) (seq stats))
+    (/ (scoring/resolved-points {:stats stats} scoring) (double games))))
+
 (defn form-points
   "Points per game over `nflverse-weekly/recent-window` under the league's own
   weights, or nil before he has played inside it. Scored from the window's own
   stats and per-game for the same reasons `ros.clj` is. Takes a config
   `scoring/resolve-buckets` has already been over — `with-form-points` does it."
   [player scoring]
-  (let [{:keys [games stats]} (or (:realized/recent player)
-                                  (:nflverse/recent player))]
-    (when (and games (pos? games) (seq stats))
-      (/ (scoring/resolved-points {:stats stats} scoring) (double games)))))
-
-(defn last-game
-  "`{:week :points}` for the latest game in the player's Sleeper game log, under
-  the league's weights, or nil when there is no log. The week rides along so a
-  reader can tell last week's game from one a month old."
-  [player scoring]
-  (when-let [{:keys [week stats]} (peek (:realized/game-log player))]
-    {:week week :points (scoring/resolved-points {:stats stats} scoring)}))
+  (per-game-points (or (:realized/recent player) (:nflverse/recent player)) scoring))
 
 (defn season-ppg
   "Points per game over the season so far, or nil before he has played."
   [player scoring]
-  (let [{:keys [games stats]} (or (:realized/season-to-date player)
-                                  (:nflverse/season-to-date player))]
-    (when (and games (pos? games) (seq stats))
-      (/ (scoring/resolved-points {:stats stats} scoring) (double games)))))
+  (per-game-points (or (:realized/season-to-date player) (:nflverse/season-to-date player))
+                   scoring))
+
+(defn with-last-game
+  "Keep each player's latest game as `:realized/last-game`, for a board that
+  strips the game log before it is scored (`routes/without-history`)."
+  [players]
+  (mapv #(if-let [g (peek (:realized/game-log %))] (assoc % :realized/last-game g) %) players))
+
+(defn last-game
+  "`{:week :points}` for the player's latest game, under the league's weights,
+  or nil when there is none. The week rides along so a reader can tell last
+  week's game from one a month old."
+  [player scoring]
+  (when-let [{:keys [week stats]} (or (:realized/last-game player)
+                                      (peek (:realized/game-log player)))]
+    {:week week :points (scoring/resolved-points {:stats stats} scoring)}))
 
 (defn with-form-points
   "Assoc `:form-points`, and beside it the two other readings of what a player

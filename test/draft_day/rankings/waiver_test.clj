@@ -420,6 +420,15 @@
     (is (not-any? #(contains? b %) [:last-points :last-week :season-ppg])
         "absent rather than zero, as form is")))
 
+(deftest the-last-game-outlives-the-log
+  (let [ppr (scoring/resolve-config :ppr)
+        [a] (->> [{:player-id "a" :realized/game-log [{:week 6 :stats {:rec 2.0}} {:week 7 :stats {:rec 5.0}}]}]
+                 waiver/with-last-game
+                 (mapv #(dissoc % :realized/game-log))
+                 (#(waiver/with-form-points % ppr)))]
+    (is (= [5.0 7] ((juxt :last-points :last-week) a))
+        "the waiver route strips the log before scoring, so the latest game is kept apart")))
+
 (deftest a-player-let-go-this-week-or-last-is-news
   (let [history {:seasons [{:drops [{:week 3 :player-id "old"} {:week 7 :player-id "last"}
                                     {:week 8 :player-id "s-8"}]}
