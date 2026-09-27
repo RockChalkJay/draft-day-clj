@@ -7,7 +7,35 @@
 (deftest lgamma-is-the-log-of-the-factorial-one-down
   (is (near? (Math/log 24.0) (interest/lgamma 5.0) 1e-10))
   (is (near? (* 0.5 (Math/log Math/PI)) (interest/lgamma 0.5) 1e-10))
-  (is (near? 0.0 (interest/lgamma 1.0) 1e-10)))
+  (is (near? 0.0 (interest/lgamma 1.0) 1e-10))
+  (testing "below a half, where the fit's shapes live, by reflection"
+    (is (near? (Math/log 9.513507698668732) (interest/lgamma 0.1) 1e-10))
+    (is (near? (- (+ (Math/log 1e-4) (* 0.5772156649015329 1e-4))) (interest/lgamma 1e-4) 1e-8)
+        "Γ(x) ≈ 1/x - γ near zero")
+    (is (near? (+ (interest/lgamma 0.3) (Math/log 0.3)) (interest/lgamma 1.3) 1e-10)
+        "Γ(x + 1) = x Γ(x) across the branch")))
+
+(deftest the-count-likelihood-is-a-negative-binomial-of-the-right-moments
+  (let [pmf  (fn [spread r n] (Math/exp (interest/nb-ll spread [{:rate r :bidders n}])))
+        mom  (fn [spread r]
+               (let [ps (map #(pmf spread r %) (range 400))]
+                 [(reduce + ps)
+                  (reduce + (map-indexed * ps))
+                  (reduce + (map-indexed #(* %1 %1 %2) ps))]))]
+    (doseq [spread [0.2 1.43 5.0] r [0.05 0.7 3.0]]
+      (let [[total m m2] (mom spread r)]
+        (is (near? 1.0 total 1e-9) "a distribution")
+        (is (near? r m 1e-8) "whose mean is the rate")
+        (is (near? (* r (+ 1.0 spread)) (- m2 (* m m)) 1e-6) "and whose variance is r(1 + spread)")))
+    (is (near? (- (+ (* 2 (Math/log 0.7)) -0.7) (Math/log 2.0)) (interest/nb-ll 1e-9 [{:rate 0.7 :bidders 2}]) 1e-6)
+        "no spread at all is Poisson")))
+
+(deftest solve-is-a-linear-solve-at-any-size
+  (let [rng (java.util.Random. 9)
+        a   (vec (repeatedly 5 (fn [] (vec (repeatedly 5 #(.nextGaussian rng))))))
+        b   (vec (repeatedly 5 #(.nextGaussian rng)))
+        x   (interest/solve a b)]
+    (is (every? true? (map (fn [row bi] (near? bi (reduce + (map * row x)) 1e-9)) a b)))))
 
 (deftest solve-is-a-linear-solve
   (is (every? true? (map #(near? %1 %2 1e-12) [1.0 -2.0]
