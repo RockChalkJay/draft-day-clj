@@ -209,6 +209,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
    empty cell as though something were there. */
 .nt-stats .proj { color: var(--text); font-weight: 600; border-left: 1px solid var(--border); }
 .nt-stats thead th.proj { color: var(--accent); }
+/* In season the last column is a fact, not a claim: set apart, not accented. */
+.nt-stats .so-far { color: var(--text); font-weight: 600; border-left: 1px solid var(--border); }
 /* margin-top: auto pins the bid row to the bottom of the tile, so a kicker —
    who gets no season band at all — still fills the three-panel row instead of
    leaving its actions floating halfway up. The bands above each carry their own

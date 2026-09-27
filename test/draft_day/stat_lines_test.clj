@@ -119,3 +119,11 @@
   ;; silently shift a season's number into the wrong column.
   (let [t (sl/stat-table bijan 2026)]
     (is (every? #(= (count (:seasons t)) (count (:values %))) (:rows t)))))
+
+(deftest in-season-the-last-column-is-the-season-so-far
+  (let [p (assoc bijan :nflverse/season-to-date {:games 3 :stats {:rush_yd 250.0 :rush_td 2.0}})
+        t (sl/stat-table p 2026 {:in-season? true})]
+    (is (:so-far? t))
+    (is (= 250.0 (:proj (row t "Rush Yd"))) "what he has done, not what he was projected for")
+    (is (= 3 (:proj (row t "Games"))) "and the games it took")
+    (is (not (:so-far? (sl/stat-table p 2026))) "preseason keeps the projection")))

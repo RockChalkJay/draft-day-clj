@@ -23,10 +23,10 @@
   the id was obtained; the universe half can be missing while `/api/players` is
   still in flight, and the sections that depend on it simply do not render.
 
-  ORDER: identity, then what the board says, then the evidence for it. That is
-  `metrics/bands`' own \"question, answer, evidence\" ordering with the head in
-  front and the history behind, and it is stated here so a future edit inherits
-  the argument rather than re-deriving it.
+  ORDER: identity, then the bid, then what he has done (season stats, week by
+  week), then what he is projected for and the evidence behind it. A manager
+  opens a card to decide a claim, and in season the projection is the least of
+  what he reads; the season table drops its projection column then too.
 
   IT IS MOUNTED FROM `core.cljs`, not from the waivers view. This namespace
   requires `views.compare`, which requires `views.waivers`; a board surface that
@@ -35,6 +35,7 @@
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
             [draft-day.bio :as bio]
+            [draft-day.db :as db]
             [draft-day.game-log :as game-log]
             [draft-day.views.compare :as compare]
             [draft-day.views.controls :as controls]
@@ -70,6 +71,34 @@
      [:span.pd-value (fmt v)
       (when-let [s (and sub (sub p))] [:span.pd-sub s])]]))
 
+(def bid-labels
+  "The claim band's rows `bidding` already states, left out of the card's claim
+  band so a bid is not read twice."
+  #{"Typical winning bid" "Suggested bid" "Rivals"})
+
+(defn bidding-rows
+  "`[[label value]]` for the card's Bidding section, the Bid column's popover
+  kept open: what it usually takes, what to bid, the sure bid against what he is
+  worth to you, and who is likely to bid. Empty where the league does not bid."
+  [{:keys [typical-bid typical-win bid win-prob bid-sure walk-away rivals competition]}]
+  (let [pct #(some->> % waivers/win-pct (str " · "))]
+    (cond-> []
+      (number? typical-bid) (conj ["Typical winning bid" (str "$" typical-bid (pct typical-win))])
+      (number? bid)         (conj ["Suggested bid" (str "$" bid (pct win-prob))])
+      (number? walk-away)   (conj ["90% sure" (str (if (number? bid-sure) (str "$" bid-sure) "out of reach")
+                                                   " · worth $" walk-away " to you")])
+      (number? rivals)      (conj ["Rivals likely to bid"
+                                   (str (.toFixed rivals 1)
+                                        (when-let [ts (seq (:threats competition))]
+                                          (str " — " (str/join ", " (map #(str (:name %) " " (waivers/win-pct (:p %))) ts)))))]))))
+
+(defn bidding
+  [p]
+  (when-let [rows (seq (bidding-rows p))]
+    [:div.pd-band
+     [:h4.pd-band-label "Bidding"]
+     (map (fn [[label v]] ^{:key label} [:div.pd-row [:span.pd-label label] [:span.pd-value v]]) rows)]))
+
 (defn band
   "One band's rows with the empty ones dropped, or nil when none survive.
 
@@ -77,13 +106,15 @@
   cannot say anything about is dropped rather than dashed. A dash reads as \"the
   board cannot say\", which is fine once and is punctuation a dozen times over —
   and in preseason most of the evidence band is genuinely absent."
-  [k p]
-  (when-let [rs (seq (filter #(some? ((:f %) p)) (metrics/rows-by-band k)))]
-    ;; No `:key`: `into [:<>]` makes these positional children, not a seq. The
-    ;; rows inside are a seq and carry their own.
-    [:div.pd-band
-     [:h4.pd-band-label (band-labels k)]
-     (map (fn [r] ^{:key (:label r)} [metric-row r p]) rs)]))
+  ([k p] (band k p #{}))
+  ([k p skip]
+   (when-let [rs (seq (filter #(and (some? ((:f %) p)) (not (skip (:label %))))
+                              (metrics/rows-by-band k)))]
+     ;; No `:key`: `into [:<>]` makes these positional children, not a seq. The
+     ;; rows inside are a seq and carry their own.
+     [:div.pd-band
+      [:h4.pd-band-label (band-labels k)]
+      (map (fn [r] ^{:key (:label r)} [metric-row r p]) rs)])))
 
 (defn face
   "The large headshot. Silhouette underneath, image on top, so a missing *or
@@ -114,7 +145,7 @@
   (let [matchup (waivers/week-matchup p week)
         at      (util/kickoff-label (:kickoff/at p))
         done    (util/kickoff-status-label (:kickoff/status p) (:kickoff/detail p))]
-    (cond-> [(util/pos-label p) (or (:team p) "FA")]
+    (cond-> [(util/pos-label (assoc p :pos-rank (db/season-rank p))) (or (:team p) "FA")]
       (not= "–" matchup)   (conj matchup)
       at                   (conj at)
       done                 (conj done)
@@ -180,7 +211,8 @@
         universe (get @(rf/subscribe [:universe-by-id]) id)
         week     (:week @(rf/subscribe [:waiver-meta]))
         {:keys [season through-week]} @(rf/subscribe [:universe])
-        scoring  @(rf/subscribe [:scoring-weights])]
+        scoring  @(rf/subscribe [:scoring-weights])
+        season?  (= :in-season @(rf/subscribe [:season-phase]))]
     (when p
       [:div.modal-overlay
        {:on-click #(when (= (.-target %) (.-currentTarget %))
@@ -197,17 +229,23 @@
                            :title "Close (Esc)"
                            :aria-label "Close"} "✕"]
         [head p universe week season]
+        ;; What to bid first, then what he has done, then what he is projected
+        ;; for: a manager opens this card to decide a claim, and in season a
+        ;; projection is the least of what he wants to read.
         [:div.pd-body
-         (into [:<>] (keep #(band % p)) metrics/bands)
+         [bidding p]
+         (band :claim p bid-labels)
          ;; The universe half. `stat-table` returns nil on its own for a kicker,
          ;; a defense, or a player with no numbers, so there is no second guard
          ;; here — only the one for the universe not having arrived yet.
          (when universe
            [:<>
+            [:div.pd-band
+             [:h4.pd-band-label "Season stats"]
+             [player-stats/stat-table universe season {:in-season? season?}]]
             (when-let [log (game-log-table universe through-week scoring)]
               [:div.pd-band
                [:h4.pd-band-label "Week by week"]
-               log])
-            [:div.pd-band
-             [:h4.pd-band-label "Season trend"]
-             [player-stats/stat-table universe season]]])]]])))
+               log])])
+         (band :horizon p)
+         (band :evidence p)]]])))
