@@ -21,15 +21,23 @@
   renamed to avoid.
 
   Who bids: a rival makes `:per-week` claims (his `bid-history` profile) and
-  aims them by `interest-weight` — what a player adds to his own starting
-  lineup, plus a CHOSEN fraction of value over replacement for the stash
-  claimed with no hole to fill, plus the player's `heat` on Sleeper's trending
-  list, which is news no projection has caught up with. Heat adds rather than
-  multiplies, so a backup the whole site is adding the day his starter goes
-  down draws claims while his projection still says he is nobody. The count is
-  Poisson, so he bids on a player with chance 1 − e^(−rate); a fixed count,
-  1 − (1 − share)^λ, would make a rival with one target certain to bid however
-  rarely he bids.
+  shares them out over the whole wire in proportion to e^utility, a
+  conditional logit whose `claim-weights` were fit to real claims. Most of the
+  utility is the same for every rival — last week's game, the season so far,
+  value over replacement, position, a player just dropped, and his `heat` on
+  Sleeper's trending list — and a rival's own part is only whether he would
+  start him. That is what real claims look like: a league chases the same few
+  players, and aiming claims by each rival's own lineup gain left four bids in
+  five on players the model gave no chance. The count is Poisson, so he bids
+  on a player with chance 1 − e^(−rate); a fixed count, 1 − (1 − share)^λ,
+  would make a rival with one target certain to bid however rarely he bids.
+
+  Bids also pile up beyond anything the board can see, because a claim is
+  usually news — an injury, a depth chart — that every rival reads too. So a
+  player's week multiplies every rival's rate on him by one shared gamma draw
+  (`cluster-spread`), and a price, being for a player I am claiming, averages
+  over that draw updated by my claim (`hotness`): rivals sit out together in a
+  quiet week and bid together in a hot one.
 
   What he bids: `bid-prior/bid-share` for the predicted bidder count and the
   phase, so a player everybody wants is priced like one, scaled by position,
@@ -37,8 +45,9 @@
   log-odds scale, round numbers are heaped as `bid-prior/heaping` measured, and
   his bids are capped at his `:faab-left` and floored at the league minimum.
 
-  Who wins: rivals bid independently, so a bid's chance is a product over them.
-  Each sits it out, bids under it, or ties and loses on waiver order — the lower
+  Who wins: given the player's week, rivals bid independently, so a bid's
+  chance is a product over them averaged over the week (`joint`). Each sits it
+  out, bids under it, or ties and loses on waiver order — the lower
   `:waiver-position` first, even odds when either is unknown.
 
   Every CHOSEN constant, and the estimate as a whole, stands until the replay
@@ -46,21 +55,46 @@
   (:require [draft-day.bid-history :as bid-history]
             [draft-day.bid-prior :as prior]))
 
-(def speculative-weight
-  "The interest a point of rest-of-season value over replacement draws, against
-  a point added to the rival's starting lineup. CHOSEN."
-  0.5)
+(def claim-weights
+  "How a rival aims his claims: the weights of a conditional logit over
+  `claim-features` and `need-features`. MEASURED by `draft-day.faab.interest`
+  — see its docstring for the leagues, the fit and its held-out score."
+  {:played    1.316
+   :last-game 0.459
+   :season    0.627
+   :vorp      -0.865
+   :vorp-sq   -0.788
+   :dropped   0.892
+   :pos/QB    -0.994
+   :pos/RB    0.610
+   :pos/TE    -0.326
+   :pos/K     -1.921
+   :pos/DST   -0.038
+   :need?     0.644})
+
+(def cluster-spread
+  "How many more bidders a claim draws than the claim rates alone would say:
+  one player's week multiplies every claim rate on him by a gamma of mean one
+  and shape (the league's total rate on him) / `cluster-spread`, so once
+  somebody claims him the others expect about this many more bids, spread by
+  their share of the interest, however likely he looked beforehand — which is
+  what real bids do. MEASURED by `draft-day.faab.interest` — see its
+  docstring."
+  1.43)
+
+(def hotness-points
+  "How many equally likely values of that multiplier a price averages over."
+  24)
 
 (def sure-win
   "The chance of winning that `:bid-sure` buys."
   0.9)
 
 (def heat-weight
-  "The interest the most-added player on Sleeper draws from heat alone, as a
-  share of what the rival's best target draws on need: at 1.0 the top of the
-  list competes with his best target even with no need at all. CHOSEN, and the
-  replay backtest cannot rebuild past trending lists, so it waits on the
-  snapshots `ingestion.sleeper-trending` keeps."
+  "What the top of Sleeper's trending list adds to a player's claim utility,
+  on `claim-weights`' scale. CHOSEN, and the replay backtest cannot rebuild
+  past trending lists, so it waits on the snapshots `ingestion.sleeper-trending`
+  keeps."
   1.0)
 
 (def threat-floor
@@ -84,34 +118,120 @@
         (fn [p] (if-let [n (:trending/adds p)] (/ (- (Math/log n) lo) span) 0.0)))
       (fn [p] (if (:trending/adds p) 1.0 0.0)))))
 
-(defn interest-weight
-  "How much of a rival's attention a free agent draws on football alone; see
-  the ns docstring. Heat is added by `claim-rates`, which knows the scale."
-  [need ros-vorp]
-  (+ (max 0.0 (double (or need 0.0)))
-     (* speculative-weight (max 0.0 (double (or ros-vorp 0.0))))))
+(defn clamp [lo hi x] (min hi (max lo (double x))))
+
+(defn per-ten
+  "A points figure over ten, a nil or a negative one as none."
+  [x]
+  (/ (max 0.0 (double (or x 0.0))) 10.0))
+
+(defn claim-features
+  "What every rival reads off free agent `p` the same way, for claims decided
+  in `week`. Points a game are over ten; `:played` is a game in the last few
+  weeks, and three-week form itself measured as nothing beside last week and
+  the season. Value over replacement is clamped and squared, since interest
+  peaks just below replacement: players well above it are rarely on waivers.
+  A kicker or defense has none and is read by position, WR being the position
+  with no feature. `:dropped` is a player let go this week or last."
+  [{:keys [form-points last-points last-week season-ppg ros-vorp position dropped?]} week]
+  (let [v (if ros-vorp (/ (clamp -60.0 30.0 ros-vorp) 30.0) 0.0)]
+    (cond-> {:played    (if form-points 1.0 0.0)
+             :last-game (per-ten (when (= last-week (dec week)) last-points))
+             :season    (per-ten season-ppg)
+             :vorp      v
+             :vorp-sq   (* v v)
+             :dropped   (if dropped? 1.0 0.0)}
+      (and position (not= "WR" position)) (assoc (keyword "pos" position) 1.0))))
+
+(defn need-features
+  "What one rival reads off a free agent for himself: whether he would start
+  him. How much he would add measured as nothing beyond that."
+  [need]
+  {:need? (if (pos? (double (or need 0.0))) 1.0 0.0)})
+
+(defn utility
+  "`features` weighed by `weights`, a feature with no weight counting nothing."
+  [weights features]
+  (reduce-kv (fn [acc k v] (+ acc (* (double (get weights k 0.0)) v))) 0.0 features))
+
+(defn shared-utility
+  "The part of every rival's utility for `p` that is the same for all of them,
+  heat included."
+  [p week heat]
+  (+ (utility claim-weights (claim-features p week))
+     (* heat-weight (heat p))))
 
 (defn claim-rates
   "`{player-id rate}`: how many of a rival's `per-week` claims land on each free
-  agent on average. The rates sum to `per-week` whenever anybody draws his
-  interest. A player who draws none is absent. Heat is scaled by the most any
-  free agent draws from this rival on football, so it is in his own points
-  whatever the week and whatever his roster."
-  [needs fas per-week heat]
-  (let [base  (mapv #(interest-weight (get needs (:player-id %)) (:ros-vorp %)) fas)
-        top   (reduce max 0.0 base)
-        ws    (mapv #(+ %1 (* heat-weight top (heat %2))) base fas)
-        total (reduce + 0.0 ws)]
-    (if (pos? total)
-      (into {}
-            (keep (fn [[p w]] (when (pos? w) [(:player-id p) (* per-week (/ w total))])))
-            (map vector fas ws))
-      {})))
+  agent on average — shared out in proportion to e^utility, his own need added
+  to the `shared` utilities (one per free agent, in order), so they sum to
+  `per-week` and no free agent draws none."
+  [needs fas per-week shared]
+  (if (and (seq fas) (pos? (double (or per-week 0.0))))
+    (let [us    (mapv (fn [p s] (+ s (utility claim-weights (need-features (get needs (:player-id p))))))
+                      fas shared)
+          top   (reduce max us)
+          ws    (mapv #(Math/exp (- % top)) us)
+          total (reduce + 0.0 ws)]
+      (zipmap (map :player-id fas) (map #(* per-week (/ % total)) ws)))
+    {}))
 
 (defn bid-chance
   "The chance of at least one claim when claims arrive at `rate`."
   [rate]
   (- 1.0 (Math/exp (- (double rate)))))
+
+(defn hotness-shape
+  "The shape of a player's week multiplier when the league claims him at
+  `total` a week: see `cluster-spread`."
+  [total]
+  (max 1e-6 (/ (double (or total 0.0)) cluster-spread)))
+
+(defn marginal-bid-chance
+  "The chance of at least one claim at `rate` before anything is known about
+  the player's week: `bid-chance` averaged over his multiplier, `total` being
+  the league's rate on him."
+  [rate total]
+  (let [a (hotness-shape total)]
+    (- 1.0 (Math/pow (/ a (+ a (double rate))) a))))
+
+(defn equal-mass
+  "`k` equally likely points standing for a density given as `weights` at
+  `xs`: the mean x within each k-th of the mass, a point's mass split where it
+  straddles two."
+  [xs weights k]
+  (let [per (/ (reduce + 0.0 weights) k)]
+    (loop [xs (seq xs) ws (seq weights) room per sum 0.0 out []]
+      (let [x (first xs) w (first ws)]
+        (cond
+          (= (count out) k) out
+          (nil? x)          (conj out (/ sum (- per room)))
+          (<= w room)       (recur (next xs) (next ws) (- room w) (+ sum (* w x)) out)
+          :else             (recur xs (cons (- w room) (next ws)) per 0.0
+                                   (conj out (/ (+ sum (* room x)) per))))))))
+
+(def gamma-points
+  "`hotness-points` equally likely values of a unit-rate gamma of `shape`."
+  (memoize
+   (fn [shape]
+     (let [n  600
+           lo (Math/log (* 1e-4 shape))
+           hi (Math/log (+ shape 40.0 (* 8.0 (Math/sqrt shape))))
+           xs (mapv #(Math/exp (+ lo (* % (/ (- hi lo) (dec n))))) (range n))
+           ;; On a log grid each point carries x times the density.
+           ws (mapv #(* (Math/pow % shape) (Math/exp (- %))) xs)]
+       (equal-mass xs ws hotness-points)))))
+
+(defn hotness
+  "`hotness-points` equally likely values of the multiplier on every rival's
+  claim rate for a player somebody has claimed, the league claiming him at
+  `total` a week: his week's gamma of shape a (`hotness-shape`) and mean one,
+  updated by one claim to shape a + 1 and rate a. The shape is rounded to
+  three figures, so the points are computed once for a few hundred players."
+  [total]
+  (let [a (hotness-shape total)
+        a (let [k (Math/pow 10.0 (- 2 (Math/floor (Math/log10 a))))] (/ (Math/round (* a k)) k))]
+    (mapv #(/ % a) (gamma-points (+ a 1.0)))))
 
 (defn logit [p] (Math/log (/ p (- 1.0 p))))
 
@@ -303,18 +423,40 @@
     (if (< mine theirs) 1.0 0.0)
     0.5))
 
+(defn joint
+  "The chance that every rival either sits it out or, bidding, does what `f`
+  gives the chance of — averaged over the player's hotness, since the rivals
+  move together with it. Each rival carries `:ps`, his chance of bidding at
+  each hotness point, or a single `:p`."
+  [rivals f]
+  (if (empty? rivals)
+    1.0
+    (let [k   (count (or (:ps (first rivals)) [0]))
+          acc (double-array k 1.0)]
+      (doseq [r rivals]
+        (let [x  (double (f r))
+              ps (or (:ps r) (double-array [(:p r)]))]
+          (dotimes [i k]
+            (let [p (aget ^doubles ps i)]
+              (aset acc i (* (aget acc i) (+ (- 1.0 p) (* p x))))))))
+      (/ (areduce acc i sum 0.0 (+ sum (aget acc i))) k))))
+
+(defn uncontested
+  "The chance no rival bids at all."
+  [rivals]
+  (joint rivals (constantly 0.0)))
+
 (defn win-chance
   "The chance a bid of `b` wins. Every rival either sits it out, bids under it,
-  or ties it and loses the tie. Each rival carries `:p` (the chance he bids),
-  `:pmf` and `:cdf` over his bid, and `:tie`."
+  or ties it and loses the tie. Each rival carries `:pmf` and `:cdf` over his
+  bid and `:tie`, beside his chances of bidding (see `joint`)."
   [rivals b]
-  (reduce (fn [acc {:keys [p ^doubles pmf ^doubles cdf tie]}]
-            (let [n     (alength pmf)
-                  below (cond (<= b 0) 0.0 (<= b n) (aget cdf (dec b)) :else 1.0)
-                  at    (if (< b n) (aget pmf b) 0.0)]
-              (* acc (+ (- 1.0 p) (* p (+ below (* tie at)))))))
-          1.0
-          rivals))
+  (joint rivals
+         (fn [{:keys [^doubles pmf ^doubles cdf tie]}]
+           (let [n     (alength pmf)
+                 below (cond (<= b 0) 0.0 (<= b n) (aget cdf (dec b)) :else 1.0)
+                 at    (if (< b n) (aget pmf b) 0.0)]
+             (+ below (* tie at))))))
 
 (defn value-bid
   "The bid maximizing P(win | b) · (worth − b), from the league minimum up to
@@ -340,12 +482,11 @@
   "`[p50 p90]` of the highest rival bid, given that somebody bids, or nil when
   nobody is expected to."
   [rivals budget]
-  (let [none (reduce * 1.0 (map #(- 1.0 (:p %)) rivals))]
+  (let [none (uncontested rivals)]
     (when (< none 1.0)
       (let [upto (fn [b]
-                   (/ (- (reduce * 1.0 (map (fn [{:keys [p ^doubles cdf]}]
-                                              (+ (- 1.0 p) (* p (aget cdf (min b (dec (alength cdf)))))))
-                                            rivals))
+                   (/ (- (joint rivals (fn [{:keys [^doubles cdf]}]
+                                         (aget cdf (min b (dec (alength cdf))))))
                          none)
                       (- 1.0 none)))
             at   (fn [q] (first (filter #(>= (upto %) (- q 1e-9)) (range 0 (inc budget)))))]
@@ -382,7 +523,7 @@
 (defn bidders
   "The rivals able to bid at all, each with his habits, his claim rates, his cap
   and his tie odds against me."
-  [rivals me fas habits budget min-bid heat]
+  [rivals me fas habits budget min-bid shared]
   (->> rivals
        (map (fn [r]
               (let [h (rival-habits r habits)]
@@ -390,7 +531,7 @@
                        :style (:style h)
                        :habits h
                        :cap (long (min budget (or (:faab-left r) budget)))
-                       :rates (claim-rates (:needs r) fas (:per-week h) heat)
+                       :rates (claim-rates (:needs r) fas (:per-week h) shared)
                        :tie (tie-chance (:waiver-position me) (:waiver-position r))))))
        (filterv #(<= min-bid (:cap %)))))
 
@@ -400,16 +541,22 @@
   (`bidders`) and `:dist`, each rival's bid distribution by position and bidder
   count. `rivals` is `waiver/rival-needs`, `me` the manager's own team, `habits`
   `league-habits`, `week` the week claims are decided in, and `heat` is
-  `heat-of` over the whole board, or none."
+  `heat-of` over the whole board, or none. `:mine` is my own claim rate on
+  each free agent, my part of the league's interest in him."
   [fas {:keys [rivals me waiver habits week heat] :or {heat (constantly 0.0)}}]
   (let [budget  (long (or (:budget waiver) 0))
         min-bid (long (or (:min-bid waiver) 0))
         phase   (prior/phase week)
-        rivals  (bidders rivals me fas habits budget min-bid heat)]
+        shared  (mapv #(shared-utility % week heat) fas)
+        rivals  (bidders rivals me fas habits budget min-bid shared)]
     {:budget  budget
      :min-bid min-bid
      :left    (some-> (:faab-left me) long (min budget))
      :rivals  rivals
+     ;; Mine, with my lineup gain as my need: part of the league's interest in
+     ;; a player, which sets how much a claim on him says about his week.
+     :mine    (claim-rates (zipmap (map :player-id fas) (map :lineup-upgrade fas))
+                           fas (:per-week (rival-habits me habits)) shared)
      ;; One distribution per rival, position and bidder count, not per
      ;; player: a few dozen, where there are hundreds of free agents.
      :dist    (memoize
@@ -421,11 +568,15 @@
                    [pmf (cumulative pmf)])))}))
 
 (defn active-rivals
-  "The rivals who might bid for `p`, each with `:p`, the chance he does, and
-  `:pmf`/`:cdf` over what he would bid. The bidder count that picks their
-  distributions is the one predicted for this player."
-  [p {:keys [rivals dist]}]
-  (let [ps     (mapv #(bid-chance (get (:rates %) (:player-id p) 0.0)) rivals)
+  "The rivals who might bid for `p` once I have claimed him, each with `:ps`,
+  his chance of bidding at each of the player's `hotness` points, `:p` their
+  mean, and `:pmf`/`:cdf` over what he would bid. The bidder count that picks
+  their distributions is the one predicted for this player."
+  [p {:keys [rivals dist mine]}]
+  (let [rates  (mapv #(double (get (:rates %) (:player-id p) 0.0)) rivals)
+        etas   (hotness (+ (reduce + 0.0 rates) (double (get mine (:player-id p) 0.0))))
+        pss    (mapv (fn [rate] (double-array (map #(bid-chance (* rate %)) etas))) rates)
+        ps     (mapv (fn [^doubles a] (/ (areduce a i s 0.0 (+ s (aget a i))) (alength a))) pss)
         bucket (prior/bucket (max 1 (Math/round (+ 1.0 (reduce + 0.0 ps)))))]
     (into []
           (keep-indexed (fn [i r]
@@ -433,7 +584,7 @@
                             (when (pos? pi)
                               (let [[pmf cdf] (dist i (:position p) bucket)]
                                 (assoc (select-keys r [:roster-id :name :faab-left :style :tie])
-                                       :p pi :pmf pmf :cdf cdf))))))
+                                       :p pi :ps (pss i) :pmf pmf :cdf cdf))))))
           rivals)))
 
 (defn competition
@@ -447,7 +598,7 @@
      :bid-sure    (sure-bid active min-bid left)
      :rivals      (round-to 2 (reduce + 0.0 (map :p active)))
      :competition {:top         (top-bid active budget)
-                   :uncontested (round-to 3 (reduce * 1.0 (map #(- 1.0 (:p %)) active)))
+                   :uncontested (round-to 3 (uncontested active))
                    :threats     (threats active)}}))
 
 (defn with-market

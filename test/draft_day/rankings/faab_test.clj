@@ -13,21 +13,50 @@
     (doseq [[b v] amounts] (aset pmf b (double v)))
     {:p p :pmf pmf :cdf (faab/cumulative pmf) :tie tie}))
 
+(defn- shared [fas week heat] (mapv #(faab/shared-utility % week heat) fas))
+
+(def ^:private no-heat (constantly 0.0))
+
+(deftest claim-features-read-what-the-league-has-just-seen
+  (let [f (faab/claim-features {:form-points 12.0 :last-points 21.0 :last-week 7
+                                :season-ppg 9.0 :ros-vorp -15.0 :position "RB" :dropped? true}
+                               8)]
+    (is (= 1.0 (:played f)))
+    (is (= 2.1 (:last-game f)) "last week's game, points over ten")
+    (is (= 0.9 (:season f)))
+    (is (= -0.5 (:vorp f)))
+    (is (= 0.25 (:vorp-sq f)))
+    (is (= 1.0 (:dropped f)))
+    (is (= 1.0 (:pos/RB f))))
+  (let [f (faab/claim-features {:last-points 21.0 :last-week 5 :ros-vorp 200.0 :position "WR"} 8)]
+    (is (= 0.0 (:last-game f)) "a game three weeks gone is not last week's")
+    (is (= 0.0 (:played f)) "no game in the recent window")
+    (is (= 1.0 (:vorp f)) "clamped where bid rates stop moving")
+    (is (not-any? #(= "pos" (namespace %)) (keys f)) "WR is the position without a feature")))
+
+(deftest need-is-whether-he-would-start
+  (is (= {:need? 1.0} (faab/need-features 0.5)))
+  (is (= {:need? 0.0} (faab/need-features -12.0)))
+  (is (= {:need? 0.0} (faab/need-features nil))))
+
 (deftest a-rivals-claims-are-shared-out-and-sum-to-his-rate
-  (let [fas   [{:player-id "a" :ros-vorp 20.0} {:player-id "b" :ros-vorp -5.0}
-               {:player-id "c"} {:player-id "d" :ros-vorp 0.0}]
-        rates (faab/claim-rates {"a" 10.0 "b" 30.0 "c" -12.0} fas 1.5 (constantly 0.0))]
-    (is (near? 1.5 (reduce + (vals rates)) 1e-9) "every claim he makes lands somewhere")
-    (is (near? (* 1.5 (/ 20.0 50.0)) (rates "a") 1e-9)
-        "need 10 plus half the 20 he clears replacement by, out of 50")
-    (is (= #{"a" "b"} (set (keys rates)))
-        "a negative need and nothing over replacement draw nothing"))
-  (is (= {} (faab/claim-rates {} [{:player-id "b" :ros-vorp -5.0}] 1.5 (constantly 0.0)))
-      "a rival nobody interests claims nobody"))
+  (let [fas   [{:player-id "hot" :form-points 15.0 :last-points 25.0 :last-week 4 :season-ppg 14.0
+                :ros-vorp -10.0 :position "RB" :dropped? true}
+               {:player-id "warm" :form-points 6.0 :last-points 6.0 :last-week 4 :season-ppg 6.0
+                :ros-vorp -20.0 :position "WR"}
+               {:player-id "cold" :ros-vorp -80.0 :position "K"}]
+        rates (faab/claim-rates {} fas 1.5 (shared fas 5 no-heat))]
+    (is (< (Math/abs (- 1.5 (reduce + (vals rates)))) 1e-9) "every claim he makes lands somewhere")
+    (is (> (rates "hot") (rates "warm") (rates "cold")))
+    (is (every? pos? (vals rates)) "and no free agent draws none")
+    (let [needy (faab/claim-rates {"warm" 20.0} fas 1.5 (shared fas 5 no-heat))]
+      (is (> (needy "warm") (rates "warm")) "a rival he would start for aims more at him")))
+  (is (= {} (faab/claim-rates {} [{:player-id "x"}] 0.0 [0.0])) "a rival who never claims")
+  (is (= {} (faab/claim-rates {} [] 1.0 [])) "an empty wire"))
 
 (deftest a-quiet-rival-with-one-target-can-still-sit-the-week-out
-  (let [rate (get (faab/claim-rates {"a" 25.0} [{:player-id "a"}] 0.3 (constantly 0.0)) "a")]
-    (is (near? 0.3 rate 1e-9))
+  (let [rate (get (faab/claim-rates {"a" 25.0} [{:player-id "a"}] 0.3 [0.0]) "a")]
+    (is (< (Math/abs (- 0.3 rate)) 1e-9))
     (is (< 0.25 (faab/bid-chance rate) 0.27)
         "a claim every three weeks is not a certain bid, as a fixed count makes it")))
 
@@ -43,19 +72,45 @@
   (is (= 0.0 ((faab/heat-of []) {})) "no list, no heat"))
 
 (deftest a-player-the-site-is-adding-draws-more-of-a-rivals-claims
-  (let [fas   [{:player-id "hot" :trending/adds 500000} {:player-id "cold"}]
-        rates (faab/claim-rates {"hot" 20.0 "cold" 20.0} fas 1.0 (faab/heat-of fas))]
-    (is (near? (/ 2.0 3.0) (rates "hot") 1e-9) "the same need, doubled by the top of the list")
+  (let [fas   [{:player-id "hot" :trending/adds 500000} {:player-id "cold"} {:player-id "also" :trending/adds 1000}]
+        rates (faab/claim-rates {} fas 1.0 (shared fas 5 (faab/heat-of fas)))]
+    (is (near? (Math/exp faab/heat-weight) (/ (rates "hot") (rates "cold")) 1e-9)
+        "the top of the list, heat-weight higher on the utility scale")
     (is (near? 1.0 (reduce + (vals rates)) 1e-9) "and still no more claims than he makes")))
 
-(deftest a-breakout-no-projection-has-caught-draws-claims-on-heat-alone
-  (let [fas   [{:player-id "backup" :ros-vorp -3.0 :trending/adds 600000}
-               {:player-id "target" :ros-vorp 10.0}
-               {:player-id "other" :trending/adds 20000}]
-        rates (faab/claim-rates {"backup" 0.0 "target" 20.0} fas 1.0 (faab/heat-of fas))]
-    (is (near? 0.5 (rates "backup") 1e-9)
-        "no need and below replacement, yet the top of the list rivals his best target")
-    (is (not (contains? rates "other")) "the bottom of the list adds nothing")))
+(deftest a-bid-before-anything-is-known-is-rarer-than-at-an-average-week
+  (is (< (faab/marginal-bid-chance 0.2 0.5) (faab/bid-chance 0.2))
+      "most weeks a player is nobody's, a few he is everybody's")
+  (is (near? (faab/bid-chance 0.2)
+             (with-redefs [faab/cluster-spread 1e-7] (faab/marginal-bid-chance 0.2 0.5)) 1e-5)
+      "with no clustering at all the two agree"))
+
+(deftest equal-mass-points-carry-a-kth-of-the-mass-each
+  (is (= [1.5 3.5] (faab/equal-mass [1.0 2.0 3.0 4.0] [1.0 1.0 1.0 1.0] 2)))
+  (is (= [1.0 2.0 3.0 4.0] (faab/equal-mass [1.0 2.0 3.0 4.0] [1.0 1.0 1.0 1.0] 4)))
+  (is (= [2.0] (faab/equal-mass [1.0 2.0 3.0] [1.0 2.0 1.0] 1)) "one point is the mean"))
+
+(deftest a-claim-says-the-players-week-is-a-hot-one
+  (let [mean #(/ (reduce + %) (count %))]
+    (doseq [total [0.01 0.3 3.0]]
+      (let [a (faab/hotness-shape total)]
+        (is (= faab/hotness-points (count (faab/hotness total))))
+        (is (near? (/ (+ a 1.0) a) (mean (faab/hotness total)) (* 0.03 (/ (+ a 1.0) a)))
+            "the gamma's posterior mean after one claim, (a + 1) / a")))
+    (is (near? (+ 0.3 faab/cluster-spread) (* 0.3 (mean (faab/hotness 0.3))) 0.06)
+        "so once he is claimed, rivals who hold all of a 0.3 interest in him
+        expect the spread more bids than they did")
+    (is (< (mean (faab/hotness 3.0)) (mean (faab/hotness 0.01)))
+        "a player the whole league was expected to want moves less")))
+
+(deftest rivals-who-move-together-leave-a-player-alone-more-often
+  (let [ps    (double-array [0.0 0.0 0.9 0.9])
+        r     {:ps ps :p 0.45}
+        indep [{:p 0.45} {:p 0.45}]]
+    (is (near? (* 0.55 0.55) (faab/uncontested indep) 1e-12))
+    (is (near? (/ (+ 1.0 1.0 0.01 0.01) 4.0) (faab/uncontested [r r]) 1e-12)
+        "both sit out the cold weeks together, both bid in the hot ones")
+    (is (> (faab/uncontested [r r]) (faab/uncontested indep)))))
 
 (deftest a-rivals-bid-is-a-distribution-over-whole-dollars
   (doseq [bucket [1 2 3 4] phase [:early :mid :late] budget [100 1000] scale [0.4 1.0 2.5]]
@@ -182,17 +237,18 @@
   (faab/with-market fas {:rivals rivals :me me :waiver waiver :week 5
                          :habits (or habits (faab/league-habits nil 12))}))
 
-(deftest a-player-nobody-else-wants-goes-for-the-minimum
-  (let [[p] (market [(fa "stash" 12)] [(a-rival 2 {})])]
-    (is (= 0 (:bid p)))
+(deftest with-no-rival-able-to-bid-a-player-goes-for-the-minimum
+  (let [[p] (market [(fa "stash" 12)] [(a-rival 2 {} :faab-left 0)]
+                    :waiver (assoc waiver :min-bid 1))]
+    (is (= 1 (:bid p)))
     (is (= 1.0 (:win-prob p)))
-    (is (= 0 (:bid-sure p)))
+    (is (= 1 (:bid-sure p)))
     (is (= 0.0 (:rivals p)))
     (is (= {:top nil :uncontested 1.0 :threats []} (:competition p)))))
 
 (deftest a-rival-who-needs-him-is-bid-against
   (let [[hot cold] (market [(fa "hot" 40) (fa "cold" 40)] [(a-rival 2 {"hot" 60.0})])]
-    (is (< 0.6 (:rivals hot) 0.8) "one claim a week, all of it on him: 1 - e^-1.19")
+    (is (> (:rivals hot) (:rivals cold)) "his claims lean to the man he would start")
     (is (< 0 (:bid hot) (:walk-away hot)))
     (is (> (:bid hot) (:bid cold)))
     (is (>= (:bid-sure hot) (:bid hot)))
@@ -222,7 +278,7 @@
                         :habits habits)
         by-team (into {} (map (juxt :roster-id :p)) (get-in p [:competition :threats]))]
     (is (> (by-team 2) 0.9) "four claims a week, off the league's history")
-    (is (< (by-team 3) 0.4) "no bid in it: six weeks silent")))
+    (is (< (by-team 3) (by-team 2)) "no bid in it: six weeks silent")))
 
 (deftest with-no-history-the-bids-are-sleeper-wide
   (is (= {:source :sleeper-wide :auctions 0 :seasons [] :league-multiplier 1.0 :min-bid 0}

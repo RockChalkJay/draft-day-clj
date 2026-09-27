@@ -306,8 +306,7 @@
     (is (every? #(contains? % :competition) players))))
 
 (deftest a-rival-with-a-hole-to-fill-is-a-bidder
-  ;; Only the 140 would start over his 90. The fillers draw a little too: on a
-  ;; board this small most of them clear replacement.
+  ;; Only the 140 would start over his 90.
   (let [lg  (-> league
                 (assoc-in [:teams 1 :player-ids] (held "ok"))
                 (assoc-in [:teams 1 :active-ids] (held "ok")))
@@ -315,8 +314,9 @@
         by  (into {} (map (juxt :player-id identity)) players)]
     (is (< (:rivals (by "filler0")) (:rivals (by "good"))) "the man who would start for him")
     (is (= ["Rivals"] (mapv :name (get-in (by "good") [:competition :threats]))))
-    (is (= 0.0 (:rivals (by "filler39")))
-        "and one who starts for nobody and clears nothing draws nobody")))
+    (is (< 0.0 (:rivals (by "filler39")) (:rivals (by "good")))
+        "one who starts for nobody draws less, but not nobody: managers claim
+        players the board sees no use for, and a bid on one is news")))
 
 (deftest heat-reads-sleepers-whole-list-not-just-the-free-agents
   ;; The most-added player is rostered; the free agent below him is not the top.
@@ -406,6 +406,29 @@
     (is (nil? (got {:player-id "preseason"})))
     (is (nil? (got {:player-id "no-games" :nflverse/recent {:games 0 :stats {}}})))
     (is (nil? (got {:player-id "no-stats" :nflverse/recent {:games 2 :stats {}}})))))
+
+(deftest the-last-game-and-the-season-ride-beside-form
+  (let [ppr (scoring/resolve-config :ppr)
+        [a b] (waiver/with-form-points
+                [{:player-id "a"
+                  :realized/game-log [{:week 6 :stats {:rec 2.0}} {:week 7 :stats {:rec 5.0 :rec_yd 60.0}}]
+                  :realized/season-to-date {:games 2 :stats {:rec 7.0 :rec_yd 60.0}}}
+                 {:player-id "b"}]
+                ppr)]
+    (is (= [11.0 7] ((juxt :last-points :last-week) a)) "the latest game, with its week")
+    (is (< (abs (- 6.5 (:season-ppg a))) 1e-9) "13 points over 2 games")
+    (is (not-any? #(contains? b %) [:last-points :last-week :season-ppg])
+        "absent rather than zero, as form is")))
+
+(deftest a-player-let-go-this-week-or-last-is-news
+  (let [history {:seasons [{:drops [{:week 3 :player-id "old"} {:week 7 :player-id "last"}
+                                    {:week 8 :player-id "s-8"}]}
+                           {:drops [{:week 8 :player-id "last-season"}]}]}
+        dropped (waiver/recently-dropped history {"s-8" "gsis-8"} 8)]
+    (is (= #{"last" "gsis-8"} dropped)
+        "this season's, from last week on, through the id crosswalk")
+    (is (= [true nil] (map :dropped? (waiver/with-dropped [{:player-id "last"} {:player-id "old"}] dropped))))
+    (is (= #{} (waiver/recently-dropped nil {} 8)) "no history, no news")))
 
 ;; ---- my roster as comparable rows ----
 

@@ -61,10 +61,11 @@
   is a fact.
 
   WHAT IS DISPLAY ONLY. `:trend` compares recent opportunity to the season's and
-  `:form-points` scores what the last few weeks were actually worth; both feed
-  nothing — same shelf as `:injury-risk` and `:tcm`, and for the reason
+  feeds nothing — same shelf as `:injury-risk` and `:tcm`, and for the reason
   `rankings.injury` spells out: the repo has already shipped one signal that was
-  computed on every pick and consumed by nothing. `:week-pos-rank` is the one
+  computed on every pick and consumed by nothing. `:form-points` and its
+  siblings from `with-form-points` feed no walk-away either, but they are what
+  `faab/claim-features` aims rivals' claims by, measured against real ones. `:week-pos-rank` is the one
   in-season signal that is *not* on that shelf, and it is added elsewhere — see
   `rankings.pos-rank`.
 
@@ -147,6 +148,22 @@
   "The board minus everyone on a roster."
   [board rostered]
   (filterv #(not (contains? rostered (:player-id %))) board))
+
+(defn recently-dropped
+  "Board ids of the players a manager let go in the week claims are decided in
+  or the one before it, off the current season of a bid history
+  (`transactions/cached-history`): news the whole league has just seen, which
+  `faab/claim-features` reads."
+  [history xwalk week]
+  (into #{}
+        (comp (filter #(>= (:week %) (dec week)))
+              (map #(get xwalk (:player-id %) (:player-id %))))
+        (:drops (first (:seasons history)))))
+
+(defn with-dropped
+  "Mark every free agent in `dropped` with `:dropped?`."
+  [fas dropped]
+  (mapv #(cond-> % (contains? dropped (:player-id %)) (assoc :dropped? true)) fas))
 
 ;; ---- what a claim actually costs ----
 
@@ -359,10 +376,36 @@
     (when (and games (pos? games) (seq stats))
       (/ (scoring/resolved-points {:stats stats} scoring) (double games)))))
 
-(defn with-form-points [players scoring]
+(defn last-game
+  "`{:week :points}` for the latest game in the player's Sleeper game log, under
+  the league's weights, or nil when there is no log. The week rides along so a
+  reader can tell last week's game from one a month old."
+  [player scoring]
+  (when-let [{:keys [week stats]} (peek (:realized/game-log player))]
+    {:week week :points (scoring/resolved-points {:stats stats} scoring)}))
+
+(defn season-ppg
+  "Points per game over the season so far, or nil before he has played."
+  [player scoring]
+  (let [{:keys [games stats]} (or (:realized/season-to-date player)
+                                  (:nflverse/season-to-date player))]
+    (when (and games (pos? games) (seq stats))
+      (/ (scoring/resolved-points {:stats stats} scoring) (double games)))))
+
+(defn with-form-points
+  "Assoc `:form-points`, and beside it the two other readings of what a player
+  has done that `faab/claim-features` aims a rival's claims by: `:last-points`
+  with the `:last-week` it was scored in, and `:season-ppg`."
+  [players scoring]
   (let [scoring (scoring/resolve-buckets scoring)]
     (mapv (fn [p]
-            (if-let [v (form-points p scoring)] (assoc p :form-points v) p))
+            (let [form (form-points p scoring)
+                  lg   (last-game p scoring)
+                  ppg  (season-ppg p scoring)]
+              (cond-> p
+                form (assoc :form-points form)
+                lg   (assoc :last-points (:points lg) :last-week (:week lg))
+                ppg  (assoc :season-ppg ppg))))
           players)))
 
 ;; ---- this week ----
@@ -432,14 +475,15 @@
         drop     (when my-team (drop-candidate active by-id seats starting-slots))
         n        (claims-left ctx)
         bidding? (faab? (:type waiver))
+        week     (inc (or through-week 0))
         fas      (-> (free-agents players rostered)
+                     (with-dropped (recently-dropped bid-history xwalk week))
                      (with-upgrade drop)
                      (with-lineup-upgrade
                        (vec (keep #(get by-id %) active))
                        drop starting-slots)
                      (with-bids waiver (:faab-left my-team) n
-                                #(faab/market-cap (:position %) (:budget waiver)
-                                                  (inc (or through-week 0)))))
+                                #(faab/market-cap (:position %) (:budget waiver) week)))
         habits   (when bidding?
                    (faab/league-habits bid-history (if (seq teams) (count teams) num-teams)))]
     {:players  players
@@ -465,7 +509,7 @@
                 :heat   (faab/heat-of players)
                 ;; A waiver run is filed under the week it is processed in, the
                 ;; one after the last played.
-                :week   (inc (or through-week 0))}}))
+                :week   week}}))
 
 (defn waiver-board
   "`:players` is the free agents only — `:rostered` is the compact `{player-id
