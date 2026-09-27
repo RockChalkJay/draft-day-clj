@@ -62,3 +62,41 @@
     (is (> p 3.0) (str "a few players drawing everybody: a wide one, " p))
     (is (>= (interest/nb-ll p piled) (interest/nb-ll (* 1.2 p) piled)))
     (is (>= (interest/nb-ll p piled) (interest/nb-ll (/ p 1.2) piled)) "and it is the maximum")))
+
+(defn- a-set
+  "A choice set of `rows` feature vectors with `chosen` indices."
+  [rows chosen]
+  {:x (into-array (map double-array rows)) :chosen chosen})
+
+(deftest set-stats-scores-the-choice-as-a-softmax-does
+  (let [s     (a-set [[1.0 0.0] [0.0 1.0] [0.5 0.5]] [0])
+        theta (double-array [0.4 -0.3])
+        us    [0.4 -0.3 0.05]
+        [ll]  (interest/set-stats theta s)]
+    (is (near? (- (first us) (Math/log (reduce + (map #(Math/exp %) us)))) ll 1e-12))))
+
+(defn- numeric-grad
+  "Each weight's partial derivative of `f` by central difference."
+  [f theta h]
+  (mapv (fn [i]
+          (let [bump (fn [d] (f (double-array (update (vec theta) i + d))))]
+            (/ (- (bump h) (bump (- h))) (* 2 h))))
+        (range (count theta))))
+
+(deftest set-stats-derivatives-agree-with-finite-differences
+  (let [rng  (java.util.Random. 11)
+        rows (vec (repeatedly 6 (fn [] (vec (repeatedly 3 #(.nextGaussian rng))))))
+        h    1e-5]
+    (doseq [chosen [[2] [0 4 4]]
+            theta  (repeatedly 3 (fn [] (vec (repeatedly 3 #(.nextGaussian rng)))))]
+      (let [s          (a-set rows chosen)
+            [_ g hess] (interest/set-stats (double-array theta) s)
+            ll         #(first (interest/set-stats % s))
+            grad       #(vec (second (interest/set-stats % s)))]
+        (is (every? true? (map #(near? %1 %2 1e-6) (vec g) (numeric-grad ll theta h)))
+            (str "gradient, chosen " chosen))
+        (doseq [i (range 3)]
+          (is (every? true? (map #(near? %1 %2 1e-5)
+                                 (vec (aget ^objects hess i))
+                                 (numeric-grad #(nth (grad %) i) theta h)))
+              (str "Hessian row " i ", chosen " chosen)))))))
