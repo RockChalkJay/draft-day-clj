@@ -124,6 +124,24 @@
                           :sleeper (raw {:season "2025" :previous_league_id "0"}))))
         "\"0\" is Sleeper for no predecessor")))
 
+(deftest a-player-let-go-to-waivers-is-a-drop
+  (let [drop (fn [type status player at]
+               {:type type :status status :status_updated at :drops {(keyword player) 4}})
+        s    (season-of {5 [(drop "waiver" "complete" "a" 300)
+                            (drop "free_agent" "complete" "b" 200)
+                            (drop "trade" "complete" "c" 250)
+                            (drop "waiver" "failed" "d" 260)]
+                         6 [(drop "free_agent" "complete" "e" 400)]})]
+    (is (= [{:week 5 :at 200 :player-id "b"}
+            {:week 5 :at 300 :player-id "a"}
+            {:week 6 :at 400 :player-id "e"}]
+           (:drops s))
+        "in the order they happened; a traded player goes to a roster, and a
+        failed claim dropped nobody")
+    (is (= [] (:drops (season-of {}))))
+    (is (= ["7"] (mapv :player-id (:drops (transactions/normalized {:auctions [] :drops [{:player-id 7}]}))))
+        "ids as strings, as an auction's are")))
+
 (deftest ids-come-back-as-strings-and-a-missing-owner-stays-missing
   (let [out (transactions/normalized
              {:auctions [{:player-id 4034

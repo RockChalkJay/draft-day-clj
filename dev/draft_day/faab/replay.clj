@@ -151,9 +151,12 @@
           {} moves))
 
 (defn season-before
-  "A normalized season cut to the auctions decided before `t`."
+  "A normalized season cut to the auctions decided, and the drops made, before
+  `t`."
   [season t]
-  (update season :auctions (fn [as] (filterv #(< (:at %) t) as))))
+  (-> season
+      (update :auctions (fn [as] (filterv #(< (:at %) t) as)))
+      (update :drops (fn [ds] (filterv #(< (:at %) t) ds)))))
 
 (defn league-at
   "The synced league as the board would have read it at `t`."
@@ -183,6 +186,7 @@
               players)
         (ros/with-ros scoring {:through-week through
                                :season-games (nflverse/games-in-season season)})
+        (waiver/with-last-game through)
         (waiver/with-form-points scoring))))
 
 
@@ -211,9 +215,7 @@
 (defn top-cdf
   "P(the highest rival bid is at most `x`), nobody bidding counting as below."
   [active x]
-  (reduce * 1.0 (map (fn [{:keys [p ^doubles cdf]}]
-                       (+ (- 1.0 p) (* p (aget cdf (min (long x) (dec (alength cdf)))))))
-                     active)))
+  (faab/joint active (fn [{:keys [^doubles cdf]}] (aget cdf (min (long x) (dec (alength cdf)))))))
 
 (defn outcome
   "Does bid `x` beat a top rival bid of `other` (nil for none)? 1, 0, or ½ on a
@@ -247,7 +249,7 @@
                :p-win       (faab/win-chance active amount)
                :top         top
                :top-range   (faab/top-bid active budget)
-               :p-none      (reduce * 1.0 (map #(- 1.0 (:p %)) active))
+               :p-none      (faab/uncontested active)
                :pit         (when top (top-cdf active top))
                :rivals-hat  (reduce + 0.0 (map :p active))
                :rivals      (count others)
@@ -276,15 +278,18 @@
         {:keys [league starting-slots]} ctx
         waiver-s (:waiver league)
         needs    (waiver/rival-needs (:teams league) nil xwalk by-id seats starting-slots fas)
+        heat     (faab/heat-of board)
         teams    (faab/bidders needs {} fas habits (:budget waiver-s) (or (:min-bid waiver-s) 0)
-                               (faab/heat-of board))]
+                               (mapv #(faab/shared-utility % w heat) fas))
+        totals   (apply merge-with + (map :rates teams))]
     (for [t teams, p fas]
       {:season (str "w" w)
        :week   w
        :player (:player-id p)
        :vorp   (:ros-vorp p)
        :form   (:form-points p)
-       :p      (faab/bid-chance (get (:rates t) (:player-id p) 0.0))
+       :p      (faab/marginal-bid-chance (get (:rates t) (:player-id p) 0.0)
+                                         (get totals (:player-id p) 0.0))
        :bid?   (contains? week-bids [(:roster-id t) (:player-id p)])})))
 
 

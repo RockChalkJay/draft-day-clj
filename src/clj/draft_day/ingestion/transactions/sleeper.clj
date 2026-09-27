@@ -111,6 +111,20 @@
             (mapcat claim-row))
           txs)))
 
+(defn drops
+  "One week's completed drops, one row per player let go: by a claim or a
+  free-agent add, never a trade, whose players go to another roster rather
+  than to waivers. Keys arrive keywordized, as `claims`' do."
+  [week txs]
+  (into []
+        (comp
+          (filter #(#{"waiver" "free_agent"} (:type %)))
+          (filter #(= "complete" (:status %)))
+          (mapcat (fn [tx]
+                    (map (fn [pid] {:week week :at (:status_updated tx) :player-id (name pid)})
+                         (keys (:drops tx))))))
+        txs))
+
 (defn one-per-roster
   "A roster's claims on one player in one run as its single best bid. Two claims
   from one manager — different drops, same target — are one bidder."
@@ -155,4 +169,5 @@
      :final?        (= "complete" (:status league))
      :previous      (previous league)
      :auctions      (into [] (keep first) results)
-     :non-competing (reduce + 0 (map second results))}))
+     :non-competing (reduce + 0 (map second results))
+     :drops         (vec (sort-by :at (mapcat (fn [[w txs]] (drops w txs)) weeks)))}))
