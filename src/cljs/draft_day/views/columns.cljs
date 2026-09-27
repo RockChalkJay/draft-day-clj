@@ -1,59 +1,84 @@
 (ns draft-day.views.columns
-  "Column picker: show/hide via checkboxes, rearrange via drag-and-drop.
+  "Column picker: a dropdown checklist to show and hide columns, and a reset.
+  Columns are reordered by dragging the board's headers.
 
   Parameterized over which board it is picking for, because the draft board and
-  the waiver board have separate catalogs, separate persisted column vectors and
-  separate events — but exactly one set of drag mechanics, and those are the
-  fiddly part (see `db/move-onto` and `util/left-element?` for what makes them
-  fiddly). Copying the component per board would mean fixing every drag bug
-  twice."
+  the waiver board have separate catalogs, persisted column vectors and events
+  but one picker."
   (:require [reagent.core :as r]
             [re-frame.core :as rf]
-            [draft-day.db :as db]
-            [draft-day.views.util :as util]))
+            [draft-day.db :as db]))
 
 (def board-picker
   {:sub :columns :labels db/columns-by-key
-   :toggle :toggle-column :move :move-column-onto})
+   :toggle :toggle-column :reset :reset-columns})
 
 (def waiver-picker
   {:sub :league-waiver-columns :labels db/waiver-columns-by-key
-   :toggle :toggle-waiver-column :move :move-waiver-column-onto})
+   :toggle :toggle-waiver-column :reset :reset-waiver-columns
+   :groups db/waiver-column-groups})
+
+(defn grouped
+  "`[[heading cols] ...]` in `groups`' order, or one untitled group for a
+  catalog that names none."
+  [cols labels groups]
+  (if (seq groups)
+    (keep (fn [[g heading]]
+            (when-let [cs (seq (filter #(= g (:group (labels (:key %)))) cols))]
+              [heading cs]))
+          groups)
+    [[nil cols]]))
+
+(defn checklist
+  "The open picker: every column as a checkbox under its group's heading, two
+  columns wide so no group is below a scroll, and a reset."
+  [{:keys [labels toggle groups] reset-event :reset} cols]
+  [:div.col-menu {:role "dialog" :aria-label "Columns"}
+   [:div.col-groups
+    (map (fn [[heading cs]]
+           ^{:key (or heading "all")}
+           [:div.col-group
+            (when heading [:div.col-group-head heading])
+            (map (fn [c]
+                   (let [k (:key c)]
+                     ^{:key k}
+                     [:label.col-check {:class (when (:faab-only? c) "off")
+                                        :title (when (:faab-only? c) "This league doesn't run FAAB")}
+                      [:input {:type "checkbox" :checked (boolean (:visible? c))
+                               :disabled (:faab-only? c)
+                               :on-change #(rf/dispatch [toggle k])}]
+                      " " (:label (labels k))]))
+                 cs)])
+         (grouped cols labels groups))]
+   [:div.col-menu-foot
+    [:button.link-btn {:on-click #(rf/dispatch [reset-event])} "Reset to defaults"]
+    [:span.muted (str (count (filter :visible? cols)) " shown")]]])
 
 (defn picker
-  "The picker for one board's `opts` (see `board-picker` / `waiver-picker`)."
+  "A \"Columns\" button opening `checklist`. Order is changed by dragging the
+  board's own headers (`board/header-cell`), not here. Closes on a click
+  outside it, or on Escape pressed inside it — stopped there, since the app's
+  one document-level Escape clears the comparison."
   [_opts]
-  ;; Tracks the dragged column's key, not its index: the move events are keyed
-  ;; so the picker and the board header can share one (see views.board).
-  (let [drag-key (r/atom nil)]
-    (fn [{:keys [sub labels toggle move]}]
-      (let [cols @(rf/subscribe [sub])]
-        [:ul.col-picker
-         (map (fn [c]
-                (let [k (:key c)]
-                  ^{:key k}
-                  [:li.col-item
-                   {:draggable true
-                    :class     (when (:faab-only? c) "off")
-                    :title     (when (:faab-only? c) "This league doesn't run FAAB")
-                    :on-drag-start (fn [e]
-                                     (util/column-drag-start! e k)
-                                     (reset! drag-key k))
-                    :on-drag-over  #(.preventDefault %)
-                    ;; preventDefault or the browser runs its own drop action on
-                    ;; top of the reorder
-                    :on-drop       (fn [e]
-                                     (.preventDefault e)
-                                     (rf/dispatch [move @drag-key k])
-                                     (reset! drag-key nil))
-                    :on-drag-end   #(reset! drag-key nil)}
-                   [:span.drag-handle "⠿"]
-                   [:label
-                    [:input {:type "checkbox" :checked (:visible? c)
-                             :disabled (:faab-only? c)
-                             :on-change #(rf/dispatch [toggle k])}]
-                    " " (:label (get labels k))]]))
-              cols)]))))
+  (let [open? (r/atom false)
+        node  (atom nil)
+        away  (fn [e] (when (and @open? @node (not (.contains @node (.-target e))))
+                        (reset! open? false)))]
+    (r/create-class
+     {:component-did-mount    #(.addEventListener js/document "mousedown" away)
+      :component-will-unmount #(.removeEventListener js/document "mousedown" away)
+      :reagent-render
+      (fn [{:keys [sub] :as opts}]
+        (let [cols @(rf/subscribe [sub])]
+          [:div.col-picker-wrap {:ref         #(reset! node %)
+                                 :on-key-down (fn [e]
+                                                (when (and @open? (= "Escape" (.-key e)))
+                                                  (.stopPropagation e)
+                                                  (reset! open? false)))}
+           [:button.col-toggle {:aria-expanded @open?
+                                :on-click #(swap! open? not)}
+            "Columns ▾"]
+           (when @open? [checklist opts cols])]))})))
 
 (defn column-picker [] [picker board-picker])
 (defn waiver-column-picker [] [picker waiver-picker])

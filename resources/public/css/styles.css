@@ -245,14 +245,24 @@ button.danger:hover { background: var(--warn); color: #0b0e13; }
 .pos-filter button.on { color: var(--text); background: var(--panel2); border-color: var(--accent); }
 .search { width: 220px; }
 
-.col-details { margin-bottom: 8px; }
-.col-details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
-.col-picker { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 0; margin: 0; }
-.col-item { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
-  padding: 4px 8px; cursor: grab; display: flex; align-items: center; gap: 4px; }
-.drag-handle { color: var(--muted); }
-/* A column this league cannot fill: listed, so it is not a mystery, but off. */
-.col-item.off { opacity: .45; cursor: default; }
+/* The column picker: a button opening a two-column checklist over the board. */
+.col-bar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.col-picker-wrap { position: relative; }
+.col-toggle { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 12px; }
+.col-toggle[aria-expanded="true"] { border-color: var(--accent); }
+.col-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 15; width: 520px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .6); padding: 10px 14px; }
+.col-groups { columns: 2; column-gap: 24px; }
+.col-group { break-inside: avoid; margin-bottom: 8px; }
+.col-group-head { font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); margin: 4px 0; }
+.col-check { display: flex; gap: 8px; align-items: center; padding: 3px 0; cursor: pointer; }
+.col-check.off { opacity: .45; cursor: default; }
+.col-menu-foot { display: flex; justify-content: space-between; align-items: center;
+  border-top: 1px solid var(--border); margin-top: 6px; padding-top: 8px; font-size: 12px; }
+.link-btn { background: none; border: none; color: var(--accent); padding: 0; }
 
 /* ---- table ---- */
 .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }

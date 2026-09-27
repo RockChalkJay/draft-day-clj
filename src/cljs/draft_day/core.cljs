@@ -27,9 +27,7 @@
     [:div.watchlist-col [watchlist/watchlist-panel]]
     [:div.tile-col [controls/nominate-tile]]
     [:aside.roster-col [roster/my-roster]]]
-   [:details.col-details
-    [:summary "⚙ Columns"]
-    [columns/column-picker]]
+   [:div.col-bar [columns/column-picker]]
    [board/board]])
 
 (defn app []

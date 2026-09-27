@@ -235,6 +235,11 @@
           (write! {:v (inc fx/storage-version) :state {:my-team-id "t3"}})
           (is (nil? (fx/load-persisted))))
 
+        (testing "but the column layouts outlive a version bump"
+          (write! {:v (dec fx/storage-version)
+                   :state {:my-team-id "t3" :waiver-columns [{:key :bye :visible? true}]}})
+          (is (= {:waiver-columns [{:key :bye :visible? true}]} (fx/load-persisted))))
+
         (testing "an unstamped blob — every shape written before the stamp — is
                   dropped the same way"
           (write! {:my-team-id "t3" :watchlist #{"gibbs"}})
@@ -247,6 +252,19 @@
         (testing "nothing stored at all"
           (swap! store dissoc fx/store-key)
           (is (nil? (fx/load-persisted))))))))
+
+(deftest boot-brings-a-stored-layout-up-to-the-catalog
+  (with-redefs [draft-day.fx/load-persisted
+                (fn [] {:waiver-columns [{:key :bye :visible? true} {:key :gone :visible? true}
+                                         {:key :rank :visible? false}]})]
+    (rf/dispatch-sync [:boot])
+    (let [cols (:waiver-columns @rdb/app-db)
+          ks   (mapv :key cols)
+          at   #(.indexOf ks %)]
+      (is (< (at :bye) (at :rank)) "his order kept")
+      (is (false? (:visible? (nth cols (at :rank)))) "and his choice")
+      (is (not-any? #(= :gone (:key %)) cols))
+      (is (= (count db/waiver-column-catalog) (count cols)) "every catalog column present"))))
 
 (deftest boot-opens-at-defaults-when-there-is-nothing-to-load
   (with-redefs [draft-day.fx/load-persisted (fn [] nil)]

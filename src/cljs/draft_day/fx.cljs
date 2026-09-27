@@ -9,7 +9,9 @@
   "Persisted-slice schema version.
 
   Bump this whenever a persisted shape changes; stale blobs are discarded and the
-  app opens with defaults."
+  app opens with defaults — all but the column layouts, which `load-persisted`
+  keeps and `db/reconcile-columns` brings up to the catalog, so a catalog
+  change no longer needs a bump."
   13)
 
 (def drafts-key "draft-day-drafts")
@@ -89,10 +91,17 @@
                   (pr-str {:v storage-version :state slice}))
         (catch :default _ nil))))
 
+(def kept-across-versions
+  "What a version bump does not discard: the manager's column layouts."
+  [:columns :waiver-columns])
+
 (defn load-persisted
-  "Load the saved app slice, or nil if missing, unreadable, or version-mismatched."
+  "Load the saved app slice, or nil if missing or unreadable. Under another
+  version only `kept-across-versions` survives."
   []
   (try (when-let [s (.getItem js/localStorage store-key)]
          (let [{:keys [v state]} (reader/read-string s)]
-           (when (= v storage-version) state)))
+           (if (= v storage-version)
+             state
+             (not-empty (select-keys state kept-across-versions)))))
        (catch :default _ nil)))
