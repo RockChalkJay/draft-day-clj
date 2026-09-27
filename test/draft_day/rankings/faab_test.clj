@@ -93,15 +93,74 @@
 (deftest a-claim-says-the-players-week-is-a-hot-one
   (let [mean #(/ (reduce + %) (count %))]
     (doseq [total [0.01 0.3 3.0]]
-      (let [a (faab/hotness-shape total)]
-        (is (= faab/hotness-points (count (faab/hotness total))))
-        (is (near? (/ (+ a 1.0) a) (mean (faab/hotness total)) (* 0.03 (/ (+ a 1.0) a)))
-            "the gamma's posterior mean after one claim, (a + 1) / a")))
-    (is (near? (+ 0.3 faab/cluster-spread) (* 0.3 (mean (faab/hotness 0.3))) 0.06)
+      (let [a (faab/round-figures (faab/hotness-shape total))]
+        (is (= faab/hotness-points (count (faab/hotness total 0.0))))
+        (is (near? (/ (+ a 1.0) a) (mean (faab/hotness total 0.0)) (* 0.01 (/ (+ a 1.0) a)))
+            "a claim at a vanishing rate: the gamma's posterior mean, (a + 1) / a")))
+    (is (near? (+ 0.3 faab/cluster-spread) (* 0.3 (mean (faab/hotness 0.3 0.0))) 0.02)
         "so once he is claimed, rivals who hold all of a 0.3 interest in him
         expect the spread more bids than they did")
-    (is (< (mean (faab/hotness 3.0)) (mean (faab/hotness 0.01)))
-        "a player the whole league was expected to want moves less")))
+    (is (< (mean (faab/hotness 3.0 0.0)) (mean (faab/hotness 0.01 0.0)))
+        "a player the whole league was expected to want moves less")
+    (is (< (mean (faab/hotness 0.3 0.25)) (mean (faab/hotness 0.3 0.01)))
+        "and a claim I was likely to make says less than one I was not")))
+
+(deftest nobody-else-bidding-matches-its-closed-form
+  ;; Given my claim at rate m, P(no rival claims) is
+  ;; [L(o) - L(o + m)] / [1 - L(m)] with L(t) = (a / (a + t))^a and o the
+  ;; rivals' rate: the hotness points must reproduce it, not approximate it.
+  (let [laplace (fn [a t] (Math/pow (/ a (+ a t)) a))]
+    (doseq [total [0.01 0.1 0.5 2.0] share [0.05 0.3 0.7]]
+      (let [mine    (* share total)
+            others  (- total mine)
+            a       (faab/round-figures (faab/hotness-shape total))
+            exact   (/ (- (laplace a others) (laplace a total)) (- 1.0 (laplace a mine)))
+            pts     (faab/hotness total mine)
+            points  (/ (reduce + (map #(Math/exp (- (* others %))) pts)) (count pts))]
+        (is (near? exact points 0.002) (str "total " total " my share " share))))))
+
+(defn- brute-win
+  "P(a bid of `b` wins), enumerating every hotness point and every rival's
+  every bid: a rival claims with chance p at a point and then bids from his
+  pmf, and a tie is lost with chance 1 - tie."
+  [rivals b]
+  (let [k (alength ^doubles (:ps (first rivals)))]
+    (/ (reduce + (for [i (range k)]
+                   (reduce * (map (fn [{:keys [ps pmf tie]}]
+                                    (let [p (aget ^doubles ps i)]
+                                      (+ (- 1.0 p)
+                                         (* p (reduce + (map-indexed (fn [x px] (cond (< x b) px (= x b) (* tie px) :else 0.0))
+                                                                     (vec pmf)))))))
+                                  rivals))))
+       k)))
+
+(deftest the-win-chance-is-an-average-over-hotness-of-independent-rivals
+  (let [pmf-a (double-array [0.5 0.0 0.3 0.2])
+        pmf-b (double-array [0.1 0.6 0.0 0.3])
+        rivals [{:ps (double-array [0.1 0.7 0.9]) :pmf pmf-a :cdf (faab/cumulative pmf-a) :tie 0.5}
+                {:ps (double-array [0.2 0.4 0.95]) :pmf pmf-b :cdf (faab/cumulative pmf-b) :tie 1.0}]]
+    (doseq [b (range 0 5)]
+      (is (near? (brute-win rivals b) (faab/win-chance rivals b) 1e-12) (str "bid " b)))))
+
+(defn- random-rivals [rng n budget]
+  (vec (repeatedly n (fn []
+                       (let [raw (double-array (repeatedly (inc budget) #(.nextDouble rng)))
+                             t   (areduce raw i s 0.0 (+ s (aget raw i)))
+                             pmf (double-array (map #(/ % t) raw))]
+                         {:ps  (double-array (repeatedly 4 #(.nextDouble rng)))
+                          :pmf pmf :cdf (faab/cumulative pmf) :tie 0.5})))))
+
+(deftest the-searches-find-what-a-scan-finds
+  (let [rng (java.util.Random. 5)]
+    (dotimes [_ 20]
+      (let [rivals (random-rivals rng 3 30)
+            scan   (first (filter #(>= (faab/win-chance rivals %) faab/sure-win) (range 0 31)))]
+        (is (= scan (faab/sure-bid rivals 0 30)))
+        (let [none (faab/uncontested rivals)
+              upto #(/ (- (faab/joint rivals (fn [{:keys [^doubles cdf]}] (aget cdf (min % 30)))) none)
+                       (- 1.0 none))
+              at   (fn [q] (first (filter #(>= (upto %) (- q 1e-9)) (range 0 31))))]
+          (is (= [(at 0.5) (at 0.9)] (faab/top-bid rivals 30))))))))
 
 (deftest rivals-who-move-together-leave-a-player-alone-more-often
   (let [ps    (double-array [0.0 0.0 0.9 0.9])

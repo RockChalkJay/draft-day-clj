@@ -210,28 +210,40 @@
           :else             (recur xs (cons (- w room) (next ws)) per 0.0
                                    (conj out (/ (+ sum (* room x)) per))))))))
 
-(def gamma-points
-  "`hotness-points` equally likely values of a unit-rate gamma of `shape`."
+(def claimed-points
+  "`hotness-points` equally likely values of x = a·η once a claim at rate c·a
+  has been made: the unit-rate gamma prior x^(a-1)e^(-x) times the claim's
+  chance 1 - e^(-cx), which as c goes to 0 is proportional to x."
   (memoize
-   (fn [shape]
-     (let [n  600
-           lo (Math/log (* 1e-4 shape))
-           hi (Math/log (+ shape 40.0 (* 8.0 (Math/sqrt shape))))
+   (fn [a c]
+     (let [n  800
+           lo (Math/log 1e-6)
+           hi (Math/log (+ a 45.0 (* 8.0 (Math/sqrt (+ a 1.0)))))
            xs (mapv #(Math/exp (+ lo (* % (/ (- hi lo) (dec n))))) (range n))
            ;; On a log grid each point carries x times the density.
-           ws (mapv #(* (Math/pow % shape) (Math/exp (- %))) xs)]
+           ws (mapv (fn [x]
+                      (* (Math/pow x a) (Math/exp (- x))
+                         (if (zero? c) x (- 1.0 (Math/exp (- (* c x)))))))
+                    xs)]
        (equal-mass xs ws hotness-points)))))
+
+(defn round-figures
+  "`x` to three significant figures."
+  [x]
+  (let [k (Math/pow 10.0 (- 2 (Math/floor (Math/log10 x))))]
+    (/ (Math/round (* x k)) k)))
 
 (defn hotness
   "`hotness-points` equally likely values of the multiplier on every rival's
-  claim rate for a player somebody has claimed, the league claiming him at
-  `total` a week: his week's gamma of shape a (`hotness-shape`) and mean one,
-  updated by one claim to shape a + 1 and rate a. The shape is rounded to
-  three figures, so the points are computed once for a few hundred players."
-  [total]
-  (let [a (hotness-shape total)
-        a (let [k (Math/pow 10.0 (- 2 (Math/floor (Math/log10 a))))] (/ (Math/round (* a k)) k))]
-    (mapv #(/ % a) (gamma-points (+ a 1.0)))))
+  claim rate for a player I am claiming at `mine` a week, the league, me
+  included, at `total`: his week's gamma of shape a (`hotness-shape`) and mean
+  one, conditioned on my claim. Tabulated on a to three figures and my rate
+  over a to two places, which `cluster-spread` bounds, so a board computes a
+  few hundred tables rather than one a player."
+  [total mine]
+  (let [a (round-figures (hotness-shape total))
+        c (/ (Math/round (* 100.0 (/ (max 0.0 (double (or mine 0.0))) a))) 100.0)]
+    (mapv #(/ % a) (claimed-points a c))))
 
 (defn logit [p] (Math/log (/ p (- 1.0 p))))
 
@@ -588,7 +600,8 @@
   their distributions is the one predicted for this player."
   [p {:keys [rivals dist mine]}]
   (let [rates  (mapv #(double (get (:rates %) (:player-id p) 0.0)) rivals)
-        etas   (hotness (+ (reduce + 0.0 rates) (double (get mine (:player-id p) 0.0))))
+        mine   (double (get mine (:player-id p) 0.0))
+        etas   (hotness (+ (reduce + 0.0 rates) mine) mine)
         pss    (mapv (fn [rate] (double-array (map #(bid-chance (* rate %)) etas))) rates)
         ps     (mapv (fn [^doubles a] (/ (areduce a i s 0.0 (+ s (aget a i))) (alength a))) pss)
         bucket (prior/bucket (max 1 (Math/round (+ 1.0 (reduce + 0.0 ps)))))]
