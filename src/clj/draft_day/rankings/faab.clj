@@ -459,6 +459,18 @@
   [rivals]
   (joint rivals (constantly 0.0)))
 
+(defn top-cdf
+  "P(the highest rival bid is at most `x`), nobody bidding counting as below."
+  [active x]
+  (joint active (fn [{:keys [^doubles cdf]}] (aget cdf (min (long x) (dec (alength cdf)))))))
+
+(defn typical-bid
+  "What it usually takes to win: the median highest rival bid, nobody bidding
+  counting as the league minimum, never below that minimum nor above `budget`."
+  [active min-bid budget]
+  (or (first (filter #(>= (top-cdf active %) 0.5) (range min-bid (inc budget))))
+      budget))
+
 (defn win-chance
   "The chance a bid of `b` wins. Every rival either sits it out, bids under it,
   or ties it and loses the tie. Each rival carries `:pmf` and `:cdf` over his
@@ -615,13 +627,17 @@
           rivals)))
 
 (defn competition
-  "One free agent's `:bid`, `:win-prob`, `:bid-sure`, `:rivals` and
-  `:competition` in `market` `m`, bidding up to `worth`."
+  "One free agent's `:bid` and `:win-prob`, the `:typical-bid` it usually takes
+  to win and its `:typical-win`, `:bid-sure`, `:rivals` and `:competition` in
+  `market` `m`, bidding up to `worth`."
   [p worth {:keys [min-bid left budget] :as m}]
-  (let [active (active-rivals p m)
-        bid    (value-bid active worth min-bid left)]
+  (let [active  (active-rivals p m)
+        bid     (value-bid active worth min-bid left)
+        typical (typical-bid active min-bid budget)]
     {:bid         bid
      :win-prob    (when bid (round-to 3 (win-chance active bid)))
+     :typical-bid typical
+     :typical-win (round-to 3 (win-chance active typical))
      :bid-sure    (sure-bid active min-bid left)
      :rivals      (round-to 2 (reduce + 0.0 (map :p active)))
      :competition {:top         (top-bid active budget)

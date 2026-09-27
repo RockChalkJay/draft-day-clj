@@ -107,21 +107,25 @@
         [:div.bid-tip {:style {:left x :top y} :aria-hidden true} text]))}))
 
 (defn bid-cell
-  "`$12 · 76%`, left-aligned so the dollars line up whatever the chance's
-  width, or a dash where there is no bid. A nil bid is \"this league does
-  not bid\" and $0 is a legal bid that wins at the minimum; they must not read
-  alike. Hovering opens `bid-title` in `bid-tip-popover`."
-  [p bidding]
-  (if (number? (:bid p))
-    (let [w   (:win-prob p)
-          tip (bid-title p bidding)]
-      [:td.bid {:aria-label     tip
-                :on-mouse-enter #(show-bid-tip! % tip)
-                :on-mouse-leave #(reset! bid-tip nil)}
-       [:b (str "$" (:bid p))]
-       (when (number? w)
-         [:span {:class (if (< w priced-out) "warn" "muted")} (str " · " (win-pct w))])])
+  "`$12 · 76%`: a bid and its chance, left-aligned so the dollars line up
+  whatever the chance's width, or a dash where there is no bid. A nil bid is
+  \"this league does not bid\" and $0 is a legal bid that wins at the minimum;
+  they must not read alike. Hovering opens `tip` in `bid-tip-popover`."
+  [amount chance tip]
+  (if (number? amount)
+    [:td.bid {:aria-label     tip
+              :on-mouse-enter #(show-bid-tip! % tip)
+              :on-mouse-leave #(reset! bid-tip nil)}
+     [:b (str "$" amount)]
+     (when (number? chance)
+       [:span {:class (if (< chance priced-out) "warn" "muted")} (str " · " (win-pct chance))])]
     [:td.bid "–"]))
+
+(defn typical-title
+  "The Bid column's tooltip: the suggested bid above `bid-title`'s rivals."
+  [p bidding]
+  (when-let [rest (bid-title p bidding)]
+    (str "Suggested bid: $" (:bid p) (some->> (:win-prob p) win-pct (str " · ")) "\n" rest)))
 
 ;; ---- this week's game ----
 ;; Two sources answer "who does he play". Sleeper's opponent rides in the same
@@ -200,7 +204,7 @@
                    (when (db/serious-injury? st)
                      [:span.inj-flag {:title st} " ⚠"]))]
      :team      [:td (or (:team p) "–")]
-     :position  [:td (util/pos-label p)]
+     :position  [:td (util/pos-label (assoc p :pos-rank (db/season-rank p)))]
      :bye       [:td.num (or (:bye p) "–")]
      :ros       [:td.num (board/format-whole (:ros-points p))]
      ;; No weekly line is not a weekly zero: he is on bye, or nobody projects
@@ -239,7 +243,13 @@
                     (let [r (js/Math.round n)]
                       [:td.num {:class (util/sign-class r)} (util/signed r)])
                     [:td.num [:span.muted "–"]]))
-     :bid       (bid-cell p bidding)
+     :bid       (bid-cell (:bid p) (:win-prob p) (bid-title p bidding))
+     :typical   (bid-cell (:typical-bid p) (:typical-win p) (typical-title p bidding))
+     :pts       [:td.num (board/format-one-decimal (:season-points p))]
+     :avg       [:td.num (board/format-one-decimal (:season-ppg p))]
+     :rec       [:td.num.muted (board/format-whole (get-in p [:nflverse/season-to-date :stats :rec]))]
+     :yds       [:td.num.muted (board/format-whole (db/season-yards p))]
+     :td        [:td.num.muted (board/format-whole (db/season-tds p))]
      :rivals    [:td.num (if (number? (:rivals p)) (.toFixed (:rivals p) 1) "–")]
      :adds      [:td.num.muted (format-adds (:trending/adds p))]
      :trend     [:td.num {:class (trend-class (:trend p))
@@ -250,7 +260,7 @@
      ;; is a per-game rate and rounding 8.4 and 8.6 both to 8 hides the comparison
      ;; the column exists to make.
      :form      [:td.num.muted (board/format-one-decimal (:form-points p))]
-     :gp        [:td.num.muted (or (get-in p [:nflverse/season-to-date :games]) "–")]
+     :gp        [:td.num (or (:season-gp p) (get-in p [:nflverse/season-to-date :games]) "–")]
      :tgt       [:td.num.muted (board/format-whole
                                 (get-in p [:nflverse/season-to-date :usage :targets]))]
      :car       [:td.num.muted (board/format-whole

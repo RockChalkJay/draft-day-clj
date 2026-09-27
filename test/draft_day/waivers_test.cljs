@@ -341,13 +341,34 @@
                            {:name "Quad Squad Monopoly" :faab-left nil :p 0.468}]}})
 
 (deftest the-bid-cell-reads-bid-then-its-chance
-  (let [c (waivers/cell :bid contested nil)]
+  (let [c (waivers/bid-cell 12 0.764 "tip")]
     (is (= "$12" (last (nth c 2))))
     (is (= [:span {:class "muted"} " · 76%"] (nth c 3))))
-  (is (= "warn" (get-in (vec (waivers/cell :bid {:bid 0 :win-prob 0.18} nil)) [3 1 :class]))
+  (is (= "warn" (get-in (vec (waivers/bid-cell 0 0.18 "tip")) [3 1 :class]))
       "a bid that rarely lands says so")
   (is (= [:td.bid "–"] (waivers/cell :bid {:bid nil} nil))
       "no FAAB is a dash, never $0"))
+
+(deftest the-bid-column-is-the-typical-winning-bid
+  (let [c (waivers/cell :typical (assoc contested :typical-bid 8 :typical-win 0.62) nil
+                        {:source "league" :auctions 461})]
+    (is (= "$8" (last (nth c 2))))
+    (is (re-find #"^Suggested bid: \$12 · 76%\nTop rival bid" (:aria-label (second c)))
+        "the suggested bid leads its tooltip"))
+  (is (= [:td.bid "–"] (waivers/cell :typical {} nil))))
+
+(deftest the-pos-cell-ranks-on-points-so-far-in-season
+  (is (= "WR24" (last (waivers/cell :position {:position "WR" :pos-rank 7 :season-pos-rank 24} nil))))
+  (is (= "WR7" (last (waivers/cell :position {:position "WR" :pos-rank 7} nil))) "before week 1"))
+
+(deftest season-stats-read-the-season-line
+  (let [p {:season-points 30.18 :season-ppg 15.09
+           :nflverse/season-to-date {:games 2 :stats {:pass_yd 417.0 :rush_yd 45.0 :pass_td 2.0 :rec 3.0}}}]
+    (is (= "30.2" (last (waivers/cell :pts p nil))))
+    (is (= "15.1" (last (waivers/cell :avg p nil))))
+    (is (= 462 (last (waivers/cell :yds p nil))))
+    (is (= 2 (last (waivers/cell :td p nil))))
+    (is (= "–" (last (waivers/cell :pts {} nil))) "no games is not zero points")))
 
 (deftest hovering-a-bid-opens-its-tooltip-and-leaving-closes-it
   (let [[_ attrs] (waivers/cell :bid contested {:source "league" :auctions 461})
@@ -1264,13 +1285,13 @@
                             :active-league "sleeper:1"))
   (rf/clear-subscription-cache!)
   (let [shown (set (map :key @(rf/subscribe [:visible-waiver-columns])))]
-    (is (not-any? shown [:bid :rivals]))
-    (is (contains? shown :adds) "only the columns a bid fills")
-    (is (every? #(get-in % [:visible?]) (filter #(#{:bid :rivals} (:key %)) (:waiver-columns @rdb/app-db)))
+    (is (not-any? shown [:typical :rivals]))
+    (is (contains? shown :pts) "only the columns a bid fills")
+    (is (every? :visible? (filter #(#{:typical :rivals} (:key %)) (:waiver-columns @rdb/app-db)))
         "the stored layout keeps them for a league that bids"))
   (swap! rdb/app-db assoc-in [:leagues "sleeper:1" :sync :waiver :type] "faab")
   (rf/clear-subscription-cache!)
-  (is (every? (set (map :key @(rf/subscribe [:visible-waiver-columns]))) [:bid :rivals])))
+  (is (every? (set (map :key @(rf/subscribe [:visible-waiver-columns]))) [:typical :rivals])))
 
 (deftest the-picker-files-columns-under-their-groups
   (let [labels db/waiver-columns-by-key

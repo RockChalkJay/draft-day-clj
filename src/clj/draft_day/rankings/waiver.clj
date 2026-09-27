@@ -380,11 +380,24 @@
   [player scoring]
   (per-game-points (or (:realized/recent player) (:nflverse/recent player)) scoring))
 
+(defn season-line
+  "His season so far, `{:games :stats}`: Sleeper's line where it arrived, else
+  nflverse's — which publishes no team defense, so only Sleeper's has one."
+  [player]
+  (or (:realized/season-to-date player) (:nflverse/season-to-date player)))
+
+(defn season-points
+  "Points over the season so far under the league's own weights, or nil before
+  he has played."
+  [player scoring]
+  (let [{:keys [games stats]} (season-line player)]
+    (when (and games (pos? games) (seq stats))
+      (scoring/resolved-points {:stats stats} scoring))))
+
 (defn season-ppg
   "Points per game over the season so far, or nil before he has played."
   [player scoring]
-  (per-game-points (or (:realized/season-to-date player) (:nflverse/season-to-date player))
-                   scoring))
+  (per-game-points (season-line player) scoring))
 
 (defn with-last-game
   "Keep each player's game in `through-week`, the last one finished, as
@@ -406,19 +419,22 @@
     {:week week :points (scoring/resolved-points {:stats stats} scoring)}))
 
 (defn with-form-points
-  "Assoc `:form-points`, and beside it the two other readings of what a player
-  has done that `faab/claim-features` aims a rival's claims by: `:last-points`
-  with the `:last-week` it was scored in, and `:season-ppg`."
+  "Assoc `:form-points`, and beside it the other readings of what a player has
+  done: `:last-points` with the `:last-week` it was scored in and `:season-ppg`,
+  which `faab/claim-features` aims a rival's claims by, and `:season-points`
+  with the `:season-gp` it was scored over, which the board shows and ranks."
   [players scoring]
   (let [scoring (scoring/resolve-buckets scoring)]
     (mapv (fn [p]
             (let [form (form-points p scoring)
                   lg   (last-game p scoring)
-                  ppg  (season-ppg p scoring)]
+                  ppg  (season-ppg p scoring)
+                  pts  (season-points p scoring)]
               (cond-> p
                 form (assoc :form-points form)
                 lg   (assoc :last-points (:points lg) :last-week (:week lg))
-                ppg  (assoc :season-ppg ppg))))
+                ppg  (assoc :season-ppg ppg)
+                pts  (assoc :season-points pts :season-gp (:games (season-line p))))))
           players)))
 
 ;; ---- this week ----

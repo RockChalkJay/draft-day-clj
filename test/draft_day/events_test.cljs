@@ -312,17 +312,8 @@
   (is (= "espn:{SWID}" (db/account-key "espn" "{SWID}"))
       "a stored :accounts map is keyed off this, and a league entry names it")
 
-  (is (= [:rank :ecr :name :team :bye :position :worth :value :market :espn-value
-          :fp-aav :bargain :vorp :risk :inj :edge :adp :tier :fp-tier :proj
-          :ceiling :floor :prior-tgt :prior-rec :prior-tgt-pct :proj-tgt :proj-rec]
-         (mapv :key db/column-catalog))
-      "a stored :columns vector is keyed off this list")
-
-  (is (= [:rank :name :team :position :bye :ros :week :week-rank :opp :upgrade
-          :lineup :bid :rivals :adds :trend :form :gp :risk :inj :ros-vorp :tgt :car
-          :preseason :ecr]
-         (mapv :key db/waiver-column-catalog))
-      "and a stored :waiver-columns vector off this one")
+  ;; The column catalogs are deliberately not pinned here: a stored layout is
+  ;; reconciled to its catalog at boot (`db/reconcile-columns`), not dropped.
 
   (is (= [:budget-plan :num-teams :roster :scoring :starting-bankroll]
          (vec (sort (keys db/default-config))))

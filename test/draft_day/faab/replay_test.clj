@@ -58,8 +58,8 @@
 
 (deftest the-top-rival-bid-counts-nobody-bidding-as-below
   (let [rs [(rival 0.5 {4 0.5 10 0.5}) (rival 0.2 {2 1.0})]]
-    (is (< (Math/abs (- 0.4 (replay/top-cdf rs 1))) 1e-9) "nobody bids 40% of the time")
-    (is (< (Math/abs (- 1.0 (replay/top-cdf rs 10))) 1e-9))))
+    (is (< (Math/abs (- 0.4 (faab/top-cdf rs 1))) 1e-9) "nobody bids 40% of the time")
+    (is (< (Math/abs (- 1.0 (faab/top-cdf rs 10))) 1e-9))))
 
 (deftest a-rule-wins-by-outbidding-and-splits-a-tie
   (is (= 1.0 (replay/outcome 5 nil)) "nobody else bid")

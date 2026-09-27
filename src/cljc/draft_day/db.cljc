@@ -1027,28 +1027,34 @@
 (def waiver-column-catalog
   "Ordered column definitions for the waiver board. `:group` is the heading the
   column picker files it under (`waiver-column-groups`)."
-  [{:key :rank      :label "#"      :tooltip "Rank by how much the claim gains you" :default? true :group :essentials}
+  [{:key :rank      :label "#"      :tooltip "Rank by what the claim adds to your starting lineup, then over the player you would drop" :default? true :group :essentials}
    {:key :name      :label "Player" :tooltip "Player"                     :default? true :group :essentials}
+   {:key :position  :label "Pos"    :tooltip "Position, and his rank at it on fantasy points so far this season — his preseason rank before week 1" :default? true :group :essentials}
    {:key :team      :label "Tm"     :tooltip "NFL team"                   :default? true :group :essentials}
-   {:key :position  :label "Pos"    :tooltip "Position and preseason rank within it" :default? true :group :essentials}
    {:key :bye       :label "Bye"    :tooltip "Bye week"                   :default? true :group :essentials}
-   {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? true :group :projections}
    {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank when he is not projected — a bye, or nobody's starter" :default? true :group :week}
-   {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false :group :week}
-   {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false :group :week}
-   {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true :group :projections}
-   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start — unlike Upg, which measures him against your worst bench player. This is what the board sorts by" :default? true :group :projections}
-   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid and its chance to win: about a dollar over the top rival bid he is likely to draw, or the league minimum when nobody else will bid, never more than he is worth to you. Hover a bid for the rivals behind it. An estimate. Blank when the league does not run FAAB or your budget is spent" :default? true :group :bidding}
-   {:key :rivals    :label "Rivals" :tooltip "How many other teams are expected to bid on him — from what he would add to each rival's own lineup, how often that manager claims, and how hard Sleeper is adding him" :default? true :group :bidding}
-   {:key :adds      :label "Adds"   :tooltip "Sleeper trending adds over the last 48 hours, across every Sleeper league. Blank when he is not among the hundred most added" :default? true :group :bidding}
-   {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true :group :projections}
-   {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules — what his current role has been worth, against what the projection expects of it" :default? false :group :projections}
+   {:key :pts       :label "Pts"    :tooltip "Fantasy points so far this season, under your league's scoring" :default? true :group :stats}
+   {:key :avg       :label "Avg"    :tooltip "Fantasy points per game played this season" :default? true :group :stats}
    {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true :group :stats}
+   {:key :typical   :label "Bid"    :tooltip "What it usually takes to win him, and your chance of winning with that bid. Hover for the suggested bid and the rivals behind it. An estimate. Blank when the league does not run FAAB or your budget is spent" :default? true :group :bidding}
+   {:key :rivals    :label "Rivals" :tooltip "How many other teams are expected to bid on him" :default? true :group :bidding}
    {:key :risk      :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile)" :default? true :group :essentials}
    {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true :group :essentials}
-   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false :group :projections}
+   {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false :group :week}
+   {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false :group :week}
+   {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? false :group :projections}
+   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start" :default? false :group :projections}
+   {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? false :group :projections}
+   {:key :bid       :label "Sugg."  :tooltip "Suggested bid and its chance to win: about a dollar over the top rival bid he is likely to draw, never more than he is worth to you" :default? false :group :bidding}
+   {:key :adds      :label "Adds"   :tooltip "Sleeper trending adds over the last 48 hours, across every Sleeper league. Blank when he is not among the hundred most added" :default? false :group :bidding}
+   {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? false :group :projections}
+   {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules" :default? false :group :projections}
    {:key :tgt       :label "Tgt"    :tooltip "Targets this season"        :default? false :group :stats}
    {:key :car       :label "Car"    :tooltip "Carries this season"        :default? false :group :stats}
+   {:key :rec       :label "Rec"    :tooltip "Receptions this season"     :default? false :group :stats}
+   {:key :yds       :label "Yds"    :tooltip "Passing, rushing and receiving yards this season" :default? false :group :stats}
+   {:key :td        :label "TD"     :tooltip "Passing, rushing and receiving touchdowns this season" :default? false :group :stats}
+   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false :group :projections}
    {:key :preseason :label "Pre"    :tooltip "What he was projected for before the season — the number the rest-of-season line is correcting" :default? false :group :projections}
    {:key :ecr       :label "ECR"    :tooltip "FantasyPros expert rank (preseason)" :default? false :group :projections}])
 
@@ -1086,12 +1092,26 @@
    (- (double (or (:ros-points p) 0)))
    (str (:player-name p))])
 
+(defn season-rank
+  "The Pos cell's rank: on points so far in season, the preseason one before."
+  [p]
+  (or (:season-pos-rank p) (:pos-rank p)))
+
+(defn season-stat-sum
+  "The sum of `ks` in his season-to-date line, or nil before he has one."
+  [p ks]
+  (when-let [st (get-in p [:nflverse/season-to-date :stats])]
+    (reduce + 0.0 (map #(get st % 0.0) ks))))
+
+(defn season-yards [p] (season-stat-sum p [:pass_yd :rush_yd :rec_yd]))
+(defn season-tds [p] (season-stat-sum p [:pass_td :rush_td :rec_td]))
+
 (def waiver-sort-accessors
   "column key -> fn player -> sortable value. :rank is attached in the sub."
   {:rank      :rank
    :name      :player-name
    :team      :team
-   :position  pos-sort-key
+   :position  #(pos-sort-key (assoc % :pos-rank (season-rank %)))
    :bye       :bye
    :ros       :ros-points
    :week      :week-points
@@ -1102,11 +1122,17 @@
    :upgrade   :upgrade
    :lineup    :lineup-upgrade
    :bid       :bid
+   :typical   :typical-bid
+   :pts       :season-points
+   :avg       :season-ppg
+   :rec       #(get-in % [:nflverse/season-to-date :stats :rec])
+   :yds       season-yards
+   :td        season-tds
    :rivals    :rivals
    :adds      :trending/adds
    :trend     :trend
    :form      :form-points
-   :gp        #(get-in % [:nflverse/season-to-date :games])
+   :gp        #(or (:season-gp %) (get-in % [:nflverse/season-to-date :games]))
    :tgt       #(get-in % [:nflverse/season-to-date :usage :targets])
    :car       #(get-in % [:nflverse/season-to-date :usage :carries])
    :ros-vorp  :ros-vorp
@@ -1119,7 +1145,7 @@
 
 (def faab-columns
   "Waiver columns that only answer in a league that bids for its claims."
-  #{:bid :rivals})
+  #{:typical :bid :rivals})
 
 (defn runs-faab?
   "Does a synced league bid for its waivers? nil before a sync says, which is
@@ -1255,7 +1281,7 @@
      :drafts       []
      :waivers      nil          ; last /api/waivers reply
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
-     :waiver-sort  {:key :upgrade :dir -1}
+     :waiver-sort  {:key :rank :dir 1}
      :waiver-status nil         ; what the waiver board is doing, or why it failed
      :sync-status  nil          ; what the rosters sync is doing, or why it failed
      :matchup      nil          ; last /api/matchup reply

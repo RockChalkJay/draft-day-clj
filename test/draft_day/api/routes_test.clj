@@ -400,6 +400,14 @@
     (is (not-any? #(contains? % :injury-risk) (rest (:players b)))
         "still nothing invented for the players it has no evidence about")))
 
+(deftest waivers-endpoint-ranks-a-position-on-points-so-far
+  (let [b  (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))
+        by (into {} (map (juxt :player-id identity)) (:players b))]
+    (is (= 1 (:season-pos-rank (by "rb0"))) "900 rushing yards and 8 TDs lead the backs")
+    (is (= 2 (:season-pos-rank (by "rb1"))))
+    (is (number? (:season-points (by "rb0"))))
+    (is (not (contains? (by "rb5") :season-pos-rank)) "no games played, no rank")))
+
 (deftest waivers-endpoint-does-not-ship-the-projections-working-state
   ;; Same argument as `without-history`, on the same re-POSTed-every-refresh
   ;; path: `:ros/stats` is a whole stat map per player and no client reads it.

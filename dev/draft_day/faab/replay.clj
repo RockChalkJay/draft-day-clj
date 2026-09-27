@@ -212,11 +212,6 @@
               (report/backbone bids (report/manager-habits rows bids)))))
 
 
-(defn top-cdf
-  "P(the highest rival bid is at most `x`), nobody bidding counting as below."
-  [active x]
-  (faab/joint active (fn [{:keys [^doubles cdf]}] (aget cdf (min (long x) (dec (alength cdf)))))))
-
 (defn outcome
   "Does bid `x` beat a top rival bid of `other` (nil for none)? 1, 0, or ½ on a
   tie, which waiver order decides and the replay cannot see."
@@ -250,7 +245,7 @@
                :top         top
                :top-range   (faab/top-bid active budget)
                :p-none      (faab/uncontested active)
-               :pit         (when top (top-cdf active top))
+               :pit         (when top (faab/top-cdf active top))
                :rivals-hat  (reduce + 0.0 (map :p active))
                :rivals      (count others)
                :walk-away   worth

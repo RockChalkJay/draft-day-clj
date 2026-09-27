@@ -291,18 +291,18 @@
 
   Same argument as `without-history`, on the same hot path: these are full stat
   maps per player, on a response re-POSTed on every refresh, and no client reads
-  them — the board renders the scored points, and the GP column reads
-  `:nflverse/season-to-date`. The game counts go with them rather than being
+  them — the board renders the scored points (`:season-points`, `:season-ppg`
+  and `:season-gp` among them), and Tgt and Car read `:nflverse/season-to-date`.
+  The game counts go with them rather than being
   kept for a column that might want them one day; that is the reasoning the
   removed PDM is the cautionary tale for. `:week/opponent`, `:week/home?` and
   `:week/updated-at` stay: those are rendered.
 
   `:nflverse/recent` joins them now that `waiver/form-points` scores it here.
-  Its *sibling* `:nflverse/season-to-date` must not: GP, Tgt and Car all read
-  it, which is why the two are named separately rather than the prefix dropped.
-  Both `:realized/` columns go, the season-to-date one included — it is scored
-  by `rankings.ros` and read by nothing the client draws, the GP column being
-  nflverse's to answer.
+  Its *sibling* `:nflverse/season-to-date` must not: Tgt, Car and the season
+  stat columns read it, which is why the two are named separately rather than
+  the prefix dropped. Both `:realized/` columns go, the season-to-date one
+  included — it is scored into `:season-points` before this runs.
 
   `:kickoff/started?` goes too: it is a function of `:kickoff/status`, which
   ships beside it, and only the matchup board reads the boolean. So do the
@@ -310,7 +310,7 @@
   [players]
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
                  :nflverse/recent :realized/recent :realized/season-to-date
-                 :realized/last-game :last-points :last-week :season-ppg :dropped?
+                 :realized/last-game :last-points :last-week :dropped?
                  :kickoff/started?)
         players))
 
@@ -431,6 +431,9 @@
                            ;; line is joined, so there would be nothing to rank.
                            (pos-rank/with-pos-rank :week-points :week-pos-rank)
                            (waiver/with-form-points scoring*)
+                           ;; The Pos cell's rank in season: on points scored,
+                           ;; not the preseason projection ranked above.
+                           (pos-rank/with-pos-rank :season-points :season-pos-rank)
                            ;; Independent of the weekly line — see
                            ;; `pipeline/assoc-kickoffs`.
                            (pipeline/assoc-kickoffs (:kickoffs weekly)))

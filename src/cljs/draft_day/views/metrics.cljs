@@ -110,12 +110,19 @@
    {:band :claim    :label "Upgrade"        :f :upgrade :fmt claim-points
     :tip (str "Rest-of-season points over the player you would drop, whether or"
               " not he would ever start")}
-   {:band :claim    :label "Bid"            :f :bid :bar? false
+   {:band :claim    :label "Typical winning bid" :f :typical-bid :bar? false
+    :fmt #(if (number? %) (str "$" %) "–")
+    :sub #(some-> (:typical-win %) waivers/win-pct (str " to win"))
+    :tip "What it usually takes to win him: the median highest rival bid"}
+   {:band :claim    :label "Suggested bid"  :f :bid :bar? false
     :fmt #(if (number? %) (str "$" %) "–")
     :sub #(some-> (:win-prob %) waivers/win-pct (str " to win"))}
    {:band :claim    :label "Rivals"         :f :rivals :better :lower
     :fmt #(if (number? %) (.toFixed % 1) "–")
     :tip "Other teams expected to bid on him this waiver run"}
+   {:band :evidence :label "Season points"  :f :season-points :fmt board/format-one-decimal
+    :tip "Fantasy points so far this season, under your league's scoring"}
+   {:band :evidence :label "Points / game"  :f :season-ppg :fmt board/format-one-decimal}
    {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend
     :tip (str "Recent opportunity per game against his season rate — above"
               " 1.0× means the role is growing")}
@@ -128,7 +135,7 @@
     :fmt #(if (number? %) (.toFixed % 1) "–")
     :tip "Targets plus carries per game this season"}
    {:band :evidence :label "Games played"   :bar? false
-    :f #(get-in % [:nflverse/season-to-date :games])
+    :f #(or (:season-gp %) (get-in % [:nflverse/season-to-date :games]))
     :fmt number-or-dash}
    {:band :evidence :label "Sleeper adds"   :f :trending/adds :bar? false
     :fmt waivers/format-adds
