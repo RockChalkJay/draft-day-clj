@@ -17,7 +17,8 @@
     {:season :league-id :budget :final? :previous {:league-id :season}
      :non-competing n
      :auctions [{:week :at :player-id
-                 :bids [{:roster-id :owner-id :amount :won?}]}]}
+                 :bids [{:roster-id :owner-id :amount :won?}]}]
+     :drops [{:week :at :player-id}]}
 
   Only bids that competed are kept — the winner and the bids it beat. A claim
   that failed for want of a roster spot never competed, and counting it would
@@ -28,7 +29,9 @@
   continues, which lets the history reach back a year without the dispatcher
   knowing how a host links its seasons. A host may only be able to guess the
   predecessor's season, so once it has been fetched the link is rewritten to the
-  season its own document states — the one it is cached under.
+  season its own document states — the one it is cached under. `:drops` are the
+  players managers let go, which the bid model reads as news: a player dropped
+  since the last run draws a bid nine times as often as the rest of the wire.
 
   The seasons live on the server, one file per league-season under
   `cache-dir`, and never cross the wire. A sync refreshes an unfinished season
@@ -81,12 +84,13 @@
       (update :league-id #(some-> % str))
       (update :season #(some-> % str))
       (update :previous #(some-> % (update :league-id str) (update :season str)))
-      (update :auctions (fn [as] (mapv string-ids as)))))
+      (update :auctions (fn [as] (mapv string-ids as)))
+      (update :drops (fn [ds] (mapv #(update % :player-id str) ds)))))
 
 (def schema-version
   "Version of a cached season's shape; the directory carries it, so a bump
   orphans the old files rather than reading them into missing keys."
-  2)
+  3)
 
 (def cache-dir (str "data/bid_history.v" schema-version))
 

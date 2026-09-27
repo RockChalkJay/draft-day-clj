@@ -151,9 +151,12 @@
           {} moves))
 
 (defn season-before
-  "A normalized season cut to the auctions decided before `t`."
+  "A normalized season cut to the auctions decided, and the drops made, before
+  `t`."
   [season t]
-  (update season :auctions (fn [as] (filterv #(< (:at %) t) as))))
+  (-> season
+      (update :auctions (fn [as] (filterv #(< (:at %) t) as)))
+      (update :drops (fn [ds] (filterv #(< (:at %) t) ds)))))
 
 (defn league-at
   "The synced league as the board would have read it at `t`."
