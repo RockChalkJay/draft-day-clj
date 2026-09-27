@@ -183,7 +183,8 @@
   "The weights, keyed by feature, maximizing the likelihood of `sets`' choices;
   `:se` their standard errors off the Hessian. A Newton step that would lower
   the likelihood is halved until it does not, since from a cold start a full
-  step can overshoot into a softmax that has put everything on one player."
+  step can overshoot into a softmax that has put everything on one player;
+  when no halving helps, the weights already found are the answer."
   [ks sets]
   (loop [theta (vec (repeat (count ks) 0.0)) iter 0]
     (let [[ll g h] (totals theta sets)
@@ -191,7 +192,9 @@
           [theta' ll'] (loop [scale 1.0]
                          (let [t (mapv (fn [x d] (- x (* scale d))) theta step)
                                l (first (totals t sets))]
-                           (if (or (>= l ll) (< scale 1e-4)) [t l] (recur (/ scale 2.0)))))]
+                           (cond (>= l ll)      [t l]
+                                 (< scale 1e-4) [theta ll]
+                                 :else          (recur (/ scale 2.0)))))]
       (if (or (< (- ll' ll) 1e-6) (= iter 50))
         (let [[_ _ h'] (totals theta' sets)
               cov      (map (fn [i] (solve h' (assoc (vec (repeat (count ks) 0.0)) i -1.0))) (range (count ks)))]

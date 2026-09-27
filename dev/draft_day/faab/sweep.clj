@@ -294,6 +294,9 @@
             (print-row "combined" false (summary cand) (compare-runs base cand)))
           (doseq [{:keys [name var values]} settings
                   :when (or (empty? only) (only name))]
+            ;; Each setting refills the cache once, so the boards a setting
+            ;; moves do not outlive it.
+            (reset! needs-cache {})
             (println (str "\n-- " name " (shipped " (value-str @var) ") --"))
             (print-header)
             (doseq [v values]
