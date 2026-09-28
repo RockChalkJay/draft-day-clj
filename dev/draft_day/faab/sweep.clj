@@ -31,8 +31,9 @@
   Not swept: `faab/heat-weight`, since the replay has no past trending lists;
   `faab/sure-win` and `faab/threat-floor`, which define what is displayed
   rather than estimate anything; the bidding-style thresholds, which are
-  display only; and `faab/claim-weights` and `faab/cluster-spread`, which
-  `draft-day.faab.interest` fits. The Sleeper-wide backbone is refit without
+  display only; and `faab/claim-weights`, which `draft-day.faab.interest`
+  fits. `faab/cluster-spread` is swept here rather than fit there: the spread
+  bidder counts ask for is not the one that prices a claim best. The Sleeper-wide backbone is refit without
   every league in the half being replayed and the season each continues
   (`half-prior`).
 
@@ -50,8 +51,13 @@
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.waiver :as waiver]))
 
+(def every-kind
+  "A number as a constant keyed by league kind: the same for each."
+  (fn [v] {:redraft v :keeper v :dynasty v}))
+
 (def settings
-  "Each swept constant, the values tried, the shipped one among them. A
+  "Each swept constant, the values tried, the shipped one among them, and `:as`
+  when a value is a number turned into what the constant holds. A
   `half-life-weeks` of 1000 is no decay at all."
   [{:name "previous-season-weight" :var #'bid-history/previous-season-weight :values [0.0 0.25 0.5 0.75 1.0]}
    {:name "half-life-weeks"        :var #'bid-history/half-life-weeks        :values [1.0 2.0 4.0 8.0 1000.0]}
@@ -60,7 +66,20 @@
    {:name "pseudo-league-bids"     :var #'bid-history/pseudo-league-bids     :values [3.0 10.0 30.0 100.0 300.0]}
    {:name "cap-quantile"           :var #'faab/cap-quantile                  :values [0.5 0.75 0.9 0.95 0.99]}
    {:name "stash-share"            :var #'waiver/stash-share                 :values [0.0 0.05 0.15 0.3 0.5]}
-   {:name "PRIOR-GAMES"            :var #'ros/PRIOR-GAMES                    :values [2.0 4.0 6.0 10.0 17.0]}])
+   {:name "PRIOR-GAMES"            :var #'ros/PRIOR-GAMES                    :values [2.0 4.0 6.0 10.0 17.0]}
+   {:name "cluster-spread"         :var #'faab/cluster-spread                :values [0.5 0.75 1.0 1.43 2.0]
+    :as every-kind}])
+
+(defn value-of
+  "What setting `s` holds at the swept number `v`."
+  [s v]
+  ((or (:as s) identity) v))
+
+(defn shipped?
+  "Is `v` the value setting `s` ships with?"
+  [s v]
+  (let [x (value-of s v) cur @(:var s)]
+    (if (number? x) (== x cur) (= x cur))))
 
 (def lost-claim
   "What a claim the value bid would have lost costs, in dollars: the replay's
@@ -307,9 +326,9 @@
   "`name=value` as `[var value]`."
   [s]
   (let [[n v] (str/split s #"=" 2)
-        {:keys [var]} (first (filter #(= n (:name %)) settings))]
-    (when-not var (throw (ex-info (str "no such setting: " n) {:name n})))
-    [var (Double/parseDouble v)]))
+        setting (first (filter #(= n (:name %)) settings))]
+    (when-not setting (throw (ex-info (str "no such setting: " n) {:name n})))
+    [(:var setting) (value-of setting (Double/parseDouble v))]))
 
 (defn flag-values [args flag]
   (map second (filter #(= flag (first %)) (partition 2 1 args))))
@@ -336,11 +355,11 @@
   (into [["shipped" {}]]
         (if (seq sets)
           [["combined" sets]]
-          (for [{:keys [name var values]} settings
+          (for [{:keys [name var values] :as setting} settings
                 :when (or (empty? only) (only name))
                 v values
-                :when (not (== v @var))]
-            [(str name "=" (value-str v)) {var v}]))))
+                :when (not (shipped? setting v))]
+            [(str name "=" (value-str v)) {var (value-of setting v)}]))))
 
 (defn -main [& args]
   (let [flags   (set args)
@@ -365,12 +384,12 @@
         (do (print-header)
             (print-row "shipped" true bs nil)
             (print-row "combined" false (summary (get out "combined")) (compare-runs base (get out "combined"))))
-        (doseq [{:keys [name var values]} settings
+        (doseq [{:keys [name values] :as setting} settings
                 :when (or (empty? only) (only name))]
-          (println (str "\n-- " name " (shipped " (value-str @var) ") --"))
+          (println (str "\n-- " name " (shipped " (some #(when (shipped? setting %) (value-str %)) values) ") --"))
           (print-header)
           (doseq [v values]
-            (if (== v @var)
+            (if (shipped? setting v)
               (print-row (value-str v) true bs nil)
               (let [cand (get out (str name "=" (value-str v)))]
                 (print-row (value-str v) false (summary cand) (compare-runs base cand))))))))

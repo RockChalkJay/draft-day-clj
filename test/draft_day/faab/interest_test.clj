@@ -6,17 +6,6 @@
 
 (defn- near? [a b tolerance] (< (Math/abs (- (double a) (double b))) tolerance))
 
-(deftest lgamma-is-the-log-of-the-factorial-one-down
-  (is (near? (Math/log 24.0) (interest/lgamma 5.0) 1e-10))
-  (is (near? (* 0.5 (Math/log Math/PI)) (interest/lgamma 0.5) 1e-10))
-  (is (near? 0.0 (interest/lgamma 1.0) 1e-10))
-  (testing "below a half, where the fit's shapes live, by reflection"
-    (is (near? (Math/log 9.513507698668732) (interest/lgamma 0.1) 1e-10))
-    (is (near? (- (+ (Math/log 1e-4) (* 0.5772156649015329 1e-4))) (interest/lgamma 1e-4) 1e-8)
-        "Γ(x) ≈ 1/x - γ near zero")
-    (is (near? (+ (interest/lgamma 0.3) (Math/log 0.3)) (interest/lgamma 1.3) 1e-10)
-        "Γ(x + 1) = x Γ(x) across the branch")))
-
 (deftest the-count-likelihood-is-a-negative-binomial-of-the-right-moments
   (let [pmf  (fn [spread r n] (Math/exp (interest/nb-ll spread [{:rate r :bidders n}])))
         mom  (fn [spread r]
@@ -30,7 +19,15 @@
         (is (near? r m 1e-8) "whose mean is the rate")
         (is (near? (* r (+ 1.0 spread)) (- m2 (* m m)) 1e-6) "and whose variance is r(1 + spread)")))
     (is (near? (- (+ (* 2 (Math/log 0.7)) -0.7) (Math/log 2.0)) (interest/nb-ll 1e-9 [{:rate 0.7 :bidders 2}]) 1e-6)
-        "no spread at all is Poisson")))
+        "no spread at all is Poisson")
+    (let [rows [{:rate 0.3 :bidders 0} {:rate 0.9 :bidders 3} {:rate 0.1 :bidders 0} {:rate 0.5 :bidders 1}]]
+      (is (near? (interest/nb-ll 1.4 rows) (interest/nb-ll 1.4 (interest/summarize rows)) 1e-12)
+          "the summary scores as the rows do"))))
+
+(deftest a-week-nobody-bid-in-is-the-negative-binomials-zero
+  (doseq [spread [0.2 1.43 5.0] r [0.01 0.5 3.0]]
+    (let [a (/ r spread)]
+      (is (near? (* a (Math/log (/ a (+ a r)))) (interest/nb-ll spread [{:rate r :bidders 0}]) 1e-12)))))
 
 (deftest solve-is-a-linear-solve-at-any-size
   (let [rng (java.util.Random. 9)

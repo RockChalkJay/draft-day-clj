@@ -32,7 +32,10 @@
   one plus the spread. A shape that did not grow with the rate was measured
   first and fit worse: it made a claim on a player nobody expected bring a
   quarter of the company a claim on the week's obvious target does, where
-  real claims bring about the same company either way.
+  real claims bring about the same company either way. The spread printed here
+  is the counts' own; the one shipped is chosen by `draft-day.faab.sweep` on
+  the win-chance score, since the counts' spread, about 1.66, prices a
+  manager's own claim against more competition than it meets.
 
   A league's choices are extracted once, through the replay, and kept under
   `choices-dir` in a compact binary form: the shared features once a week as
@@ -381,19 +384,6 @@
      :uniform (/ (reduce + (map #(* (count (:chosen %)) (- (Math/log (alength ^objects (:x %))))) sets)) n)
      :choices n}))
 
-(defn lgamma
-  "The log gamma function, by Lanczos' approximation."
-  [x]
-  (let [c [0.99999999999980993 676.5203681218851 -1259.1392167224028 771.32342877765313
-           -176.61502916214059 12.507343278686905 -0.13857109526572012 9.9843695780195716e-6
-           1.5056327351493116e-7]]
-    (if (< x 0.5)
-      (- (Math/log (/ Math/PI (Math/sin (* Math/PI x)))) (lgamma (- 1.0 x)))
-      (let [x (dec x)
-            a (reduce + (first c) (map-indexed (fn [i ci] (/ ci (+ x i 1.0))) (rest c)))
-            t (+ x 7.5)]
-        (+ (* 0.5 (Math/log (* 2.0 Math/PI))) (* (+ x 0.5) (Math/log t)) (- t) (Math/log a))))))
-
 (defn player-weeks
   "Every free agent's week: `:rate`, every rival's claims on him together under
   `weights` and each rival's claims a week, and `:bidders`, how many bid."
@@ -420,23 +410,47 @@
                 (map (fn [j] {:rate (aget rate j) :bidders (get counts j 0)}) (range n))))
             weeks)))
 
+(defn summarize
+  "What `nb-ll` needs of the player-weeks: the rates of every week nobody bid
+  in, summed, since under the spread each counts only in proportion to its
+  rate, and the `[rate bidders]` of every week somebody did."
+  [rows]
+  (reduce (fn [acc {:keys [rate bidders]}]
+            (if (pos? bidders)
+              (update acc :hits conj [(max 1e-9 (double rate)) (long bidders)])
+              (update acc :zero-rate + (double rate))))
+          {:zero-rate 0.0 :hits []}
+          rows))
+
 (defn nb-ll
   "The log likelihood of the bidder counts when a player-week's rate r is
-  multiplied by a gamma of mean one and shape r / `spread`: a negative
-  binomial whose variance is r (1 + `spread`)."
+  multiplied by a gamma of mean one and shape a = r / `spread`: a negative
+  binomial whose variance is r (1 + `spread`). A week with n bidders adds
+  a log(a/(a+r)) + n log(r/(a+r)) + log(a(a+1)...(a+n-1)/n!), which with no
+  bidders is -(r/spread) log(1 + spread); `rows` is the player-weeks or their
+  `summarize`."
   [spread rows]
-  (reduce + (map (fn [{:keys [rate bidders]}]
-                   (let [r (max 1e-9 (double rate)) a (/ r spread) n (double bidders)]
-                     (+ (lgamma (+ n a)) (- (lgamma a)) (- (lgamma (inc n)))
-                        (* a (Math/log (/ a (+ a r)))) (* n (Math/log (/ r (+ a r)))))))
-                 rows)))
+  (let [{:keys [zero-rate hits]} (if (map? rows) rows (summarize rows))
+        spread (double spread)]
+    (+ (- (* (/ zero-rate spread) (Math/log (+ 1.0 spread))))
+       (reduce (fn [acc [r n]]
+                 (let [r (double r) n (long n) a (/ r spread)]
+                   (+ acc
+                      (* a (Math/log (/ a (+ a r))))
+                      (* n (Math/log (/ r (+ a r))))
+                      (loop [i 0 t 0.0]
+                        (if (< i n)
+                          (recur (inc i) (+ t (Math/log (/ (+ a i) (inc i)))))
+                          t)))))
+               0.0 hits))))
 
 (defn fit-spread
   "The `faab/cluster-spread` maximizing `nb-ll`, by golden-section search on
   its log."
   [rows]
   (let [g  (/ (- (Math/sqrt 5.0) 1.0) 2.0)
-        f  #(nb-ll (Math/exp %) rows)]
+        s  (summarize rows)
+        f  #(nb-ll (Math/exp %) s)]
     (loop [lo (Math/log 0.001) hi (Math/log 100.0) n 0]
       (if (= n 40)
         (Math/exp (/ (+ lo hi) 2.0))
@@ -491,6 +505,7 @@
         by-kind (into {}
                       (map (fn [kind]
                              (let [rows (of-kind kind fit-r)]
+                               (binding [*out* *err*] (println "  fitting" (name kind) (count rows) "leagues"))
                                [kind (if (< (count rows) min-kind-leagues)
                                        (assoc pooled :spread spread :leagues (count rows) :pooled? true)
                                        (let [f (fit all-keys (sets-of data rows))]

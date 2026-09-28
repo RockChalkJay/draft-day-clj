@@ -58,52 +58,56 @@
 (def claim-weights
   "How a rival aims his claims, by league kind: the weights of a conditional
   logit over `claim-features` and `need-features`. MEASURED by
-  `draft-day.faab.interest` — see its docstring for the leagues, the fit and
-  its held-out score."
-  {:redraft {:played    1.316
-     :last-game 0.459
-     :season    0.627
-     :vorp      -0.865
-     :vorp-sq   -0.788
-     :dropped   0.892
-     :pos/QB    -0.994
-     :pos/RB    0.610
-     :pos/TE    -0.326
-     :pos/K     -1.921
-     :pos/DST   -0.038
-     :need?     0.644}
-   :keeper  {:played    1.316
-     :last-game 0.459
-     :season    0.627
-     :vorp      -0.865
-     :vorp-sq   -0.788
-     :dropped   0.892
-     :pos/QB    -0.994
-     :pos/RB    0.610
-     :pos/TE    -0.326
-     :pos/K     -1.921
-     :pos/DST   -0.038
-     :need?     0.644}
-   :dynasty {:played    1.316
-     :last-game 0.459
-     :season    0.627
-     :vorp      -0.865
-     :vorp-sq   -0.788
-     :dropped   0.892
-     :pos/QB    -0.994
-     :pos/RB    0.610
-     :pos/TE    -0.326
-     :pos/K     -1.921
-     :pos/DST   -0.038
-     :need?     0.644}})
+  `draft-day.faab.interest`, fit on 1,077 leagues and scored on 1,063 others,
+  where each kind's own weights beat one pooled set on that kind's leagues. A
+  dynasty league almost never claims a kicker or a defense and chases
+  quarterbacks, a redraft league streams defenses and reads last week's game."
+  {:redraft {:played    1.339
+             :last-game 0.572
+             :season    0.278
+             :vorp      0.411
+             :vorp-sq   -0.221
+             :dropped   0.845
+             :pos/QB    -0.408
+             :pos/RB    0.538
+             :pos/TE    -0.347
+             :pos/K     -2.599
+             :pos/DST   -1.333
+             :need?     1.050}
+   :keeper  {:played    1.386
+             :last-game 0.527
+             :season    0.108
+             :vorp      -0.442
+             :vorp-sq   -0.613
+             :dropped   1.073
+             :pos/QB    -0.291
+             :pos/RB    0.681
+             :pos/TE    -0.358
+             :pos/K     -2.088
+             :pos/DST   -0.745
+             :need?     1.176}
+   :dynasty {:played    1.612
+             :last-game 0.190
+             :season    0.004
+             :vorp      -0.654
+             :vorp-sq   -0.748
+             :dropped   0.557
+             :pos/QB    0.864
+             :pos/RB    0.473
+             :pos/TE    -0.468
+             :pos/K     -4.725
+             :pos/DST   -4.357
+             :need?     1.103}})
 
 (def cluster-spread
   "How many more bidders a claim draws than the claim rates alone would say,
   by league kind: one player's week multiplies every claim rate on him by a
   gamma of mean one and shape (the league's total rate on him) / the spread,
   so once somebody claims him the others expect about this many more bids,
-  spread by their share of the interest, however likely he looked beforehand —
-  which is what real bids do. MEASURED by `draft-day.faab.interest`."
+  spread by their share of the interest, however likely he looked beforehand.
+  Chosen by `draft-day.faab.sweep` on the win-chance score rather than fit to
+  bidder counts: the spread the counts ask for (about 1.66) over-states the
+  competition a manager's own claim faces, and priced every claim too high."
   {:redraft 1.43 :keeper 1.43 :dynasty 1.43})
 
 (defn kind-of

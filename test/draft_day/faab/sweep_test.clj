@@ -61,6 +61,16 @@
   (is (= {:lo -1.0 :hi 2.0} (sweep/wider {:lo -1.0 :hi 2.0} {:lo 0.0 :hi 1.0})))
   (is (= {:point 1.0} (sweep/wider {:lo 0.0 :hi 1.0} {:point 1.0})) "too few blocks for one is no interval"))
 
+(deftest a-constant-keyed-by-kind-is-swept-as-one-number
+  (let [spread (first (filter #(= "cluster-spread" (:name %)) sweep/settings))
+        cs     (sweep/configs-for #{"cluster-spread"} {})]
+    (is (= {:redraft 0.5 :keeper 0.5 :dynasty 0.5} (sweep/value-of spread 0.5)))
+    (is (some #(sweep/shipped? spread %) (:values spread)) "the shipped spread is among the values tried")
+    (is (every? (fn [[_ o]] (map? (get o #'draft-day.rankings.faab/cluster-spread))) (rest cs))
+        "each configuration sets every kind")
+    (is (= [#'draft-day.rankings.faab/cluster-spread {:redraft 2.0 :keeper 2.0 :dynasty 2.0}]
+           (sweep/parse-set "cluster-spread=2")))))
+
 (deftest a-sweep-runs-the-shipped-constants-then-every-other-value
   (let [cs (sweep/configs-for #{"pseudo-bids"} {})]
     (is (= ["shipped" {}] (first cs)))
