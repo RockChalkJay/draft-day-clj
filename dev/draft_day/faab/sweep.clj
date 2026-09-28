@@ -206,10 +206,15 @@
       nil)))
 
 (defn run-dir
-  "Where a run's chunks are kept: named for its leagues and configurations."
+  "Where a run's chunks are kept: named for its leagues, its configurations and
+  the constants shipped when it ran, since a configuration is measured against
+  them and a chunk computed under others is not this run's."
   [rows configs]
   (format "data/faab_cache/sweep/%08x"
-          (hash [(mapv :league-id rows) (mapv (fn [[label o]] [label (update-keys o str)]) configs)])))
+          (hash [(mapv :league-id rows)
+                 (mapv (fn [[label o]] [label (update-keys o str)]) configs)
+                 (mapv (comp deref :var) settings)
+                 faab/claim-weights])))
 
 (defn run-configs
   "`{label sums}` for every `[label overrides]` in `configs` over `rows`, under
@@ -224,11 +229,16 @@
          (let [path (str dir "/chunk-" i ".transit")
                done (when (.exists (io/file path)) (pipeline/read-transit path))
                sums (or done
-                        (let [s (into {}
-                                      (map (fn [[label overrides]]
-                                             [label (with-redefs-fn (merge prior overrides)
-                                                      #(reduce merge-sums {} (keep identity (pmap replay-league chunk))))]))
-                                      configs)]
+                        (let [by  (into {}
+                                        (map (fn [[label overrides]]
+                                               [label (with-redefs-fn (merge prior overrides)
+                                                        #(into {} (pmap (juxt :league-id replay-league) chunk)))]))
+                                        configs)
+                              ;; Only leagues every configuration scored, or a
+                              ;; league that failed under one is paired with
+                              ;; nothing.
+                              ok  (filter (fn [id] (every? #(get-in by [% id]) (keys by))) (map :league-id chunk))
+                              s   (update-vals by (fn [m] (reduce merge-sums {} (map m ok))))]
                           (reset! needs-cache {})
                           (io/make-parents path)
                           (pipeline/write-transit! path s)
@@ -342,7 +352,7 @@
   [half n]
   (let [skipped (leagues/skipped)
         ready?  #(and (not (skipped (:league-id %)))
-                      (every? (fn [id] (.exists (io/file (str replay/cache-dir "/league-" id ".transit"))))
+                      (every? (fn [id] (.exists (io/file (replay/docs-path id))))
                               [(:league-id %) (:previous %)]))]
     (vec (cond->> (filter ready? (leagues/pick (leagues/load-set) half nil))
            n (take n)))))
@@ -370,8 +380,12 @@
         rows    (replayable half n)
         configs (configs-for only sets)
         dir     (run-dir rows configs)]
-    (when (flags "--fresh")
+    (when (and (flags "--fresh") (.exists (io/file dir)))
       (run! io/delete-file (reverse (file-seq (io/file dir)))))
+    (when (empty? rows)
+      (println "No league in the set is ready to replay: run draft-day.faab.leagues --fetch first.")
+      (shutdown-agents)
+      (System/exit 1))
     (println (format "%d leagues (%s half), %d configurations, chunks under %s"
                      (count rows) (name half) (count configs) dir))
     (let [out  (run-configs (half-prior half) rows configs dir)

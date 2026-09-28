@@ -87,11 +87,16 @@
   (let [{:keys [ok? body reason]} (crawl/fetch path)]
     (if ok? body (throw (ex-info "Sleeper fetch failed" {:path path :reason reason})))))
 
+(defn docs-path
+  "Where `league-docs` caches a league-season."
+  [league-id]
+  (str cache-dir "/league-" league-id ".transit"))
+
 (defn league-docs
   "A finished league-season's league, users, final rosters and every week's
   transactions."
   [league-id]
-  (cached! (str cache-dir "/league-" league-id ".transit")
+  (cached! (docs-path league-id)
            #(let [league (body! (str "/league/" league-id))]
               (when-not (= "complete" (:status league))
                 (throw (ex-info "only a finished season can be replayed" {:league-id league-id})))

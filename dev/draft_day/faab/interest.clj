@@ -38,9 +38,9 @@
   manager's own claim against more competition than it meets.
 
   A league's choices are extracted once, through the replay, and kept under
-  `choices-dir` in a compact binary form: the shared features once a week as
-  floats, and each rival's own feature as a byte per free agent. Changing
-  `faab/claim-features` means bumping `choices-version`.
+  `choices-dir` by half, since each half's backbone is refit without it, in a
+  compact binary form: the shared features once a week as floats, and each
+  rival's own feature as a byte per free agent. See `choices-version`.
 
   Each half is extracted under a backbone refit without it
   (`sweep/half-prior`). `--sample N` takes the first N leagues of each half.
@@ -72,7 +72,10 @@
 
 (def all-keys (conj common-keys need-key))
 
-(def choices-version 1)
+(def choices-version
+  "Bumped whenever what a cached choice holds would change: `faab/claim-features`
+  or the bid-history constants behind each rival's `:per-week`."
+  2)
 
 (def choices-dir (str "data/faab_cache/choices/v" choices-version))
 
@@ -174,8 +177,8 @@
   "Every week's choices in one replayed league, read from `choices-dir` or
   extracted through the replay's own reconstruction of what the board knew
   and written there. Extracting needs `capture` installed."
-  [league-id]
-  (let [path (str choices-dir "/" league-id ".bin")]
+  [league-id half]
+  (let [path (str choices-dir "/" (name half) "/" league-id ".bin")]
     (if (.exists (io/file path))
       (read-choices path)
       (binding [*sink* (atom [])]
@@ -184,14 +187,14 @@
         @*sink*))))
 
 (defn load-leagues
-  "`{league-id weeks}` for `rows`, extracted in parallel under the backbone
-  `prior`; a league the replay cannot read is logged and left out."
-  [prior rows]
-  (with-redefs-fn (merge prior (capture))
+  "`{league-id weeks}` for `rows` from `half`, extracted in parallel under that
+  half's backbone; a league the replay cannot read is logged and left out."
+  [rows half]
+  (with-redefs-fn (merge (sweep/half-prior half) (capture))
     #(into {}
            (keep identity)
            (pmap (fn [{:keys [league-id]}]
-                   (try [league-id (league-choices league-id)]
+                   (try [league-id (league-choices league-id half)]
                         (catch Exception e
                           (binding [*out* *err*] (println "  skipped" league-id (ex-message e)))
                           nil)))
@@ -492,8 +495,7 @@
         fit-r   (sweep/replayable :fit n)
         score-r (sweep/replayable :score n)
         _       (println (format "Extracting choices: %d fit and %d score leagues" (count fit-r) (count score-r)))
-        data    (merge (load-leagues (sweep/half-prior :fit) fit-r)
-                       (load-leagues (sweep/half-prior :score) score-r))
+        data    (merge (load-leagues fit-r :fit) (load-leagues score-r :score))
         fit-r   (filterv #(data (:league-id %)) fit-r)
         score-r (filterv #(data (:league-id %)) score-r)
         fit-s   (sets-of data fit-r)
@@ -527,10 +529,11 @@
     (doseq [kind kinds]
       (let [sets (sets-of data (of-kind kind score-r))]
         (when (seq sets)
-          (println (format "  %-8s own %.4f  pooled %.4f  shipped %.4f  uniform %.4f  (%d choices)" (name kind)
-                           (:model (per-choice (own kind) all-keys sets)) (:model (per-choice w all-keys sets))
-                           (:model (per-choice (get faab/claim-weights kind) all-keys sets))
-                           (:uniform (per-choice w all-keys sets)) (reduce + (map (comp count :chosen) sets)))))))
+          (let [pq (per-choice w all-keys sets)]
+            (println (format "  %-8s own %.4f  pooled %.4f  shipped %.4f  uniform %.4f  (%d choices)" (name kind)
+                             (:model (per-choice (own kind) all-keys sets)) (:model pq)
+                             (:model (per-choice (get faab/claim-weights kind) all-keys sets))
+                             (:uniform pq) (:choices pq)))))))
     (println "\nBy stratum, on the score half, under its kind's own fit:")
     (doseq [[s rows] (sort-by (comp stratum-label key) (group-by :stratum score-r))]
       (let [q (per-choice (own (:kind s)) all-keys (sets-of data rows))]
@@ -551,12 +554,12 @@
     (println "\nclaim-weights:" (into (sorted-map) (map (fn [k] [k (rounded (own k))]) kinds)))
     (println "cluster-spread:" (into (sorted-map) (map (fn [k] [k (/ (Math/round (* 1000.0 (get-in by-kind [k :spread]))) 1000.0)]) kinds)))
     (when (flags "--replay")
-      (let [per-kind {#'faab/claim-weights  (into {} (map (fn [k] [k (own k)]) kinds))
-                      #'faab/cluster-spread (into {} (map (fn [k] [k (get-in by-kind [k :spread])]) kinds))}
-            configs  [["shipped" {}]
-                      ["pooled" {#'faab/claim-weights  (zipmap kinds (repeat w))
-                                 #'faab/cluster-spread (zipmap kinds (repeat spread))}]
-                      ["per-kind" per-kind]]
+      ;; The spread stays the shipped one: the sweep tunes it, and the counts'
+      ;; own spread would confound these weights with a price known to be
+      ;; worse.
+      (let [configs  [["shipped" {}]
+                      ["pooled" {#'faab/claim-weights (zipmap kinds (repeat w))}]
+                      ["per-kind" {#'faab/claim-weights (into {} (map (fn [k] [k (own k)]) kinds))}]]
             out      (sweep/run-configs (sweep/half-prior :score) score-r configs (sweep/run-dir score-r configs))
             base     (get out "shipped")]
         (println "\nReplayed on the score half, against the shipped constants:")

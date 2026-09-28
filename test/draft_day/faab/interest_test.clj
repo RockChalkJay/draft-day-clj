@@ -2,7 +2,8 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [draft-day.faab.interest :as interest]
-            [draft-day.faab.replay :as replay]))
+            [draft-day.faab.replay :as replay]
+            [draft-day.faab.sweep :as sweep]))
 
 (defn- near? [a b tolerance] (< (Math/abs (- (double a) (double b))) tolerance))
 
@@ -173,9 +174,10 @@
                                                 (replay/who-bids-rows id nil #{} w)))
                 interest/week-choices       (fn [board _ _ w] {:week w :from board})
                 interest/write-choices!     (fn [& _])
-                interest/choices-dir        (str (System/getProperty "java.io.tmpdir") "/no-such-" (random-uuid))]
+                interest/choices-dir        (str (System/getProperty "java.io.tmpdir") "/no-such-" (random-uuid))
+                sweep/half-prior            (constantly {})]
     (let [ids  (map str (range 40))
-          data (interest/load-leagues {} (map #(hash-map :league-id %) ids))]
+          data (interest/load-leagues (map #(hash-map :league-id %) ids) :fit)]
       (is (= (set ids) (set (keys data))))
       (is (every? (fn [[id weeks]] (and (= 6 (count weeks)) (every? #(= id (:from %)) weeks))) data)
           "the replay's hook is shared by every thread; what it captures must not be"))))

@@ -10,8 +10,9 @@
 
   Each league carries its stratum (season, kind, a $100 budget or another,
   superflex or not), a half and an order. The halves split every stratum
-  evenly between `:fit`, which `draft-day.faab.interest` fits on and
-  `draft-day.faab.sweep` tunes on, and `:score`, which neither ever sees. The
+  between `:fit`, which `draft-day.faab.interest` fits on and
+  `draft-day.faab.sweep` tunes on, and `:score`, which neither ever sees —
+  evenly, but for an odd stratum's last league, which goes to `:fit`. The
   order is a seeded random one, so the first n leagues of either half are a
   random sample of it, a smaller sample always inside a larger one: a learning
   curve's subsamples are nested, and a fetch stopped part way has fetched a
@@ -74,7 +75,8 @@
 
 (defn assign
   "The frozen rows for `metas`: in the seeded order, each stratum's leagues
-  alternating between the halves, so each half holds half of every stratum."
+  alternating between the halves from `:fit`, so each half holds half of every
+  stratum and the fit half an odd one's extra league."
   [metas]
   (let [rows (->> metas
                   (map (fn [m] {:league-id (str (:league-id m))

@@ -106,3 +106,24 @@
     (is (= 3 @calls) "a board that moved his players is a new question")
     (is (= {"x" 1.0} (:needs (first (needs teams 3 nil (assoc-in by-id ["a" :ros-points] 11.0) 9 [] fas))))
         "and the answer is the new board's")))
+
+(def mode "Which configuration a stubbed replay runs under." :a)
+
+(deftest a-league-one-configuration-lost-is-left-out-of-every-one
+  (let [dir  (str (System/getProperty "java.io.tmpdir") "/sweep-" (random-uuid))
+        rows [{:league-id "L1" :stratum {:season "2025"}} {:league-id "L2" :stratum {:season "2025"}}]]
+    (with-redefs [sweep/replay-league (fn [row]
+                                        (when-not (and (= mode :b) (= "L2" (:league-id row)))
+                                          (sweep/league-sums row run)))]
+      (let [out (sweep/run-configs {} rows [["a" {}] ["b" {#'mode :b}]] dir)]
+        (is (= #{"L1"} (set (keys (get-in out ["a" :by-league]))))
+            "L2 failed under b, so a does not score it either")
+        (is (= #{"L1"} (set (keys (get-in out ["b" :by-league])))))))))
+
+(deftest a-run-is-named-for-the-constants-it-was-measured-against
+  (let [rows [{:league-id "L1"}]
+        cs   [["shipped" {}]]]
+    (is (= (sweep/run-dir rows cs) (sweep/run-dir rows cs)))
+    (is (not= (sweep/run-dir rows cs)
+              (with-redefs [draft-day.bid-history/pseudo-bids 99.0] (sweep/run-dir rows cs)))
+        "shipping a new constant is a new baseline, not a chunk read back from disk")))
