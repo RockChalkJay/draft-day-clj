@@ -603,9 +603,15 @@
 
 (deftest opening-the-league-tab-first-loads-what-it-reads
   (swap! rdb/app-db assoc :active-league "sleeper:1"
-         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :sync {:teams []}}})
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :sync {:teams [] :kind "redraft"}}})
   (is (= #{:fetch-waivers :fetch-matchup}
          (set (map first (dispatched #(rf/dispatch-sync [:set-view :rosters])))))))
+
+(deftest a-sync-too-old-to-price-from-is-fetched-again-first
+  (swap! rdb/app-db assoc :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :sync {:teams []}}})
+  (is (= [:sync-league] (map first (dispatched #(rf/dispatch-sync [:set-view :rosters]))))
+      "a Sleeper sync from before syncs said what kind of league it is"))
 
 (deftest a-league-switch-on-any-season-tab-refetches-the-week
   (swap! rdb/app-db assoc :view :rosters :active-league "sleeper:1"

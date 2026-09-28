@@ -174,11 +174,12 @@
     ;;
     ;; Which boards a tab loads is `db/waiver-views` and `db/matchup-view?` —
     ;; every season tab needs the matchup, for the header's week. A league
-    ;; whose rosters never arrived is synced first, as `:set-active-league`
+    ;; whose rosters never arrived, or whose sync is too old to price from
+    ;; (`db/needs-sync?`), is synced first, as `:set-active-league`
     ;; does; `:league-synced` asks for both boards.
     (let [lg       (db/active-league db)
           matchup? (and (db/matchup-view? v) (nil? (:matchup db)))
-          fx       (if (and matchup? lg (nil? (:sync lg))
+          fx       (if (and matchup? lg (db/needs-sync? lg)
                             (providers/matchups? (:provider lg)))
                      [[:dispatch [:sync-league (select-keys lg [:provider :league-id])]]]
                      (cond-> []
@@ -626,8 +627,9 @@
          :fx (cond-> [[:dispatch [:recompute]]
                       [:dispatch [:fetch-waivers]]]
                ;; A league added by pasted id has rosters nobody has fetched, and
-               ;; a waiver board built on no league says everyone is free.
-               (nil? (:sync entry))
+               ;; a waiver board built on no league says everyone is free; see
+               ;; `db/needs-sync?` for a sync too old to price from.
+               (db/needs-sync? entry)
                (conj [:dispatch [:sync-league (select-keys entry [:provider :league-id])]])
                ;; Only while a season tab is on screen, since the header's week
                ;; is the matchup's; anywhere else `:set-view`'s first-open fetch

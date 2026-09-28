@@ -131,6 +131,18 @@
   [db]
   (get-in db [:leagues (:active-league db)]))
 
+(defn needs-sync?
+  "Should league `entry` be synced before its boards are built: it never has
+  been, or its stored sync predates a field the waiver board prices from. A
+  Sleeper sync without `:kind` reads every league as redraft, and a dynasty
+  league priced that way is quietly wrong, so it is re-fetched the first time
+  it is opened rather than waiting for the manager to press Re-sync."
+  [entry]
+  (let [s (:sync entry)]
+    (or (nil? s)
+        (and (= "sleeper" (some-> (:provider entry) name))
+             (not (contains? s :kind))))))
+
 (defn league-account
   "The account a league is read through, or nil for one added by bare id.
 

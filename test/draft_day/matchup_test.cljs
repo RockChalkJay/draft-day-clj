@@ -46,7 +46,7 @@
 
 (def ^:private league
   {:provider "sleeper" :league-id "99" :name "The League" :my-roster-id 2
-   :sync {:teams [{:roster-id 1 :name "Them"} {:roster-id 2 :name "Mine"}]}})
+   :sync {:teams [{:roster-id 1 :name "Them"} {:roster-id 2 :name "Mine"}] :kind "redraft"}})
 
 (defn- connect!
   "A synced league, in season. The matchup tab is only in the season's half of

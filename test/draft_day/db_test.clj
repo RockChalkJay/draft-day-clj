@@ -946,3 +946,13 @@
         "hidden in place, so the stored order survives")
     (is (:faab-only? (first (filter #(= :bid (:key %))
                                     (db/waiver-columns-for cols {:waiver {:type "rolling"}})))))))
+
+(deftest a-league-is-synced-before-its-boards-when-its-sync-is-missing-or-too-old
+  (is (db/needs-sync? {:provider "sleeper"}) "never synced")
+  (is (db/needs-sync? {:provider "sleeper" :sync {:teams []}})
+      "a Sleeper sync from before syncs said what kind of league it is")
+  (is (not (db/needs-sync? {:provider :sleeper :sync {:teams [] :kind "dynasty"}})))
+  (is (not (db/needs-sync? {:provider "sleeper" :sync {:teams [] :kind nil}}))
+      "a league that says nothing has still been asked")
+  (is (not (db/needs-sync? {:provider "espn" :sync {:teams []}}))
+      "an ESPN sync never carries a kind, so its absence is not age"))
