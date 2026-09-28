@@ -105,10 +105,11 @@
   gamma of mean one and shape (the league's total rate on him) / the spread,
   so once somebody claims him the others expect about this many more bids,
   spread by their share of the interest, however likely he looked beforehand.
-  Chosen by `draft-day.faab.sweep` on the win-chance score rather than fit to
-  bidder counts: the spread the counts ask for (about 1.66) over-states the
-  competition a manager's own claim faces, and priced every claim too high."
-  {:redraft 1.43 :keeper 1.43 :dynasty 1.43})
+  Tuned by `draft-day.faab.sweep` on the win-chance score rather than fit to
+  bidder counts: the spread the counts ask for, about 1.66, over-states the
+  competition a manager's own claim meets and priced every claim too high,
+  and between 0.5 and 2 the score was best at 1."
+  {:redraft 1.0 :keeper 1.0 :dynasty 1.0})
 
 (defn kind-of
   "A league kind as `claim-weights` keys it: redraft, keeper or dynasty,

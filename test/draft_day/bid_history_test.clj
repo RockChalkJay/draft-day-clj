@@ -42,13 +42,15 @@
                                          [(season 1000 (auction 3 (bid "u1" t1000 true)))]))))
         "a $1000 league's ordinary bid is ordinary, not small")))
 
-(deftest a-manager-with-no-evidence-is-the-typical-sleeper-manager
+(deftest a-thin-history-is-shrunk-toward-the-typical-sleeper-manager
   (let [{:keys [profiles]} (bh/profiles {:seasons [(season 100 (auction 1 (bid "u1" 0 true)))]})
-        p (first profiles)]
+        p      (first profiles)
+        median (get-in prior/managers [:zero-share :p50])]
     (is (< (Math/abs (- (:per-week p) (get-in prior/managers [:per-week :p50]))) 0.1)
-        "one bid in one week is two pseudo-weeks of the median rate and a little of his own")
-    (is (< (get-in prior/managers [:zero-share :p50]) (:zero-share p) 0.6)
-        "one $0 bid leans him only a little toward bidding $0")))
+        "one bid in one week is a little of his own rate against pseudo-weeks of the median's")
+    (is (close? (/ (+ 1.0 (* bh/pseudo-bids median)) (+ 1.0 bh/pseudo-bids)) (:zero-share p))
+        "one $0 bid, weighed against pseudo-bids at the typical manager's $0 share")
+    (is (< median (:zero-share p) 1.0) "leaning him toward $0, not all the way")))
 
 (deftest a-manager-who-bids-big-in-his-own-league-reads-as-aggressive
   (let [t     (typical 1 3)
@@ -62,15 +64,16 @@
         "his bids raise the level he is read against; together they carry his price, less shrinkage")
     (is (= :big-spender (:style p)))))
 
-(deftest last-season-counts-but-less
+(deftest last-season-counts-as-this-seasons-latest-week-does
   (let [t    (typical 1 3)
         now  (season 100 (auction 3 (bid "u1" t true)))
         then (apply season 100 (map (fn [_] (auction 3 (bid "u1" (* 3 t) true))) (range 20)))
         with (first (:profiles (bh/profiles {:seasons [now then]})))
         full (first (:profiles (bh/profiles {:seasons [(apply season 100 (concat (:auctions now)
                                                                                (:auctions then)))]})))]
-    (is (pos? (:log-multiplier with)) "last season's big bids still say something")
-    (is (< (:log-multiplier with) (:log-multiplier full)) "but less than if they were this season's")
+    (is (pos? (:log-multiplier with)) "last season's big bids say something")
+    (is (close? (:log-multiplier full) (:log-multiplier with))
+        "as much as if they had been this season's latest week")
     (is (= 21 (:bids with)))
     (is (= 1 (:current-bids with)))))
 
@@ -82,8 +85,11 @@
                                        [1 2 3]))
         by   (into {} (map (juxt :manager identity))
                    (:profiles (bh/profiles {:seasons [now then]})))]
-    (is (< 2.0 (:per-week (by "rookie")))
-        "three claims a week this season, with no silent season behind him")
+    (is (close? (:per-week (first (:profiles (bh/profiles {:seasons [now]}))))
+                (:per-week (by "rookie")))
+        "his rate is what it would be had the league no last season at all")
+    (is (< (get-in prior/managers [:per-week :p50]) (:per-week (by "rookie")))
+        "three claims a week lifts him above the median")
     (is (< (:per-week (by "veteran")) 1.0)
         "the veteran, who played last season, is charged for this one too")))
 

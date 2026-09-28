@@ -14,8 +14,7 @@
 
   Evidence is weighted twice. The current season decays toward its latest week,
   so a manager who stopped bidding stops reading as active, and last season
-  counts at a CHOSEN fraction, since habits carry across seasons well but not
-  fully. A bid belongs to the manager who placed it (`:owner-id`), which is what
+  counts at `previous-season-weight`. A bid belongs to the manager who placed it (`:owner-id`), which is what
   follows him from one season to the next; a bid with no owner is kept under its
   roster.
 
@@ -26,33 +25,41 @@
   manager's bids by.
 
   Pure and universe-free: the server computes it from the history cache and the
-  browser renders the profiles it is sent. Every CHOSEN constant stands until
-  the replay backtest scores it."
+  browser renders the profiles it is sent. The constants are tuned by
+  `draft-day.faab.sweep` on the win-chance score over 250 leagues and
+  confirmed on 250 others; what they say together is that a league's own
+  history is worth more than the first guesses gave it credit for."
   (:require [draft-day.bid-prior :as prior]))
 
 (def previous-season-weight
-  "What a bid from last season counts for against one from this season. CHOSEN,
-  near `bid-prior/persistence`'s season-to-season correlations (0.43-0.62)."
-  0.5)
+  "What a bid from last season counts for against one from this season's latest
+  week: all of it. Swept from 0 to 1, the score rose all the way, so a
+  manager's last season is as good a guide as this one's recent weeks, and
+  better than this one's early weeks, which `half-life-weeks` discounts."
+  1.0)
 
 (def half-life-weeks
   "How many weeks it takes a current-season bid to count half as much as one
-  from the league's latest week. CHOSEN."
+  from the league's latest week. Swept from 1 week to no decay at all; 4
+  scored as well as any."
   4.0)
 
 (def pseudo-weeks
   "Weeks at the Sleeper-wide median rate a manager's bids a week are blended
-  with. CHOSEN."
-  2.0)
+  with. Swept from half a week to eight; 4 improved the win-chance score on 2
+  without costing the bid, and 8 began to."
+  4.0)
 
 (def pseudo-bids
   "Bids at the prior's value a manager's $0 share, or his aggression, is blended
-  with. CHOSEN."
-  8.0)
+  with. Swept from 1 to 32, the score improved all the way down to 1: how a
+  manager bids is his own, and a few of his bids say more than the Sleeper-wide
+  typical manager does."
+  1.0)
 
 (def pseudo-league-bids
   "Positive bids at the backbone's price a league's multiplier is blended with.
-  CHOSEN."
+  Swept from 3 to 300 with no difference the score could see."
   30.0)
 
 (defn typical-share
