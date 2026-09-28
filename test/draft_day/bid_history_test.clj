@@ -166,3 +166,14 @@
     (is (= :new (:style (bh/silent-profile nil 0.0))))
     (is (close? -0.2 (:log-multiplier (bh/silent-profile (weeks 2) -0.2)))
         "and when he does bid, he bids like his league")))
+
+(deftest one-or-two-bids-do-not-name-a-style
+  (let [t      (typical 1 3)
+        big    (bh/profiles {:seasons [(season 100 (auction 3 (bid "u1" (* 3.4 t) true)))]})
+        zeros  (bh/profiles {:seasons [(apply season 100 (map #(auction % (bid "u1" 0 true)) [1 2]))]})
+        styled #(:style (first (:profiles %)))]
+    (is (not= :big-spender (styled big)) "one big bid is not a big spender")
+    (is (not= :zero-flyer (styled zeros)) "two $0 bids are not a $0 flyer")
+    (is (< (get-in (first (:profiles big)) [:shown :aggression])
+           (:aggression (first (:profiles big))))
+        "the price trusts his one bid more than the label does")))

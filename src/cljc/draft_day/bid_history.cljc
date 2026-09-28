@@ -170,15 +170,27 @@
   after which a manager reads as quiet. CHOSEN."
   3)
 
+(def shown-pseudo-weeks
+  "`pseudo-weeks` for the figures a style is named from and shown with. The
+  style thresholds were set against this much shrinkage; the pricing constants
+  were later tuned to shrink less, which named a manager after one bid."
+  2.0)
+
+(def shown-pseudo-bids
+  "`pseudo-bids` for the figures a style is named from and shown with; see
+  `shown-pseudo-weeks`."
+  8.0)
+
 (defn style
-  "A bidding style, from a profile and how many weeks of auctions the season has
-  run. CHOSEN thresholds, against the Sleeper-wide spread in
+  "A bidding style, from a profile's `:shown` figures and how many weeks of
+  auctions the season has run. CHOSEN thresholds, against the Sleeper-wide spread in
   `bid-prior/managers`: a sniper bids rarely and big — big on average, or once
   for a quarter of the budget, which an average over his bids would dilute — a
   big spender bids big whatever the rate, and a $0 flyer bids often and rarely
   pays. A sniper is named before a quiet manager, since going quiet and then
   pouncing is what a sniper does."
-  [{:keys [bids current-bids recent-bids per-week zero-share aggression top-share]} weeks-run]
+  [{:keys [bids current-bids recent-bids top-share] :as p} weeks-run]
+  (let [{:keys [per-week zero-share aggression]} (merge p (:shown p))]
   (cond
     (zero? (or bids 0)) :new
 
@@ -195,28 +207,40 @@
          (>= per-week 1.2)
          (pos? current-bids)) :zero-flyer
 
-    :else :typical))
+    :else :typical)))
+
+(defn figures
+  "Bids a week, share at $0 and aggression for one manager's bids, blended with
+  `weeks` pseudo-weeks and `bids-n` pseudo-bids at the prior's values."
+  [bs pos exposure league-log weeks bids-n]
+  {:per-week   (blend (weighted-sum (constantly 1.0) bs) exposure weeks
+                      (get-in prior/managers [:per-week :p50]))
+   :zero-share (blend (weighted-sum #(if (:log-ratio %) 0.0 1.0) bs)
+                      (weighted-sum (constantly 1.0) bs) bids-n
+                      (get-in prior/managers [:zero-share :p50]))
+   :aggression (blend (weighted-sum #(- (:log-ratio %) league-log) pos)
+                      (weighted-sum (constantly 1.0) pos) bids-n 0.0)})
 
 (defn profile
   "One manager's bids, shrunk, with the raw counts beside the blended figures so
-  a reader can see how much evidence stands behind each."
+  a reader can see how much evidence stands behind each. The top-level figures
+  price his bids; `:shown` are the same blended as the style was set for."
   [manager bs exposure-of league-log current]
   (let [pos        (filter :log-ratio bs)
         this-year  (filter :current? bs)
         latest     (latest-week current)
-        aggression (blend (weighted-sum #(- (:log-ratio %) league-log) pos)
-                          (weighted-sum (constantly 1.0) pos) pseudo-bids 0.0)]
+        {:keys [aggression] :as priced}
+        (figures bs pos (exposure-of manager) league-log pseudo-weeks pseudo-bids)]
     {:manager         manager
      :roster-id       (some :roster-id (filter :current? bs))
      :bids            (count bs)
      :current-bids    (count this-year)
      :recent-bids     (count (filter #(> (:week %) (- latest quiet-weeks)) this-year))
-     :per-week        (blend (weighted-sum (constantly 1.0) bs) (exposure-of manager) pseudo-weeks
-                             (get-in prior/managers [:per-week :p50]))
-     :zero-share      (blend (weighted-sum #(if (:log-ratio %) 0.0 1.0) bs)
-                             (weighted-sum (constantly 1.0) bs) pseudo-bids
-                             (get-in prior/managers [:zero-share :p50]))
+     :per-week        (:per-week priced)
+     :zero-share      (:zero-share priced)
      :aggression      aggression
+     :shown           (figures bs pos (exposure-of manager) league-log
+                               shown-pseudo-weeks shown-pseudo-bids)
      :log-multiplier  (+ league-log aggression)
      :max-bid         (reduce max 0 (map :amount this-year))
      :top-share       (let [budget (:budget current)]
@@ -290,10 +314,11 @@
 (defn style-line
   "One line for a team card: the style and the evidence for it, e.g.
   \"Sniper — 0.6 claims a week, 40% at $0, top bid $38\"."
-  [{:keys [style per-week zero-share max-bid bids]}]
+  [profile]
+  (let [{:keys [style per-week zero-share max-bid bids]} (merge profile (:shown profile))]
   (if (or (nil? style) (= :new style) (zero? (or bids 0)))
     (style-labels :new)
     (str (style-labels style "Typical") " — "
          (one-decimal per-week) " claims a week, "
          (Math/round (* 100.0 zero-share)) "% at $0"
-         (when (pos? (or max-bid 0)) (str ", top bid $" max-bid)))))
+         (when (pos? (or max-bid 0)) (str ", top bid $" max-bid))))))
