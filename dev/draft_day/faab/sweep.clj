@@ -64,8 +64,7 @@
    {:name "pseudo-weeks"           :var #'bid-history/pseudo-weeks           :values [0.5 1.0 2.0 4.0 8.0]}
    {:name "pseudo-bids"            :var #'bid-history/pseudo-bids            :values [1.0 2.0 4.0 8.0 16.0 32.0]}
    {:name "pseudo-league-bids"     :var #'bid-history/pseudo-league-bids     :values [3.0 10.0 30.0 100.0 300.0]}
-   {:name "cap-quantile"           :var #'faab/cap-quantile                  :values [0.5 0.75 0.9 0.95 0.99]}
-   {:name "stash-share"            :var #'waiver/stash-share                 :values [0.0 0.05 0.15 0.3 0.5]}
+   {:name "cap-quantile"           :var #'faab/cap-quantile                  :values [0.25 0.5 0.75 0.9]}
    {:name "PRIOR-GAMES"            :var #'ros/PRIOR-GAMES                    :values [2.0 4.0 6.0 10.0 17.0]}
    {:name "cluster-spread"         :var #'faab/cluster-spread                :values [0.5 0.75 1.0 1.43 2.0]
     :as every-kind}])
@@ -267,6 +266,10 @@
      :p90     (ratio t :p90 :contest-n)
      :gain    (ratio t :gain :gain-n)
      :kept    (ratio t :kept :gain-n)
+     ;; What the value bid saved the winners it kept, lost claims not charged:
+     ;; `:gain` less its `lost-claim` charge, which the sums carry.
+     :saved   (some-> (ratio t :gain :gain-n)
+                      (+ (* lost-claim (- 1.0 (ratio t :kept :gain-n)))))
      :leagues (count (:by-league sums))
      :bids    (get t :win-n 0)
      :winners (get t :gain-n 0)}))
@@ -297,16 +300,43 @@
   (let [w #(if (:lo %) (- (:hi %) (:lo %)) ##Inf)]
     (if (>= (w a) (w b)) a b)))
 
+(defn break-even
+  "When `cand` value-bids better than `base`, by the cost of a lost claim: what
+  the candidate saves a winner over the baseline against the share of claims
+  it keeps over the baseline. `[:below c]` when it saves more by losing more,
+  so it is better while a lost claim costs under c; `[:above c]` when it keeps
+  more by saving less, better while one costs over c; `:always` or `:never`
+  when one side does not trade at all. The replay cannot know what a claim was
+  worth to the manager who won it, and `lost-claim` is a guess, so this says
+  which guesses a comparison survives."
+  [base cand]
+  (let [b (summary base) c (summary cand)
+        d-saved (- (:saved c) (:saved b))
+        d-kept  (- (:kept c) (:kept b))]
+    (cond
+      (and (>= d-saved 0) (>= d-kept 0)) :always
+      (and (<= d-saved 0) (<= d-kept 0)) :never
+      (pos? d-saved) [:below (/ d-saved (- d-kept))]
+      :else          [:above (/ (- d-saved) d-kept)])))
+
+(defn break-even-str [be]
+  (cond (= :always be) "always"
+        (= :never be)  "never"
+        (vector? be)   (format "if a lost claim costs %s $%.2f" (if (= :below (first be)) "under" "over") (second be))
+        :else          ""))
+
 (defn compare-runs
   "The candidate less the baseline on the three scored figures, each with the
-  wider of its 95% intervals over leagues and over season-weeks."
+  wider of its 95% intervals over leagues and over season-weeks, and the
+  `break-even` cost of a lost claim."
   [base cand]
   (let [ci (fn [by d n]
              (bm/block-bootstrap-ci (paired-rows (by base) (by cand)) (ratio-stat d n) {:iterations 1000}))
         both (fn [d n] (wider (ci :by-league d n) (ci :by-week d n)))]
-    {:who  (both :who-d :who-n)
-     :win  (both :win-d :win-n)
-     :gain (both :gain-d :gain-n)}))
+    {:who        (both :who-d :who-n)
+     :win        (both :win-d :win-n)
+     :gain       (both :gain-d :gain-n)
+     :break-even (break-even base cand)}))
 
 (defn ci-str
   "`+0.0123 [-0.0010, +0.0200]`, starred when the interval excludes zero."
@@ -318,17 +348,18 @@
 
 (defn print-header []
   (println (str "  value     who-bids LL Δ (lower better)       win-chance LL Δ (lower better)     "
-                "value-bid gain Δ $/winner (higher better)   none pred/obs   top ≤p50/≤p90   kept")))
+                "value-bid gain Δ $/winner (higher better)   none pred/obs   top ≤p50/≤p90   kept    saved  break-even")))
 
 (defn print-row [label shipped? s cmp]
-  (println (format "  %-8s%s %-38s %-38s %-38s %4.0f%%/%4.0f%%     %3.0f%%/%3.0f%%     %4.1f%%"
+  (println (format "  %-8s%s %-38s %-38s %-38s %4.0f%%/%4.0f%%     %3.0f%%/%3.0f%%     %4.1f%%  $%5.2f  %s"
                    label (if shipped? "*" " ")
                    (if cmp (ci-str 4 (:who cmp)) (format "%.4f (abs)" (:who-ll s)))
                    (if cmp (ci-str 4 (:win cmp)) (format "%.4f (abs)" (:win-ll s)))
                    (if cmp (ci-str 2 (:gain cmp)) (format "%.2f (abs)" (:gain s)))
                    (* 100 (or (:none-p s) 0)) (* 100 (or (:none-y s) 0))
                    (* 100 (or (:p50 s) 0)) (* 100 (or (:p90 s) 0))
-                   (* 100 (or (:kept s) 0)))))
+                   (* 100 (or (:kept s) 0)) (or (:saved s) 0.0)
+                   (break-even-str (:break-even cmp)))))
 
 (defn value-str [v] (if (== v (Math/rint v)) (str (long v)) (str v)))
 

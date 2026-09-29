@@ -127,3 +127,23 @@
     (is (not= (sweep/run-dir rows cs)
               (with-redefs [draft-day.bid-history/pseudo-bids 99.0] (sweep/run-dir rows cs)))
         "shipping a new constant is a new baseline, not a chunk read back from disk")))
+
+(defn- run-of
+  "Sums for one league whose value bid kept `kept` of `n` winners and saved
+  `saved` dollars on those it kept."
+  [n kept saved]
+  {:by-league {"L" {:win-n n :gain-n n :kept (double kept)
+                    :gain (- (double saved) (* sweep/lost-claim (- n kept)))}}
+   :by-week {}})
+
+(deftest break-even-says-which-lost-claim-costs-a-comparison-survives
+  (let [base (run-of 100 80 400.0)]
+    (is (= :always (sweep/break-even base (run-of 100 82 420.0))) "keeps more and saves more")
+    (is (= :never (sweep/break-even base (run-of 100 78 380.0))) "keeps fewer and saves less")
+    (let [[side cost] (sweep/break-even base (run-of 100 78 430.0))]
+      (is (= :below side) "saves more by losing more")
+      (is (< (Math/abs (- 15.0 cost)) 1e-9) "$0.30 a winner more for 2% more claims lost"))
+    (let [[side cost] (sweep/break-even base (run-of 100 82 390.0))]
+      (is (= :above side) "keeps more by saving less")
+      (is (< (Math/abs (- 5.0 cost)) 1e-9)))
+    (is (< (Math/abs (- 4.0 (:saved (sweep/summary base)))) 1e-9) "saved a winner: $400 over 100")))
