@@ -455,9 +455,11 @@
 
 (def cap-quantile
   "Which positive bid, in an auction four or more managers competed for, a
-  walk-away may not exceed: near the expensive end of what the market pays.
-  CHOSEN."
-  0.9)
+  walk-away may not exceed: the median. Swept from 0.25 to 0.99 over 250
+  leagues' real auctions; above the median a walk-away bought claims no manager
+  was paying that much for, below it the value bid began to lose claims to
+  save money."
+  0.5)
 
 (defn market-cap
   "The most a claim at `position` should be worth, in the league's dollars:

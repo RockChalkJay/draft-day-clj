@@ -546,64 +546,40 @@
   (let [rows [["a" "WR" 10.0] ["b" "RB" 5.0] ["c" "TE" 7.0]]]
     (is (= "b" (drop-for rows nil)))))
 
-;; ---- two bidding pools ----
+;; ---- the walk-away ----
 
 (defn- bids-for
-  "Bids for [lineup-upgrade upgrade] pairs, given a budget and claims left."
-  [pairs budget n]
-  ;; Each at a position of his own, so no two are substitutes: these tests are
-  ;; about the pools, and `over-free-option` has its own.
-  (->> (map-indexed (fn [i [lu up]]
-                      (cond-> {:player-id (str i) :position (str "P" i) :upgrade up}
-                        lu (assoc :lineup-upgrade lu)))
-                    pairs)
+  "Walk-aways for these `:upgrade`s, given a budget and claims left. Each at a
+  position of his own; the cap has its own test."
+  [upgrades budget n]
+  (->> (map-indexed (fn [i up] {:player-id (str i) :position (str "P" i) :upgrade up}) upgrades)
        (#(waiver/with-bids % {:type :faab} budget n))
        (mapv :walk-away)))
 
-(deftest each-pool-conserves-its-own-share-and-together-the-budget
-  ;; The restated form of the property the old single-pool rule had. Two
-  ;; questions, two pools: lineup upgrades are worth money, stashes are worth
-  ;; keeping ordered and cheap.
-  (let [budget 100
-        bids   (bids-for [[20.0 60.0] [10.0 40.0]      ; lineup pool
-                          [0.0 120.0] [0.0 30.0] [0.0 10.0]]  ; stash pool
-                         budget 5)
-        lineup (reduce + (take 2 bids))
-        stash  (reduce + (drop 2 bids))]
-    (is (<= 83 lineup 87) "the lineup pool takes 1 - stash-share of the budget")
-    (is (<= 13 stash 17)  "and the stash pool takes stash-share")
-    (is (<= (- budget 5) (reduce + bids) (+ budget 5))
-        "together they still spend the budget")))
+(deftest the-seasons-best-claims-share-the-budget-by-what-they-add
+  (let [bids (bids-for [60.0 40.0 120.0 30.0 10.0] 100 5)]
+    (is (= [23 15 46 12 4] bids) "each in proportion to what he adds over the drop")
+    (is (<= 98 (reduce + bids) 102) "and together they spend the budget")))
 
-(deftest a-lineup-upgrade-outbids-a-stash-of-the-same-bench-value
-  ;; The behaviour change, stated as a comparison rather than a constant.
-  (let [[starter stash] (bids-for [[15.0 60.0] [0.0 60.0]] 100 4)]
-    (is (> starter stash))))
+(deftest a-claim-outside-the-best-is-still-priced-against-them
+  (let [[a b c] (bids-for [80.0 20.0 10.0] 100 2)]
+    (is (= [80 20] [a b]) "the best two share the budget")
+    (is (= 10 c) "the third is priced against the same pool, not left at nothing")))
 
-(deftest a-stash-still-gets-a-real-bid-rather-than-zero
-  ;; Why the share exists at all: only 0.2-4.8% of a real free-agent pool has a
-  ;; positive lineup delta, so pricing purely on it would bid $0 for ~95% of the
-  ;; board and lose every distinction among bench stashes.
-  (let [[_ big small] (bids-for [[30.0 40.0] [0.0 120.0] [0.0 20.0]] 100 3)]
-    (is (pos? big) "the best stash is worth something")
-    (is (> big small) "and stashes stay ordered among themselves")))
+(deftest a-player-worse-than-the-drop-is-worth-nothing
+  (is (= [100 0] (bids-for [50.0 -12.0] 100 2))))
 
-(deftest an-empty-pool-hands-its-share-to-the-other
-  ;; Without this a manager with one lineup upgrade available leaves
-  ;; stash-share of his budget unallocated and every stash bid rounds away.
-  (testing "no lineup upgrades at all — the pre-lineup rule exactly"
-    (let [bids (bids-for [[0.0 80.0] [0.0 20.0]] 100 2)]
-      (is (<= 98 (reduce + bids) 102))))
-  (testing "no stashes at all"
-    (let [bids (bids-for [[30.0 40.0] [10.0 20.0]] 100 2)]
-      (is (<= 98 (reduce + bids) 102)))))
+(deftest a-starter-and-a-stash-are-priced-alike-by-what-they-add
+  ;; Most real bids are on players who would not start: pricing a stash from a
+  ;; smaller pool than a starter starved them, and scored worse.
+  (let [[starter stash] (->> [{:player-id "s" :position "RB" :lineup-upgrade 15.0 :upgrade 60.0}
+                              {:player-id "b" :position "WR" :upgrade 60.0}]
+                             (#(waiver/with-bids % {:type :faab} 100 4))
+                             (mapv :walk-away))]
+    (is (= starter stash))))
 
-(deftest with-no-lineup-delta-anywhere-the-bids-are-what-they-always-were
-  ;; A request that sent no roster config. Every lineup weight is 0, every
-  ;; stash weight is the old :upgrade, and the stash pool takes the whole
-  ;; budget — which is the old rule, reached without a special case.
-  (let [absent (bids-for [[nil 80.0] [nil 20.0]] 100 2)]
-    (is (= [80 20] absent))))
+(deftest with-nothing-worth-a-claim-there-is-no-walk-away
+  (is (= [nil nil] (bids-for [0.0 -5.0] 100 2)) "nil, not 0: there is nothing to price"))
 
 (deftest the-crosswalk-follows-the-leagues-own-provider
   ;; The board is keyed by one id space and a roster arrives in another, so the
@@ -643,36 +619,27 @@
                                   [{:id "4869461" :name "Trey Smack" :position "K"}])))
         "ESPN's name puts 4869461 back on his owner's roster")))
 
-;; ---- the free option and the market ----
+;; ---- the market ----
 
-(deftest a-claim-is-worth-what-it-adds-over-the-man-still-free
-  (let [fas [{:player-id "jets" :position "DST" :lineup-upgrade 61.0}
-             {:player-id "pats" :position "DST" :lineup-upgrade 38.0}
-             {:player-id "rb"   :position "RB"  :lineup-upgrade 20.0}
-             {:player-id "none" :position "WR"}]]
-    (is (= [23.0 0.0 20.0 nil] (waiver/over-free-option fas :lineup-upgrade))
-        "the Jets over the Patriots; the Patriots over the Jets is nothing; a back alone keeps all of it")
-    (is (= [0.0 0.0] (waiver/over-free-option [{:position "K" :upgrade 9.0} {:position "K" :upgrade 9.0}] :upgrade))
-        "two equal kickers: either can be had for nothing")))
-
-(deftest a-streamable-defense-no-longer-takes-the-budget
-  ;; The case that prompted it: two free defenses were the only lineup upgrades,
-  ;; so between them they split 85% of the budget, $48 to the better one.
-  (let [bids (->> [{:player-id "jets" :position "DST" :lineup-upgrade 61.0 :upgrade 249.0}
-                   {:player-id "pats" :position "DST" :lineup-upgrade 38.0 :upgrade 224.0}
-                   {:player-id "rb"   :position "RB"  :lineup-upgrade 0.0  :upgrade 40.0}]
-                  (#(waiver/with-bids % {:type :faab} 78 12))
+(deftest a-streamable-defense-is-held-to-what-the-market-pays-for-one
+  ;; Two free defenses were once the only lineup upgrades and split 85% of the
+  ;; budget, $48 to the better one; the cap now holds them to a defense's price.
+  (let [cap  (fn [p] (faab/market-cap (:position p) 100 5))
+        bids (->> [{:player-id "jets" :position "DST" :upgrade 249.0}
+                   {:player-id "pats" :position "DST" :upgrade 224.0}
+                   {:player-id "rb"   :position "RB"  :upgrade 40.0}]
+                  (#(waiver/with-bids % {:type :faab} 78 12 cap))
                   (map (juxt :player-id :walk-away)) (into {}))]
-    (is (zero? (bids "pats")) "the Patriots' seat can be filled by the Jets")
-    (is (< (bids "jets") (* 0.85 78)) "the Jets are still the one lineup upgrade, and priced on 23 points")))
+    (is (= (Math/round (cap {:position "DST"})) (bids "jets") (bids "pats")))
+    (is (< (bids "jets") 10))))
 
 (deftest no-walk-away-exceeds-what-the-market-pays-at-his-position
   (let [cap-of (fn [pos] (faab/market-cap pos 100 5))
-        rows   (->> [{:player-id "d" :position "DST" :lineup-upgrade 40.0}
-                     {:player-id "w" :position "WR"  :lineup-upgrade 40.0}]
+        rows   (->> [{:player-id "d" :position "DST" :upgrade 40.0}
+                     {:player-id "w" :position "WR"  :upgrade 40.0}]
                     (#(waiver/with-bids % {:type :faab} 100 1 (fn [p] (cap-of (:position p)))))
                     (map (juxt :player-id :walk-away)) (into {}))]
-    (is (< 10 (cap-of "DST") 20) "a defense tops out near a sixth of the budget")
+    (is (< 3 (cap-of "DST") 8) "a defense tops out near a twentieth of the budget")
     (is (< (cap-of "DST") (cap-of "WR") (cap-of "QB")))
     (is (= (Math/round (cap-of "DST")) (rows "d")) "capped, and the rest left unspent")
     (is (<= (rows "w") (Math/round (cap-of "WR"))))))

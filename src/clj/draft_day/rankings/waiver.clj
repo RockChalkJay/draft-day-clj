@@ -41,10 +41,7 @@
   rather than chosen, and it is what makes the number behave like FAAB actually
   behaves — many runs left means small walk-aways, one run left means spend it.
   Over those top claims the walk-aways sum to the budget, less whatever a
-  market cap holds back (see WALK-AWAYS COME FROM TWO POOLS below).
-
-  It is one budget but two pools, because a single pool let bench depth outbid a
-  starter — see WALK-AWAYS COME FROM TWO POOLS below.
+  market cap holds back (see WALK-AWAYS below).
 
   `:bid` is what to actually bid, and `rankings.faab` sets it, since the
   walk-away says what a player is worth to you and never what anybody else will
@@ -102,24 +99,27 @@
   while dropping him frees no seat for the claim being priced. Hence
   `:active-ids` for seats and drops, `:player-ids` for availability.
 
-  `:lineup-upgrade` IS THE HEADLINE. `db/waiver-rank-key` leads with it and
-  `with-bids` prices most of the walk-away on it, so it is no longer the
-  display-only signal it shipped as. It earned that: the bench delta it replaces
-  put ten quarterbacks on top of a real league's board, none of whom would ever
-  start, each carrying an $8 bid. `:upgrade` stays alongside because most of a
-  free-agent pool has no lineup effect at all, so it is what keeps that majority
-  ordered. Both are left *off* — not set to 0 — when there is no lineup to
+  `:lineup-upgrade` IS THE HEADLINE. `db/waiver-rank-key` leads with it: the
+  bench delta it replaced put ten quarterbacks on top of a real league's board,
+  none of whom would ever start. The walk-away is priced on `:upgrade` all the
+  same, since nine real bids in ten are on players who would not start, and a
+  walk-away priced on lineup gain measured worse; a bench quarterback's is held
+  to what the market pays for one. `:upgrade` also keeps the majority of a
+  free-agent pool with no lineup effect at all ordered. Both are left *off* — not set to 0 — when there is no lineup to
   measure against, which is the default state; a zero there is meaningless and
   numerically identical to `:upgrade` beside it, so nothing on screen would say
   it is not answering.
 
-  WALK-AWAYS COME FROM TWO POOLS (`with-bids`). A player who improves the
-  starting lineup is worth real money; a bench stash is worth keeping ordered
-  and cheap. `stash-share` splits the budget, each pool conserves its own share,
-  and an empty pool hands its share to the other — without that a manager with a
-  single lineup upgrade available would leave `stash-share` of his budget
-  unallocated. Both weigh a claim over the free option (`over-free-option`), and
-  `faab/market-cap` bounds every walk-away; what it holds back stays unspent."
+  WALK-AWAYS (`with-bids`) are one pool, weighed by what a claim adds over the
+  drop, and bounded by `faab/market-cap`; what the cap holds back stays unspent.
+  Two things they once did were measured against 250 leagues' real auctions and
+  taken out. Pricing a claim over the best *other* free agent at his position
+  left every player but the best at each position worth nothing, and those are
+  most of what managers bid on — asking which others rivals would claim first
+  did not rescue it. And a lineup pool beside a smaller stash pool starved the
+  stash claims that are nine bids in ten. What the old split guarded against, a
+  streamable defense or a bench quarterback soaking up the budget, the market
+  cap now does: a defense tops out near a twentieth of it."
   (:require [draft-day.db :as db]
             [draft-day.rankings.faab :as faab]
             [draft-day.rankings.lineup :as lineup]
@@ -216,39 +216,6 @@
         left (- (long end) 1 (long (or through-week 0)))]
     (max 0 left)))
 
-(def stash-share
-  "The slice of a FAAB budget reserved for players who would not crack the
-  starting lineup. CHOSEN, NOT MEASURED — same standing as `ros/PRIOR-GAMES`.
-  Only 0.2-4.8% of a real league's free agents have a positive lineup delta."
-  0.15)
-
-(defn over-free-option
-  "What each of `fas` adds by `k` over the best *other* free agent at his
-  position, never below 0, or nil where `k` is. Free agents at one position
-  are substitutes: a claim buys what he adds over the man still on the wire,
-  not over nobody. A streamable position — a defense, a kicker — has a free
-  one nearly as good every week, so its best free agent is worth the gap and
-  not his whole line; a breakout alone at his position keeps nearly all of it."
-  [fas k]
-  (let [top2 (update-vals (group-by :position (filter #(number? (k %)) fas))
-                          (fn [ps] (vec (take 2 (sort > (map #(double (k %)) ps))))))]
-    (mapv (fn [p]
-            (when-let [v (some-> (k p) double)]
-              (let [[best second] (get top2 (:position p))
-                    other (if (== v best) second best)]
-                (max 0.0 (- v (or other 0.0))))))
-          fas)))
-
-(defn weights
-  "`[lineup-weight stash-weight]` from a player's gains over the free option
-  (`over-free-option`); a player is in exactly one pool, the lineup one when he
-  would start at all. With no `:lineup-upgrade` anywhere every lineup weight is
-  0 and the stash pool takes the whole budget — no special case."
-  [p lineup-margin upgrade-margin]
-  (if (pos? (or (:lineup-upgrade p) 0.0))
-    [(double (or lineup-margin 0.0)) 0.0]
-    [0.0 (double (or upgrade-margin 0.0))]))
-
 (defn bid-pool
   "The total weight the bids are a share of: the best `n` of them. Summing over
   every free agent would divide the budget among hundreds a manager will never
@@ -281,31 +248,22 @@
     fas))
 
 (defn with-bids
-  "Assoc `:walk-away` — his share of the remaining budget, from the two pools
-  the ns docstring describes, and never more than `cap` says the market pays
-  at his position: money a cap holds back stays unspent rather than going to
-  another player. nil, not 0, for a league that does not run FAAB or a manager
-  with nothing left to spend: 'worth nothing' is a different answer."
+  "Assoc `:walk-away` — his share of the remaining budget, in proportion to what
+  he adds over the drop (`:upgrade`) among the season's best `n` claims, and
+  never more than `cap` says the market pays at his position: money a cap holds
+  back stays unspent rather than going to another player. nil, not 0, for a
+  league that does not run FAAB or a manager with nothing left to spend: 'worth
+  nothing' is a different answer."
   ([fas waiver budget-left n] (with-bids fas waiver budget-left n (constantly nil)))
   ([fas {:keys [type]} budget-left n cap]
-   (let [ws    (mapv weights fas
-                     (over-free-option fas :lineup-upgrade)
-                     (over-free-option fas :upgrade))
-         lin   (bid-pool (map first ws) n)
-         stash (bid-pool (map second ws) n)]
-     (if-not (and (faab? type) (number? budget-left) (pos? budget-left)
-                  (pos? (+ lin stash)))
+   (let [ws   (mapv #(max 0.0 (double (or (:upgrade %) 0.0))) fas)
+         pool (bid-pool ws n)]
+     (if-not (and (faab? type) (number? budget-left) (pos? budget-left) (pos? pool))
        (mapv #(assoc % :walk-away nil) fas)
-       (let [lin-budget   (if (pos? stash) (* (- 1.0 stash-share) budget-left) budget-left)
-             stash-budget (if (pos? lin) (* stash-share budget-left) budget-left)]
-         (mapv (fn [p [lu st]]
-                 (let [share (cond
-                               (pos? lu) (* (/ lu lin) lin-budget)
-                               (pos? st) (* (/ st stash) stash-budget)
-                               :else     0.0)]
-                   (assoc p :walk-away (-> share (min budget-left) (min (or (cap p) ##Inf))
-                                           Math/rint long (max 0)))))
-               fas ws))))))
+       (mapv (fn [p w]
+               (assoc p :walk-away (-> (* (/ w pool) budget-left) (min budget-left)
+                                       (min (or (cap p) ##Inf)) Math/rint long (max 0))))
+             fas ws)))))
 
 (defn rival-needs
   "`[{:roster-id :owner-id :name :faab-left :waiver-position :needs {player-id
@@ -511,9 +469,11 @@
      :bidding? bidding?
      :habits   habits
      :fas      fas
-     :market   {;; Only with a walk-away to bid up to: this asks every rival's
-                ;; lineup about every free agent.
-                :rivals (when (and my-team (some :walk-away fas))
+     :market   {;; Only with a budget to bid: this asks every rival's lineup
+                ;; about every free agent. Not only with a walk-away: a manager
+                ;; whose drop outscores every free agent still bids, and the
+                ;; backtest scores his chance of winning against rivals too.
+                :rivals (when (and my-team bidding? (pos? (or (:faab-left my-team) 0)))
                           (rival-needs teams my-roster-id xwalk by-id
                                        seats starting-slots fas))
                 :me     my-team
