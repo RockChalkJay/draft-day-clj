@@ -373,3 +373,9 @@
   (is (= 0 (faab/first-true (constantly true) 0 100)))
   (is (nil? (faab/first-true (constantly false) 0 100)))
   (is (nil? (faab/first-true (constantly true) 5 4)) "an empty range"))
+
+(deftest the-typical-bid-is-what-it-usually-takes-to-win
+  (let [contested [(rival 0.9 {3 0.2 10 0.8})]]
+    (is (= 10 (faab/typical-bid contested 0 100)) "the crowd's $10, most of the time")
+    (is (= 0 (faab/typical-bid [(rival 0.3 {5 1.0})] 0 100)) "nobody bids most of the time: the minimum")
+    (is (= 1 (faab/typical-bid [] 1 100)) "never below the league's minimum")))

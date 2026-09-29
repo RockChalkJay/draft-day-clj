@@ -35,7 +35,7 @@
   ;; assert a verdict the number does not carry.
   (let [by-label (into {} (map (juxt :label identity)) metrics/rows)]
     (is (false? (:bar? (by-label "Games played"))))
-    (is (false? (:bar? (by-label "Bid"))))
+    (is (false? (:bar? (by-label "Suggested bid"))))
     (is (nil? (:bar? (by-label "This week"))) "defaults to drawn")
     (is (= :lower (:better (by-label "Injury risk"))))
     (is (= 2 (count (filter :big? metrics/rows))) "the two horizons are the question")))
@@ -57,7 +57,10 @@
    :ros-vorp  "Over replacement"
    :lineup    "Lineup gain"
    :upgrade   "Upgrade"
-   :bid       "Bid"
+   :bid       "Suggested bid"
+   :typical   "Typical winning bid"
+   :pts       "Season points"
+   :avg       "Points / game"
    :rivals    "Rivals"
    :adds      "Sleeper adds"
    :trend     "Trend"
@@ -70,9 +73,9 @@
 (def ^:private not-a-row
   "Board columns deliberately absent from the tile, each for a stated reason:
   identity (the head says it), schedule (no winner, and Opp is in the head),
-  a raw count the tile shows as a rate, and the designation, which is a chip on
+  raw counts the tile shows as a rate or the card's stat table carries, and the designation, which is a chip on
   the name rather than a word among tabular numbers."
-  #{:rank :name :team :position :bye :opp :tgt :car :inj})
+  #{:rank :name :team :position :bye :opp :tgt :car :rec :yds :td :inj})
 
 (deftest every-board-metric-reaches-the-list
   (let [labels (set (map :label metrics/rows))]

@@ -676,3 +676,16 @@
     (is (< (cap-of "DST") (cap-of "WR") (cap-of "QB")))
     (is (= (Math/round (cap-of "DST")) (rows "d")) "capped, and the rest left unspent")
     (is (<= (rows "w") (Math/round (cap-of "WR"))))))
+
+(deftest season-points-are-scored-under-the-leagues-rules-from-sleepers-line-first
+  (let [ppr (scoring/resolve-config :ppr)
+        [a b c] (waiver/with-form-points
+                  [{:player-id "a" :realized/season-to-date {:games 2 :stats {:rec 10.0 :rec_yd 100.0}}
+                    :nflverse/season-to-date {:games 2 :stats {:rec 99.0}}}
+                   {:player-id "b" :nflverse/season-to-date {:games 1 :stats {:rush_yd 50.0}}}
+                   {:player-id "c"}]
+                  ppr)]
+    (is (< (Math/abs (- 20.0 (:season-points a))) 1e-9) "Sleeper's line where it arrived")
+    (is (< (Math/abs (- 10.0 (:season-ppg a))) 1e-9))
+    (is (< (Math/abs (- 5.0 (:season-points b))) 1e-9) "else nflverse's")
+    (is (not (contains? c :season-points)) "no games is not zero points")))

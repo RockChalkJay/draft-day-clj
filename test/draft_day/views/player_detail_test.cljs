@@ -44,7 +44,7 @@
 (deftest a-row-formats-through-the-lists-own-formatter
   ;; The point of sharing `metrics/rows`: the modal cannot print a number in a
   ;; different shape from the tile, because it does not own the formatter.
-  (let [row  (first (filter #(= "Bid" (:label %)) metrics/rows))
+  (let [row  (first (filter #(= "Suggested bid" (:label %)) metrics/rows))
         cell (fn [p] (nth (nth (pd/metric-row row p) 2) 1))]
     (is (= "$23" (cell {:bid 23})))
     (is (= "–" (cell {})) "absent is a dash, not a zero")))
@@ -52,7 +52,7 @@
 (deftest zero-bid-and-no-bid-do-not-render-the-same
   ;; `$0` is a legal FAAB bid; nil means the league does not run FAAB. The board
   ;; keeps these apart and so must the modal.
-  (let [row  (first (filter #(= "Bid" (:label %)) metrics/rows))
+  (let [row  (first (filter #(= "Suggested bid" (:label %)) metrics/rows))
         cell (fn [p] (nth (nth (pd/metric-row row p) 2) 1))]
     (is (= "$0" (cell {:bid 0})))
     (is (= "–" (cell {:bid nil})))))

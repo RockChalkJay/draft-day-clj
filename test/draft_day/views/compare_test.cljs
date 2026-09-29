@@ -272,7 +272,7 @@
 (deftest a-band-drops-only-the-rows-with-nothing-in-them
   (let [rows (cmp/band :claim {:upgrade 12.0 :bid 4} {:upgrade 3.0} nil)]
     (is (= 2 (count rows)) "lineup gain is absent on both sides and goes")
-    (is (= #{"Upgrade" "Bid"}
+    (is (= #{"Upgrade" "Suggested bid"}
            (set (map #(-> % second :label) rows))))))
 
 ;; ---- the injury designation ----
@@ -324,7 +324,7 @@
     (is (= ["Rest of season"] (labels horizon)))
     (is (= ["Upgrade"] (labels claim)))
     (is (= ["Preseason"] (labels evidence))))
-  (is (= #{"Lineup gain" "Upgrade" "Bid" "Rivals"}
+  (is (= #{"Lineup gain" "Upgrade" "Typical winning bid" "Suggested bid" "Rivals"}
          (set (map :label (metrics/rows-by-band :claim))))))
 
 (deftest an-evidence-band-with-nothing-in-it-is-not-drawn
