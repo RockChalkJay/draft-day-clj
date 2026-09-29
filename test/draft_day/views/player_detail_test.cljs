@@ -124,3 +124,13 @@
                             :kickoff/neutral? false
                             :kickoff/venue "Lumen Field"}
                            1))))
+
+(deftest the-card-leads-with-the-bid
+  (let [p {:typical-bid 7 :typical-win 0.62 :bid 0 :win-prob 0.48 :bid-sure 28 :walk-away 3
+           :rivals 1.3 :competition {:threats [{:name "Show me your TDs" :p 0.31}]}}]
+    (is (= [["Typical winning bid" "$7 · 62%"]
+            ["Suggested bid" "$0 · 48%"]
+            ["90% sure" "$28 · worth $3 to you"]
+            ["Rivals likely to bid" "1.3 — Show me your TDs 31%"]]
+           (pd/bidding-rows p)))
+    (is (= [] (pd/bidding-rows {})) "a league that does not bid has no Bidding section")))

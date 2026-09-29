@@ -107,32 +107,40 @@
 
   A row whose every cell is absent or zero across the whole window is dropped:
   a quarterback carries receiving columns in the raw data and they are all
-  zeroes, and four dead rows would push the rows that matter off the tile."
-  [player season]
-  (when-let [rows (get position-rows (:position player))]
-    (let [seasons (season-columns player)
-          hist    (into {} (map (juxt :season :stats)) (:nflverse/history player))
-          games   (by-season (:nflverse/games-by-season player))
-          proj    (:stats player)
-          built   (into []
-                        (keep (fn [[label ks]]
-                                (let [values (mapv #(combine (get hist %) ks) seasons)
-                                      pv     (combine proj ks)]
-                                  (when-not (every? #(or (nil? %) (zero? %))
-                                                    (conj values pv))
-                                    {:label label :values values :proj pv}))))
-                        rows)]
-      (when (seq built)
-        (let [game-counts (mapv #(get games %) seasons)]
-          {:seasons     seasons
-           :proj-season season
-           ;; A skill player with no realized season at all — a rookie, or
-           ;; someone the join missed. Said plainly in the tile rather than left
-           ;; as a row of dashes the manager has to interpret.
-           :rookie?     (empty? hist)
-           ;; Games last, and only when some season actually has one. It is
-           ;; context for the rows above rather than production of its own, and
-           ;; it has no projection — nobody forecasts availability.
-           :rows        (cond-> built
-                          (some some? game-counts)
-                          (conj {:label "Games" :values game-counts :proj nil}))})))))
+  zeroes, and four dead rows would push the rows that matter off the tile.
+
+  In season (`:in-season?`) the last column is what he has done so far rather
+  than what he was projected for — a projection is not what a manager reads a
+  card for once games are played — and the table says so with `:so-far? true`."
+  ([player season] (stat-table player season {}))
+  ([player season {:keys [in-season?]}]
+   (when-let [rows (get position-rows (:position player))]
+     (let [seasons (season-columns player)
+           hist    (into {} (map (juxt :season :stats)) (:nflverse/history player))
+           games   (by-season (:nflverse/games-by-season player))
+           so-far  (:nflverse/season-to-date player)
+           proj    (if in-season? (:stats so-far) (:stats player))
+           built   (into []
+                         (keep (fn [[label ks]]
+                                 (let [values (mapv #(combine (get hist %) ks) seasons)
+                                       pv     (combine proj ks)]
+                                   (when-not (every? #(or (nil? %) (zero? %))
+                                                     (conj values pv))
+                                     {:label label :values values :proj pv}))))
+                         rows)]
+       (when (seq built)
+         (let [game-counts (mapv #(get games %) seasons)]
+           {:seasons     seasons
+            :proj-season season
+            ;; A skill player with no realized season at all — a rookie, or
+            ;; someone the join missed. Said plainly in the tile rather than left
+            ;; as a row of dashes the manager has to interpret.
+            :rookie?     (empty? hist)
+            ;; Games last, and only when some season actually has one. It is
+            ;; context for the rows above rather than production of its own, and
+            ;; it has no projection — nobody forecasts availability.
+            :so-far?     (boolean in-season?)
+            :rows        (cond-> built
+                           (some some? game-counts)
+                           (conj {:label "Games" :values game-counts
+                                  :proj (when in-season? (:games so-far))}))}))))))
