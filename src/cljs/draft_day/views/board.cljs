@@ -218,12 +218,19 @@
     (when (and from to (not= from to))
       (if (< from to) "drop-after" "drop-before"))))
 
-(defn header-cell [col sort drag ks]
+(def board-columns
+  "What `header-cell` reads and dispatches for the draft board."
+  {:labels db/columns-by-key :sort :set-sort :move :move-column-onto})
+
+(defn header-cell
+  "One header: a sort button and a drag handle. `opts` names the board's
+  catalog and events, so the waiver board drags with the same code."
+  [{:keys [labels move] sort-event :sort} col sort drag ks]
   (let [k (:key col)
-        d (db/columns-by-key k)
+        d (labels k)
         active? (= (:key sort) k)
         {:keys [dragging over]} @drag]
-    [:th {:on-click #(rf/dispatch [:set-sort k])
+    [:th {:on-click #(rf/dispatch [sort-event k])
           :title (:tooltip d)
           :draggable true
           :on-drag-start (fn [e]
@@ -240,7 +247,7 @@
                              (swap! drag update :over (fn [o] (when-not (= o k) o)))))
           :on-drop       (fn [e]
                            (.preventDefault e)
-                           (rf/dispatch [:move-column-onto (:dragging @drag) k])
+                           (rf/dispatch [move (:dragging @drag) k])
                            (reset! drag {}))
           ;; A drag abandoned off the row still ends, so nothing stays lit.
           :on-drag-end   #(reset! drag {})
@@ -253,15 +260,16 @@
      [:span.sort-ind (cond (not active?) " ↕" (= -1 (:dir sort)) " ▼" :else " ▲")]]))
 
 (defn board-header
-  "The header row. Owns the transient drag state in a local atom — it is pointer
-  state, not app state; only the committed reorder reaches app-db."
-  [_cols _sort]
+  "The header row, for the board `opts` names (`board-columns`). Owns
+  the transient drag state in a local atom — it is pointer state, not app state;
+  only the committed reorder reaches app-db."
+  [_opts _cols _sort]
   (let [drag (r/atom {})]
-    (fn [cols sort]
+    (fn [opts cols sort]
       (let [ks (mapv :key cols)]
         [:tr (map (fn [col]
                     ^{:key (:key col)}
-                    [header-cell col sort drag ks])
+                    [header-cell opts col sort drag ks])
                   cols)]))))
 
 (defn- tier-style [t n]
@@ -358,7 +366,7 @@
       [:div.filters [pos-filter] [search-box]]]
      [:div.table-scroll
       [:table.board
-       [:thead [board-header cols sort]]
+       [:thead [board-header board-columns cols sort]]
        [:tbody
         (map (fn [p tier-start?]
                ^{:key (:player-id p)}

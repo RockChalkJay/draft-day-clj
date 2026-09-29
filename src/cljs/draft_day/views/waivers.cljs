@@ -269,15 +269,9 @@
 
 ;; ---- header ----
 
-(defn header-cell [col sort]
-  (let [k       (:key col)
-        d       (db/waiver-columns-by-key k)
-        active? (= (:key sort) k)]
-    [:th {:on-click #(rf/dispatch [:set-waiver-sort k])
-          :title    (:tooltip d)
-          :class    (when active? "sorted")}
-     (:label d)
-     [:span.sort-ind (cond (not active?) " ↕" (= -1 (:dir sort)) " ▼" :else " ▲")]]))
+(def waiver-columns
+  "`board/header-cell`'s options for this board: click sorts, drag reorders."
+  {:labels db/waiver-columns-by-key :sort :set-waiver-sort :move :move-waiver-column-onto})
 
 ;; ---- panels ----
 
@@ -429,14 +423,12 @@
     [:div.waivers-view
      [status-line]
      [:div.board-controls
-      [:div.filters [board/pos-filter] [board/search-box]]]
-     [:details.col-details
-      [:summary "⚙ Columns"]
+      [:div.filters [board/pos-filter] [board/search-box]]
       [columns/waiver-column-picker]]
      [:div.waiver-body
       [:div.table-scroll
        [:table.board
-        [:thead [:tr (map (fn [c] ^{:key (:key c)} [header-cell c sort]) cols)]]
+        [:thead [board/board-header waiver-columns cols sort]]
         [:tbody
          (map (fn [p]
                 ^{:key (:player-id p)}

@@ -946,3 +946,21 @@
         "hidden in place, so the stored order survives")
     (is (:faab-only? (first (filter #(= :bid (:key %))
                                     (db/waiver-columns-for cols {:waiver {:type "rolling"}})))))))
+
+(deftest a-stored-layout-survives-a-catalog-change
+  (let [catalog [{:key :a :default? true} {:key :b :default? false} {:key :new :default? true}
+                 {:key :c :default? true}]
+        stored  [{:key :c :visible? true} {:key :gone :visible? true}
+                 {:key :a :visible? false} {:key :b :visible? true} {:key :a :visible? true}]]
+    (is (= [{:key :c :visible? true} {:key :a :visible? false} {:key :b :visible? true}
+            {:key :new :visible? true}]
+           (db/reconcile-columns stored catalog))
+        "his order and choices kept, the dropped column gone, the new one after the column it follows")
+    (is (= (db/default-columns catalog) (db/reconcile-columns nil catalog)) "nothing stored: the defaults")
+    (is (= [{:key :first :visible? false} {:key :a :visible? true}]
+           (db/reconcile-columns [{:key :a :visible? true}] [{:key :first} {:key :a}]))
+        "a column new at the front goes to the front")))
+
+(deftest every-waiver-column-sits-in-a-picker-group
+  (let [groups (set (map first db/waiver-column-groups))]
+    (is (every? #(groups (:group %)) db/waiver-column-catalog))))

@@ -14,6 +14,7 @@
             [draft-day.subs :as subs]
             [draft-day.test-render :refer [render press!]]
             [draft-day.views.board :as board]
+            [draft-day.views.columns :as columns]
             [draft-day.views.header :as header]
             [draft-day.views.waivers :as waivers]
             [draft-day.events :as events]))
@@ -1270,3 +1271,38 @@
   (swap! rdb/app-db assoc-in [:leagues "sleeper:1" :sync :waiver :type] "faab")
   (rf/clear-subscription-cache!)
   (is (every? (set (map :key @(rf/subscribe [:visible-waiver-columns]))) [:bid :rivals])))
+
+(deftest the-picker-files-columns-under-their-groups
+  (let [labels db/waiver-columns-by-key
+        cols   (db/default-waiver-columns)
+        gs     (columns/grouped cols labels db/waiver-column-groups)]
+    (is (= ["Essentials" "This week" "Season stats" "Bidding" "Projections & advanced"] (map first gs)))
+    (is (= (count cols) (reduce + (map (comp count second) gs))) "every column once")
+    (is (= [[nil cols]] (columns/grouped cols labels nil)) "a catalog with no groups is one list")))
+
+(deftest the-checklist-shows-each-column-and-a-reset
+  (let [html (render (fn [] [columns/checklist columns/waiver-picker
+                              (db/waiver-columns-for (db/default-waiver-columns) {:waiver {:type "rolling"}})]))]
+    (is (re-find #"Reset to defaults" html))
+    (is (re-find #"This league doesn't run FAAB" html) "a FAAB-only column greyed out, not hidden")
+    (is (re-find #"shown" html))))
+
+(deftest reset-puts-the-defaults-back
+  (swap! rdb/app-db assoc :waiver-columns [{:key :bye :visible? true}])
+  (rf/dispatch-sync [:reset-waiver-columns])
+  (is (= (db/default-waiver-columns) (:waiver-columns @rdb/app-db))))
+
+(deftest dragging-a-waiver-header-reorders-the-waiver-columns
+  (let [sent  (atom [])
+        drag  (reagent.core/atom {})
+        cols  (filterv :visible? (db/default-waiver-columns))
+        ks    (mapv :key cols)
+        cell  (fn [k] (board/header-cell waivers/waiver-columns (first (filter #(= k (:key %)) cols))
+                                         {:key :rank :dir -1} drag ks))
+        event #js {:dataTransfer #js {:setData (fn [_ _])} :preventDefault (fn [])}]
+    (with-redefs [rf/dispatch (fn [e] (swap! sent conj e))]
+      ((:on-drag-start (second (cell :bye))) event)
+      ((:on-drop (second (cell :name))) event)
+      ((:on-click (second (cell :bye)))))
+    (is (= [[:move-waiver-column-onto :bye :name] [:set-waiver-sort :bye]] @sent)
+        "the waiver board's own events, not the draft board's")))

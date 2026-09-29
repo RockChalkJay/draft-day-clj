@@ -62,8 +62,10 @@
  :boot
  (fn [_ _]
    ;; Archived drafts are read separately — see the ns docstring.
-   (let [db    (assoc (merge (db/default-db) (fx/load-persisted))
-                      :drafts (fx/read-drafts))
+   (let [db    (-> (merge (db/default-db) (fx/load-persisted))
+                   (assoc :drafts (fx/read-drafts))
+                   (update :columns db/reconcile-columns db/column-catalog)
+                   (update :waiver-columns db/reconcile-columns db/waiver-column-catalog))
          ;; A stored override or a synced league's finished draft already says
          ;; which half this is; otherwise the week does, when the universe lands.
          place (place-view db)]
@@ -287,6 +289,9 @@
 (rf/reg-event-db :move-column-onto [persist]
   (fn [db [_ from-k to-k]]
     (update db :columns db/move-column-onto from-k to-k)))
+
+(rf/reg-event-db :reset-columns [persist]
+  (fn [db _] (assoc db :columns (db/default-columns))))
 
 ;; ---- draft actions ----
 
@@ -970,6 +975,9 @@
 (rf/reg-event-db :move-waiver-column-onto [persist]
   (fn [db [_ from-k to-k]]
     (update db :waiver-columns db/move-column-onto from-k to-k)))
+
+(rf/reg-event-db :reset-waiver-columns [persist]
+  (fn [db _] (assoc db :waiver-columns (db/default-waiver-columns))))
 
 ;; ---- comparison ----
 

@@ -94,10 +94,10 @@
   Changing the shape of anything in here means bumping that version, so a blob
   written under the old shape is dropped rather than merged into the new one.
   There is no in-place repair; see `fx/storage-version` for the whole rule and
-  what it costs. Both column catalogs are in scope — `:columns` is keyed off
-  `column-catalog` and `:waiver-columns` off `waiver-column-catalog` — as are
-  the nested shapes: a key under `:config`, a slot in `default-roster`, a field
-  on a team, a pick, or a synced league."
+  what it costs. The nested shapes are in scope — a key under `:config`, a slot
+  in `default-roster`, a field on a team, a pick, or a synced league. The column
+  layouts are the exception: they survive a bump, and `reconcile-columns` brings
+  them up to their catalogs, so adding or dropping a column needs no bump."
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
    :accounts :leagues :active-league :waiver-columns :phase])
 
@@ -760,6 +760,32 @@
   ([catalog]
    (mapv (fn [c] {:key (:key c) :visible? (boolean (:default? c))}) catalog)))
 
+(defn reconcile-columns
+  "A stored column layout brought up to `catalog`: the manager's order and
+  visibility kept for every column the catalog still has, a column new to the
+  catalog inserted after the one it follows there with its `:default?`, and a
+  column the catalog dropped dropped. A layout is a preference, so a catalog
+  change keeps it rather than resetting it — the one shape `fx/storage-version`
+  does not wipe."
+  [stored catalog]
+  (let [known (set (map :key catalog))
+        kept  (->> stored
+                   (filter #(known (:key %)))
+                   (reduce (fn [[acc seen] c]
+                             (if (seen (:key c)) [acc seen] [(conj acc (select-keys c [:key :visible?])) (conj seen (:key c))]))
+                           [[] #{}])
+                   first)]
+    (reduce (fn [cols [prev c]]
+              (if (some #(= (:key c) (:key %)) cols)
+                cols
+                (let [at (if prev
+                           (inc (or (first (keep-indexed (fn [i x] (when (= prev (:key x)) i)) cols)) -1))
+                           0)]
+                  (into (conj (subvec cols 0 at) {:key (:key c) :visible? (boolean (:default? c))})
+                        (subvec cols at)))))
+            kept
+            (map vector (cons nil (map :key catalog)) catalog))))
+
 (defn move-onto
   "Drop the element `key-fn` identifies as `from-k` onto the one it identifies as
   `to-k`: remove it, then insert it at `to-k`'s index *in the original vector*.
@@ -999,31 +1025,37 @@
 ;; `rankings.waiver`.
 
 (def waiver-column-catalog
-  "Ordered column definitions for the waiver board."
-  [{:key :rank      :label "#"      :tooltip "Rank by how much the claim gains you" :default? true}
-   {:key :name      :label "Player" :tooltip "Player"                     :default? true}
-   {:key :team      :label "Tm"     :tooltip "NFL team"                   :default? true}
-   {:key :position  :label "Pos"    :tooltip "Position and preseason rank within it" :default? true}
-   {:key :bye       :label "Bye"    :tooltip "Bye week"                   :default? true}
-   {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? true}
-   {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank when he is not projected — a bye, or nobody's starter" :default? true}
-   {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false}
-   {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false}
-   {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true}
-   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start — unlike Upg, which measures him against your worst bench player. This is what the board sorts by" :default? true}
-   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid and its chance to win: about a dollar over the top rival bid he is likely to draw, or the league minimum when nobody else will bid, never more than he is worth to you. Hover a bid for the rivals behind it. An estimate. Blank when the league does not run FAAB or your budget is spent" :default? true}
-   {:key :rivals    :label "Rivals" :tooltip "How many other teams are expected to bid on him — from what he would add to each rival's own lineup, how often that manager claims, and how hard Sleeper is adding him" :default? true}
-   {:key :adds      :label "Adds"   :tooltip "Sleeper trending adds over the last 48 hours, across every Sleeper league. Blank when he is not among the hundred most added" :default? true}
-   {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true}
-   {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules — what his current role has been worth, against what the projection expects of it" :default? false}
-   {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true}
-   {:key :risk      :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile)" :default? true}
-   {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true}
-   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false}
-   {:key :tgt       :label "Tgt"    :tooltip "Targets this season"        :default? false}
-   {:key :car       :label "Car"    :tooltip "Carries this season"        :default? false}
-   {:key :preseason :label "Pre"    :tooltip "What he was projected for before the season — the number the rest-of-season line is correcting" :default? false}
-   {:key :ecr       :label "ECR"    :tooltip "FantasyPros expert rank (preseason)" :default? false}])
+  "Ordered column definitions for the waiver board. `:group` is the heading the
+  column picker files it under (`waiver-column-groups`)."
+  [{:key :rank      :label "#"      :tooltip "Rank by how much the claim gains you" :default? true :group :essentials}
+   {:key :name      :label "Player" :tooltip "Player"                     :default? true :group :essentials}
+   {:key :team      :label "Tm"     :tooltip "NFL team"                   :default? true :group :essentials}
+   {:key :position  :label "Pos"    :tooltip "Position and preseason rank within it" :default? true :group :essentials}
+   {:key :bye       :label "Bye"    :tooltip "Bye week"                   :default? true :group :essentials}
+   {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? true :group :projections}
+   {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank when he is not projected — a bye, or nobody's starter" :default? true :group :week}
+   {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false :group :week}
+   {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false :group :week}
+   {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? true :group :projections}
+   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start — unlike Upg, which measures him against your worst bench player. This is what the board sorts by" :default? true :group :projections}
+   {:key :bid       :label "Bid"    :tooltip "Suggested FAAB bid and its chance to win: about a dollar over the top rival bid he is likely to draw, or the league minimum when nobody else will bid, never more than he is worth to you. Hover a bid for the rivals behind it. An estimate. Blank when the league does not run FAAB or your budget is spent" :default? true :group :bidding}
+   {:key :rivals    :label "Rivals" :tooltip "How many other teams are expected to bid on him — from what he would add to each rival's own lineup, how often that manager claims, and how hard Sleeper is adding him" :default? true :group :bidding}
+   {:key :adds      :label "Adds"   :tooltip "Sleeper trending adds over the last 48 hours, across every Sleeper league. Blank when he is not among the hundred most added" :default? true :group :bidding}
+   {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? true :group :projections}
+   {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules — what his current role has been worth, against what the projection expects of it" :default? false :group :projections}
+   {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true :group :stats}
+   {:key :risk      :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile)" :default? true :group :essentials}
+   {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true :group :essentials}
+   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false :group :projections}
+   {:key :tgt       :label "Tgt"    :tooltip "Targets this season"        :default? false :group :stats}
+   {:key :car       :label "Car"    :tooltip "Carries this season"        :default? false :group :stats}
+   {:key :preseason :label "Pre"    :tooltip "What he was projected for before the season — the number the rest-of-season line is correcting" :default? false :group :projections}
+   {:key :ecr       :label "ECR"    :tooltip "FantasyPros expert rank (preseason)" :default? false :group :projections}])
+
+(def waiver-column-groups
+  "The column picker's headings, in the order it draws them."
+  [[:essentials "Essentials"] [:week "This week"] [:stats "Season stats"]
+   [:bidding "Bidding"] [:projections "Projections & advanced"]])
 
 (def waiver-columns-by-key (into {} (map (juxt :key identity)) waiver-column-catalog))
 
