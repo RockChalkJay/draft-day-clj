@@ -455,7 +455,7 @@
 
 (def cap-quantile
   "Which positive bid, in an auction four or more managers competed for, a
-  walk-away may not exceed: the median. Swept from 0.25 to 0.99 over 250
+  walk-away may not exceed: the median. Swept from 0.25 to 0.9 over 250
   leagues' real auctions; above the median a walk-away bought claims no manager
   was paying that much for, below it the value bid began to lose claims to
   save money."
@@ -464,8 +464,9 @@
 (defn market-cap
   "The most a claim at `position` should be worth, in the league's dollars:
   `cap-quantile` of the backbone's four-or-more-bidder cell for the week's
-  phase, moved by the position's and the budget's measured shifts. A kicker or
-  a defense lands near a sixth of a $100 budget, a quarterback over half. nil
+  phase, moved by the position's and the budget's measured shifts. At the
+  median, a kicker or a defense lands near $5 of a $100 budget, a receiver
+  near $12 and a quarterback near $18, a little more late in the season. nil
   without a budget."
   [position budget week]
   (when (and (number? budget) (pos? budget))

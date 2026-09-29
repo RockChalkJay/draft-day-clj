@@ -578,6 +578,29 @@
                              (mapv :walk-away))]
     (is (= starter stash))))
 
+(deftest bench-quarterbacks-do-not-crowd-out-a-breakout-back
+  ;; The failure a raw-points pool invites in a one-QB league: ten backup
+  ;; quarterbacks at 180 points each dwarf a 60-point back, though every team
+  ;; already starts a quarterback worth more than any of them.
+  (let [drop {:position "WR" :ros-points 40.0}
+        qbs  (map #(hash-map :player-id (str "qb" %) :position "QB" :ros-points 180.0 :ros-vorp -70.0
+                             :upgrade 140.0 :drop-candidate drop)
+                  (range 10))
+        rb   {:player-id "rb" :position "RB" :ros-points 60.0 :ros-vorp 5.0 :upgrade 20.0 :drop-candidate drop}
+        wr   {:player-id "wr" :position "WR" :ros-points 30.0 :ros-vorp -10.0 :upgrade -10.0 :drop-candidate drop}
+        gains (waiver/claim-gains (concat qbs [rb wr]))
+        bids  (into {} (map (juxt :player-id :walk-away))
+                    (waiver/with-bids (vec (concat qbs [rb wr])) {:type :faab} 100 12))]
+    (is (every? zero? (take 10 gains)) "180 points against a 250-point replacement level add nothing")
+    (is (= 5.0 (nth gains 10))
+        "the back's 20 over the drop, less the 15 a back's replacement level sits above a receiver's")
+    (is (= 100 (bids "rb")) "so the back is the one claim worth the budget")))
+
+(deftest a-position-without-a-replacement-level-keeps-its-raw-gain
+  (is (= [35.0 12.0] (waiver/claim-gains [{:position "K" :upgrade 35.0 :drop-candidate {:position "WR"}}
+                                          {:position "RB" :ros-points 50.0 :ros-vorp 1.0 :upgrade 12.0}]))
+      "a kicker has no replacement level, and an open seat no drop to compare"))
+
 (deftest with-nothing-worth-a-claim-there-is-no-walk-away
   (is (= [nil nil] (bids-for [0.0 -5.0] 100 2)) "nil, not 0: there is nothing to price"))
 
