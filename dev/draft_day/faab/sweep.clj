@@ -213,7 +213,8 @@
           (hash [(mapv :league-id rows)
                  (mapv (fn [[label o]] [label (update-keys o str)]) configs)
                  (mapv (comp deref :var) settings)
-                 faab/claim-weights])))
+                 faab/claim-weights
+                 lost-claim])))
 
 (defn run-configs
   "`{label sums}` for every `[label overrides]` in `configs` over `rows`, under
@@ -306,22 +307,26 @@
   it keeps over the baseline. `[:below c]` when it saves more by losing more,
   so it is better while a lost claim costs under c; `[:above c]` when it keeps
   more by saving less, better while one costs over c; `:always` or `:never`
-  when one side does not trade at all. The replay cannot know what a claim was
-  worth to the manager who won it, and `lost-claim` is a guess, so this says
-  which guesses a comparison survives."
+  when one side does not trade at all; `:tie` when neither moves, and nil when
+  either run priced no winner. The replay cannot know what a claim was worth
+  to the manager who won it, and `lost-claim` is a guess, so this says which
+  guesses a comparison survives."
   [base cand]
-  (let [b (summary base) c (summary cand)
-        d-saved (- (:saved c) (:saved b))
-        d-kept  (- (:kept c) (:kept b))]
-    (cond
-      (and (>= d-saved 0) (>= d-kept 0)) :always
+  (let [b (summary base) c (summary cand)]
+    (when (and (:saved b) (:saved c))
+      (let [d-saved (- (:saved c) (:saved b))
+            d-kept  (- (:kept c) (:kept b))]
+        (cond
+          (and (zero? d-saved) (zero? d-kept)) :tie
+          (and (>= d-saved 0) (>= d-kept 0)) :always
       (and (<= d-saved 0) (<= d-kept 0)) :never
-      (pos? d-saved) [:below (/ d-saved (- d-kept))]
-      :else          [:above (/ (- d-saved) d-kept)])))
+          (pos? d-saved) [:below (/ d-saved (- d-kept))]
+          :else          [:above (/ (- d-saved) d-kept)])))))
 
 (defn break-even-str [be]
   (cond (= :always be) "always"
         (= :never be)  "never"
+        (= :tie be)    "tie"
         (vector? be)   (format "if a lost claim costs %s $%.2f" (if (= :below (first be)) "under" "over") (second be))
         :else          ""))
 

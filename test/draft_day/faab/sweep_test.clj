@@ -147,3 +147,8 @@
       (is (= :above side) "keeps more by saving less")
       (is (< (Math/abs (- 5.0 cost)) 1e-9)))
     (is (< (Math/abs (- 4.0 (:saved (sweep/summary base)))) 1e-9) "saved a winner: $400 over 100")))
+
+(deftest break-even-calls-a-tie-a-tie-and-has-nothing-to-say-without-winners
+  (is (= :tie (sweep/break-even (run-of 100 80 400.0) (run-of 100 80 400.0))))
+  (is (nil? (sweep/break-even {:by-league {"L" {:win-n 3}} :by-week {}} (run-of 100 80 400.0)))
+      "a run that priced no winner"))
