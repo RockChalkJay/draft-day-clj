@@ -56,20 +56,6 @@
   {:board "Board" :league "League" :team "My Team" :matchup "Matchup" :waivers "Waivers"
    :rosters "League"})
 
-(defn mode-link
-  "The way to the other half of the app. Quiet on purpose: it is used a couple
-  of times a season, and a toggle beside the tabs would ask to be read every
-  time the header is."
-  []
-  (let [mode  @(rf/subscribe [:mode])
-        auto? @(rf/subscribe [:phase-auto?])
-        other (if (= mode :season) :draft :season)]
-    [:button.mode-link
-     {:title    (str (if auto? "Chosen automatically" "Set by hand")
-                     " — change it per league under Settings")
-      :on-click #(rf/dispatch [:switch-mode other])}
-     (if (= other :draft) "Go to draft board →" "Go to season →")]))
-
 (defn draft-stats []
   (let [market  @(rf/subscribe [:market])
         my-team @(rf/subscribe [:my-team])
@@ -136,7 +122,6 @@
              [:button {:class (when (= view v) "on") :on-click #(rf/dispatch [:set-view v])}
               (view-labels v)])
            tabs)]
-     (when mode [mode-link])
      [league-switcher]
      ;; Truncated on a crowded header, so the whole text rides on hover.
      [:div.status {:title status} status]
