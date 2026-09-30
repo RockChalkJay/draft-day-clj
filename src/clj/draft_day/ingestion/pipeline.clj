@@ -253,7 +253,8 @@
   "Whether `fetched` is missing a source `cached` had, so a transient outage
   does not replace a good copy with an empty one."
   [fetched cached]
-  (boolean (some #(and (get cached %) (nil? (get fetched %))) [:weekly :sleeper])))
+  (boolean (some #(and (get cached %)
+                       (nil? (get fetched %))) [:weekly :sleeper])))
 
 (defn- read-realized [path]
   (try (read-transit path)
@@ -282,7 +283,9 @@
                           cached
                           (let [fetched (fetch-realized season)]
                             (if (and cached? (lost-a-source? fetched cached))
-                              cached
+                              ;; Kept copies restart their clock, or every request retries.
+                              (do (.setLastModified (io/file path) (System/currentTimeMillis))
+                                  cached)
                               (do (write-transit! path fetched) fetched))))))]
        (reset! realized-memo {:memo-path path :env env})
        env))))

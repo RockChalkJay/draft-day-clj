@@ -532,10 +532,13 @@
       (testing "a refresh that lost a source keeps the copy that had it"
         (with-redefs [nflverse-weekly/fetch (fn [_] nil)
                       sleeper-actual/fetch  (fn [& _] nil)]
-          (let [r (pipeline/load-realized 2026 {:path path :refresh true})]
+          (.setLastModified (io/file path) 0)
+          (let [r (pipeline/load-realized 2026 {:path path})]
             (is (= 2 (get-in r [:weekly :through-week])))
             (is (= 2 (get-in (pipeline/read-transit path) [:weekly :through-week]))
-                "and does not overwrite it"))))
+                "and does not overwrite it")
+            (is (pipeline/cache-fresh? path 1)
+                "and waits a TTL before trying again, rather than on every request"))))
       (.delete (io/file path)))))
 
 (deftest a-sample-universe-keeps-its-own-realized-columns

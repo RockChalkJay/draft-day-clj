@@ -103,6 +103,23 @@
       :fx (cond-> [[:dispatch [:recompute]]]
             place (conj place))})))
 
+;; For the player card's week-by-week log. No re-rank: the rankings request reads
+;; the server's universe, not this copy. A failure keeps the copy already held.
+(rf/reg-event-fx
+ :reload-universe
+ (fn [_ _]
+   {:http {:method :get
+           :url "/api/players"
+           :on-success [:universe-reloaded]
+           :on-failure [:universe-reload-failed]}}))
+
+(rf/reg-event-db :universe-reloaded
+  (fn [db [_ resp]]
+    (assoc db :players (:players resp) :universe (:universe resp))))
+
+(rf/reg-event-db :universe-reload-failed
+  (fn [db _] db))
+
 (rf/reg-event-fx :load-failed
   (fn [{:keys [db]} [_ err]]
     ;; The week will not come now. Whatever else says season still does — a
@@ -665,7 +682,7 @@
       (let [req {:provider provider :league-id league-id}]
         {:fx [[:dispatch [:sync-league req]]
               [:dispatch [:import-league req]]
-              [:dispatch [:fetch-players]]]}))))
+              [:dispatch [:reload-universe]]]}))))
 
 (defn my-roster-id-for
   "Which roster in this league belongs to `user-id`, or nil.
