@@ -56,7 +56,7 @@
         ;; `routes/universe` is a private atom-backed cache over exactly this;
         ;; a one-shot report has nothing to cache, so it calls the pipeline
         ;; rather than reaching into a private var.
-        {:keys [players season through-week]} (pipeline/load-universe {})
+        {:keys [players season through-week]} (pipeline/with-realized (pipeline/load-universe {}))
         season*  (season/resolve-season season)
         week     (inc (or through-week 0))
         weekly   (pipeline/load-weekly season* week)

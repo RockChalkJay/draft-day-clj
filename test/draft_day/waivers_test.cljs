@@ -986,9 +986,15 @@
   (is (true? (get-in @rdb/app-db [:leagues "sleeper:a" :rules :bankroll?]))
       "an import that brought a budget owns it from now on"))
 
-(deftest re-sync-refreshes-rosters-and-rules-together
+(deftest re-sync-refreshes-rosters-rules-and-the-universe-together
   (rf/dispatch-sync [:refresh-league {:provider "sleeper" :league-id "a"}])
-  (is (= #{:sync-league :import-league} (set (dispatched)))))
+  (is (= #{:sync-league :import-league :reload-universe} (set (dispatched)))))
+
+(deftest reloading-the-universe-does-not-re-rank-the-draft-board
+  (rf/dispatch-sync [:universe-reloaded {:players [{:player-id "a"}] :universe {:through-week 4}}])
+  (is (= 4 (get-in @rdb/app-db [:universe :through-week])))
+  (is (= [{:player-id "a"}] (:players @rdb/app-db)))
+  (is (empty? (dispatched)) "Re-sync is pressed after every claim; a re-rank here costs one each time"))
 
 (deftest a-refresh-or-import-with-no-league-says-so-rather-than-throwing
   ;; The same `(name nil)` trap `:sync-league` guards, reached from Re-sync and

@@ -103,6 +103,23 @@
       :fx (cond-> [[:dispatch [:recompute]]]
             place (conj place))})))
 
+;; For the player card's week-by-week log. No re-rank: the rankings request reads
+;; the server's universe, not this copy. A failure keeps the copy already held.
+(rf/reg-event-fx
+ :reload-universe
+ (fn [_ _]
+   {:http {:method :get
+           :url "/api/players"
+           :on-success [:universe-reloaded]
+           :on-failure [:universe-reload-failed]}}))
+
+(rf/reg-event-db :universe-reloaded
+  (fn [db [_ resp]]
+    (assoc db :players (:players resp) :universe (:universe resp))))
+
+(rf/reg-event-db :universe-reload-failed
+  (fn [db _] db))
+
 (rf/reg-event-fx :load-failed
   (fn [{:keys [db]} [_ err]]
     ;; The week will not come now. Whatever else says season still does — a
@@ -658,13 +675,14 @@
 
 (rf/reg-event-fx :refresh-league
   (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
-    ;; Rosters and rules together: everything the import sets is read-only
-    ;; (`db/league-owned-keys`), so there is no hand edit for it to overwrite.
+    ;; Rules too, having no hand edit to overwrite (`db/league-owned-keys`), and
+    ;; the universe, whose week-by-week logs are otherwise fetched only at boot.
     (if-not (and provider league-id)
       {:db (assoc db :waiver-status "Nothing to sync — no league is selected.")}
       (let [req {:provider provider :league-id league-id}]
         {:fx [[:dispatch [:sync-league req]]
-              [:dispatch [:import-league req]]]}))))
+              [:dispatch [:import-league req]]
+              [:dispatch [:reload-universe]]]}))))
 
 (defn my-roster-id-for
   "Which roster in this league belongs to `user-id`, or nil.

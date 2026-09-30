@@ -60,18 +60,37 @@
 
 (deftest cache-reset-endpoint-clears-memory-and-disk
   (routes/reset-universe!)
-  (let [calls (atom 0) deleted (atom nil)]
+  (let [calls (atom 0) deleted (atom #{})]
     (with-redefs [pipeline/load-universe (fn [& _] (swap! calls inc) fixture)
-                  pipeline/delete-cache! (fn [path] (reset! deleted path))]
+                  pipeline/delete-cache! (fn [path] (swap! deleted conj path))]
       (routes/players-handler {:query-params {}})   ; seed the in-memory cache
       (is (= 1 @calls))
       (let [resp (routes/cache-reset-handler {})
             b    (parse resp)]
         (is (= 200 (:status resp)))
         (is (= "ok" (:status b)))
-        (is (= pipeline/default-cache-path @deleted)))
+        (is (= #{pipeline/default-cache-path pipeline/default-realized-cache-path}
+               @deleted)))
       (routes/players-handler {:query-params {}})   ; proves the atom was cleared
       (is (= 2 @calls)))))
+
+(deftest the-in-memory-universe-expires
+  (routes/reset-universe!)
+  (let [calls   (atom 0)
+        expires (atom Long/MAX_VALUE)]
+    (with-redefs [pipeline/load-universe (fn [& _]
+                                           (swap! calls inc)
+                                           (assoc fixture :expires-at @expires))]
+      (routes/players-handler {:query-params {}})
+      (routes/players-handler {:query-params {}})
+      (is (= 1 @calls) "held while fresh")
+      (routes/reset-universe!)
+      (reset! expires 0)
+      (routes/players-handler {:query-params {}})
+      (routes/players-handler {:query-params {}})
+      (is (= 3 @calls) "reloaded once expired, not held until a restart")
+      (is (not (re-find #"expires-at" (:body (routes/players-handler {:query-params {}}))))
+          "the reload clock is the server's, not provenance"))))
 
 (deftest players-endpoint-reports-universe-provenance
   (routes/reset-universe!)

@@ -43,7 +43,7 @@
      :players        players}))
 
 (defn missing-sources
-  "Labels that `enrich-universe` knows about but this capture did not get."
+  "Labels a fully enriched universe reports but this capture did not get."
   [{:keys [sources]}]
   (remove #(:ok? (get sources %)) pipeline/enrichment-source-labels))
 
