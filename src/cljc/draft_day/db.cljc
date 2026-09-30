@@ -1038,6 +1038,7 @@
    {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true :group :stats}
    {:key :typical   :label "Bid"    :tooltip "What it usually takes to win him, and your chance of winning with that bid. Hover for the suggested bid and the rivals behind it. An estimate. Blank when the league does not run FAAB or your budget is spent" :default? true :group :bidding}
    {:key :rivals    :label "Rivals" :tooltip "How many other teams are expected to bid on him" :default? true :group :bidding}
+   {:key :adds      :label "Adds"   :tooltip "Sleeper trending adds over the last 48 hours, across every Sleeper league. Blank when he is not among the hundred most added" :default? true :group :bidding}
    {:key :risk      :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile)" :default? true :group :essentials}
    {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true :group :essentials}
    {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false :group :week}
@@ -1046,7 +1047,6 @@
    {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start" :default? false :group :projections}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? false :group :projections}
    {:key :bid       :label "Sugg."  :tooltip "Suggested bid and its chance to win: about a dollar over the top rival bid he is likely to draw, never more than he is worth to you" :default? false :group :bidding}
-   {:key :adds      :label "Adds"   :tooltip "Sleeper trending adds over the last 48 hours, across every Sleeper league. Blank when he is not among the hundred most added" :default? false :group :bidding}
    {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? false :group :projections}
    {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules" :default? false :group :projections}
    {:key :tgt       :label "Tgt"    :tooltip "Targets this season"        :default? false :group :stats}
@@ -1277,7 +1277,7 @@
      :drafts       []
      :waivers      nil          ; last /api/waivers reply
      :waiver-seq   0            ; newest /api/waivers request; older replies are dropped
-     :waiver-sort  {:key :rank :dir 1}
+     :waiver-sort  {:key :adds :dir -1}
      :waiver-status nil         ; what the waiver board is doing, or why it failed
      :sync-status  nil          ; what the rosters sync is doing, or why it failed
      :matchup      nil          ; last /api/matchup reply
