@@ -315,15 +315,15 @@
   ;; One surviving row per band, so each band's position in the fragment is
   ;; readable. The rows are `[metric-row row …]` component references — reagent
   ;; expands them, a test reads the row map straight out of them.
-  (let [a (assoc odunze  :upgrade 12.0 :points 90.0)
-        b (assoc jennings :upgrade 3.0 :points 70.0)
+  (let [a (assoc odunze  :upgrade 12.0 :injury-risk 2)
+        b (assoc jennings :upgrade 3.0 :injury-risk 4)
         labels (fn [b*] (keep #(:label (second %)) (nth b* 1)))
         [_ horizon claim evidence] (cmp/tile-bands (dissoc a :week-points)
                                                    (dissoc b :week-points)
                                                    nil nil)]
     (is (= ["Rest of season"] (labels horizon)))
     (is (= ["Upgrade"] (labels claim)))
-    (is (= ["Preseason"] (labels evidence))))
+    (is (= ["Injury risk"] (labels evidence))))
   (is (= #{"Lineup gain" "Upgrade" "Typical winning bid" "Suggested bid" "Rivals"}
          (set (map :label (metrics/rows-by-band :claim))))))
 
@@ -331,14 +331,14 @@
   ;; The only band that can vanish. A bordered empty box below the claim reads
   ;; as a section that failed to load.
   (is (nil? (cmp/band-content :evidence {:ros-points 1.0} {:ros-points 2.0} nil nil)))
-  (is (some? (cmp/band-content :evidence {:points 90.0} {} nil nil))))
+  (is (some? (cmp/band-content :evidence {:injury-risk 3} {} nil nil))))
 
 (deftest every-band-in-bands-can-draw-itself
   ;; `tile-bands` keeps over `bands`, so a keyword added there with no `case`
   ;; branch would silently drop out instead of failing.
   (doseq [k metrics/bands]
     (is (some? (cmp/band-content k {:player-name "A" :ros-points 100.0
-                                    :upgrade 1.0 :points 9.0}
+                                    :upgrade 1.0 :injury-risk 2}
                                  {:player-name "B" :ros-points 80.0
-                                  :upgrade 2.0 :points 8.0} nil nil))
+                                  :upgrade 2.0 :injury-risk 3} nil nil))
         (str k " draws nothing"))))

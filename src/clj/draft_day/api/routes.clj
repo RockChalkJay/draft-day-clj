@@ -267,13 +267,14 @@
 (defn waiver-board-inputs
   "The three static columns the waiver board renders but does not derive.
 
-  `:points` (the preseason projection the Pre column shows and the rest-of-season
-  line is correcting), `:injury-risk` (the Risk column), and `:pos-rank` (the
-  ordinal in `util/pos-label`, and the ordering behind `db/pos-sort-key`). All
-  three are produced inside `engine/static-rankings` and none of them by
+  `:points` (the preseason projection the rest-of-season line is correcting),
+  `:injury-risk` (the Risk column), and `:pos-rank` (the ordinal in
+  `util/pos-label` before week 1, and the ordering behind `db/pos-sort-key`).
+  All three are produced inside `engine/static-rankings` and none of them by
   `rankings.ros`, so a board assembled without them renders a dash in Risk for
-  every row, a blank Pre, and \"RB\" where the tooltip promises \"RB7\" — three
-  shipped columns permanently dead, with nothing failing to say so.
+  every row and \"RB\" where the preseason tooltip promises \"RB7\", with
+  nothing failing to say so. In season `without-preseason` drops the first and
+  the last on the way out.
 
   Only these three, rather than `static-rankings` whole: the waiver board
   computes its own replacement and VORP on `:ros-points` (see
@@ -313,6 +314,20 @@
                  :realized/last-game :last-points :last-week :dropped?
                  :kickoff/started?)
         players))
+
+(defn without-preseason
+  "Drop the preseason projection and the rank taken on it once a game has been
+  played, so the season half shows no August number.
+
+  `:points` is the prior `rankings.ros` has already blended into `:ros-points`,
+  and `:pos-rank` ranks on it; the Pos cell falls back to `:pos-rank` for a
+  player with no season points, and would read an August rank for a rookie who
+  has not debuted. In preseason both stay, since then they are the only
+  numbers there are."
+  [players through-week]
+  (if (pos? (or through-week 0))
+    (mapv #(dissoc % :points :pos-rank) players)
+    players))
 
 (def nfl-week-ttl-ms
   "How long Sleeper's answer for the current NFL week is trusted. It turns over
@@ -415,7 +430,9 @@
                         :bid-history (transactions/cached-history
                                       (:provider league) (:league-id league) (:season league))}
               board    (-> players
-                           (vendor/for-scoring scoring*)
+                           ;; No vendor column is drawn on this board, and
+                           ;; ECR/ADP are preseason numbers besides.
+                           vendor/without-bundle
                            ;; Before the log goes: rivals' claims are aimed
                            ;; partly by last week's game.
                            (waiver/with-last-game through-week)
@@ -439,7 +456,9 @@
                            (pipeline/assoc-kickoffs (:kickoffs weekly)))
               out      (waiver/waiver-board board ctx)]
           (json-response 200 (assoc out
-                                    :players      (without-projection-internals (:players out))
+                                    :players      (-> (:players out)
+                                                      without-projection-internals
+                                                      (without-preseason through-week))
                                     ;; Same strip as :players — these are full
                                     ;; rows and carry the same working state.
                                     ;; `some->` so nil survives: it means no team
@@ -447,7 +466,8 @@
                                     ;; empty roster.
                                     :my-roster-players
                                     (some-> (:my-roster-players out)
-                                            without-projection-internals)
+                                            without-projection-internals
+                                            (without-preseason through-week))
                                     :through-week through-week
                                     :season-games season-games
                                     ;; nil when there is no weekly line at all;

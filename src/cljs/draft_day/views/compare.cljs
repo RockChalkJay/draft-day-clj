@@ -282,7 +282,7 @@
        :title "Player detail"}
       (:player-name p)]
      [status-chip p]]
-    [:p.cmp-meta (util/pos-label p) " · " (or (:team p) "FA")
+    [:p.cmp-meta (util/pos-label (assoc p :pos-rank (db/season-rank p))) " · " (or (:team p) "FA")
      " · " (waivers/week-matchup p week)]]])
 
 (defn band-content

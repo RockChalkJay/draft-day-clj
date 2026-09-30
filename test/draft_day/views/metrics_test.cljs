@@ -42,7 +42,7 @@
 
 ;; ---- the list must not fall behind the board ----
 ;; It did: `:lineup-upgrade` became the column `db/waiver-rank-key` sorts by and
-;; the tile never mentioned it, along with VORP, the preseason line and ECR.
+;; the tile never mentioned it, along with VORP.
 ;; `metrics/rows` and `db/waiver-column-catalog` are still written separately —
 ;; the rows carry comparison semantics the board has no use for, and the board
 ;; carries identity and schedule columns no readout wants — so the guard is a
@@ -66,8 +66,6 @@
    :trend     "Trend"
    :form      "Form / game"
    :gp        "Games played"
-   :preseason "Preseason"
-   :ecr       "Expert rank"
    :risk      "Injury risk"})
 
 (def ^:private not-a-row
