@@ -27,7 +27,7 @@
 
 (def schema-version
   "Version of the persisted universe envelope and player-row shape."
-  14)
+  15)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -222,7 +222,7 @@
 
 (def realized-schema-version
   "Version of the realized cache envelope."
-  1)
+  2)
 
 (def default-realized-cache-path
   (str "data/realized.v" realized-schema-version ".transit"))

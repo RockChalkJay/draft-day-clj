@@ -228,3 +228,21 @@
     (testing "but a kicker still joins for usage and availability"
       (is (some? (nflverse/row->usage 2025 kicker)))
       (is (some? (nflverse/row->games 2025 kicker))))))
+
+(deftest a-two-way-defender-joins-at-his-offensive-position
+  (let [catch-week {"player_id" "00-0040718" "position" "CB" "games" "1"
+                    "targets" "8" "carries" "1" "attempts" "0"}
+        d-week     {"player_id" "00-0040718" "position" "CB" "games" "1"
+                    "targets" "0" "carries" "" "attempts" "NA"}
+        corner     {"player_id" "00-0000009" "position" "CB" "games" "1"
+                    "targets" "0" "carries" "0" "attempts" "0"}
+        qb         {"player_id" "00-0000010" "position" "QB" "games" "1"
+                    "targets" "0" "carries" "5" "attempts" "30"}
+        out        (nflverse/with-offensive-positions [catch-week d-week corner qb])]
+    (is (= ["WR" "WR" "CB" "QB"] (map #(get % "position") out))
+        "every one of his rows, a defense-only week included")
+    (is (= #{"00-0040718" "00-0000010"}
+           (set (keys (nflverse/row-positions out))))
+        "a pure defender still does not join")
+    (is (some? (nflverse/row->season-line (assoc (first out) "receptions" "5")))
+        "and he has a history line")))
