@@ -27,7 +27,7 @@
 
 (def schema-version
   "Version of the persisted universe envelope and player-row shape."
-  13)
+  14)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -146,15 +146,19 @@
                    [[(pos-tier-label pos) pos (first scoring/formats)]]))
                (sort fantasypros/pos-formats))))
 
+(def realized-source-labels
+  "Source labels reported by `assoc-realized`."
+  [:nflverse/weekly :sleeper/realized])
+
 (def enrichment-source-labels
-  "All source labels reported by `enrich-universe`."
-  (into (into [:sleeper/byes :fantasypros/sleepers :espn
-               :nflverse/player-stats :nflverse/weekly :sleeper/realized]
-              (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
-                                 (format-label :fantasypros/aav fmt)]))
-              scoring/formats)
-        (map first)
-        pos-tier-tasks))
+  "All source labels a fully enriched universe reports: `enrich-universe`'s,
+  then `assoc-realized`'s."
+  (-> [:sleeper/byes :fantasypros/sleepers :espn :nflverse/player-stats]
+      (into (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
+                               (format-label :fantasypros/aav fmt)]))
+            scoring/formats)
+      (into (map first) pos-tier-tasks)
+      (into realized-source-labels)))
 
 (defn scoped
   "Re-key a by-key enrichment map so its columns land under
@@ -168,8 +172,7 @@
   (into (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
                :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
                :espn                 #(best-effort (espn/fetch season))
-               :nflverse/player-stats #(best-effort (nflverse/fetch (dec season)))
-               :nflverse/weekly       #(best-effort (nflverse-weekly/fetch season))}
+               :nflverse/player-stats #(best-effort (nflverse/fetch (dec season)))}
               (mapcat (fn [fmt]
                         [[(format-label :fantasypros/ecr fmt)
                           #(best-effort (fantasypros/fetch-ecr fmt))]
@@ -181,15 +184,14 @@
         pos-tier-tasks))
 
 (defn enrich-universe
-  "Enrich a validated universe, retaining format-specific vendor columns side by side."
+  "Enrich a validated universe, retaining format-specific vendor columns side by
+  side. The in-season realized columns are not here: see `load-realized`."
   [season universe]
   (let [fetched  (parallel/all (enrichment-tasks season))
         byes     (:sleeper/byes fetched)
         sleepers (:fantasypros/sleepers fetched)
         espn     (:espn fetched)
-        prior    (:nflverse/player-stats fetched)
-        weekly   (:nflverse/weekly fetched)
-        realized (best-effort (sleeper-actual/fetch season (:through-week weekly)))]
+        prior    (:nflverse/player-stats fetched)]
     (log/info (format ":sleeper/byes: %d team bye weeks" (count byes)))
     (as-> {:players (cond-> universe (seq byes) (sleeper/assoc-byes byes))
            :sources {:sleeper/byes (if (seq byes)
@@ -216,19 +218,115 @@
       (apply-enrichment acc :nflverse/player-stats (:by-key prior)
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions prior)
-                         :expected-partial? true})
-      (apply-enrichment acc :nflverse/weekly (:by-key weekly)
+                         :expected-partial? true}))))
+
+(def realized-schema-version
+  "Version of the realized cache envelope."
+  1)
+
+(def default-realized-cache-path
+  (str "data/realized.v" realized-schema-version ".transit"))
+
+(defn- realized-ttl-hours []
+  (Double/parseDouble (or (System/getenv "DRAFTDAY_REALIZED_TTL_HOURS") "1")))
+
+(defn fetch-realized
+  "Network: this season's realized columns and how far the season has got. A
+  source that failed is nil in the envelope rather than failing the whole."
+  [season]
+  (let [weekly (best-effort (nflverse-weekly/fetch season))]
+    {:schema-version realized-schema-version
+     :season         season
+     :as-of          (nflverse-weekly/as-of-week)
+     :fetched-at     (now-iso)
+     :weekly         weekly
+     :sleeper        (best-effort (sleeper-actual/fetch season (:through-week weekly)))}))
+
+(defn realized-answers?
+  "Whether a realized envelope was fetched for this season and week ceiling."
+  [env season]
+  (and (= realized-schema-version (:schema-version env))
+       (= season (:season env))
+       (= (nflverse-weekly/as-of-week) (:as-of env))))
+
+(defn lost-a-source?
+  "Whether `fetched` is missing a source `cached` had, so a transient outage
+  does not replace a good copy with an empty one."
+  [fetched cached]
+  (boolean (some #(and (get cached %) (nil? (get fetched %))) [:weekly :sleeper])))
+
+(defn- read-realized [path]
+  (try (read-transit path)
+       (catch Exception e
+         (log/warn e "realized cache unreadable; refetching")
+         nil)))
+
+(defonce ^:private realized-memo (atom nil))
+
+(defn load-realized
+  "This season's realized envelope off a short-lived cache, or nil offline.
+  Apart from the universe because a game-day cadence cannot ride a 24-hour
+  cache; nflverse's file and Sleeper's weeks stay one fetch, since nflverse's
+  `:through-week` bounds which Sleeper weeks are asked for."
+  ([season] (load-realized season {}))
+  ([season {:keys [refresh path] :or {path default-realized-cache-path}}]
+   (when-not (offline?)
+     (let [fresh? (and (not refresh) (cache-fresh? path (realized-ttl-hours)))
+           memo   (let [{:keys [memo-path env]} @realized-memo]
+                    (when (and fresh? (= memo-path path) (realized-answers? env season))
+                      env))
+           env    (or memo
+                      (let [cached  (read-realized path)
+                            cached? (realized-answers? cached season)]
+                        (if (and fresh? cached?)
+                          cached
+                          (let [fetched (fetch-realized season)]
+                            (if (and cached? (lost-a-source? fetched cached))
+                              cached
+                              (do (write-transit! path fetched) fetched))))))]
+       (reset! realized-memo {:memo-path path :env env})
+       env))))
+
+(defn reset-realized!
+  "Drop the realized cache, in memory and on disk."
+  []
+  (reset! realized-memo nil)
+  (delete-cache! default-realized-cache-path))
+
+(defn assoc-realized
+  "Join a realized envelope onto a universe envelope and set `:through-week`."
+  [env {:keys [weekly sleeper]}]
+  (-> env
+      (apply-enrichment :nflverse/weekly (:by-key weekly)
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions weekly)
                          :expected-partial? true})
-      (apply-enrichment acc :sleeper/realized (:by-key realized)
+      (apply-enrichment :sleeper/realized (:by-key sleeper)
                         {:key-fn            #(or (get-in % [:ids :sleeper])
                                                  (:player-id %))
                          :expected-partial? true})
-      (assoc acc :through-week (or (:through-week weekly) 0)))))
+      (assoc :through-week (or (:through-week weekly) 0))))
 
-(defn fetch-enriched-universe
-  "Fetch, anchor, validate, and enrich the live universe."
+(defonce ^:private joined-memo (atom nil))
+
+(defn with-realized
+  "The universe with the current realized columns joined on. Only a live or
+  cached universe is joined; a sample carries its own, captured with it. The
+  join is memoized on both inputs, since every board request asks for it."
+  [{:keys [source season] :as env}]
+  (if-not (#{"live" "cache"} source)
+    env
+    (let [realized (load-realized (season/resolve-season season))
+          {:keys [base joined] r :realized} @joined-memo]
+      (if (and (identical? base env) (identical? r realized))
+        joined
+        (let [joined (assoc-realized env realized)]
+          (reset! joined-memo {:base env :realized realized :joined joined})
+          joined)))))
+
+(defn fetch-base-universe
+  "Fetch, anchor, validate, and enrich the live universe, without the realized
+  columns."
   [season]
   (let [anchored (player-ids/attach-ids (sleeper/fetch-universe season)
                                         (player-ids/pinned-index))
@@ -237,6 +335,11 @@
     (when (validate/systemic-failure? report)
       (throw (ex-info "player universe failed validation" report)))
     (assoc (enrich-universe season players) :validation report)))
+
+(defn fetch-enriched-universe
+  "Fetch the live universe with every column, realized ones included."
+  [season]
+  (assoc-realized (fetch-base-universe season) (fetch-realized season)))
 
 (defn sample-universe
   "Return the bundled fallback as an envelope with its captured provenance."
@@ -265,11 +368,10 @@
   [season cache-path]
   (try
     (let [season' (season/resolve-season season)
-          {:keys [players validation sources through-week]} (fetch-enriched-universe season')
+          {:keys [players validation sources]} (fetch-base-universe season')
           env {:schema-version schema-version
                :season         season'
                :fetched-at     (now-iso)
-               :through-week   (or through-week 0)
                :validation     validation
                :sources        sources
                :players        players}]
@@ -280,19 +382,38 @@
           (let [s (sample-universe)] (when (seq (:players s)) s))
           {:schema-version schema-version :players [] :source "empty"}))))
 
+(def retry-ms
+  "How long a universe that fell back past a fresh cache is held before live
+  ingestion is tried again."
+  (* 10 60 1000))
+
+(defn expires-at
+  "When a universe just loaded against `cache-path` should be reloaded: when the
+  file goes stale, or after `retry-ms` when it already is. Measured off the
+  file rather than the load, so a file read an hour before its expiry is not
+  then held for a whole TTL more."
+  [cache-path]
+  (let [f   (io/file cache-path)
+        ttl (long (* (cache-ttl-hours) 3600 1000))]
+    (if (cache-fresh? cache-path (cache-ttl-hours))
+      (+ (.lastModified f) ttl)
+      (+ (System/currentTimeMillis) retry-ms))))
+
 (defn load-universe
-  "Load the universe envelope, optionally bypassing the fresh cache."
+  "Load the universe envelope, optionally bypassing the fresh cache, stamped
+  with its `:expires-at`. Without the realized columns: see `with-realized`."
   ([] (load-universe {}))
   ([{:keys [refresh season cache-path] :or {cache-path default-cache-path}}]
-   (cond
-     (offline?)
-     (sample-universe)
+   (-> (cond
+         (offline?)
+         (sample-universe)
 
-     (and (not refresh) (cache-fresh? cache-path (cache-ttl-hours)))
-     (or (cached-universe cache-path) (live-universe season cache-path))
+         (and (not refresh) (cache-fresh? cache-path (cache-ttl-hours)))
+         (or (cached-universe cache-path) (live-universe season cache-path))
 
-     :else
-     (live-universe season cache-path))))
+         :else
+         (live-universe season cache-path))
+       (assoc :expires-at (expires-at cache-path)))))
 
 (def weekly-schema-version
   "Version of the weekly projection cache envelope and line shape."

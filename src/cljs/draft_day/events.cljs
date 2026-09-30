@@ -658,13 +658,14 @@
 
 (rf/reg-event-fx :refresh-league
   (fn [{:keys [db]} [_ {:keys [provider league-id]}]]
-    ;; Rosters and rules together: everything the import sets is read-only
-    ;; (`db/league-owned-keys`), so there is no hand edit for it to overwrite.
+    ;; Rules too, having no hand edit to overwrite (`db/league-owned-keys`), and
+    ;; the universe, whose week-by-week logs are otherwise fetched only at boot.
     (if-not (and provider league-id)
       {:db (assoc db :waiver-status "Nothing to sync — no league is selected.")}
       (let [req {:provider provider :league-id league-id}]
         {:fx [[:dispatch [:sync-league req]]
-              [:dispatch [:import-league req]]]}))))
+              [:dispatch [:import-league req]]
+              [:dispatch [:fetch-players]]]}))))
 
 (defn my-roster-id-for
   "Which roster in this league belongs to `user-id`, or nil.

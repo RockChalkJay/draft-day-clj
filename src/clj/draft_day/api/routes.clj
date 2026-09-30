@@ -46,14 +46,18 @@
   (when-let [b (:body req)]
     (json/read-value b mapper)))
 
-;; The universe is shared (not per-session) state; hold it in an atom so we don't
-;; re-read disk on every rankings call.
+;; Shared, not per-session: held so each call skips a disk read, but only until
+;; its `:expires-at`, or a long-running server never sees another day's data.
 (defonce ^:private universe-cache (atom nil))
 
 (defn- universe [refresh?]
-  (if (and (not refresh?) @universe-cache)
-    @universe-cache
-    (reset! universe-cache (pipeline/load-universe {:refresh refresh?}))))
+  (let [cached @universe-cache
+        base   (if (and (not refresh?) cached
+                        (not (some-> (:expires-at cached)
+                                     (< (System/currentTimeMillis)))))
+                 cached
+                 (reset! universe-cache (pipeline/load-universe {:refresh refresh?})))]
+    (pipeline/with-realized base)))
 
 (defn reset-universe!
   "Drop the in-memory universe so the next request reloads it (used in tests)."
@@ -73,10 +77,11 @@
     (json-response 200 {:players  (vendor/without-bundle players)
                         :count    (count players)
                         :source   source
-                        :universe (dissoc u :players)})))
+                        :universe (dissoc u :players :expires-at)})))
 
 (defn cache-reset-handler [_]
   (pipeline/delete-cache! pipeline/default-cache-path)
+  (pipeline/reset-realized!)
   (reset-universe!)
   (json-response 200 {:status "ok"}))
 

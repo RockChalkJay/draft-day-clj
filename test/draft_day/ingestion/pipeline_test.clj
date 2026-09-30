@@ -9,6 +9,7 @@
             [draft-day.ingestion.pipeline :as pipeline :refer [apply-enrichment]]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.sleeper :as sleeper]
+            [draft-day.ingestion.sleeper-actual :as sleeper-actual]
             [draft-day.scoring :as scoring]))
 
 (defn- tmp [name] (str (System/getProperty "java.io.tmpdir") "/dd-" name ".transit"))
@@ -244,7 +245,7 @@
         "anchoring must not collide two players onto one id")))
 
 (deftest every-enrichment-fetch-goes-out-together
-  ;; Twenty-three independent fetches behind a 30-second timeout each, on the
+  ;; Twenty-two independent fetches behind a 30-second timeout each, on the
   ;; request thread that missed the cache. Awaited in turn they stack to ten
   ;; minutes, so what has to hold is that `enrich-universe` starts *all* of them
   ;; before it blocks on any — not merely that some helper can start six.
@@ -260,8 +261,8 @@
                    (when-not (.await latch 10 java.util.concurrent.TimeUnit/SECONDS)
                      (throw (ex-info "this fetch ran on its own" {:fetch what}))))
         rows     (fn [k] [{:key k :fantasypros/ecr 1}])]
-    (is (= 23 expected)
-        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers, ESPN, and nflverse's prior-season and in-season files")
+    (is (= 22 expected)
+        "three formats x (ECR + AAV), 12 per-position tier pages, plus byes, sleepers, ESPN, and nflverse's prior season")
     (with-redefs [sleeper/fetch-byes    (fn [_] (arrive! :byes) {"ATL" 5})
                   fantasypros/fetch-sleepers (fn [] (arrive! :sleepers)
                                                (rows "player0_rb"))
@@ -269,12 +270,6 @@
                                           {"player0_rb" {:espn/auction-value 1.0}})
                   nflverse/fetch        (fn [_] (arrive! :nflverse)
                                           {:by-key    {"00-0000000" {:nflverse/prior-targets 1.0}}
-                                           :positions {"00-0000000" "RB"}})
-                  nflverse-weekly/fetch (fn [_] (arrive! :nflverse-weekly)
-                                          {:by-key    {"00-0000000"
-                                                       {:nflverse/season-to-date
-                                                        {:games 4 :stats {:rec 20.0}}}}
-                                           :through-week 4
                                            :positions {"00-0000000" "RB"}})
                   fantasypros/fetch-ecr (fn [fmt] (arrive! [:ecr fmt])
                                           (rows "player0_rb"))
@@ -284,7 +279,9 @@
                                               [{:key "player0_rb"
                                                 :fantasypros/ecr-pos-tier 1}])]
       (let [{:keys [sources]} (pipeline/enrich-universe 2026 (universe-fixture 5))]
-        (is (= (set pipeline/enrichment-source-labels) (set (keys sources)))
+        (is (= (set (remove (set pipeline/realized-source-labels)
+                            pipeline/enrichment-source-labels))
+               (set (keys sources)))
             "every source still reports, and under its own label")
         (is (every? :ok? (vals sources))
             "all of them resolved, which only happens if all were in flight")))))
@@ -295,7 +292,6 @@
   (with-redefs [sleeper/fetch-byes    (fn [_] {"ATL" 5})
                 fantasypros/fetch-sleepers (fn [] nil)
                 nflverse/fetch        (fn [_] {:by-key {} :positions {}})
-                nflverse-weekly/fetch (fn [_] {:by-key {} :through-week 0 :positions {}})
                 espn/fetch            (fn [_] (throw (ex-info "espn down" {})))
                 fantasypros/fetch-ecr (fn [fmt]
                                         (if (= :standard fmt)
@@ -486,3 +482,62 @@
   ;; It carries no kickoffs, which is indistinguishable from a failed fetch.
   (let [env {:schema-version 1 :season 2026 :week 5 :lines weekly-lines}]
     (is (false? (pipeline/weekly-answers? env 2026 5)))))
+
+(defn- realized-stubs
+  "Stubs for the two realized fetches, counting how often nflverse is asked."
+  [calls through-week]
+  {#'nflverse-weekly/fetch (fn [_] (swap! calls inc)
+                             {:by-key       {"00-0000001" {:nflverse/season-to-date
+                                                           {:games through-week :stats {}}}}
+                              :through-week through-week
+                              :positions    {"00-0000001" "RB"}})
+   #'sleeper-actual/fetch  (fn [_ wk] {:by-key {"s1" {:realized/game-log
+                                                      (mapv (fn [w] {:week w :stats {}})
+                                                            (range 1 (inc wk)))}}
+                                       :through-week wk})})
+
+(deftest realized-columns-join-onto-the-universe
+  (let [calls (atom 0)
+        env   {:players [{:player-id "00-0000001" :position "RB"
+                          :ids {:gsis "00-0000001" :sleeper "s1"}}]
+               :sources {}}]
+    (with-redefs-fn (realized-stubs calls 3)
+      (fn []
+        (let [r (pipeline/assoc-realized env (pipeline/fetch-realized 2026))
+              p (first (:players r))]
+          (is (= 3 (:through-week r)))
+          (is (= [1 2 3] (map :week (:realized/game-log p))))
+          (is (= 3 (get-in p [:nflverse/season-to-date :games])))
+          (is (every? #(:ok? (get-in r [:sources %])) pipeline/realized-source-labels)))))
+    (testing "a season with nothing played is week zero, not an error"
+      (let [r (pipeline/assoc-realized env {:weekly nil :sleeper nil})]
+        (is (= 0 (:through-week r)))
+        (is (every? #(false? (:ok? (get-in r [:sources %])))
+                    pipeline/realized-source-labels))))))
+
+(deftest realized-columns-have-their-own-short-cache
+  (with-redefs [pipeline/offline? (constantly false)]
+    (let [path  (tmp "realized")
+          calls (atom 0)]
+      (.delete (io/file path))
+      (with-redefs-fn (realized-stubs calls 2)
+        (fn []
+          (is (= 2 (get-in (pipeline/load-realized 2026 {:path path})
+                           [:weekly :through-week])))
+          (pipeline/load-realized 2026 {:path path})
+          (is (= 1 @calls) "a fresh copy is not refetched")
+          (is (= 2027 (:season (pipeline/load-realized 2027 {:path path}))))
+          (is (= 2 @calls) "another season is not answered from this one's copy")
+          (pipeline/load-realized 2026 {:path path :refresh true})))
+      (testing "a refresh that lost a source keeps the copy that had it"
+        (with-redefs [nflverse-weekly/fetch (fn [_] nil)
+                      sleeper-actual/fetch  (fn [& _] nil)]
+          (let [r (pipeline/load-realized 2026 {:path path :refresh true})]
+            (is (= 2 (get-in r [:weekly :through-week])))
+            (is (= 2 (get-in (pipeline/read-transit path) [:weekly :through-week]))
+                "and does not overwrite it"))))
+      (.delete (io/file path)))))
+
+(deftest a-sample-universe-keeps-its-own-realized-columns
+  (let [sample {:source "sample" :through-week 9 :players []}]
+    (is (identical? sample (pipeline/with-realized sample)))))
