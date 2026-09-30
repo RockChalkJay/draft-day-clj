@@ -85,7 +85,7 @@
 (deftest ^:integration sleeper-still-says-which-week-it-is-showing
   ;; Shape only: a value assertion would fail every time the calendar turns.
   (let [wk (matchups/current-week :sleeper {})]
-    (is (number? wk) "display_week, or week as the fallback")
+    (is (number? wk) "week in season, display_week outside it")
     (is (<= 1 wk 22) "a plausible NFL week rather than a parsed string")))
 
 (deftest ^:integration sleepers-trending-list-still-names-players-and-counts
