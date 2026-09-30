@@ -129,6 +129,13 @@
   need not be; the label only has to pass the gates, since nothing joins on it."
   [["attempts" "QB"] ["carries" "RB"] ["targets" "WR"]])
 
+(def two-way-positions
+  "The positions `with-offensive-positions` may relabel: the ones a player lines
+  up at on offense from. A lineman thrown to on a trick play or a punter on a
+  fake has a touch too, and would only add a row to the join that matches
+  nobody — twenty-eight of them in the 2025 file."
+  #{"FB" "CB" "SAF"})
+
 (defn with-offensive-positions
   "Pure: rows with every defender who touched the ball on offense relabelled at
   an offensive position (see `offense-columns`), so the `fantasy-positions`
@@ -140,7 +147,7 @@
   (let [touches (fn [r] (map (fn [[col _]] (or (num-or-nil (get r col)) 0.0))
                              offense-columns))
         by-id   (reduce (fn [acc r]
-                          (if (fantasy-positions (get r "position"))
+                          (if-not (two-way-positions (get r "position"))
                             acc
                             (let [t (touches r)]
                               (if (some pos? t)

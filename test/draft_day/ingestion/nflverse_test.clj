@@ -238,10 +238,15 @@
                     "targets" "0" "carries" "0" "attempts" "0"}
         qb         {"player_id" "00-0000010" "position" "QB" "games" "1"
                     "targets" "0" "carries" "5" "attempts" "30"}
-        out        (nflverse/with-offensive-positions [catch-week d-week corner qb])]
-    (is (= ["WR" "WR" "CB" "QB"] (map #(get % "position") out))
-        "every one of his rows, a defense-only week included")
-    (is (= #{"00-0040718" "00-0000010"}
+        punter     {"player_id" "00-0000011" "position" "P" "games" "1"
+                    "targets" "0" "carries" "0" "attempts" "1"}
+        fullback   {"player_id" "00-0000012" "position" "FB" "games" "1"
+                    "targets" "1" "carries" "4" "attempts" "0"}
+        out        (nflverse/with-offensive-positions
+                    [catch-week d-week corner qb punter fullback])]
+    (is (= ["WR" "WR" "CB" "QB" "P" "RB"] (map #(get % "position") out))
+        "every one of his rows, a defense-only week included; a fake punt is not offense")
+    (is (= #{"00-0040718" "00-0000010" "00-0000012"}
            (set (keys (nflverse/row-positions out))))
         "a pure defender still does not join")
     (is (some? (nflverse/row->season-line (assoc (first out) "receptions" "5")))
