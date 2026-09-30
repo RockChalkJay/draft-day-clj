@@ -336,6 +336,8 @@
       (assoc-in [:players 0 :sleeper/years-exp] 3)
       (assoc-in [:players 0 :nflverse/games-seasons] {2023 17 2024 17 2025 17})
       (assoc-in [:players 0 :nflverse/games-by-season] {2023 17 2024 10 2025 17})
+      ;; A vendor bundle, so the in-season strip has an ECR to leave behind.
+      (assoc-in [:players 0 :vendor/by-format] {:ppr {:fantasypros/ecr 4}})
       ;; A week-by-week log, so the strip below has something to strip.
       (assoc-in [:players 0 :nflverse/game-log]
                 [{:week 1 :opponent "SEA" :stats {:rush_yd 90.0}}])))
@@ -400,7 +402,8 @@
     (is (not-any? #(contains? % :points) rows))
     (is (not-any? #(contains? % :pos-rank) rows)
         "or the Pos cell reads an August rank for anyone who has not played")
-    (is (not-any? #(contains? % :fantasypros/ecr) rows))
+    (is (not-any? #(contains? % :fantasypros/ecr) rows) "no vendor column is flattened")
+    (is (not-any? #(contains? % :vendor/by-format) rows) "nor the bundle shipped whole")
     (is (every? #(number? (:ros-points %)) (:players b)) "the preseason line reaches the board only through the blend")))
 
 (deftest waivers-endpoint-ranks-a-position-on-points-so-far
