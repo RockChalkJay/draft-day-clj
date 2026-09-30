@@ -266,8 +266,6 @@
      :car       [:td.num.muted (board/format-whole
                                 (get-in p [:nflverse/season-to-date :usage :carries]))]
      :ros-vorp  [:td.num (board/format-whole (:ros-vorp p))]
-     :preseason [:td.num.muted (board/format-whole (:points p))]
-     :ecr       [:td.num.muted (or (:fantasypros/ecr p) "–")]
      :risk      (let [lvl (:injury-risk p)
                       txt (or (:injury/reason p) "No injury history to judge")]
                   [:td.risk {:title txt :aria-label txt}

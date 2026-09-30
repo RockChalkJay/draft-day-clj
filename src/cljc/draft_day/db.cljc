@@ -1054,9 +1054,7 @@
    {:key :rec       :label "Rec"    :tooltip "Receptions this season"     :default? false :group :stats}
    {:key :yds       :label "Yds"    :tooltip "Passing, rushing and receiving yards this season" :default? false :group :stats}
    {:key :td        :label "TD"     :tooltip "Passing, rushing and receiving touchdowns this season" :default? false :group :stats}
-   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false :group :projections}
-   {:key :preseason :label "Pre"    :tooltip "What he was projected for before the season — the number the rest-of-season line is correcting" :default? false :group :projections}
-   {:key :ecr       :label "ECR"    :tooltip "FantasyPros expert rank (preseason)" :default? false :group :projections}])
+   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false :group :projections}])
 
 (def waiver-column-groups
   "The column picker's headings, in the order it draws them."
@@ -1136,10 +1134,8 @@
    :tgt       #(get-in % [:nflverse/season-to-date :usage :targets])
    :car       #(get-in % [:nflverse/season-to-date :usage :carries])
    :ros-vorp  :ros-vorp
-   :preseason :points
    :risk      :injury-risk
-   :inj       :sleeper/injury-status
-   :ecr       :fantasypros/ecr})
+   :inj       :sleeper/injury-status})
 
 (defn default-waiver-columns [] (default-columns waiver-column-catalog))
 

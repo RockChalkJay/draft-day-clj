@@ -140,14 +140,6 @@
    {:band :evidence :label "Sleeper adds"   :f :trending/adds :bar? false
     :fmt waivers/format-adds
     :tip "Sleeper trending adds over the last 48 hours, across every Sleeper league"}
-   ;; Both preseason, so neither is evidence about now — they are what the
-   ;; season so far is disagreeing with, which is the whole waiver-wire case.
-   {:band :evidence :label "Preseason"      :f :points :fmt board/format-whole
-    :tip (str "What he was projected for before the season — the number the"
-              " rest-of-season line is correcting")}
-   {:band :evidence :label "Expert rank"    :f :fantasypros/ecr :better :lower
-    :fmt number-or-dash
-    :tip "FantasyPros expert consensus rank, preseason. Lower is better"}
    {:band :evidence :label "Injury risk"    :f :injury-risk :better :lower
     :fmt number-or-dash
     :tip (str "Games missed per season over the last three, 1 (durable) to"

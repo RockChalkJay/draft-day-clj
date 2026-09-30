@@ -383,22 +383,25 @@
         "who holds whom, without re-sending their rows")))
 
 (deftest waivers-endpoint-runs-the-columns-it-ships
-  ;; Three columns come from `static-rankings`, not from `rankings.ros`, and the
-  ;; handler does not call it: without them Risk renders a dash for every row
-  ;; with the tooltip "No injury history to judge", Pre is blank, and
-  ;; `util/pos-label` shows "RB" where the header promises "RB7" — three shipped
-  ;; columns permanently dead with nothing failing to say so.
+  ;; Risk comes from `static-rankings`, which the handler does not call.
   (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
                            :my-roster-id 1}))
         p (first (:players b))]
-    (is (number? (:points p)) "the Pre column, and the line ROS is correcting")
-    (is (number? (:pos-rank p)) "the ordinal in the Pos cell")
-    (is (every? #(number? (:pos-rank %)) (:players b))
-        "and every row, or sorting by Pos falls back to arbitrary order")
     (is (number? (:injury-risk p)) "the Risk column, for a player with a history")
     (is (seq (:injury/reason p)) "and the text that is the whole of that cell")
     (is (not-any? #(contains? % :injury-risk) (rest (:players b)))
         "still nothing invented for the players it has no evidence about")))
+
+(deftest waivers-endpoint-ships-no-preseason-number-in-season
+  (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced
+                           :my-roster-id 1}))
+        rows (concat (:players b) (:my-roster-players b))]
+    (is (seq (:my-roster-players b)))
+    (is (not-any? #(contains? % :points) rows))
+    (is (not-any? #(contains? % :pos-rank) rows)
+        "or the Pos cell reads an August rank for anyone who has not played")
+    (is (not-any? #(contains? % :fantasypros/ecr) rows))
+    (is (every? #(number? (:ros-points %)) (:players b)) "the preseason line reaches the board only through the blend")))
 
 (deftest waivers-endpoint-ranks-a-position-on-points-so-far
   (let [b  (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))
@@ -554,7 +557,10 @@
       (is (= 0 (:through-week b)))
       (is (= 40 (count (:players b))))
       (is (every? #(pos? (:ros-points %)) (:players b))
-          "a full season of projection is still ahead of everyone"))))
+          "a full season of projection is still ahead of everyone")
+      (is (every? #(number? (:pos-rank %)) (:players b))
+          "the preseason rank is the only rank the Pos cell has before week 1")
+      (is (every? #(number? (:points %)) (:players b))))))
 
 (deftest waivers-endpoint-reports-a-bad-body-rather-than-throwing
   (is (= 400 (:status (routes/waivers-handler {:body (input-stream "{not json")})))))
