@@ -7,9 +7,12 @@
   `league-sync.sleeper/get-json`, the one copy of Sleeper's habit of answering
   an unknown id with HTTP 200 and a JSON null body.
 
-  The week is `display_week`, the one Sleeper's own app shows a manager, with
-  `week` as the fallback — they diverge either side of the season, and a missing
-  `display_week` is a shape change rather than an offseason.
+  In the regular season the week is `week`, which turns over on Tuesday once
+  Monday's game is final. `display_week`, the one Sleeper's own app shows, holds
+  the finished week until Wednesday, so on a Tuesday it priced last week's
+  projection and counted that week's games as unplayed. Outside it the week is
+  `display_week` with `week` as the fallback: `week` counts preseason weeks,
+  where `display_week` reads 0 and so no week at all.
 
   The scoreboard alone passes `empty-is-missing? false`: Sleeper answers a valid
   league asked for an out-of-season week with `[]`, so empty is a real board
@@ -22,7 +25,9 @@
   (let [state (sync-sleeper/get-json "state/nfl"
                                      {:empty-is-missing? true
                                       :not-found-msg "Sleeper season state unavailable"})]
-    (let [wk (or (:display_week state) (:week state))]
+    (let [wk (if (= "regular" (:season_type state))
+               (or (:week state) (:display_week state))
+               (or (:display_week state) (:week state)))]
       (when (and (number? wk) (pos? wk)) wk))))
 
 (defmethod matchups/fetch-raw-matchups :sleeper
