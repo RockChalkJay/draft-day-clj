@@ -237,6 +237,16 @@
     (is (= ["b" "a" "c"] (mapv :player-id out)))
     (is (= [1 2 3] (mapv :rank out)))))
 
+(deftest the-board-opens-on-the-most-added
+  (let [ps [{:player-id "a" :player-name "A" :position "WR" :upgrade 50.0 :ros-points 90.0}
+            {:player-id "b" :player-name "B" :position "RB" :upgrade 5.0 :trending/adds 1200}
+            {:player-id "c" :player-name "C" :position "WR" :upgrade 1.0 :trending/adds 90000}
+            {:player-id "d" :player-name "D" :position "TE" :upgrade 9.0 :ros-points 20.0}]
+        out (board-of ps)]
+    (is (= ["c" "b" "a" "d"] (mapv :player-id out))
+        "most added first; off the trending list, by rank")
+    (is (= [4 3 1 2] (mapv :rank out)) "# still ranks by what the claim gains")))
+
 (deftest the-rank-column-is-not-the-row-number
   ;; Same promise `:board-players` makes: `#` says where a player ranks, not
   ;; which row he happens to be on under the active sort.
