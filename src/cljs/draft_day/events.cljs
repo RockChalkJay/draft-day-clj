@@ -225,25 +225,6 @@
         (and (= k (:active-league db)) (not= v (:view db')))
         (assoc :fx [[:dispatch [:set-view v]]])))))
 
-(rf/reg-event-fx :switch-mode [persist]
-  (fn [{:keys [db]} [_ target]]
-    ;; The header's "Go to …" link. Choosing what the data already says stores
-    ;; no override, so a manager who went back to the board to fix a pick is
-    ;; returned to automatic by coming forward again. It always lands on a tab
-    ;; of the target mode — from Settings as well.
-    ;;
-    ;; The override is written here rather than through `:set-phase`, whose own
-    ;; view resolution would queue behind this one and keep Settings on screen.
-    ;;
-    ;; With the data still out there is nothing to disagree with, so nothing
-    ;; is stored; the header offers no link then anyway.
-    (let [derived  (db/derived-phase db)
-          override (when (and derived (not= target derived)) target)
-          tabs     (db/phase-views (db/active-league db) target)
-          view     (:view db)]
-      {:db (with-phase db (:active-league db) override)
-       :fx [[:dispatch [:set-view (if (some #{view} tabs) view (first tabs))]]]})))
-
 (rf/reg-event-db :set-settings-section (fn [db [_ k]] (assoc db :settings-section k)))
 (rf/reg-event-db :set-search    (fn [db [_ q]] (assoc db :search q)))
 (rf/reg-event-db :set-pos-filter (fn [db [_ p]] (assoc db :pos-filter (if (= p (:pos-filter db)) nil p))))

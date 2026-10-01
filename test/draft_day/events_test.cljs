@@ -550,12 +550,6 @@
          :leagues {"espn:1" {:provider "espn" :league-id "1"}})
   (is (= [:team] (dispatched-views #(rf/dispatch-sync (universe-at 3))))))
 
-(deftest switching-mode-before-the-week-is-known-stores-no-override
-  (swap! rdb/app-db assoc :active-league "sleeper:1" :view :settings
-         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}})
-  (is (= [:team] (dispatched-views #(rf/dispatch-sync [:switch-mode :season]))))
-  (is (nil? (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))))
-
 (deftest the-matchup-waits-for-the-league-s-rosters
   (swap! rdb/app-db assoc :active-league "sleeper:1"
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}})
@@ -578,19 +572,6 @@
          :leagues {"espn:1" {:provider "espn" :league-id "1" :sync {:teams []}}})
   (rf/dispatch-sync [:fetch-matchup])
   (is (= ["/api/matchup"] (mapv :url (:http @captured)))))
-
-(deftest switching-mode-lands-on-that-mode-and-stores-only-a-disagreement
-  (swap! rdb/app-db assoc :active-league "sleeper:1" :view :settings
-         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}}
-         :universe {:through-week 0})
-  (is (= [:team] (dispatched-views #(rf/dispatch-sync [:switch-mode :season])))
-      "it leaves Settings for the season's first tab")
-  (is (= :season (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))
-      "preseason by the data, so choosing Season is an override")
-  (swap! rdb/app-db assoc :view :matchup)
-  (is (= [:board] (dispatched-views #(rf/dispatch-sync [:switch-mode :draft]))))
-  (is (nil? (get-in @rdb/app-db [:leagues "sleeper:1" :phase]))
-      "choosing what the data says goes back to automatic"))
 
 (deftest a-league-switch-leaves-a-tab-the-new-league-s-phase-does-not-have
   (swap! rdb/app-db assoc

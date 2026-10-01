@@ -256,13 +256,6 @@
 
 (rf/reg-sub :phase (fn [db _] (db/phase db)))
 
-;; Whether the phase is the data's call rather than a manual override.
-(rf/reg-sub :phase-auto?
-  (fn [db _]
-    (nil? (if-let [k (:active-league db)]
-            (get-in db [:leagues k :phase])
-            (:phase db)))))
-
 ;; The mode the header draws: the phase of the tab on screen, else the phase.
 ;; A draft whose last pick just landed is in season by the data, but the board
 ;; stays up — and its tabs with it — until the manager moves on, since the next

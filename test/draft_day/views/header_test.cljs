@@ -18,15 +18,13 @@
 
 (deftest while-the-week-is-loading-neither-half-is-drawn
   ;; Drawing the draft half first put Start Draft in front of a manager in week
-  ;; ten, and the "Go to season" link beside it stored an override for nothing.
+  ;; ten.
   (let [html (render header/header)]
-    (is (not (re-find #"Start Draft|Go to|Board|Matchup" html)))))
+    (is (not (re-find #"Start Draft|Board|Matchup" html)))))
 
 (deftest once-it-is-known-its-half-is
   (swap! rdb/app-db assoc :universe {:through-week 0} :view :board)
-  (let [html (render header/header)]
-    (is (re-find #"Start Draft" html))
-    (is (re-find #"Go to season" html))))
+  (is (re-find #"Start Draft" (render header/header))))
 
 (deftest a-league-on-a-host-with-no-matchup-board-has-no-matchup-tab
   (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
