@@ -77,15 +77,17 @@
 
 (defn parse-status
   "Decoded athlete document -> `{:status :abbr :short :long :date}` off his
-  first injury entry, or nil when he has none."
+  first injury entry, or nil when he has none. An \"Active\" entry is a note on
+  a player with no designation, so it is nil too."
   [payload]
   (when-let [{:keys [status type shortComment longComment date]}
              (first (get-in payload [:athlete :injuries]))]
-    {:status status
-     :abbr   (:abbreviation type)
-     :short  (plain-text shortComment)
-     :long   (plain-text longComment)
-     :date   date}))
+    (when-not (= "Active" status)
+      {:status status
+       :abbr   (:abbreviation type)
+       :short  (plain-text shortComment)
+       :long   (plain-text longComment)
+       :date   date})))
 
 (defn ttl-ms []
   (long (* 60000 (Double/parseDouble

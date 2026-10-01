@@ -40,7 +40,8 @@
 
 (deftest parse-status-of-a-healthy-athlete-is-nil
   (is (nil? (news/parse-status {:athlete {:id "1"}})))
-  (is (nil? (news/parse-status {:athlete {:injuries []}}))))
+  (is (nil? (news/parse-status {:athlete {:injuries []}})))
+  (is (nil? (news/parse-status {:athlete {:injuries [{:status "Active"}]}}))))
 
 (deftest one-failed-half-still-returns-the-other
   (with-redefs [pipeline/offline? (constantly false)
