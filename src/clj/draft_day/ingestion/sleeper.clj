@@ -16,6 +16,17 @@
 
 (defn- canon-pos [pos] (if (= pos "DEF") "DST" pos))
 
+(defn fantasy-position
+  "The position a Sleeper player is scored at: his primary `:position` where it
+  is one, else the first of his `:fantasy_positions` that is, else nil. Sleeper
+  files a two-way player by his defensive side (Travis Hunter is `DB` with
+  `[\"DB\" \"WR\"]`) and a fullback as `FB` with `[\"RB\"]`, and a player
+  left out of the universe draws as a bare provider id on a synced roster."
+  [{:keys [position fantasy_positions]}]
+  (if (fantasy-position-set position)
+    position
+    (some fantasy-position-set fantasy_positions)))
+
 (def ^:private season-only-noise
   "Season-line keys that are not trustworthy, even when Sleeper sends them.
 
@@ -120,8 +131,8 @@
   published on the season line."
   ([entry] (normalize-entry entry nil))
   ([{:keys [player_id player stats team]} weekly]
-   (let [pos (:position player)]
-     (when (and stats (:pts_ppr stats) (fantasy-position-set pos))
+   (let [pos (fantasy-position player)]
+     (when (and stats (:pts_ppr stats) pos)
        {:player-id             player_id
         :player-name           (str (:first_name player) " " (:last_name player))
         :position              (canon-pos pos)

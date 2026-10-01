@@ -274,3 +274,17 @@
 (deftest nobody-but-a-kicker-is-touched
   (let [rb (sleeper/normalize-entry (first sample-entries))]
     (is (nil? (get-in rb [:stats :fgm])))))
+
+(deftest a-two-way-player-is-scored-at-his-offensive-position
+  (let [entry (fn [pos fps] {:player_id "p" :team "JAX"
+                             :player {:first_name "A" :last_name "B"
+                                      :position pos :fantasy_positions fps}
+                             :stats {:pts_ppr 100.6 :rec 35.0}})]
+    (is (= "WR" (:position (sleeper/normalize-entry (entry "DB" ["DB" "WR"]))))
+        "Travis Hunter's shape: a DB who is also a WR")
+    (is (= "RB" (:position (sleeper/normalize-entry (entry "FB" ["RB"]))))
+        "a fullback is a running back")
+    (is (= "WR" (:position (sleeper/normalize-entry (entry "WR" ["WR" "DB"]))))
+        "a fantasy primary position wins")
+    (is (nil? (sleeper/normalize-entry (entry "CB" ["CB"])))
+        "a pure defender stays out")))

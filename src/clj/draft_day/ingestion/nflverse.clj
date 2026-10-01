@@ -123,6 +123,48 @@
   [s]
   (try (Double/parseDouble s) (catch Exception _ nil)))
 
+(def offense-columns
+  "Usage column -> the offensive position `with-offensive-positions` labels a
+  defender who touches the ball mostly there. Receiving reads as WR, which it
+  need not be; the label only has to pass the gates, since nothing joins on it."
+  [["attempts" "QB"] ["carries" "RB"] ["targets" "WR"]])
+
+(def two-way-positions
+  "The positions `with-offensive-positions` may relabel: the ones a player lines
+  up at on offense from. A lineman thrown to on a trick play or a punter on a
+  fake has a touch too, and would only add a row to the join that matches
+  nobody — twenty-eight of them in the 2025 file."
+  #{"FB" "CB" "SAF"})
+
+(defn with-offensive-positions
+  "Pure: rows with every defender who touched the ball on offense relabelled at
+  an offensive position (see `offense-columns`), so the `fantasy-positions`
+  gate lets him through. nflverse files a two-way player by his defensive side —
+  Travis Hunter is `CB` — while Sleeper projects him at WR. All of his rows are
+  relabelled, not only those with a touch: a week he played only defense is
+  still a game he played."
+  [rows]
+  (let [touches (fn [r] (map (fn [[col _]] (or (num-or-nil (get r col)) 0.0))
+                             offense-columns))
+        by-id   (reduce (fn [acc r]
+                          (if-not (two-way-positions (get r "position"))
+                            acc
+                            (let [t (touches r)]
+                              (if (some pos? t)
+                                (update acc (get r "player_id")
+                                        #(if % (mapv + % t) (vec t)))
+                                acc))))
+                        {} rows)
+        label   (update-vals by-id
+                             (fn [t] (second (nth offense-columns
+                                                  (apply max-key t (range (count t)))))))]
+    (if (empty? label)
+      rows
+      (mapv (fn [r] (if-let [p (label (get r "player_id"))]
+                      (assoc r "position" p)
+                      r))
+            rows))))
+
 (defn gsis-id
   "The row's GSIS id, or nil when it has none or is not a position we join.
 
@@ -343,7 +385,7 @@
     (let [rows (some-> (http-get-string (season-url season)) parse-csv)]
       (when (and (seq rows)
                  (every? (set (keys (first rows))) required-columns))
-        rows))
+        (with-offensive-positions rows)))
     (catch Exception e
       ;; Type and message, not the throwable: the stack trace of a read timeout
       ;; is JDK frames all the way down and says nothing the message does not.

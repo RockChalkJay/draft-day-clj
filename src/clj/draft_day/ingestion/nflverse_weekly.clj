@@ -308,7 +308,7 @@
     (let [rows (some-> (nflverse/http-get-string (week-url season)) nflverse/parse-csv)]
       (when (and (seq rows)
                  (every? (set (keys (first rows))) required-columns))
-        rows))
+        (nflverse/with-offensive-positions rows)))
     (catch Exception e
       (log/warn "nflverse-weekly: season" season "unavailable:"
                 (.getSimpleName (class e)) (ex-message e))
