@@ -16,8 +16,8 @@
   either file's freshness would either refetch the universe hourly or serve
   Tuesday's adds on Sunday. A fetch that fails, or answers with an empty list,
   serves the last cached list with its own `:fetched-at` and is not retried for
-  `failure-backoff-ms`, since every Sleeper caller shares `sleeper-http`'s
-  permits. Offline there is none, and neither is there while
+  `pipeline/failure-backoff-ms`, since every Sleeper caller shares
+  `sleeper-http`'s permits. Offline there is none, and neither is there while
   `DRAFTDAY_AS_OF_WEEK` replays a past week: today's list is news that week
   never had.
 
@@ -26,7 +26,6 @@
   could ever measure `faab/heat-weight` against, and they accumulate as the
   board is used rather than on anyone's schedule."
   (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
@@ -40,12 +39,6 @@
 (def default-cache-path (str "data/trending_adds.v" schema-version ".transit"))
 
 (def snapshot-dir "data/faab_cache/trending")
-
-(def failure-backoff-ms
-  "How long a failed fetch keeps the next one from trying."
-  (* 5 60 1000))
-
-(defonce ^:private failed-at (atom {}))
 
 (defn trending-url []
   (str "https://api.sleeper.app/v1/players/nfl/trending/add?lookback_hours="
@@ -79,36 +72,21 @@
   [dir iso]
   (str dir "/adds-" (str/replace iso ":" "-") ".transit"))
 
-(defn live!
-  "Fetch, normalize and cache the list, keeping a snapshot of it. An empty list
+(defn live
+  "The envelope for a fresh list, keeping a snapshot of it. An empty list
   throws, since Sleeper always has somebody trending and caching nobody would
-  read as a fresh answer. A write that fails costs the cache or the record one
+  read as a fresh answer. A snapshot that fails to write costs the record one
   list, never the board the list it just fetched."
-  [path dir]
+  [dir]
   (let [adds (normalize (fetch-raw))
-        env  {:schema-version schema-version
-              :lookback-hours lookback-hours
+        env  {:lookback-hours lookback-hours
               :fetched-at     (pipeline/now-iso)
               :adds           adds}]
     (when (empty? adds)
       (throw (ex-info "Sleeper trending list empty" {})))
-    (pipeline/best-effort (pipeline/write-transit! path env))
-    (pipeline/best-effort (pipeline/write-transit! (snapshot-path dir (:fetched-at env)) env))
+    (pipeline/best-effort
+     (pipeline/write-transit! (snapshot-path dir (:fetched-at env)) (assoc env :schema-version schema-version)))
     env))
-
-(defn backing-off?
-  "Did a fetch for `path` fail within `failure-backoff-ms`?"
-  [path]
-  (when-let [t (get @failed-at path)]
-    (< (- (System/currentTimeMillis) t) failure-backoff-ms)))
-
-(defn read-cached [path]
-  (try
-    (let [env (pipeline/read-transit path)]
-      (when (= schema-version (:schema-version env)) env))
-    (catch Exception e
-      (log/warn e "trending cache unreadable; refetching")
-      nil)))
 
 (defn load-adds
   "`{:fetched-at :lookback-hours :adds {sleeper-id adds}}`, fresh from the cache,
@@ -117,14 +95,8 @@
   ([] (load-adds {}))
   ([{:keys [path dir] :or {path default-cache-path dir snapshot-dir}}]
    (when-not (or (pipeline/offline?) (nflverse-weekly/as-of-week))
-     (let [cached (read-cached path)]
-       (if (or (and cached (pipeline/cache-fresh? path (ttl-hours)))
-               (backing-off? path))
-         cached
-         (try (let [env (live! path dir)]
-                (swap! failed-at dissoc path)
-                env)
-              (catch Exception e
-                (log/warn e "trending adds fetch failed:" (ex-message e))
-                (swap! failed-at assoc path (System/currentTimeMillis))
-                cached)))))))
+     (pipeline/load-ttl-cache {:path           path
+                               :ttl-hours      (ttl-hours)
+                               :schema-version schema-version
+                               :fetch          #(live dir)
+                               :label          "trending adds"}))))

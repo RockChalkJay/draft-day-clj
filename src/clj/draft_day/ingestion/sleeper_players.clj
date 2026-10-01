@@ -12,7 +12,7 @@
   designation are kept. That makes the answer complete rather than partial: a
   player absent from a successful fetch is healthy as of it, and `with-injuries`
   clears his status instead of leaving the old one. A fetch that fails serves
-  the last cached answer and is not retried for `failure-backoff-ms`; offline,
+  the last cached answer and is not retried for `pipeline/failure-backoff-ms`; offline,
   and while `DRAFTDAY_AS_OF_WEEK` replays a past week, there is none and every
   player keeps what the projections feed said, since today's designation is
   news that week never had.
@@ -21,7 +21,6 @@
   Designations move by the hour on a game day, but Sleeper asks that this
   endpoint be called rarely."
   (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
@@ -31,12 +30,6 @@
 (def schema-version 1)
 
 (def default-cache-path (str "data/injuries.v" schema-version ".transit"))
-
-(def failure-backoff-ms
-  "How long a failed fetch keeps the next one from trying."
-  (* 5 60 1000))
-
-(defonce ^:private failed-at (atom {}))
 
 (def players-url "https://api.sleeper.app/v1/players/nfl")
 
@@ -65,33 +58,15 @@
                                (number? news_updated)              (assoc :updated-at news_updated))])))
         raw))
 
-(defn live!
-  "Fetch, normalize and cache the list. An answer with no player in it throws,
-  since caching nobody would read as everybody healthy. A write
-  that fails costs the cache one list, never the board the list it just fetched."
-  [path]
+(defn live
+  "The envelope for a fresh list. An answer with no player in it throws, since
+  caching nobody would read as everybody healthy."
+  []
   (let [raw (fetch-raw)]
     (when-not (and (map? raw) (some (comp :player_id val) raw))
       (throw (ex-info "Sleeper players list empty" {})))
-    (let [env {:schema-version schema-version
-               :fetched-at     (pipeline/now-iso)
-               :injuries       (normalize raw)}]
-      (pipeline/best-effort (pipeline/write-transit! path env))
-      env)))
-
-(defn backing-off?
-  "Did a fetch for `path` fail within `failure-backoff-ms`?"
-  [path]
-  (when-let [t (get @failed-at path)]
-    (< (- (System/currentTimeMillis) t) failure-backoff-ms)))
-
-(defn read-cached [path]
-  (try
-    (let [env (pipeline/read-transit path)]
-      (when (= schema-version (:schema-version env)) env))
-    (catch Exception e
-      (log/warn e "injury cache unreadable; refetching")
-      nil)))
+    {:fetched-at (pipeline/now-iso)
+     :injuries   (normalize raw)}))
 
 (defn load-injuries
   "`{:fetched-at :injuries {sleeper-id {...}}}`, fresh from the cache, else live,
@@ -100,17 +75,11 @@
   ([] (load-injuries {}))
   ([{:keys [path] :or {path default-cache-path}}]
    (when-not (or (pipeline/offline?) (nflverse-weekly/as-of-week))
-     (let [cached (read-cached path)]
-       (if (or (and cached (pipeline/cache-fresh? path (ttl-hours)))
-               (backing-off? path))
-         cached
-         (try (let [env (live! path)]
-                (swap! failed-at dissoc path)
-                env)
-              (catch Exception e
-                (log/warn e "injury list fetch failed:" (ex-message e))
-                (swap! failed-at assoc path (System/currentTimeMillis))
-                cached)))))))
+     (pipeline/load-ttl-cache {:path           path
+                               :ttl-hours      (ttl-hours)
+                               :schema-version schema-version
+                               :fetch          live
+                               :label          "injury list"}))))
 
 (defn assoc-injuries
   "Set each player's designation from `injuries`, by Sleeper id. One the list

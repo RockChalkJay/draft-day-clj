@@ -50,7 +50,7 @@ Three multimethod pairs on `:provider`: `import-league` (yearly rules), `sync-le
 
 **nflverse_weekly**: `stats_player_week_N.csv`, answers this season's production + opportunity + season progress. Stat map wider than line-columns (scores under league's own weights). `:games` counts player rows, not weeks. Missing file = week 0, not outage. **Not built on injury report** — IR players drop off that report entirely, so designations would mislabel them durable.
 
-**Sleeper injuries** (`ingestion/sleeper_players.clj`): the projections feed's embedded `:injury_status` is stale, so `routes/universe` replaces `:sleeper/injury-status` (plus body part, notes, updated-at) from Sleeper's `/v1/players/nfl`, kept apart on its own TTL. Complete per fetch: a player the list omits is healthy and his status is cleared. Nil offline or replaying a week, which keeps the feed's value.
+**Sleeper injuries** (`ingestion/sleeper_players.clj`): the projections feed's embedded `:injury_status` is stale, so `routes/universe` replaces `:sleeper/injury-status` (plus body part, notes, updated-at) from Sleeper's `/v1/players/nfl`, kept apart on its own TTL through `pipeline/load-ttl-cache` (fresh, else live, else stale with backoff; trending adds use it too). Complete per fetch: a player the list omits is healthy and his status is cleared. Nil offline or replaying a week, which keeps the feed's value.
 
 **Season resolution** (`ingestion/season.clj`): calendar year = league year for 10 of 12 months, is default never override.
 

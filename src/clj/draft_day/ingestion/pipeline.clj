@@ -73,6 +73,53 @@
          (< (- (System/currentTimeMillis) (.lastModified f))
             (long (* ttl-hours 3600 1000))))))
 
+(def failure-backoff-ms
+  "How long a failed `load-ttl-cache` fetch keeps the next one from trying."
+  (* 5 60 1000))
+
+(defonce ^:private cache-failed-at (atom {}))
+
+(defn reset-cache-failures!
+  "Forget every failed fetch, so the next `load-ttl-cache` tries again (tests)."
+  []
+  (reset! cache-failed-at {}))
+
+(defn- read-ttl-cache [path schema-version label]
+  (try
+    (let [env (read-transit path)]
+      (when (= schema-version (:schema-version env)) env))
+    (catch Exception e
+      (log/warn e label "cache unreadable; refetching")
+      nil)))
+
+(defn load-ttl-cache
+  "An envelope kept at `path` for `ttl-hours`: the cached copy while fresh, else
+  whatever `fetch` returns, else the stale copy; nil with nothing to serve.
+
+  `fetch` takes no arguments, returns the envelope to cache and throws when the
+  answer is not one worth keeping, so it decides what an empty answer means. A
+  failure serves the stale copy and is not retried for `failure-backoff-ms`,
+  since every caller of one vendor shares its rate permits. A write that fails
+  costs the cache one answer, never the board the one it just fetched. A copy
+  under another `schema-version` is a miss.
+
+  The gate for offline and replayed weeks stays with the caller, since
+  `nflverse-weekly` requires this namespace."
+  [{:keys [path ttl-hours schema-version fetch label]}]
+  (let [cached (read-ttl-cache path schema-version label)
+        backing-off? (when-let [t (get @cache-failed-at path)]
+                       (< (- (System/currentTimeMillis) t) failure-backoff-ms))]
+    (if (or (and cached (cache-fresh? path ttl-hours)) backing-off?)
+      cached
+      (try (let [env (assoc (fetch) :schema-version schema-version)]
+             (best-effort (write-transit! path env))
+             (swap! cache-failed-at dissoc path)
+             env)
+           (catch Exception e
+             (log/warn e label "fetch failed:" (ex-message e))
+             (swap! cache-failed-at assoc path (System/currentTimeMillis))
+             cached)))))
+
 (defn load-sample
   "The committed offline fallback universe (EDN on the classpath)."
   []

@@ -31,7 +31,7 @@
       (.setLastModified (io/file path) 0)
       (doseq [body [{} nil {:error "down"}]]
         (with-redefs [sp/fetch-raw (constantly body)]
-          (reset! @#'sp/failed-at {})
+          (pipeline/reset-cache-failures!)
           (is (= "Questionable" (get-in (sp/load-injuries {:path path}) [:injuries "7" :status]))
               (str (pr-str body) " keeps the good list")))))))
 
