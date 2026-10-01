@@ -195,6 +195,17 @@
   (is (= :no-track (track (row-by-label "This week")
                           wr8 (dissoc wr10 :week-points :week-pos-rank) nil))))
 
+(deftest over-replacement-is-unaffected-by-the-weekly-verdict
+  ;; `sep` reaches every row, but only `:calibrated?` ones may consult it. A
+  ;; coin flip this week says nothing about value over replacement.
+  (let [a    (assoc wr8  :ros-vorp 40.0)
+        b    (assoc wr10 :ros-vorp 70.0)
+        coin (confidence/separation wr8 wr10)]
+    (is (= :coin-flip (:level coin)) "precondition: the weekly row is a tie")
+    (let [i (track (row-by-label "Over replacement") a b coin)]
+      (is (= :i (first i)))
+      (is (= "r" (:class (second i))) "and still leans to the further-above-replacement side"))))
+
 (deftest the-weekly-row-carries-a-rank-subline
   ;; What makes the row legible on exactly the comparisons where the bar says
   ;; nothing on purpose.
