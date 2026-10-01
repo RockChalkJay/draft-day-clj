@@ -402,8 +402,21 @@
       (is (not (contains? waiver-keys :market)))
       (is (not (contains? board-keys :bid)))
       (is (not-any? #(contains? board-keys (:key %))
-                    (filter #(#{:bid :upgrade :ros :trend} (:key %))
+                    (filter #(#{:bid :upgrade :trend} (:key %))
                             db/waiver-column-catalog))))))
+
+(deftest rest-of-season-points-are-not-a-column
+  ;; The model's number prices Lineup and Upg; shown raw beside them it reads as
+  ;; a second answer, so no layout can carry it and a stored one loses it.
+  (is (not-any? #{:ros :ros-vorp} (map :key db/waiver-column-catalog)))
+  (is (not-any? #{:ros :ros-vorp} (keys db/waiver-sort-accessors)))
+  (let [kept (db/reconcile-columns
+              [{:key :ros :visible? true} {:key :name :visible? true}
+               {:key :ros-vorp :visible? false} {:key :rank :visible? true}]
+              db/waiver-column-catalog)
+        ks   (mapv :key kept)]
+    (is (not-any? #{:ros :ros-vorp} ks))
+    (is (< (.indexOf ks :name) (.indexOf ks :rank)) "his order survives")))
 
 (deftest every-waiver-column-can-be-sorted-and-labelled
   ;; A column with no accessor silently falls back to :upgrade, so the header

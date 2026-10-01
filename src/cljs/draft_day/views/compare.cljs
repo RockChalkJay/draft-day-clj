@@ -1,11 +1,8 @@
 (ns draft-day.views.compare
-  "Two players side by side, on the two horizons the waiver board carries.
+  "Two players side by side, on this week and on what a claim does for you.
 
-  The tile exists because the horizons routinely *disagree*: a player who is
-  better this Sunday and worse from here is a completely different decision from
-  one who is better at both, and two columns of numbers hide that behind mental
-  arithmetic. Every row is anchored at a centre line and leans toward whoever
-  leads, so agreement reads as one direction and a split reads as a zigzag.
+  Every row is anchored at a centre line and leans toward whoever leads, so
+  two columns of numbers do not hide the comparison behind mental arithmetic.
 
   A bar is only drawn where one side is actually *better*. Games played is
   sample size and Bid is a price — neither has a winner, and a bar there would
@@ -20,8 +17,8 @@
   them, and a directional accent fill only when it can. Collapsing the first
   two is the bug #52 shipped once, where missing data rendered as a tie.
 
-  The bands run in the order a decision is made: the two horizons are the
-  question, what a claim costs and gains is the answer, and the evidence is why.
+  The bands run in the order a decision is made: this week is the question, what
+  a claim costs and gains is the answer, and the evidence is why.
   The answer used to sit last, which was fine at nine rows and is not at twelve
   — it ended up below the fold on a laptop, under the band it is a conclusion of.
 
@@ -35,12 +32,6 @@
   clicking down the board through challengers, and a scrim swallows exactly
   those clicks — see `.cmp-float` in styles.css.
 
-  WHY OVER REPLACEMENT SITS UNDER REST OF SEASON. It is the same horizon in the
-  only unit that survives a cross-position pair — a quarterback's 190 and a
-  tight end's 120 are not a comparison and their VORPs are. So it reads as that
-  row restated rather than as support for it, which is why it is not in the
-  evidence band. nil for K and DST, which have no replacement level.
-
   WHY LINEUP GAIN AND UPGRADE ARE BOTH KEPT. Lineup leads the claim band because
   it leads the board and prices the bid; Upgrade under it is the bench question,
   which is a different one. See `db/waiver-rank-key`.
@@ -51,15 +42,13 @@
   than predicting it will. `draft-day.confidence` deliberately does not reach
   it — the calibration exists because a weekly projection is a claim about a
   game nobody has played. What the role has been worth against what the
-  projection expects of it is the waiver-wire buy, so it sits beside the
-  horizons rather than folded into them.
+  projection expects of it is the waiver-wire buy, so it sits beside
+  this week rather than folded into it.
 
-  THE READING LINE NAMES A DISAGREEMENT RATHER THAN COUNTING ONE. Its branches
-  are deliberately not merged. \"Both\" was written under two rows and there are
-  three now. And a weekly line that *does not discriminate* is a different
-  sentence from one that *does not exist* — `separation-line` states the first
-  underneath in the terms it was measured in, so saying it twice in two
-  vocabularies is what the split branches avoid.
+  THE READING LINE STAYS SILENT ON A COIN FLIP. A weekly line that *does not
+  discriminate* is a different sentence from one that *does not exist*, and
+  `separation-line` states the first underneath in the terms it was measured
+  in, so saying it twice in two vocabularies is what the line avoids.
 
   WHICH METRICS ARE SHOWN IS NOT DECIDED HERE. `views.metrics` owns that list,
   because the player-detail modal draws the same one without a second player to
@@ -113,45 +102,21 @@
   (when-not even? (ahead a b :week-points)))
 
 (defn reading-line
-  "One sentence naming what the horizons show.
+  "One sentence on this week: a bye, or who projects higher, or nothing.
 
-  It never says which player to take: when they disagree there is no answer
-  without knowing whether the manager is buying this Sunday or the rest of the
-  year, and a tile that guessed would be confidently wrong half the time. It
-  names the split and stops.
+  nil when the weekly line is a coin flip or absent, since `separation-line`
+  underneath already says so in the terms it was measured in.
 
   `sep` is required rather than defaulted: a nil one reads as no coin flip, so
   the weekly lead comes back and contradicts `separation-line` underneath."
   [a b week sep]
   (let [bye   (first (filter #(on-bye? % week) [a b]))
         even? (confidence/coin-flip? sep)
-        wk    (weekly-lead a b even?)
-        ros   (ahead a b :ros-points)
-        vorp  (ahead a b :ros-vorp)]
+        wk    (weekly-lead a b even?)]
     (cond
       bye [:span [:b (:player-name bye)] " is on bye this week."]
 
-      (and wk ros (not= wk ros))
-      [:span [:b (:player-name wk)] " projects higher this week; "
-       [:b (:player-name ros)] " is the better rest-of-season hold."]
-
-      ;; Raw points do not compare across positions; Over replacement leans the
-      ;; other way and the sentence has to be able to name that pair.
-      (and ros vorp (not= ros vorp))
-      [:span [:b (:player-name ros)] " projects more points; "
-       [:b (:player-name vorp)] " is further above replacement at his position."]
-
-      ;; Named rather than counted — see the ns docstring.
-      (and wk ros)
-      [:span [:b (:player-name wk)] " is ahead this week and rest-of-season."]
-
-      ;; The weekly line exists and does not discriminate; the branch below
-      ;; means there is no weekly line at all. Not merged; see ns docstring.
-      (and ros even?)
-      [:span [:b (:player-name ros)] " is ahead rest-of-season."]
-
-      ros [:span [:b (:player-name ros)] " is ahead rest-of-season, and no weekly "
-           "projection separates them."]
+      wk [:span [:b (:player-name wk)] " projects higher this week."]
 
       :else nil)))
 

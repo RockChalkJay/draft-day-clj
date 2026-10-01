@@ -1043,7 +1043,6 @@
    {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true :group :essentials}
    {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false :group :week}
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false :group :week}
-   {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? false :group :projections}
    {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start" :default? false :group :projections}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? false :group :projections}
    {:key :bid       :label "Sugg."  :tooltip "Suggested bid and its chance to win: about a dollar over the top rival bid he is likely to draw, never more than he is worth to you" :default? false :group :bidding}
@@ -1053,8 +1052,7 @@
    {:key :car       :label "Car"    :tooltip "Carries this season"        :default? false :group :stats}
    {:key :rec       :label "Rec"    :tooltip "Receptions this season"     :default? false :group :stats}
    {:key :yds       :label "Yds"    :tooltip "Passing, rushing and receiving yards this season" :default? false :group :stats}
-   {:key :td        :label "TD"     :tooltip "Passing, rushing and receiving touchdowns this season" :default? false :group :stats}
-   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false :group :projections}])
+   {:key :td        :label "TD"     :tooltip "Passing, rushing and receiving touchdowns this season" :default? false :group :stats}])
 
 (def waiver-column-groups
   "The column picker's headings, in the order it draws them."
@@ -1111,7 +1109,6 @@
    :team      :team
    :position  #(pos-sort-key (assoc % :pos-rank (season-rank %)))
    :bye       :bye
-   :ros       :ros-points
    :week      :week-points
    :week-rank :week-pos-rank
    ;; Both sources, as `waivers/matchup-source` resolves them — sorting on the
@@ -1133,7 +1130,6 @@
    :gp        #(or (:season-gp %) (get-in % [:nflverse/season-to-date :games]))
    :tgt       #(get-in % [:nflverse/season-to-date :usage :targets])
    :car       #(get-in % [:nflverse/season-to-date :usage :carries])
-   :ros-vorp  :ros-vorp
    :risk      :injury-risk
    :inj       :sleeper/injury-status})
 

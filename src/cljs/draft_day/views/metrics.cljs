@@ -92,7 +92,7 @@
   puts it too.
 
   `:bar?` false where neither side can be better, `:better :lower` where the
-  metric inverts, `:big?` on the two horizons, and `:tip` on a row whose label
+  metric inverts, `:big?` on this week, and `:tip` on a row whose label
   cannot carry its own definition. The first three are read only by the tile.
 
   `:bid? true` marks a bid prediction, which `rows-by-band` leaves out while
@@ -100,13 +100,6 @@
   a decision for every column."
   [{:band :horizon  :label "This week"      :f :week-points :big? true
     :fmt util/week-points :sub week-rank-label :calibrated? true}
-   {:band :horizon  :label "Rest of season" :f :ros-points  :big? true
-    :fmt board/format-whole}
-   ;; Rest of season restated in cross-position units — see `views.compare`'s
-   ;; ns docstring and `db/vorp-sort-key`.
-   {:band :horizon  :label "Over replacement" :f :ros-vorp :fmt board/format-whole
-    :tip (str "Rest-of-season points above a replacement player at his position"
-              " — the one number that compares a QB to a TE")}
    ;; Lineup leads; Upgrade under it is the bench question — see
    ;; `db/waiver-rank-key`.
    {:band :claim    :label "Lineup gain"    :f :lineup-upgrade :fmt claim-points

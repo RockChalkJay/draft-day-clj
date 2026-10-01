@@ -29,13 +29,13 @@
   ;; The one-column form of the tile's restraint. A dash reads as "the board
   ;; cannot say" once; a dozen stacked is punctuation.
   (let [drawn (fn [b] (keep #(:label (second %)) (nth b 2)))]
-    (is (= ["Rest of season"]
-           (drawn (pd/band :horizon {:ros-points 140.0}))))))
+    (is (= ["This week"]
+           (drawn (pd/band :horizon {:week-points 14.0}))))))
 
 (deftest a-band-with-no-surviving-rows-is-nil
   ;; nil rather than an empty bordered box, which reads as a section that failed
   ;; to load. In preseason most of the evidence band is genuinely absent.
-  (is (nil? (pd/band :evidence {:ros-points 140.0})))
+  (is (nil? (pd/band :evidence {:week-points 14.0})))
   (is (nil? (pd/band :claim {})))
   (is (some? (pd/band :claim {:upgrade 12.0}))))
 
