@@ -1143,6 +1143,15 @@
   "Waiver columns that only answer in a league that bids for its claims."
   #{:typical :bid :rivals})
 
+(def bid-predictions?
+  "Whether the UI shows the bid model's predictions — the typical winning bid,
+  the suggested bid, the sure bid and the rivals.
+
+  Off while the bid-model work is on hold. `/api/waivers` still prices every
+  bid, so this is the only thing standing between the model and the screen, and
+  a stored layout keeps its bid columns in place for the day it flips back."
+  false)
+
 (defn runs-faab?
   "Does a synced league bid for its waivers? nil before a sync says, which is
   not the same as no."
@@ -1154,11 +1163,16 @@
   "The stored waiver columns as a league shows them: in one that does not run
   FAAB, `faab-columns` are hidden and marked `:faab-only?`, since every cell
   would be blank. The stored layout is untouched, so a FAAB league gets them
-  back."
-  [cols sync]
-  (if (false? (runs-faab? sync))
-    (mapv #(if (faab-columns (:key %)) (assoc % :visible? false :faab-only? true) %) cols)
-    cols))
+  back.
+
+  While `bid-predictions?` is off they are not offered at all, in any league:
+  greyed out they would say \"this league doesn't bid\", which is not why."
+  ([cols sync] (waiver-columns-for cols sync bid-predictions?))
+  ([cols sync bids?]
+   (cond
+     (not bids?)               (filterv (comp not faab-columns :key) cols)
+     (false? (runs-faab? sync)) (mapv #(if (faab-columns (:key %)) (assoc % :visible? false :faab-only? true) %) cols)
+     :else                     cols)))
 
 (defn repair-lineup
   "One team's `:starter-ids`, with each nil kept in place as `empty-seat`.

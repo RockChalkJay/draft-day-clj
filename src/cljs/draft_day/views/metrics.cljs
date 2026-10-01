@@ -19,7 +19,8 @@
   `:band` on a row rather than slicing one flat list by index — the boundaries
   used to be `subvec`s, so inserting a metric anywhere above the last one
   silently moved a row into the wrong band and still rendered."
-  (:require [draft-day.views.board :as board]
+  (:require [draft-day.db :as db]
+            [draft-day.views.board :as board]
             [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]))
 
@@ -92,7 +93,11 @@
 
   `:bar?` false where neither side can be better, `:better :lower` where the
   metric inverts, `:big?` on the two horizons, and `:tip` on a row whose label
-  cannot carry its own definition. The first three are read only by the tile."
+  cannot carry its own definition. The first three are read only by the tile.
+
+  `:bid? true` marks a bid prediction, which `rows-by-band` leaves out while
+  `db/bid-predictions?` is off. They stay here so the catalog check still sees
+  a decision for every column."
   [{:band :horizon  :label "This week"      :f :week-points :big? true
     :fmt util/week-points :sub week-rank-label :calibrated? true}
    {:band :horizon  :label "Rest of season" :f :ros-points  :big? true
@@ -110,14 +115,14 @@
    {:band :claim    :label "Upgrade"        :f :upgrade :fmt claim-points
     :tip (str "Rest-of-season points over the player you would drop, whether or"
               " not he would ever start")}
-   {:band :claim    :label "Typical winning bid" :f :typical-bid :bar? false
+   {:band :claim    :bid? true :label "Typical winning bid" :f :typical-bid :bar? false
     :fmt #(if (number? %) (str "$" %) "–")
     :sub #(some-> (:typical-win %) waivers/win-pct (str " to win"))
     :tip "What it usually takes to win him: the median highest rival bid"}
-   {:band :claim    :label "Suggested bid"  :f :bid :bar? false
+   {:band :claim    :bid? true :label "Suggested bid"  :f :bid :bar? false
     :fmt #(if (number? %) (str "$" %) "–")
     :sub #(some-> (:win-prob %) waivers/win-pct (str " to win"))}
-   {:band :claim    :label "Rivals"         :f :rivals :better :lower
+   {:band :claim    :bid? true :label "Rivals"         :f :rivals :better :lower
     :fmt #(if (number? %) (.toFixed % 1) "–")
     :tip "Other teams expected to bid on him this waiver run"}
    {:band :evidence :label "Season points"  :f :season-points :fmt board/format-one-decimal
@@ -145,4 +150,9 @@
     :tip (str "Games missed per season over the last three, 1 (durable) to"
               " 5 (fragile)")}])
 
-(def rows-by-band (group-by :band rows))
+(defn shown-rows
+  "`rows` as the screen draws them: bid predictions only when `bids?`."
+  [bids?]
+  (if bids? rows (remove :bid? rows)))
+
+(def rows-by-band (group-by :band (shown-rows db/bid-predictions?)))

@@ -94,7 +94,7 @@
 
 (defn bidding
   [p]
-  (when-let [rows (seq (bidding-rows p))]
+  (when-let [rows (and db/bid-predictions? (seq (bidding-rows p)))]
     [:div.pd-band
      [:h4.pd-band-label "Bidding"]
      (map (fn [[label v]] ^{:key label} [:div.pd-row [:span.pd-label label] [:span.pd-value v]]) rows)]))

@@ -180,7 +180,7 @@
                   [:div.side-line
                    [:span (:player-name p) [:span.muted (str " " (:position p))]]
                    [:span.good (str "+" (js/Math.round (:lineup-upgrade p))
-                                    (when (number? (:bid p))
+                                    (when (and db/bid-predictions? (number? (:bid p)))
                                       (str " · $" (:bid p)
                                            (some->> (:win-prob p) waivers/win-pct (str " · ")))))]])
                 claims)

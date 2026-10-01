@@ -5,6 +5,7 @@
   `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is testing]]
             [draft-day.confidence :as confidence]
+            [draft-day.db :as db]
             [draft-day.views.compare :as cmp]
             [draft-day.views.metrics :as metrics]))
 
@@ -267,12 +268,12 @@
   ;; nil is what lets the caller say "you hold both of these players" instead of
   ;; drawing three dashes under a border.
   (is (nil? (cmp/band :claim {} {} nil)))
-  (is (some? (cmp/band :claim {:bid 4} {} nil))))
+  (is (some? (cmp/band :claim {:lineup-upgrade 4} {} nil))))
 
 (deftest a-band-drops-only-the-rows-with-nothing-in-them
-  (let [rows (cmp/band :claim {:upgrade 12.0 :bid 4} {:upgrade 3.0} nil)]
-    (is (= 2 (count rows)) "lineup gain is absent on both sides and goes")
-    (is (= #{"Upgrade" "Suggested bid"}
+  (let [rows (cmp/band :claim {:upgrade 12.0 :lineup-upgrade 4} {:upgrade 3.0} nil)]
+    (is (= 2 (count rows)))
+    (is (= #{"Upgrade" "Lineup gain"}
            (set (map #(-> % second :label) rows))))))
 
 ;; ---- the injury designation ----
@@ -324,8 +325,10 @@
     (is (= ["Rest of season"] (labels horizon)))
     (is (= ["Upgrade"] (labels claim)))
     (is (= ["Injury risk"] (labels evidence))))
-  (is (= #{"Lineup gain" "Upgrade" "Typical winning bid" "Suggested bid" "Rivals"}
-         (set (map :label (metrics/rows-by-band :claim))))))
+  (is (= (cond-> #{"Lineup gain" "Upgrade"}
+           db/bid-predictions? (into ["Typical winning bid" "Suggested bid" "Rivals"]))
+         (set (map :label (metrics/rows-by-band :claim))))
+      "bid predictions are drawn only while they are not held out"))
 
 (deftest an-evidence-band-with-nothing-in-it-is-not-drawn
   ;; The only band that can vanish. A bordered empty box below the claim reads
