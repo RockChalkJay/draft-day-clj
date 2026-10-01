@@ -1307,7 +1307,9 @@
         "the stored layout keeps them for a league that bids"))
   (swap! rdb/app-db assoc-in [:leagues "sleeper:1" :sync :waiver :type] "faab")
   (rf/clear-subscription-cache!)
-  (is (every? (set (map :key @(rf/subscribe [:visible-waiver-columns]))) [:typical :rivals])))
+  (is (= db/bid-predictions?
+         (every? (set (map :key @(rf/subscribe [:visible-waiver-columns]))) [:typical :rivals]))
+      "a league that bids draws them, unless bid predictions are held"))
 
 (deftest the-picker-files-columns-under-their-groups
   (let [labels db/waiver-columns-by-key
@@ -1319,7 +1321,7 @@
 
 (deftest the-checklist-shows-each-column-and-a-reset
   (let [html (render (fn [] [columns/checklist columns/waiver-picker
-                              (db/waiver-columns-for (db/default-waiver-columns) {:waiver {:type "rolling"}})]))]
+                              (db/waiver-columns-for (db/default-waiver-columns) {:waiver {:type "rolling"}} true)]))]
     (is (re-find #"Reset to defaults" html))
     (is (re-find #"This league doesn't run FAAB" html) "a FAAB-only column greyed out, not hidden")
     (is (re-find #"shown" html))))
