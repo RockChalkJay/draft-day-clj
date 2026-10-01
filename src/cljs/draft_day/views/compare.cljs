@@ -318,7 +318,7 @@
         ;; and a comparison that scrolls its legend away is unattributed.
         [:div.cmp-head
          [player-head a :l (shot a) week]
-         [:div.cmp-week (if week (str "Week " week) "Rest of season")]
+         [:div.cmp-week (when week (str "Week " week))]
          (if b
            [player-head b :r (shot b) week]
            [:div.cmp-empty "Pick another player to compare."])]
