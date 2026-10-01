@@ -985,14 +985,11 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
   .settings-nav button { border-color: var(--border); background: var(--panel); padding: 5px 10px; }
 }
 
-/* ---- the two halves: mode tag, mode link, season header ----
-   The tag says which half of the app is on screen; the link is the way to the
-   other one. Quiet, because it is used a couple of times a season. */
+/* ---- the two halves: mode tag, season header ----
+   The tag says which half of the app is on screen. */
 .mode-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent);
   border: 1px solid var(--accent); border-radius: 6px; padding: 1px 6px; margin-left: -8px; }
 nav.views { display: flex; }
-.mode-link { background: none; border: 0; color: var(--muted); font-size: 11px; padding: 0 4px; white-space: nowrap; }
-.mode-link:hover { color: var(--accent); }
 .gear { background: transparent; border: 1px solid transparent; color: var(--muted);
   font-size: 16px; line-height: 1; border-radius: 8px; padding: 6px 9px; }
 .gear:hover, .gear.on { color: var(--text); background: var(--panel2); border-color: var(--border); }
