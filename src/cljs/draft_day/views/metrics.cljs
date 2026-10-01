@@ -100,6 +100,11 @@
   a decision for every column."
   [{:band :horizon  :label "This week"      :f :week-points :big? true
     :fmt util/week-points :sub week-rank-label :calibrated? true}
+   ;; Rest-of-season points over a per-position replacement level: the one
+   ;; number that survives a cross-position pair. See `db/vorp-sort-key`.
+   {:band :horizon  :label "Over replacement" :f :ros-vorp :fmt board/format-whole
+    :tip (str "Rest-of-season points above a replacement player at his position"
+              " — the one number that compares a QB to a TE")}
    ;; Lineup leads; Upgrade under it is the bench question — see
    ;; `db/waiver-rank-key`.
    {:band :claim    :label "Lineup gain"    :f :lineup-upgrade :fmt claim-points

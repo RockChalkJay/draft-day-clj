@@ -405,17 +405,20 @@
                     (filter #(#{:bid :upgrade :trend} (:key %))
                             db/waiver-column-catalog))))))
 
-(deftest rest-of-season-points-are-not-a-column
-  ;; The model's number prices Lineup and Upg; shown raw beside them it reads as
-  ;; a second answer, so no layout can carry it and a stored one loses it.
-  (is (not-any? #{:ros :ros-vorp} (map :key db/waiver-column-catalog)))
-  (is (not-any? #{:ros :ros-vorp} (keys db/waiver-sort-accessors)))
+(deftest raw-rest-of-season-points-are-not-a-column-but-vorp-is
+  ;; Raw points do not compare across positions and read as a second answer
+  ;; beside Lineup and Upg. VORP does compare, so it stays an opt-in column.
+  (is (not-any? #{:ros} (map :key db/waiver-column-catalog)))
+  (is (not-any? #{:ros} (keys db/waiver-sort-accessors)))
+  (is (some #{:ros-vorp} (map :key db/waiver-column-catalog)))
+  (is (contains? db/waiver-sort-accessors :ros-vorp))
   (let [kept (db/reconcile-columns
               [{:key :ros :visible? true} {:key :name :visible? true}
-               {:key :ros-vorp :visible? false} {:key :rank :visible? true}]
+               {:key :ros-vorp :visible? true} {:key :rank :visible? true}]
               db/waiver-column-catalog)
         ks   (mapv :key kept)]
-    (is (not-any? #{:ros :ros-vorp} ks))
+    (is (not-any? #{:ros} ks) "a stored ROS column is dropped")
+    (is (some #{:ros-vorp} ks) "and a stored VORP column is kept")
     (is (< (.indexOf ks :name) (.indexOf ks :rank)) "his order survives")))
 
 (deftest every-waiver-column-can-be-sorted-and-labelled

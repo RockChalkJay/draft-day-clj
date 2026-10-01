@@ -50,6 +50,12 @@
   `separation-line` states the first underneath in the terms it was measured
   in, so saying it twice in two vocabularies is what the line avoids.
 
+  WHY OVER REPLACEMENT SITS UNDER THIS WEEK. Raw rest-of-season points are not
+  shown, and this is the only forward-looking number in that unit that survives
+  a cross-position pair: a quarterback's 190 and a tight end's 120 are not a
+  comparison and their VORPs are. nil for K and DST, which have no replacement
+  level.
+
   WHICH METRICS ARE SHOWN IS NOT DECIDED HERE. `views.metrics` owns that list,
   because the player-detail modal draws the same one without a second player to
   lean toward. What stays here is everything that only means something with two
@@ -102,21 +108,29 @@
   (when-not even? (ahead a b :week-points)))
 
 (defn reading-line
-  "One sentence on this week: a bye, or who projects higher, or nothing.
+  "One sentence on this week and on value over replacement, or nothing.
 
-  nil when the weekly line is a coin flip or absent, since `separation-line`
-  underneath already says so in the terms it was measured in.
+  It names a disagreement between the two rather than picking for the manager.
+  nil when neither leads, and a coin-flip weekly line is no lead, since
+  `separation-line` underneath already says so in the terms it was measured in.
 
   `sep` is required rather than defaulted: a nil one reads as no coin flip, so
   the weekly lead comes back and contradicts `separation-line` underneath."
   [a b week sep]
   (let [bye   (first (filter #(on-bye? % week) [a b]))
         even? (confidence/coin-flip? sep)
-        wk    (weekly-lead a b even?)]
+        wk    (weekly-lead a b even?)
+        vorp  (ahead a b :ros-vorp)]
     (cond
       bye [:span [:b (:player-name bye)] " is on bye this week."]
 
+      (and wk vorp (not= wk vorp))
+      [:span [:b (:player-name wk)] " projects higher this week; "
+       [:b (:player-name vorp)] " is further above replacement at his position."]
+
       wk [:span [:b (:player-name wk)] " projects higher this week."]
+
+      vorp [:span [:b (:player-name vorp)] " is further above replacement at his position."]
 
       :else nil)))
 

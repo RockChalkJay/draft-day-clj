@@ -51,13 +51,30 @@
   (let [s (text (cmp/reading-line odunze jennings 5 nil))]
     (is (= "Rome Odunze projects higher this week." s))))
 
-(deftest reading-line-says-nothing-about-the-rest-of-the-season
-  ;; The better rest-of-season hold is not on screen, so the sentence cannot
-  ;; name him: ROS and VORP leads used to change it and no longer exist here.
-  (let [better (assoc jennings :week-points 18.0 :ros-points 140.0 :ros-vorp 40.0)
-        s      (text (cmp/reading-line odunze better 5 nil))]
-    (is (= "Jauan Jennings projects higher this week." s))
-    (is (not (re-find #"(?i)rest-of-season|replacement" s)))))
+(deftest a-split-between-the-week-and-replacement-is-named
+  ;; Over replacement subtracts a per-position level, so the weekly leader and
+  ;; the one further above replacement can be different players.
+  (let [a (assoc odunze  :ros-vorp 5.0)
+        b (assoc jennings :ros-vorp 70.0)
+        s (text (cmp/reading-line a b 5 nil))]
+    (is (re-find #"Rome Odunze projects higher this week" s))
+    (is (re-find #"Jauan Jennings is further above replacement" s))))
+
+(deftest agreeing-vorp-leaves-the-sentence-alone
+  (let [a (assoc odunze :ros-vorp 40.0)
+        b (assoc jennings :ros-vorp 5.0)]
+    (is (= "Rome Odunze projects higher this week." (text (cmp/reading-line a b 5 nil))))))
+
+(deftest a-vorp-nobody-has-is-not-a-disagreement
+  ;; nil for K and DST, and for the whole board before a sync.
+  (is (= "Rome Odunze projects higher this week."
+         (text (cmp/reading-line odunze (assoc jennings :ros-vorp 40.0) 5 nil)))))
+
+(deftest vorp-speaks-when-the-week-does-not
+  (let [a (assoc odunze :ros-vorp 5.0)
+        b (assoc jennings :ros-vorp 70.0)
+        s (text (cmp/reading-line a b 5 {:level :coin-flip :gap 0.4}))]
+    (is (not (re-find #"this week" s)) "nothing weekly to say about a coin flip")))
 
 (deftest reading-line-never-picks-for-you
   (let [s (text (cmp/reading-line odunze jennings 5 nil))]

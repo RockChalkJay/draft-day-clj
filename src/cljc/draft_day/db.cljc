@@ -1052,7 +1052,8 @@
    {:key :car       :label "Car"    :tooltip "Carries this season"        :default? false :group :stats}
    {:key :rec       :label "Rec"    :tooltip "Receptions this season"     :default? false :group :stats}
    {:key :yds       :label "Yds"    :tooltip "Passing, rushing and receiving yards this season" :default? false :group :stats}
-   {:key :td        :label "TD"     :tooltip "Passing, rushing and receiving touchdowns this season" :default? false :group :stats}])
+   {:key :td        :label "TD"     :tooltip "Passing, rushing and receiving touchdowns this season" :default? false :group :stats}
+   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false :group :projections}])
 
 (def waiver-column-groups
   "The column picker's headings, in the order it draws them."
@@ -1130,6 +1131,7 @@
    :gp        #(or (:season-gp %) (get-in % [:nflverse/season-to-date :games]))
    :tgt       #(get-in % [:nflverse/season-to-date :usage :targets])
    :car       #(get-in % [:nflverse/season-to-date :usage :carries])
+   :ros-vorp  :ros-vorp
    :risk      :injury-risk
    :inj       :sleeper/injury-status})
 

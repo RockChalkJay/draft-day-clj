@@ -53,6 +53,7 @@
   against the row that shows it."
   {:week      "This week"
    :week-rank "This week"          ; the weekly row's `:sub`
+   :ros-vorp  "Over replacement"
    :lineup    "Lineup gain"
    :upgrade   "Upgrade"
    :bid       "Suggested bid"
