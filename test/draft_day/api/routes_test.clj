@@ -66,13 +66,13 @@
                   {:player-id "b" :player-name "B" :position "RB"}])
         get-news #(routes/player-news-handler {:path-params {:id %}})]
     (with-redefs [pipeline/load-universe (fn [& _] u)
-                  espn-news/player-news (fn [id] {:status nil :news [] :asked id})]
+                  espn-news/player-news (fn [id] {:news [] :asked id})]
       (testing "an ESPN id is looked up"
         (is (= "99" (:asked (parse (get-news "a"))))))
       (testing "no ESPN id answers with the reason, not a 404"
         (let [resp (get-news "b")]
           (is (= 200 (:status resp)))
-          (is (= {:status nil :news [] :reason "no-espn-id"} (parse resp)))))
+          (is (= {:news [] :reason "no-espn-id"} (parse resp)))))
       (testing "an unknown player is a 404"
         (is (= 404 (:status (get-news "zzz"))))))))
 

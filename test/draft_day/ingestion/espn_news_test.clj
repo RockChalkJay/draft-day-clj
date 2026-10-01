@@ -16,13 +16,6 @@
           (map #(item "Rotowire" (format "2026-09-%02dT12:00:00Z" %) (str "note " %))
                (range 1 16)))})
 
-(def athlete
-  {:athlete {:injuries [{:status "Questionable"
-                         :type {:abbreviation "Q"}
-                         :shortComment "Back, limited."
-                         :longComment "Still dealing with the back injury."
-                         :date "2026-10-01T00:46:00.000+00:00"}]}})
-
 (deftest parse-feed-drops-stories-and-caps-the-list
   (let [items (news/parse-feed feed)]
     (is (= news/max-items (count items)))
@@ -32,39 +25,17 @@
     (testing "tags never reach the browser"
       (is (= "note 15 in detail ." (:story (first items)))))))
 
-(deftest parse-status-reads-the-first-injury
-  (is (= {:status "Questionable" :abbr "Q" :short "Back, limited."
-          :long "Still dealing with the back injury."
-          :date "2026-10-01T00:46:00.000+00:00"}
-         (news/parse-status athlete))))
-
-(deftest parse-status-of-a-healthy-athlete-is-nil
-  (is (nil? (news/parse-status {:athlete {:id "1"}})))
-  (is (nil? (news/parse-status {:athlete {:injuries []}})))
-  (is (nil? (news/parse-status {:athlete {:injuries [{:status "Active"}]}}))))
-
-(deftest one-failed-half-still-returns-the-other
+(deftest a-failed-feed-is-named-in-errors-not-shown-as-no-news
   (with-redefs [pipeline/offline? (constantly false)
-                news/fetch-feed (fn [_] (throw (ex-info "boom" {})))
-                news/fetch-athlete (fn [_] athlete)]
+                news/fetch-feed (fn [_] (throw (ex-info "boom" {})))]
     (let [r (news/player-news "1")]
-      (is (= "Q" (get-in r [:status :abbr])))
       (is (= [] (:news r)))
-      (is (= [:news] (map :source (:errors r))))))
-  (news/reset-cache!)
-  (with-redefs [pipeline/offline? (constantly false)
-                news/fetch-feed (fn [_] feed)
-                news/fetch-athlete (fn [_] (throw (ex-info "boom" {})))]
-    (let [r (news/player-news "1")]
-      (is (nil? (:status r)))
-      (is (= news/max-items (count (:news r))))
-      (is (= [:status] (map :source (:errors r)))))))
+      (is (= [:news] (map :source (:errors r)))))))
 
 (deftest the-cache-serves-inside-its-ttl
   (let [calls (atom 0)]
     (with-redefs [pipeline/offline? (constantly false)
-                  news/fetch-feed (fn [_] (swap! calls inc) feed)
-                  news/fetch-athlete (fn [_] athlete)]
+                  news/fetch-feed (fn [_] (swap! calls inc) feed)]
       (news/player-news "1")
       (news/player-news "1")
       (is (= 1 @calls))
@@ -77,15 +48,13 @@
 (deftest a-failed-reply-is-not-cached
   (let [calls (atom 0)]
     (with-redefs [pipeline/offline? (constantly false)
-                  news/fetch-feed (fn [_] (swap! calls inc) (throw (ex-info "boom" {})))
-                  news/fetch-athlete (fn [_] athlete)]
+                  news/fetch-feed (fn [_] (swap! calls inc) (throw (ex-info "boom" {})))]
       (news/player-news "1")
       (news/player-news "1")
       (is (= 2 @calls)))))
 
 (deftest offline-is-empty-and-calls-nothing
   (with-redefs [pipeline/offline? (constantly true)
-                news/fetch-feed (fn [_] (throw (ex-info "no network" {})))
-                news/fetch-athlete (fn [_] (throw (ex-info "no network" {})))]
-    (is (= {:status nil :news [] :fetched-at nil :errors []}
+                news/fetch-feed (fn [_] (throw (ex-info "no network" {})))]
+    (is (= {:news [] :fetched-at nil :errors []}
            (news/player-news "1")))))

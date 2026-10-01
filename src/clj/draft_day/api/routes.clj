@@ -94,7 +94,7 @@
       (json-response 404 {:error (str "unknown player: " id)})
       (if-let [espn-id (get-in player [:ids :espn])]
         (json-response 200 (espn-news/player-news (str espn-id)))
-        (json-response 200 {:status nil :news [] :reason :no-espn-id})))))
+        (json-response 200 {:news [] :reason :no-espn-id})))))
 
 (defn cache-reset-handler [_]
   (pipeline/delete-cache! pipeline/default-cache-path)
