@@ -12,7 +12,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 **Frontend** (shadow-cljs with `:lein true`):
 - `npm run watch` (port 8280), `npm run release`, `npm test` (cljs-only: `events`, `subs`, `waivers`, six `views/*`)
 
-**Env vars**: `DRAFTDAY_OFFLINE=1`, `DRAFTDAY_CACHE_TTL_HOURS` (24), `DRAFTDAY_WEEKLY_TTL_HOURS` (1), `DRAFTDAY_REALIZED_TTL_HOURS` (1), `DRAFTDAY_TRENDING_TTL_HOURS` (1), `DRAFTDAY_AS_OF_WEEK=N` (replay week N), `DRAFTDAY_ESPN_SWID/S2/LEAGUE/SEASON` (integration only)
+**Env vars**: `DRAFTDAY_OFFLINE=1`, `DRAFTDAY_CACHE_TTL_HOURS` (24), `DRAFTDAY_WEEKLY_TTL_HOURS` (1), `DRAFTDAY_REALIZED_TTL_HOURS` (1), `DRAFTDAY_TRENDING_TTL_HOURS` (1), `DRAFTDAY_NEWS_TTL_MINUTES` (15), `DRAFTDAY_AS_OF_WEEK=N` (replay week N), `DRAFTDAY_ESPN_SWID/S2/LEAGUE/SEASON` (integration only)
 
 **Research harnesses** (`dev/`, `:dev` profile, active by default):
 - `benchmark.report`: score model vs historical outcomes
@@ -45,6 +45,8 @@ Three multimethod pairs on `:provider`: `import-league` (yearly rules), `sync-le
 **nflverse**: joins exactly on GSIS id; answers two Qs from one fetch (last season's usage + games over 3 seasons for injury risk). Ships `:nflverse/games-seasons` as `{season length}` map to distinguish missed season from network miss.
 
 **ESPN schedule**: keyless, ~40KB, separate namespace from `espn.clj` (different endpoint, cadence, client). Ships ISO stamp; joins by team (players on bye get no keys).
+
+**ESPN news** (`ingestion/espn_news.clj`, `GET /api/players/:id/news`): fetched per card open, not with the universe (GET is fine, no credential). Fantasy news feed only (Rotowire items, newest 10, tags stripped); the injury designation is Sleeper's (see Sleeper injuries). Reply `{:news :fetched-at :errors}`; a failed feed lands in `:errors`. In-memory cache per ESPN id, TTL `DRAFTDAY_NEWS_TTL_MINUTES`, errored replies never cached; empty offline. No ESPN id (DynastyProcess lags on rookies) = 200 `{:reason :no-espn-id}`, unknown player = 404.
 
 **nflverse_weekly**: `stats_player_week_N.csv`, answers this season's production + opportunity + season progress. Stat map wider than line-columns (scores under league's own weights). `:games` counts player rows, not weeks. Missing file = week 0, not outage. **Not built on injury report** — IR players drop off that report entirely, so designations would mislabel them durable.
 

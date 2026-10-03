@@ -10,6 +10,7 @@
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
+            [draft-day.ingestion.espn-news :as espn-news]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.season :as season]
             [draft-day.ingestion.sleeper-trending :as trending]
@@ -78,6 +79,22 @@
                         :count    (count players)
                         :source   source
                         :universe (dissoc u :players :expires-at)})))
+
+(defn player-news-handler
+  "News and injury designation for one player, by our player id.
+
+  A player with no ESPN id (DynastyProcess lags on rookies) answers 200 with a
+  `:reason` rather than 404, so the card can say why it is empty; an id the
+  universe does not hold is the 404. Resolved off the in-memory universe, so a
+  card opening never triggers a rank."
+  [req]
+  (let [id     (get-in req [:path-params :id])
+        player (first (filter #(= id (:player-id %)) (:players (universe false))))]
+    (if-not player
+      (json-response 404 {:error (str "unknown player: " id)})
+      (if-let [espn-id (get-in player [:ids :espn])]
+        (json-response 200 (espn-news/player-news (str espn-id)))
+        (json-response 200 {:news [] :reason :no-espn-id})))))
 
 (defn cache-reset-handler [_]
   (pipeline/delete-cache! pipeline/default-cache-path)
@@ -567,6 +584,7 @@
    (ring/router
     [["/api/health"   {:get  (fn [_] (json-response 200 {:status "ok" :service "draft-day-clj"}))}]
      ["/api/players"  {:get  players-handler}]
+     ["/api/players/:id/news" {:get player-news-handler}]
      ["/api/cache/reset" {:post cache-reset-handler}]
      ["/api/rankings" {:post rankings-handler}]
      ["/api/waivers"  {:post waivers-handler}]

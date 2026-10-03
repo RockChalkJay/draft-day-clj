@@ -6,6 +6,7 @@
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.espn-news :as espn-news]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.matchups :as matchups]
             [draft-day.ingestion.sleeper-trending :as trending]
@@ -57,6 +58,23 @@
         (is (= 40 (:count b)) "every row is still there")
         (is (every? #(nil? (:vendor/by-format %)) (:players b)))
         (is (not (re-find #"by-format" (:body (routes/players-handler {:query-params {}})))))))))
+
+(deftest player-news-endpoint
+  (routes/reset-universe!)
+  (let [u (assoc fixture :players
+                 [{:player-id "a" :player-name "A" :position "RB" :ids {:espn "99"}}
+                  {:player-id "b" :player-name "B" :position "RB"}])
+        get-news #(routes/player-news-handler {:path-params {:id %}})]
+    (with-redefs [pipeline/load-universe (fn [& _] u)
+                  espn-news/player-news (fn [id] {:news [] :asked id})]
+      (testing "an ESPN id is looked up"
+        (is (= "99" (:asked (parse (get-news "a"))))))
+      (testing "no ESPN id answers with the reason, not a 404"
+        (let [resp (get-news "b")]
+          (is (= 200 (:status resp)))
+          (is (= {:news [] :reason "no-espn-id"} (parse resp)))))
+      (testing "an unknown player is a 404"
+        (is (= 404 (:status (get-news "zzz"))))))))
 
 (deftest cache-reset-endpoint-clears-memory-and-disk
   (routes/reset-universe!)
