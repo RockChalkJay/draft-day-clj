@@ -8,7 +8,7 @@
             [draft-day.db :as db]
             [draft-day.fx :as fx]
             [draft-day.scoring :as scoring]
-            [draft-day.events]))
+            [draft-day.events :as events]))
 
 (defonce captured (atom {}))
 
@@ -605,3 +605,38 @@
                                 :sync {:teams []}}})
   (is (some #{:fetch-matchup}
             (map first (dispatched #(rf/dispatch-sync [:set-active-league "sleeper:2"]))))))
+
+(defn- show-modal-effects [m] (events/show-modal-effects @rdb/app-db m))
+
+(deftest opening-a-player-card-lands-on-the-game-log-and-asks-for-news
+  (swap! rdb/app-db assoc :player-detail-tab :news)
+  (let [{:keys [db fx]} (show-modal-effects {:kind :player-detail :player-id "p1"})]
+    (is (= :game-log (:player-detail-tab db)) "every card opens on the game log")
+    (is (= [[:dispatch [:fetch-player-news "p1"]]] fx))))
+
+(deftest fetching-news-asks-the-server-for-that-player
+  (rf/dispatch-sync [:fetch-player-news "p1"])
+  (is (= "/api/players/p1/news" (:url (last-http))))
+  (is (= :loading (get-in @rdb/app-db [:player-news "p1" :state])))
+  (rf/dispatch-sync [:fetch-player-news "p1"])
+  (is (= 1 (count (:http @captured))) "a request already in flight is not repeated"))
+
+(deftest another-modal-asks-for-no-news
+  (is (empty? (:fx (show-modal-effects {:kind :start-draft}))))
+  (is (empty? (:fx (show-modal-effects :reset-cache)))))
+
+(deftest reopening-a-card-inside-the-window-reuses-its-news
+  (rf/dispatch-sync [:player-news-loaded "p1" {:news [{:headline "x"}]}])
+  (rf/dispatch-sync [:fetch-player-news "p1"])
+  (is (empty? (:http @captured)) "fresh news is not asked for again")
+  (is (= "x" (get-in @rdb/app-db [:player-news "p1" :reply :news 0 :headline]))))
+
+(deftest a-failed-news-fetch-is-retried-on-the-next-open
+  (rf/dispatch-sync [:player-news-failed "p1" 502])
+  (is (= :failed (get-in @rdb/app-db [:player-news "p1" :state])))
+  (rf/dispatch-sync [:fetch-player-news "p1"])
+  (is (= 1 (count (:http @captured)))))
+
+(deftest picking-a-tab-sets-it
+  (rf/dispatch-sync [:set-player-detail-tab :season])
+  (is (= :season (:player-detail-tab @rdb/app-db))))
