@@ -12,9 +12,10 @@
   key set for defenses would be a second table renderer. The key names promise a
   source this namespace does not use; the values are the same facts.
 
-  Zeros are kept. A defense that blocked no kicks blocked none, and the table
-  shows a 0 where nflverse's blank-is-not-zero rule would leave a dash for a
-  player the file says nothing about."
+  Sleeper omits a stat a defense never accrued, so a season that was played
+  fills every stat key it lacks with 0: a defense that blocked no kicks blocked
+  none, and the table shows a 0 where a player the file says nothing about gets
+  a dash."
   (:require [clojure.tools.logging :as log]
             [jsonista.core :as json]
             [draft-day.ingestion.nflverse :as nflverse]
@@ -51,7 +52,7 @@
   (let [gp (:gp stats)]
     (when (and player_id (number? gp) (pos? gp))
       [(str player_id)
-       (into {} (keep (fn [k] (when-let [v (get stats k)] [k (double v)]))) stat-keys)
+       (into {} (map (fn [k] [k (double (or (get stats k) 0.0))])) stat-keys)
        (double gp)])))
 
 (defn history

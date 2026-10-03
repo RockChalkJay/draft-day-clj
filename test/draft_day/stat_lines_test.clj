@@ -130,6 +130,13 @@
            (mapv :label (:rows t))))
     (is (= [5.0] (:values (row t "FG 0-29"))) "the two short bands read as one")))
 
+(deftest a-skill-player-is-never-zero-filled-from-sleepers-line
+  (let [wr {:position "WR" :nflverse/games-seasons {2025 17}
+            :nflverse/history [{:season 2025 :stats {:rec_tgt 100.0}}]
+            :realized/season-to-date {:games 3 :stats {:rec 12.0}}}
+        t (sl/stat-table wr 2026 {:in-season? true})]
+    (is (nil? (:proj (row t "Targets"))) "no measured target count, so a dash rather than a 0")))
+
 (deftest a-defense-reads-sleepers-line-and-a-missing-stat-is-zero
   (let [d {:position "DST" :nflverse/games-seasons {2025 17}
            :nflverse/games-by-season {2025 17.0}

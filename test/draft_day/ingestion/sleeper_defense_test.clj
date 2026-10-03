@@ -5,9 +5,11 @@
 (def ^:private sf {:player_id "SF" :stats {:gp 17.0 :sack 20.0 :int 6.0 :blk_kick 0.0 :yds_allow 5784.0}})
 
 (deftest an-entry-becomes-a-line-with-its-zeros
-  (is (= ["SF" {:sack 20.0 :int 6.0 :blk_kick 0.0 :yds_allow 5784.0} 17.0]
+  (is (= ["SF" {:sack 20.0 :int 6.0 :blk_kick 0.0 :ff 0.0 :fum_rec 0.0
+                :yds_allow 5784.0 :pts_allow 0.0}
+          17.0]
          (sd/entry->line sf))
-      "a defense that blocked no kicks blocked none")
+      "a stat Sleeper left out of a played season is a zero, not a dash")
   (is (nil? (sd/entry->line (assoc-in sf [:stats :gp] 0.0))) "no games, no season")
   (is (nil? (sd/entry->line {:stats {:gp 1.0}})) "nothing to join on"))
 

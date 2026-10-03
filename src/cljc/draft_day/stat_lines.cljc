@@ -168,9 +168,9 @@
            hist    (into {} (map (juxt :season :stats)) (:nflverse/history player))
            games   (by-season (:nflverse/games-by-season player))
            nfl     (:nflverse/season-to-date player)
-           ;; A defense has no nflverse row, and Sleeper omits a stat it did not
+           ;; Sleeper is a defense's only source and omits a stat it did not
            ;; accrue, so for one a missing key after a played game is a zero.
-           realized? (and in-season? (nil? (seq (:stats nfl)))
+           realized? (and in-season? (= "DST" (:position player))
                           (pos? (or (get-in player [:realized/season-to-date :games]) 0)))
            so-far  (if realized? (:realized/season-to-date player) nfl)
            proj    (if in-season? (:stats so-far) (:stats player))
