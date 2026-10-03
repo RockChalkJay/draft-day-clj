@@ -194,59 +194,88 @@
             :nflverse/prior-target-share (num-or-nil (get row "target_share"))})]))
 
 (def line-columns
-  "nflverse column -> the Sleeper stat key `draft-day.scoring` already speaks.
+  "nflverse column -> the Sleeper stat key `draft-day.scoring` already speaks,
+  for the four skill positions.
 
   Deliberately narrower than the benchmark harness's map over the same feed
   (`draft-day.benchmark.sources.nflverse/stat-columns`). That one exists to
   *score* a realized season under a league's weights, so it needs every column a
   weight can touch — interceptions, two-point conversions, fumbles. This one
-  exists to *show* three seasons in a tile, so it carries only the lines a
-  manager reads off one.
+  exists to *show* three seasons on the player card, so it carries only the lines
+  a manager reads off one.
 
   Keyed by Sleeper stat keys even so, because that is the vocabulary a player's
   projected `:stats` line is already in: it lets a realized season and a
   projected one sit in the same row without translating between two spellings of
-  the same stat.
-
-  No kicking columns. nflverse does publish `fg_made`/`pat_made` and K rows are
-  joined, but a kicker's history is not what this shipped for; adding it is a
-  column change, not a design change, if it is ever wanted."
+  the same stat. `:rec_tgt`, `:rush_att` and `:pass_att` are display-only: no
+  league weights them, but Sleeper spells them that way and so does the
+  in-season line."
   {"passing_yards"   :pass_yd
    "passing_tds"     :pass_td
+   "completions"     :pass_cmp
+   "attempts"        :pass_att
    "rushing_yards"   :rush_yd
    "rushing_tds"     :rush_td
+   "carries"         :rush_att
    "receptions"      :rec
    "receiving_yards" :rec_yd
-   "receiving_tds"   :rec_td})
+   "receiving_tds"   :rec_td
+   "targets"         :rec_tgt})
+
+(def kicker-columns
+  "The kicker's counterpart to `line-columns`: made kicks by distance, and
+  extra points made and missed.
+
+  Two columns share `:fgm_50p`, the same fold `nflverse-weekly/stat-columns`
+  makes, because the app holds no band above fifty. `row->season-line` sums
+  columns that share a key."
+  {"fg_made_0_19"  :fgm_0_19
+   "fg_made_20_29" :fgm_20_29
+   "fg_made_30_39" :fgm_30_39
+   "fg_made_40_49" :fgm_40_49
+   "fg_made_50_59" :fgm_50p
+   "fg_made_60_"   :fgm_50p
+   "pat_made"      :xpm
+   "pat_missed"    :xpmiss})
+
+(def history-columns
+  "position -> the columns that position's season line is read from.
+
+  A map per position and not one list, because a column that is structurally
+  zero for a position is not a quiet season, it is the absence of a question —
+  and it is indistinguishable downstream from a player who did nothing, so it
+  cannot be filtered later. A kicker carrying three seasons of
+  `{:pass_yd 0.0 :rec 0.0}` is that, and so is a quarterback with made field
+  goals. No DST rows exist in this file at all (see `fantasy-positions`); a
+  defense's history is `sleeper-defense`'s."
+  {"QB" line-columns
+   "RB" line-columns
+   "WR" line-columns
+   "TE" line-columns
+   "K"  kicker-columns})
 
 (def history-positions
-  "The positions a `line-columns` stat line says anything about.
-
-  Narrower than `fantasy-positions`, which gates the join as a whole. Kickers do
-  have rows in this file and do join, but every column in `line-columns` is
-  structurally zero for one — a kicker would carry three seasons of
-  `{:pass_yd 0.0 :rush_yd 0.0 :rec 0.0 ...}`, which is not a quiet career, it is
-  the absence of a question. Worse, it is indistinguishable downstream from a
-  skill player who genuinely did nothing, so it cannot be filtered later either.
-  No DST rows exist here at all (see `fantasy-positions`)."
-  #{"QB" "RB" "WR" "TE"})
+  "The positions `history-columns` describes."
+  (set (keys history-columns)))
 
 (defn row->season-line
   "Pure: one nflverse row -> [gsis {stat-key value}], or nil when there is
   nothing to join on, the position has no line worth keeping, or the row carries
-  none of `line-columns`.
+  none of its position's columns.
 
   Same BLANK IS NOT ZERO rule as `row->usage`, and it matters more here: a stat
   line is read as a trend across three seasons, so one zero-filled column is not
   a wrong number in isolation but a decline the player never had. A column the
   source left blank is simply absent, and a season with no columns at all yields
-  no entry rather than an empty line."
+  no entry rather than an empty line. Columns that share a key are summed."
   [row]
   (when-let [gsis (and (history-positions (get row "position")) (gsis-id row))]
-    (let [stats (into {}
-                      (keep (fn [[col k]]
-                              (when-let [v (num-or-nil (get row col))] [k v])))
-                      line-columns)]
+    (let [stats (reduce (fn [acc [col k]]
+                          (if-let [v (num-or-nil (get row col))]
+                            (update acc k (fnil + 0.0) v)
+                            acc))
+                        {}
+                        (history-columns (get row "position")))]
       (when (seq stats) [gsis stats]))))
 
 (defn row->games

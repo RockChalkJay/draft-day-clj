@@ -21,14 +21,15 @@
     (is (= [2023 2024 2025] (:seasons t)))
     (is (= 2026 (:proj-season t)))
     (is (false? (:rookie? t)))
-    (is (= ["Rush Yd" "Rec" "Rec Yd" "TD" "Games"] (mapv :label (:rows t))))
+    (is (= ["Rec" "Rec Yd" "Rush Yd" "Rush TD" "Rec TD" "Games"] (mapv :label (:rows t))))
     (is (= [976.0 1456.0 1478.0] (:values (row t "Rush Yd"))))
     (is (= 1372.0 (:proj (row t "Rush Yd"))))))
 
-(deftest touchdowns-combine-rushing-and-receiving
+(deftest rushing-and-receiving-touchdowns-are-their-own-rows
   (let [t (sl/stat-table bijan 2026)]
-    (is (= [8.0 15.0 11.0] (:values (row t "TD"))))
-    (is (= 12.0 (:proj (row t "TD"))))))
+    (is (= [4.0 14.0 7.0] (:values (row t "Rush TD"))))
+    (is (= [4.0 1.0 4.0] (:values (row t "Rec TD"))))
+    (is (= 3.0 (:proj (row t "Rec TD"))))))
 
 (deftest a-combined-row-sums-only-what-is-there
   ;; Absent is not zero: a line with one of the two keys contributes that one,
@@ -104,11 +105,43 @@
     (testing "and with no games in any season, the Games row is left off entirely"
       (is (nil? (row t "Games"))))))
 
-(deftest kickers-and-defenses-get-no-table
-  ;; Not an empty table — the tile falls back to what it showed before.
-  (is (nil? (sl/stat-table (assoc bijan :position "K") 2026)))
-  (is (nil? (sl/stat-table (assoc bijan :position "DST") 2026)))
+(deftest a-player-with-no-position-gets-no-table
   (is (nil? (sl/stat-table (dissoc bijan :position) 2026))))
+
+(deftest a-quarterbacks-completions-read-against-his-attempts
+  (let [qb {:position "QB" :nflverse/games-seasons {2025 17}
+            :nflverse/games-by-season {2025 17.0}
+            :nflverse/history [{:season 2025 :stats {:pass_cmp 375.0 :pass_att 611.0 :pass_yd 3775.0}}]
+            :stats {:pass_cmp 118.0 :pass_att 171.0 :pass_yd 1294.0}}
+        t (sl/stat-table qb 2026)]
+    (is (= ["375/611"] (:values (row t "Comp/Att"))))
+    (is (= "118/171" (:proj (row t "Comp/Att"))))
+    (is (nil? (sl/combine-ratio {:pass_cmp 3.0} [:pass_cmp :pass_att]))
+        "half a ratio is not a ratio")))
+
+(deftest a-kicker-is-described-by-distance-and-extra-points
+  (let [k {:position "K" :nflverse/games-seasons {2025 17}
+           :nflverse/games-by-season {2025 17.0}
+           :nflverse/history [{:season 2025 :stats {:fgm_0_19 1.0 :fgm_20_29 4.0 :fgm_30_39 7.0
+                                                    :fgm_40_49 6.0 :fgm_50p 2.0 :xpm 46.0 :xpmiss 3.0}}]
+           :stats {}}
+        t (sl/stat-table k 2026)]
+    (is (= ["FG 0-29" "FG 30-39" "FG 40-49" "FG 50+" "XP made" "XP missed" "Games"]
+           (mapv :label (:rows t))))
+    (is (= [5.0] (:values (row t "FG 0-29"))) "the two short bands read as one")))
+
+(deftest a-defense-reads-sleepers-line-and-a-missing-stat-is-zero
+  (let [d {:position "DST" :nflverse/games-seasons {2025 17}
+           :nflverse/games-by-season {2025 17.0}
+           :nflverse/history [{:season 2025 :stats {:sack 40.0 :int 14.0 :blk_kick 1.0 :ff 9.0
+                                                    :fum_rec 8.0 :yds_allow 5260.0 :pts_allow 353.0}}]
+           :realized/season-to-date {:games 4 :stats {:sack 16.0 :int 6.0 :yds_allow 1507.0
+                                                      :pts_allow 96.0}}}
+        t (sl/stat-table d 2026 {:in-season? true})]
+    (is (= 16.0 (:proj (row t "Sacks"))))
+    (is (= 0.0 (:proj (row t "Blocked kicks")))
+        "Sleeper omits a stat he did not accrue; four games in, that is a zero")
+    (is (= 4 (:proj (row t "Games"))))))
 
 (deftest a-player-with-no-numbers-at-all-gets-no-table
   ;; Every row would be dropped, so there is nothing to draw.

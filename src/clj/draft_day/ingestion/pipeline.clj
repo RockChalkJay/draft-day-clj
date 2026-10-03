@@ -17,6 +17,7 @@
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.sleeper-actual :as sleeper-actual]
+            [draft-day.ingestion.sleeper-defense :as sleeper-defense]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.season :as season]
@@ -27,7 +28,7 @@
 
 (def schema-version
   "Version of the persisted universe envelope and player-row shape."
-  15)
+  16)
 
 (def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
@@ -200,7 +201,8 @@
 (def enrichment-source-labels
   "All source labels a fully enriched universe reports: `enrich-universe`'s,
   then `assoc-realized`'s."
-  (-> [:sleeper/byes :fantasypros/sleepers :espn :nflverse/player-stats]
+  (-> [:sleeper/byes :fantasypros/sleepers :espn :nflverse/player-stats
+       :sleeper/defense-history]
       (into (mapcat (fn [fmt] [(format-label :fantasypros/ecr fmt)
                                (format-label :fantasypros/aav fmt)]))
             scoring/formats)
@@ -219,7 +221,8 @@
   (into (into {:sleeper/byes         #(best-effort (sleeper/fetch-byes season))
                :fantasypros/sleepers #(best-effort (fantasypros/fetch-sleepers))
                :espn                 #(best-effort (espn/fetch season))
-               :nflverse/player-stats #(best-effort (nflverse/fetch (dec season)))}
+               :nflverse/player-stats #(best-effort (nflverse/fetch (dec season)))
+               :sleeper/defense-history #(best-effort (sleeper-defense/fetch (dec season)))}
               (mapcat (fn [fmt]
                         [[(format-label :fantasypros/ecr fmt)
                           #(best-effort (fantasypros/fetch-ecr fmt))]
@@ -238,7 +241,8 @@
         byes     (:sleeper/byes fetched)
         sleepers (:fantasypros/sleepers fetched)
         espn     (:espn fetched)
-        prior    (:nflverse/player-stats fetched)]
+        prior    (:nflverse/player-stats fetched)
+        defense  (:sleeper/defense-history fetched)]
     (log/info (format ":sleeper/byes: %d team bye weeks" (count byes)))
     (as-> {:players (cond-> universe (seq byes) (sleeper/assoc-byes byes))
            :sources {:sleeper/byes (if (seq byes)
@@ -265,11 +269,18 @@
       (apply-enrichment acc :nflverse/player-stats (:by-key prior)
                         {:key-fn            #(get-in % [:ids :gsis])
                          :key-position      (:positions prior)
+                         :expected-partial? true})
+      ;; Team defenses, which nflverse has no rows for: keyed by the Sleeper
+      ;; player id, which for a defense is its team abbreviation.
+      (apply-enrichment acc :sleeper/defense-history (:by-key defense)
+                        {:key-fn            #(or (get-in % [:ids :sleeper])
+                                                 (:player-id %))
+                         :key-position      (:positions defense)
                          :expected-partial? true}))))
 
 (def realized-schema-version
   "Version of the realized cache envelope."
-  2)
+  3)
 
 (def default-realized-cache-path
   (str "data/realized.v" realized-schema-version ".transit"))

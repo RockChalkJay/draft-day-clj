@@ -36,13 +36,21 @@
       :else          (throw (ex-info "Sleeper stats non-200"
                                      {:week week :status status})))))
 
+(def display-keys
+  "Stats the player card's season table shows for a team defense that no league
+  weights: the flat yards and points allowed (leagues score the buckets). The
+  volume counts are nflverse's, which is where a skill player's season table
+  reads them from."
+  [:yds_allow :pts_allow])
+
 (defn scored-stats
-  "Return scored Sleeper stats as doubles, omitting zeros from sparse rows."
+  "Return scored Sleeper stats as doubles, omitting zeros from sparse rows, plus
+  `display-keys`."
   [stats]
   (into {} (keep (fn [k]
                    (when-let [v (get stats k)]
                      (when-not (zero? v) [k (double v)]))))
-        scoring/stat-keys))
+        (concat scoring/stat-keys display-keys)))
 
 (defn entry->row
   "Convert a raw entry to a played-game row, using positive `gp` as the gate."

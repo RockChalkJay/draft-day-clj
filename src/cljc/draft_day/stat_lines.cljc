@@ -22,16 +22,14 @@
     touch the shape the browser actually gets.")
 
 (def position-rows
-  "position -> ordered [label stat-keys] the table describes it by.
+  "position -> ordered [label stat-keys] the game log describes it by.
 
   Keyed by the same Sleeper stat keys a projected `:stats` line uses, which is
   why a realized season and a projected one can share a row without translation.
 
   QB/RB/WR/TE only, and the key set is the gate: K and DST miss and render no
-  table at all, because nflverse publishes no DST rows and a kicker's realized
-  line is not ingested (his columns in `nflverse/line-columns` would all be
-  structurally zero). Rather than show a table of dashes, a caller that misses
-  here falls back to what the tile showed before.
+  game log at all, since a weekly log of kicks and sacks is not what it is for.
+  The Season table has its own, wider set: `season-rows`.
 
   A label may name more than one key: `TD` is rushing plus receiving, because a
   back who scores twelve does not care which way they came, and two rows of
@@ -52,6 +50,45 @@
            ["TD"      [:rush_td :rec_td]]]
      "WR" receiving
      "TE" receiving}))
+
+(def season-rows
+  "position -> ordered `[label stat-keys kind]` the player card's Season table
+  describes it by; `position-rows` is the game log's narrower set.
+
+  A label may name several keys, summed: `FG 0-29` is two distance buckets.
+  `:ratio` reads two keys as one cell, since completions without attempts say
+  nothing about accuracy. A kicker's history is nflverse's kicking columns and a
+  defense's is Sleeper's season totals (`ingestion.sleeper-defense`); both ride
+  the same keys as everyone else."
+  (let [catcher [["Targets"  [:rec_tgt]]
+                 ["Rec"      [:rec]]
+                 ["Rec Yd"   [:rec_yd]]
+                 ["Rush Att" [:rush_att]]
+                 ["Rush Yd"  [:rush_yd]]
+                 ["Rush TD"  [:rush_td]]
+                 ["Rec TD"   [:rec_td]]]]
+    {"QB"  [["Comp/Att" [:pass_cmp :pass_att] :ratio]
+            ["Pass Yd"  [:pass_yd]]
+            ["Pass TD"  [:pass_td]]
+            ["Rush Att" [:rush_att]]
+            ["Rush Yd"  [:rush_yd]]
+            ["Rush TD"  [:rush_td]]]
+     "RB"  catcher
+     "WR"  catcher
+     "TE"  catcher
+     "K"   [["FG 0-29"  [:fgm_0_19 :fgm_20_29]]
+            ["FG 30-39" [:fgm_30_39]]
+            ["FG 40-49" [:fgm_40_49]]
+            ["FG 50+"   [:fgm_50p]]
+            ["XP made"  [:xpm]]
+            ["XP missed" [:xpmiss]]]
+     "DST" [["Sacks"          [:sack]]
+            ["INT"            [:int]]
+            ["Blocked kicks"  [:blk_kick]]
+            ["Forced fumbles" [:ff]]
+            ["Fumble rec."    [:fum_rec]]
+            ["Yds allowed"    [:yds_allow]]
+            ["Pts allowed"    [:pts_allow]]]}))
 
 (defn season-key
   "A season as a number, whether it arrived as one or as the keyword JSON turned
@@ -84,6 +121,18 @@
   (let [vs (keep #(get stats %) ks)]
     (when (seq vs) (reduce + vs))))
 
+(defn combine-ratio
+  "`\"made/attempts\"` from two keys, or nil unless both are present. A season
+  with neither is a dash; one with a half is not a ratio."
+  [stats [made att]]
+  (let [m (get stats made) a (get stats att)]
+    (when (and m a) (str (Math/round (double m)) "/" (Math/round (double a))))))
+
+(defn blank?
+  "Whether a cell says nothing: absent, a zero, or an empty ratio."
+  [v]
+  (or (nil? v) (and (number? v) (zero? v)) (= "0/0" v)))
+
 (defn season-columns
   "Which seasons the table has columns for: the window that was *fetched*, oldest
   first — not the seasons this player happens to have a row in.
@@ -114,18 +163,25 @@
   card for once games are played — and the table says so with `:so-far? true`."
   ([player season] (stat-table player season {}))
   ([player season {:keys [in-season?]}]
-   (when-let [rows (get position-rows (:position player))]
+   (when-let [rows (get season-rows (:position player))]
      (let [seasons (season-columns player)
            hist    (into {} (map (juxt :season :stats)) (:nflverse/history player))
            games   (by-season (:nflverse/games-by-season player))
-           so-far  (:nflverse/season-to-date player)
+           nfl     (:nflverse/season-to-date player)
+           ;; A defense has no nflverse row, and Sleeper omits a stat it did not
+           ;; accrue, so for one a missing key after a played game is a zero.
+           realized? (and in-season? (nil? (seq (:stats nfl)))
+                          (pos? (or (get-in player [:realized/season-to-date :games]) 0)))
+           so-far  (if realized? (:realized/season-to-date player) nfl)
            proj    (if in-season? (:stats so-far) (:stats player))
+           cell    (fn [stats [_ ks kind]]
+                     (if (= :ratio kind) (combine-ratio stats ks) (combine stats ks)))
            built   (into []
-                         (keep (fn [[label ks]]
-                                 (let [values (mapv #(combine (get hist %) ks) seasons)
-                                       pv     (combine proj ks)]
-                                   (when-not (every? #(or (nil? %) (zero? %))
-                                                     (conj values pv))
+                         (keep (fn [[label ks kind :as row]]
+                                 (let [values (mapv #(cell (get hist %) row) seasons)
+                                       pv     (cell proj row)
+                                       pv     (if (and realized? (nil? pv)) (if (= :ratio kind) "0/0" 0.0) pv)]
+                                   (when-not (every? blank? (conj values pv))
                                      {:label label :values values :proj pv}))))
                          rows)]
        (when (seq built)
