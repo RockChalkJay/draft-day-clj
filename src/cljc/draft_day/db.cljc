@@ -1297,6 +1297,8 @@
      :matchup-status nil
      :matchup-pick nil          ; which game on screen: one of its roster ids, or nil for mine
      :lineup-view  {}           ; roster-id -> :set/:projected/:actual; transient
+     :player-detail-tab :game-log ; the open player card's tab; reset on every open
+     :player-news  {}           ; player-id -> {:state :loading/:loaded/:failed :reply :at}; transient
      ;; At most two player-ids, in pick order. Transient: a comparison is a
      ;; question being asked right now, not a layout worth restoring.
      :compare      []

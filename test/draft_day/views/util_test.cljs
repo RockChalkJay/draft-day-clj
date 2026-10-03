@@ -140,3 +140,13 @@
     (is (not (re-find #"," (util/fetched-at-label (ago 1)))))
     (is (re-find #"," (util/fetched-at-label (ago (* 60 48)))))
     (is (nil? (util/fetched-at-label nil)))))
+
+(deftest ago-reads-both-timestamp-shapes
+  (let [now (js/Date.parse "2026-10-01T12:00:00Z")]
+    (is (= "just now" (util/ago now "2026-10-01T11:59:40Z")))
+    (is (= "12m ago" (util/ago now (- now (* 12 60000)))) "epoch milliseconds, Sleeper's shape")
+    (is (= "2h ago" (util/ago now "2026-10-01T10:00:00Z")) "an ISO string, ESPN's shape")
+    (is (= "3d ago" (util/ago now "2026-09-28T12:00:00Z")))
+    (is (= "just now" (util/ago now "2026-10-01T12:05:00Z")) "a clock a little ahead is not news")
+    (is (nil? (util/ago now "garbage")))
+    (is (nil? (util/ago now nil)))))
