@@ -1043,7 +1043,6 @@
    {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true :group :essentials}
    {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false :group :week}
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false :group :week}
-   {:key :ros       :label "ROS"    :tooltip "Rest-of-season projected points, blending the preseason projection with what he has actually done" :default? false :group :projections}
    {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start" :default? false :group :projections}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? false :group :projections}
    {:key :bid       :label "Sugg."  :tooltip "Suggested bid and its chance to win: about a dollar over the top rival bid he is likely to draw, never more than he is worth to you" :default? false :group :bidding}
@@ -1111,7 +1110,6 @@
    :team      :team
    :position  #(pos-sort-key (assoc % :pos-rank (season-rank %)))
    :bye       :bye
-   :ros       :ros-points
    :week      :week-points
    :week-rank :week-pos-rank
    ;; Both sources, as `waivers/matchup-source` resolves them — sorting on the

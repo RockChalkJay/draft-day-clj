@@ -19,7 +19,7 @@
 
 (def columns
   [[:slot "Slot"] [:name "Player"] [:position "Pos"] [:team "Team"] [:opp "Opp"]
-   [:week "Week"] [:ros "ROS"] [:risk "Risk"] [:inj "Inj"]])
+   [:week "Week"] [:risk "Risk"] [:inj "Inj"]])
 
 (defn roster-groups
   "`:my-roster`'s three blocks as `[label rows]`, in its order, each row flagged
@@ -217,5 +217,4 @@
        [:div.drop-note
         "A claim costs a roster spot. Yours would come from "
         [:strong (:player-name drop)]
-        (str " (" (:position drop) ", "
-             (board/format-whole (:ros-points drop)) " rest-of-season points).")])]))
+        (str " (" (:position drop) ").")])]))

@@ -37,9 +37,9 @@
 ;; ---- the sentence ----
 
 (def ^:private odunze
-  {:player-name "Rome Odunze" :week-points 13.8 :ros-points 96.0 :bye 7})
+  {:player-name "Rome Odunze" :week-points 13.8 :bye 7})
 (def ^:private jennings
-  {:player-name "Jauan Jennings" :week-points 10.2 :ros-points 119.0 :bye 9})
+  {:player-name "Jauan Jennings" :week-points 10.2 :bye 9})
 
 (defn- text [hiccup]
   (letfn [(walk [x] (cond (string? x) x
@@ -47,51 +47,36 @@
                           :else ""))]
     (walk hiccup)))
 
-(deftest reading-line-names-the-split
-  ;; The whole reason the tile exists: the two horizons disagree, and a table of
-  ;; numbers hides that behind arithmetic.
+(deftest reading-line-names-the-weekly-lead
   (let [s (text (cmp/reading-line odunze jennings 5 nil))]
+    (is (= "Rome Odunze projects higher this week." s))))
+
+(deftest a-split-between-the-week-and-replacement-is-named
+  ;; Over replacement subtracts a per-position level, so the weekly leader and
+  ;; the one further above replacement can be different players.
+  (let [a (assoc odunze  :ros-vorp 5.0)
+        b (assoc jennings :ros-vorp 70.0)
+        s (text (cmp/reading-line a b 5 nil))]
     (is (re-find #"Rome Odunze projects higher this week" s))
-    (is (re-find #"Jauan Jennings is the better rest-of-season hold" s))))
-
-(deftest reading-line-says-so-when-they-agree
-  ;; Named rather than counted. It read "ahead on both" when the band held two
-  ;; rows; Over replacement made three, and the next one would have made four.
-  (let [better (assoc jennings :week-points 18.0 :ros-points 140.0)
-        s      (text (cmp/reading-line odunze better 5 nil))]
-    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
-
-(deftest a-cross-position-pair-gets-its-own-sentence
-  ;; The row that made this necessary. VORP subtracts a *per-position*
-  ;; replacement level, so more points and further above replacement are
-  ;; different players as soon as the two are not the same position — and Over
-  ;; replacement sits in the band this sentence summarises, leaning visibly the
-  ;; other way while it claimed they agreed.
-  (let [qb (assoc odunze  :player-name "A QB" :ros-points 285.0 :ros-vorp 5.0)
-        wr (assoc jennings :player-name "A WR" :ros-points 200.0 :ros-vorp 70.0
-                  :week-points 1.0)
-        s  (text (cmp/reading-line qb wr 5 nil))]
-    (is (re-find #"A QB projects more points" s))
-    (is (re-find #"A WR is further above replacement" s))
-    (is (not (re-find #"ahead this week and rest-of-season" s))
-        "the agreement sentence is exactly what must not print here")))
+    (is (re-find #"Jauan Jennings is further above replacement" s))))
 
 (deftest agreeing-vorp-leaves-the-sentence-alone
-  ;; Same position, so replacement cancels and the third row cannot disagree.
-  ;; The branch must not fire on every pair that happens to carry a VORP.
-  (let [better (assoc jennings :week-points 18.0 :ros-points 140.0 :ros-vorp 40.0)
-        s      (text (cmp/reading-line (assoc odunze :ros-vorp -4.0) better 5 nil))]
-    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
+  (let [a (assoc odunze :ros-vorp 40.0)
+        b (assoc jennings :ros-vorp 5.0)]
+    (is (= "Rome Odunze projects higher this week." (text (cmp/reading-line a b 5 nil))))))
 
 (deftest a-vorp-nobody-has-is-not-a-disagreement
   ;; nil for K and DST, and for the whole board before a sync.
-  (let [better (assoc jennings :week-points 18.0 :ros-points 140.0)
-        s      (text (cmp/reading-line odunze (assoc better :ros-vorp 40.0) 5 nil))]
-    (is (= "Jauan Jennings is ahead this week and rest-of-season." s))))
+  (is (= "Rome Odunze projects higher this week."
+         (text (cmp/reading-line odunze (assoc jennings :ros-vorp 40.0) 5 nil)))))
+
+(deftest vorp-speaks-when-the-week-does-not
+  (let [a (assoc odunze :ros-vorp 5.0)
+        b (assoc jennings :ros-vorp 70.0)
+        s (text (cmp/reading-line a b 5 {:level :coin-flip :gap 0.4}))]
+    (is (not (re-find #"this week" s)) "nothing weekly to say about a coin flip")))
 
 (deftest reading-line-never-picks-for-you
-  ;; When the horizons split there is no answer without knowing whether the
-  ;; manager is buying this Sunday or the rest of the year.
   (let [s (text (cmp/reading-line odunze jennings 5 nil))]
     (is (not (re-find #"(?i)should|take |better claim|pick " s)))))
 
@@ -101,11 +86,10 @@
   (let [s (text (cmp/reading-line (dissoc odunze :week-points) jennings 7 nil))]
     (is (= "Rome Odunze is on bye this week." s))))
 
-(deftest reading-line-falls-back-to-rest-of-season
+(deftest reading-line-is-absent-with-no-weekly-line
   (let [a (dissoc odunze :week-points)
-        b (dissoc jennings :week-points)
-        s (text (cmp/reading-line a b nil nil))]
-    (is (re-find #"Jauan Jennings is ahead rest-of-season" s))))
+        b (dissoc jennings :week-points)]
+    (is (nil? (cmp/reading-line a b nil nil)))))
 
 (deftest reading-line-is-absent-with-nothing-to-say
   (is (nil? (cmp/reading-line {:player-name "A"} {:player-name "B"} nil nil))))
@@ -131,38 +115,14 @@
 (def ^:private clear-gap {:level :clear :gap 30})
 
 (deftest a-coin-flip-week-is-not-a-weekly-lead
-  ;; Nabers vs McConkey, the live reproduction: ahead on *both* raw numbers, so
-  ;; the tile claimed the week directly above "Too close to call".
-  (let [weaker (assoc jennings :ros-points 80.0)
-        s      (text (cmp/reading-line odunze weaker 5 coin-flip))]
-    (is (not (re-find #"this week" s)))
-    (is (not (re-find #"ahead this week and rest-of-season" s)))
-    (is (re-find #"Rome Odunze is ahead rest-of-season" s))))
-
-(deftest a-coin-flip-does-not-manufacture-a-split
-  ;; The worse half of the bug. A split sentence frames a real decision — buy
-  ;; for Sunday, or hold for the season — and doing that on a weekly difference
-  ;; the measurement says is absent is worse than saying nothing.
-  (let [s (text (cmp/reading-line odunze jennings 5 coin-flip))]
-    (is (not (re-find #"projects higher this week" s))
-        "odunze leads the week and jennings the season, but the week is noise")
-    (is (re-find #"Jauan Jennings is ahead rest-of-season" s))))
+  ;; Nabers vs McConkey, the live reproduction: ahead on the raw number, so the
+  ;; tile claimed the week directly above "Too close to call".
+  (is (nil? (cmp/reading-line odunze jennings 5 coin-flip))))
 
 (deftest a-measured-gap-still-gets-its-sentence
   ;; The fix removes a claim; it must not silence the line generally.
   (let [s (text (cmp/reading-line odunze jennings 5 clear-gap))]
-    (is (re-find #"Rome Odunze projects higher this week" s))
-    (is (re-find #"Jauan Jennings is the better rest-of-season hold" s))))
-
-(deftest the-coin-flip-sentence-does-not-repeat-the-calibration
-  ;; Two branches end at rest-of-season and must stay distinct. "no weekly
-  ;; projection separates them" is about *absent data*; a coin flip has data,
-  ;; and `separation-line` explains it underneath in its own terms.
-  (let [flip (text (cmp/reading-line odunze jennings 5 coin-flip))
-        gone (text (cmp/reading-line (dissoc odunze :week-points)
-                                     (dissoc jennings :week-points) 5 nil))]
-    (is (not (re-find #"no weekly" flip)))
-    (is (re-find #"no weekly" gone) "the missing-data wording is still reachable")))
+    (is (= "Rome Odunze projects higher this week." s))))
 
 (deftest a-bye-still-outranks-a-coin-flip
   (let [s (text (cmp/reading-line (dissoc odunze :week-points) jennings 7 coin-flip))]
@@ -213,9 +173,9 @@
       (walk (cmp/metric-row row a b sep)))
     @hit))
 
-(def ^:private wr8  {:position "WR" :week-pos-rank 8  :week-points 13.8 :ros-points 96.0})
-(def ^:private wr10 {:position "WR" :week-pos-rank 10 :week-points 12.9 :ros-points 119.0})
-(def ^:private wr41 {:position "WR" :week-pos-rank 41 :week-points 8.1  :ros-points 119.0})
+(def ^:private wr8  {:position "WR" :week-pos-rank 8  :week-points 13.8})
+(def ^:private wr10 {:position "WR" :week-pos-rank 10 :week-points 12.9})
+(def ^:private wr41 {:position "WR" :week-pos-rank 41 :week-points 8.1 })
 
 (deftest a-clear-gap-still-draws-a-directional-bar
   ;; The calibration removes a claim; it must not remove the tile's whole point.
@@ -235,15 +195,16 @@
   (is (= :no-track (track (row-by-label "This week")
                           wr8 (dissoc wr10 :week-points :week-pos-rank) nil))))
 
-(deftest rest-of-season-is-unaffected-by-the-weekly-verdict
+(deftest over-replacement-is-unaffected-by-the-weekly-verdict
   ;; `sep` reaches every row, but only `:calibrated?` ones may consult it. A
-  ;; coin flip this week says nothing about a dozen games from here, and
-  ;; suppressing this bar too would be the regression that is easiest to ship.
-  (let [coin (confidence/separation wr8 wr10)]
+  ;; coin flip this week says nothing about value over replacement.
+  (let [a    (assoc wr8  :ros-vorp 40.0)
+        b    (assoc wr10 :ros-vorp 70.0)
+        coin (confidence/separation wr8 wr10)]
     (is (= :coin-flip (:level coin)) "precondition: the weekly row is a tie")
-    (let [i (track (row-by-label "Rest of season") wr8 wr10 coin)]
+    (let [i (track (row-by-label "Over replacement") a b coin)]
       (is (= :i (first i)))
-      (is (= "r" (:class (second i))) "and still leans to the better hold"))))
+      (is (= "r" (:class (second i))) "and still leans to the further-above-replacement side"))))
 
 (deftest the-weekly-row-carries-a-rank-subline
   ;; What makes the row legible on exactly the comparisons where the bar says
@@ -319,10 +280,8 @@
   (let [a (assoc odunze  :upgrade 12.0 :injury-risk 2)
         b (assoc jennings :upgrade 3.0 :injury-risk 4)
         labels (fn [b*] (keep #(:label (second %)) (nth b* 1)))
-        [_ horizon claim evidence] (cmp/tile-bands (dissoc a :week-points)
-                                                   (dissoc b :week-points)
-                                                   nil nil)]
-    (is (= ["Rest of season"] (labels horizon)))
+        [_ horizon claim evidence] (cmp/tile-bands a b nil nil)]
+    (is (= ["This week"] (labels horizon)))
     (is (= ["Upgrade"] (labels claim)))
     (is (= ["Injury risk"] (labels evidence))))
   (is (= (cond-> #{"Lineup gain" "Upgrade"}
@@ -333,15 +292,15 @@
 (deftest an-evidence-band-with-nothing-in-it-is-not-drawn
   ;; The only band that can vanish. A bordered empty box below the claim reads
   ;; as a section that failed to load.
-  (is (nil? (cmp/band-content :evidence {:ros-points 1.0} {:ros-points 2.0} nil nil)))
+  (is (nil? (cmp/band-content :evidence {:week-points 1.0} {:week-points 2.0} nil nil)))
   (is (some? (cmp/band-content :evidence {:injury-risk 3} {} nil nil))))
 
 (deftest every-band-in-bands-can-draw-itself
   ;; `tile-bands` keeps over `bands`, so a keyword added there with no `case`
   ;; branch would silently drop out instead of failing.
   (doseq [k metrics/bands]
-    (is (some? (cmp/band-content k {:player-name "A" :ros-points 100.0
+    (is (some? (cmp/band-content k {:player-name "A" :week-points 10.0
                                     :upgrade 1.0 :injury-risk 2}
-                                 {:player-name "B" :ros-points 80.0
+                                 {:player-name "B" :week-points 8.0
                                   :upgrade 2.0 :injury-risk 3} nil nil))
         (str k " draws nothing"))))

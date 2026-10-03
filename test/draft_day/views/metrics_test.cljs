@@ -38,11 +38,11 @@
     (is (false? (:bar? (by-label "Suggested bid"))))
     (is (nil? (:bar? (by-label "This week"))) "defaults to drawn")
     (is (= :lower (:better (by-label "Injury risk"))))
-    (is (= 2 (count (filter :big? metrics/rows))) "the two horizons are the question")))
+    (is (= 1 (count (filter :big? metrics/rows))) "this week is the question")))
 
 ;; ---- the list must not fall behind the board ----
 ;; It did: `:lineup-upgrade` became the column `db/waiver-rank-key` sorts by and
-;; the tile never mentioned it, along with VORP.
+;; the tile never mentioned it.
 ;; `metrics/rows` and `db/waiver-column-catalog` are still written separately —
 ;; the rows carry comparison semantics the board has no use for, and the board
 ;; carries identity and schedule columns no readout wants — so the guard is a
@@ -51,8 +51,7 @@
 (def ^:private board-metric->row
   "Every `db/waiver-column-catalog` key that states a fact about the player,
   against the row that shows it."
-  {:ros       "Rest of season"
-   :week      "This week"
+  {:week      "This week"
    :week-rank "This week"          ; the weekly row's `:sub`
    :ros-vorp  "Over replacement"
    :lineup    "Lineup gain"

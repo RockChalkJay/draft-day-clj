@@ -206,7 +206,6 @@
      :team      [:td (or (:team p) "–")]
      :position  [:td (util/pos-label (assoc p :pos-rank (db/season-rank p)))]
      :bye       [:td.num (or (:bye p) "–")]
-     :ros       [:td.num (board/format-whole (:ros-points p))]
      ;; No weekly line is not a weekly zero: he is on bye, or nobody projects
      ;; him. A 0 would claim he plays and does nothing. Which of the two it is
      ;; is worth saying here rather than only in Opp, which is off by default —
@@ -352,13 +351,13 @@
                            :title "Player detail"}
                           (:player-name p)])
                       (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
-                      [:td.num (board/format-whole (:ros-points p))]]))
+                      [:td.num (util/week-points (:week-points p))]]))
              group (fn [label rows]
                      (when (seq rows)
                        [:<> [:tr.roster-group [:td {:col-span 3} label]] (map row rows)]))
              {:keys [starters bench parked]} roster]
          [:table.roster
-          [:thead [:tr [:th.slot "Pos"] [:th "Player"] [:th.num "ROS"]]]
+          [:thead [:tr [:th.slot "Pos"] [:th "Player"] [:th.num "Wk"]]]
           [:tbody
            (group "Starters" (mapv #(assoc % :starter? true) starters))
            (group "Bench" bench)
@@ -469,5 +468,4 @@
        [:div.drop-note
         "A claim costs a roster spot. Yours would come from "
         [:strong (:player-name drop)]
-        (str " (" (:position drop) ", "
-             (board/format-whole (:ros-points drop)) " rest-of-season points).")])]))
+        (str " (" (:position drop) ").")])]))
