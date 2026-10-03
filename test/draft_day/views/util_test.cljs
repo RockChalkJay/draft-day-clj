@@ -148,5 +148,7 @@
     (is (= "2h ago" (util/ago now "2026-10-01T10:00:00Z")) "an ISO string, ESPN's shape")
     (is (= "3d ago" (util/ago now "2026-09-28T12:00:00Z")))
     (is (= "just now" (util/ago now "2026-10-01T12:05:00Z")) "a clock a little ahead is not news")
+    (is (nil? (util/ago now "2026-08-01T12:00:00Z" 30)) "older than the cap says nothing")
+    (is (= "29d ago" (util/ago now "2026-09-02T12:00:00Z" 30)))
     (is (nil? (util/ago now "garbage")))
     (is (nil? (util/ago now nil)))))

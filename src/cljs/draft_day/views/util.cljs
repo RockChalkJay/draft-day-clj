@@ -173,20 +173,23 @@
 
 (defn ago
   "How long before `now-ms` a moment was, as `\"just now\"`, `\"12m ago\"`,
-  `\"3h ago\"` or `\"2d ago\"`, or nil for a moment that cannot be read.
+  `\"3h ago\"` or `\"2d ago\"`, or nil for a moment that cannot be read, or one
+  older than `max-days` when that is given.
 
   `then` is an ISO string or epoch milliseconds, since the news feed sends one
   and Sleeper's injury list the other. A moment in the future reads as now:
   clocks disagree by a minute, and \"in 40s\" is not news."
-  [now-ms then]
-  (let [t (cond (number? then) then
-                (string? then) (let [ms (js/Date.parse then)] (when-not (js/isNaN ms) ms)))]
-    (when t
-      (let [mins (js/Math.floor (/ (- now-ms t) 60000))]
-        (cond (< mins 1)    "just now"
-              (< mins 60)   (str mins "m ago")
-              (< mins 1440) (str (js/Math.floor (/ mins 60)) "h ago")
-              :else         (str (js/Math.floor (/ mins 1440)) "d ago"))))))
+  ([now-ms then] (ago now-ms then nil))
+  ([now-ms then max-days]
+   (let [t (cond (number? then) then
+                 (string? then) (let [ms (js/Date.parse then)] (when-not (js/isNaN ms) ms)))]
+     (when t
+       (let [mins (js/Math.floor (/ (- now-ms t) 60000))]
+         (cond (and max-days (> mins (* max-days 1440))) nil
+               (< mins 1)    "just now"
+               (< mins 60)   (str mins "m ago")
+               (< mins 1440) (str (js/Math.floor (/ mins 60)) "h ago")
+               :else         (str (js/Math.floor (/ mins 1440)) "d ago")))))))
 
 (defn fetched-at-label
   "An ISO timestamp as a local wall-clock time, dated once it is not today.

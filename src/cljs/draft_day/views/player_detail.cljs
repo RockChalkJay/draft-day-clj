@@ -272,7 +272,7 @@
   [tabs shown]
   (let [keys* (mapv first tabs)
         move  (fn [e k]
-                (when-let [i (.indexOf (to-array keys*) k)]
+                (when-let [i (first (keep-indexed #(when (= %2 k) %1) keys*))]
                   (let [n    (count keys*)
                         next (case (.-key e)
                                "ArrowRight" (nth keys* (mod (inc i) n))
@@ -303,7 +303,7 @@
   (let [body [:<>
               (when chip [:span.pd-chip {:class (when (db/serious-injury? chip) "serious")} chip])
               [:span.pd-latest-text text]
-              (when-let [a (util/ago now at)] [:span.pd-latest-at a])]]
+              (when-let [a (util/ago now at 30)] [:span.pd-latest-at a])]]
     (case kind
       (:injury :news) (if (= :news shown)
                         [:div.pd-latest body]
