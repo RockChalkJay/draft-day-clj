@@ -156,8 +156,28 @@
     (is (= "00-0036900" gsis))
     (is (= {:pass_yd 0.0 :pass_td 0.0
             :rush_yd 32.0 :rush_td 0.0
-            :rec 125.0 :rec_yd 1708.0 :rec_td 17.0}
+            :rec 125.0 :rec_yd 1708.0 :rec_td 17.0
+            :rec_tgt 185.0}
            stats))))
+
+(deftest a-kicker-gets-kicking-columns-and-no-passing-ones
+  (let [row {"player_id" "00-0030000" "position" "K"
+             "fg_made_0_19" "0" "fg_made_20_29" "4" "fg_made_30_39" "7"
+             "fg_made_40_49" "6" "fg_made_50_59" "1" "fg_made_60_" "1"
+             "pat_made" "46" "pat_missed" "3"
+             "passing_yards" "0"}
+        [gsis stats] (nflverse/row->season-line row)]
+    (is (= "00-0030000" gsis))
+    (is (= {:fgm_0_19 0.0 :fgm_20_29 4.0 :fgm_30_39 7.0 :fgm_40_49 6.0
+            :fgm_50p 2.0 :xpm 46.0 :xpmiss 3.0}
+           stats)
+        "the two bands above fifty fold into one key; no skill-position columns")))
+
+(deftest a-quarterback-carries-attempts-and-completions
+  (let [[_ stats] (nflverse/row->season-line
+                   {"player_id" "00-0033873" "position" "QB"
+                    "completions" "375" "attempts" "611"})]
+    (is (= {:pass_cmp 375.0 :pass_att 611.0} stats))))
 
 (deftest a-season-line-carries-no-games-count
   ;; :nflverse/games-by-season already answers that, clamped to the season's

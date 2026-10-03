@@ -10,10 +10,12 @@
             [re-frame.core :as rf]))
 
 (defn cell
-  "One number, rounded to whole. Yards and touchdowns are counted in whole units;
+  "One number, rounded to whole, or a ratio already formatted (`118/171`). Yards and touchdowns are counted in whole units;
   the doubles are an artifact of the CSV, not precision anybody wants to read."
   [v]
-  (if (number? v) (js/Math.round v) "–"))
+  (cond (number? v) (js/Math.round v)
+        (string? v) v
+        :else       "–"))
 
 (defn stat-table
   "The table for `p` (a *universe* player — the ranked board has no history on
