@@ -13,6 +13,17 @@ for the known gaps between a league's real rules and what the board can score.
   receptions. The player picture is done (`views/controls.cljs` renders a
   headshot with a silhouette fallback); the stats half is what is left.
 
+- **Hide a trading-card easter egg on the player card.** Five clicks on the
+  headshot within two seconds flip the card (`rotateY`; a crossfade under
+  `prefers-reduced-motion`) to a retro 90s trading-card back: a border coloured
+  by position, the name in a slanted banner, the headshot, the bio line, a
+  cartoon stat box with his last completed season, and a card number hashed
+  from the player id so it is the same every time. A click on the back flips it
+  home; Esc still closes the modal. The click count is a local `r/atom` in
+  `player-detail/face`; the flipped flag is transient and reset by `:show-modal`
+  like the card's tab. Give it a sentence in CLAUDE.md when it lands, or it will
+  be deleted as dead code.
+
 - **Per-league draft state.** `:teams`, `:drafted`, `:picks` and `:my-team-id`
   are still one draft for one team, sitting beside a `:leagues` map that holds
   everything else per league. Switching leagues therefore re-prices the board

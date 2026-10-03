@@ -9,6 +9,7 @@
             [draft-day.ingestion.espn-news :as espn-news]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.matchups :as matchups]
+            [draft-day.ingestion.sleeper-players :as sleeper-players]
             [draft-day.ingestion.sleeper-trending :as trending]
             [draft-day.ingestion.transactions :as transactions]
             [draft-day.scoring :as scoring]))
@@ -41,6 +42,16 @@
       (is (= 200 (:status resp)))
       (is (= 40 (:count b)))
       (is (= "sample" (:source b))))))
+
+(deftest players-endpoint-carries-sleepers-current-designation
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] (assoc fixture :source "cache"))
+                sleeper-players/load-injuries
+                (constantly {:injuries {"rb3" {:status "Questionable" :body-part "Hip"}}})]
+    (let [by-id (into {} (map (juxt :player-id identity)) (:players (parse (routes/players-handler {:query-params {}}))))]
+      (is (= "Questionable" (get-in by-id ["rb3" :sleeper/injury-status])))
+      (is (= "Hip" (get-in by-id ["rb3" :sleeper/injury-body-part])))
+      (is (nil? (get-in by-id ["rb4" :sleeper/injury-status])) "a player the list does not name is healthy"))))
 
 (deftest players-endpoint-does-not-ship-the-per-format-bundle
   ;; There is no league on this endpoint to pick a format for, and the client

@@ -12,7 +12,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 **Frontend** (shadow-cljs with `:lein true`):
 - `npm run watch` (port 8280), `npm run release`, `npm test` (cljs-only: `events`, `subs`, `waivers`, six `views/*`)
 
-**Env vars**: `DRAFTDAY_OFFLINE=1`, `DRAFTDAY_CACHE_TTL_HOURS` (24), `DRAFTDAY_WEEKLY_TTL_HOURS` (1), `DRAFTDAY_REALIZED_TTL_HOURS` (1), `DRAFTDAY_TRENDING_TTL_HOURS` (1), `DRAFTDAY_NEWS_TTL_MINUTES` (15), `DRAFTDAY_AS_OF_WEEK=N` (replay week N), `DRAFTDAY_ESPN_SWID/S2/LEAGUE/SEASON` (integration only)
+**Env vars**: `DRAFTDAY_OFFLINE=1`, `DRAFTDAY_CACHE_TTL_HOURS` (24), `DRAFTDAY_WEEKLY_TTL_HOURS` (1), `DRAFTDAY_REALIZED_TTL_HOURS` (1), `DRAFTDAY_TRENDING_TTL_HOURS` (1), `DRAFTDAY_NEWS_TTL_MINUTES` (15), `DRAFTDAY_INJURY_TTL_HOURS` (3), `DRAFTDAY_AS_OF_WEEK=N` (replay week N), `DRAFTDAY_ESPN_SWID/S2/LEAGUE/SEASON` (integration only)
 
 **Research harnesses** (`dev/`, `:dev` profile, active by default):
 - `benchmark.report`: score model vs historical outcomes
@@ -49,6 +49,8 @@ Three multimethod pairs on `:provider`: `import-league` (yearly rules), `sync-le
 **ESPN news** (`ingestion/espn_news.clj`, `GET /api/players/:id/news`): fetched per card open, not with the universe (GET is fine, no credential). Fantasy news feed only (Rotowire items, newest 10, tags stripped); the injury designation is Sleeper's (see Sleeper injuries). Reply `{:news :fetched-at :errors}`; a failed feed lands in `:errors`. In-memory cache per ESPN id, TTL `DRAFTDAY_NEWS_TTL_MINUTES`, errored replies never cached; empty offline. No ESPN id (DynastyProcess lags on rookies) = 200 `{:reason :no-espn-id}`, unknown player = 404.
 
 **nflverse_weekly**: `stats_player_week_N.csv`, answers this season's production + opportunity + season progress. Stat map wider than line-columns (scores under league's own weights). `:games` counts player rows, not weeks. Missing file = week 0, not outage. **Not built on injury report** — IR players drop off that report entirely, so designations would mislabel them durable.
+
+**Sleeper injuries** (`ingestion/sleeper_players.clj`): the projections feed's embedded `:injury_status` is stale, so `routes/universe` replaces `:sleeper/injury-status` (plus body part, notes, updated-at) from Sleeper's `/v1/players/nfl`, kept apart on its own TTL through `pipeline/load-ttl-cache` (fresh, else live, else stale with backoff; trending adds use it too). Complete per fetch: a player the list omits is healthy and his status is cleared. Nil offline or replaying a week, which keeps the feed's value.
 
 **Season resolution** (`ingestion/season.clj`): calendar year = league year for 10 of 12 months, is default never override.
 

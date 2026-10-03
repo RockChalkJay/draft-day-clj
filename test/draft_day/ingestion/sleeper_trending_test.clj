@@ -32,7 +32,7 @@
       (.setLastModified (io/file path) 0)
       (doseq [body [nil [] {:error "down"}]]
         (with-redefs [trending/fetch-raw (constantly body)]
-          (reset! @#'trending/failed-at {})
+          (pipeline/reset-cache-failures!)
           (is (= 605907 (get-in (trending/load-adds {:path path :dir dir}) [:adds "4034"]))
               (str (pr-str body) " keeps the good list"))))
       (is (= 1 (count (.list (io/file dir)))) "and records no empty snapshot"))))
@@ -40,7 +40,7 @@
 (deftest a-failure-is-not-retried-on-every-request
   (let [path  (temp-path)
         calls (atom 0)]
-    (reset! @#'trending/failed-at {})
+    (pipeline/reset-cache-failures!)
     (with-redefs [pipeline/offline?  (constantly false)
                   trending/fetch-raw (fn [] (swap! calls inc) (throw (ex-info "timeout" {})))]
       (trending/load-adds {:path path :dir (temp-dir)})
@@ -48,7 +48,7 @@
       (is (= 1 @calls) "every Sleeper caller shares its permits"))
     (with-redefs [pipeline/offline?        (constantly false)
                   trending/fetch-raw       (constantly raw)
-                  trending/failure-backoff-ms 0]
+                  pipeline/failure-backoff-ms 0]
       (is (some? (trending/load-adds {:path path :dir (temp-dir)})) "and is retried once it expires"))))
 
 (deftest a-cache-that-will-not-write-does-not-cost-the-board-its-list
@@ -93,7 +93,7 @@
                             [:adds "4034"]))))))
 
 (deftest a-failed-fetch-serves-the-last-list-with-its-own-age
-  (reset! @#'trending/failed-at {})
+  (pipeline/reset-cache-failures!)
   (let [path (temp-path)]
     (with-redefs [pipeline/offline? (constantly false)]
       (with-redefs [trending/fetch-raw (constantly raw)]
@@ -104,7 +104,7 @@
           (is (= 605907 (get-in env [:adds "4034"])) "stale beats nothing")
           (is (string? (:fetched-at env)) "and says when it is from")))
       (testing "with nothing cached there is nothing to serve"
-        (reset! @#'trending/failed-at {})
+        (pipeline/reset-cache-failures!)
         (with-redefs [trending/fetch-raw (fn [] (throw (ex-info "down" {})))]
           (is (nil? (trending/load-adds {:path (temp-path) :dir (temp-dir)}))))))))
 

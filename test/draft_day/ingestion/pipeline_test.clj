@@ -544,3 +544,52 @@
 (deftest a-sample-universe-keeps-its-own-realized-columns
   (let [sample {:source "sample" :through-week 9 :players []}]
     (is (identical? sample (pipeline/with-realized sample)))))
+
+(defn- ttl-cache-path []
+  (let [f (java.io.File/createTempFile "ttl-cache" ".transit")]
+    (.delete f)
+    (.deleteOnExit f)
+    (str f)))
+
+(defn- ttl-cache [path fetch & {:keys [ttl schema] :or {ttl 1 schema 1}}]
+  (pipeline/load-ttl-cache {:path path :ttl-hours ttl :schema-version schema
+                            :fetch fetch :label "test"}))
+
+(deftest a-fresh-ttl-cache-is-served-without-fetching
+  (pipeline/reset-cache-failures!)
+  (let [path  (ttl-cache-path)
+        calls (atom 0)
+        fetch #(do (swap! calls inc) {:v 1})]
+    (is (= {:v 1 :schema-version 1} (ttl-cache path fetch)))
+    (is (= {:v 1 :schema-version 1} (ttl-cache path fetch)))
+    (is (= 1 @calls) "the second read is the cache")))
+
+(deftest a-failed-ttl-fetch-serves-the-stale-copy-and-backs-off
+  (pipeline/reset-cache-failures!)
+  (let [path  (ttl-cache-path)
+        calls (atom 0)
+        boom  #(do (swap! calls inc) (throw (ex-info "down" {})))]
+    (ttl-cache path (constantly {:v 1}))
+    (.setLastModified (io/file path) 0)
+    (is (= 1 (:v (ttl-cache path boom))) "stale beats nothing")
+    (ttl-cache path boom)
+    (is (= 1 @calls) "no retry inside the backoff")
+    (with-redefs [pipeline/failure-backoff-ms 0]
+      (ttl-cache path boom)
+      (is (= 2 @calls) "retried once the backoff has passed"))))
+
+(deftest a-ttl-cache-with-nothing-to-serve-is-nil
+  (pipeline/reset-cache-failures!)
+  (is (nil? (ttl-cache (ttl-cache-path) #(throw (ex-info "down" {}))))))
+
+(deftest a-ttl-cache-under-another-schema-version-is-a-miss
+  (pipeline/reset-cache-failures!)
+  (let [path (ttl-cache-path)]
+    (ttl-cache path (constantly {:v 1}) :schema 1)
+    (is (= 2 (:v (ttl-cache path (constantly {:v 2}) :schema 2))))))
+
+(deftest a-ttl-cache-that-will-not-write-still-answers
+  (pipeline/reset-cache-failures!)
+  (let [blocked (java.io.File/createTempFile "not-a-dir" "")]
+    (.deleteOnExit blocked)
+    (is (= 1 (:v (ttl-cache (str blocked "/cache.transit") (constantly {:v 1})))))))

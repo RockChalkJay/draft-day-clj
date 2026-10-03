@@ -13,6 +13,7 @@
             [draft-day.ingestion.espn-news :as espn-news]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.season :as season]
+            [draft-day.ingestion.sleeper-players :as sleeper-players]
             [draft-day.ingestion.sleeper-trending :as trending]
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-import.espn]
@@ -58,7 +59,7 @@
                                      (< (System/currentTimeMillis)))))
                  cached
                  (reset! universe-cache (pipeline/load-universe {:refresh refresh?})))]
-    (pipeline/with-realized base)))
+    (-> base pipeline/with-realized sleeper-players/with-injuries)))
 
 (defn reset-universe!
   "Drop the in-memory universe so the next request reloads it (used in tests)."
