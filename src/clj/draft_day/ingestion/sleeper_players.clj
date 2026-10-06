@@ -90,7 +90,7 @@
     players
     (mapv (fn [p]
             (let [{:keys [status body-part notes updated-at]}
-                  (get injuries (or (get-in p [:ids :sleeper]) (:player-id p)))]
+                  (get injuries (pipeline/sleeper-id p))]
               (-> (dissoc p :sleeper/injury-body-part :sleeper/injury-notes :sleeper/injury-updated)
                   (assoc :sleeper/injury-status status)
                   (cond-> body-part  (assoc :sleeper/injury-body-part body-part)

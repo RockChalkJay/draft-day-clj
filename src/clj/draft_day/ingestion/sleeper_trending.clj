@@ -112,7 +112,9 @@
        counts-of))
 
 (defn current-season
-  "The season a snapshot taken now belongs to, the one the week is read for."
+  "The season the week is read for and the snapshot filed under: the calendar
+  year, as `season/resolve-season` defaults it, so a January playoff week lands
+  under the new year."
   []
   (season/resolve-season nil))
 
