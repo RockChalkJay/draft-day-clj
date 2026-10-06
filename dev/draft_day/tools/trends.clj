@@ -54,22 +54,23 @@
   (update lst :players
           (fn [ps] (mapv #(merge % {:name nil :pos nil :team nil} (get names (:player_id %))) ps))))
 
+(defn describe
+  "`add 48h: 100 players, drop 48h: 100 players`"
+  [lists]
+  (str/join ", " (map #(format "%s %dh: %d players" (:type %) (:lookback_hours %) (count (:players %)))
+                      lists)))
+
 (defn run
   "Fetch, save and report; returns the exit code."
   [args]
   (let [{:keys [types lookbacks limit dir]} (parse-args args)]
     (try
       (let [names (names-index)
-            lists (mapv (fn [[t lb]]
-                          (with-names names (trending/fetch-list {:type t :lookback-hours lb :limit limit})))
-                        (mapcat (fn [t] (map (fn [lb] [t lb]) lookbacks)) types))
-            path  (trending/write-snapshot!
-                   dir (trending/snapshot (pipeline/now-iso) (trending/current-season)
-                                          (trending/current-through-week) limit lists))]
-        (println (format "wrote %s (%s)" path
-                         (str/join ", " (map #(format "%s %dh: %d players"
-                                                      (:type %) (:lookback_hours %) (count (:players %)))
-                                             lists))))
+            lists (vec (for [type types, hours lookbacks]
+                         (with-names names (trending/fetch-list {:type type :lookback-hours hours :limit limit}))))
+            snap  (trending/snapshot (pipeline/now-iso) (trending/current-season)
+                                     (trending/current-through-week) limit lists)]
+        (println (format "wrote %s (%s)" (trending/write-snapshot! dir snap) (describe lists)))
         0)
       (catch Exception e
         (binding [*out* *err*] (println "failed:" (ex-message e)))

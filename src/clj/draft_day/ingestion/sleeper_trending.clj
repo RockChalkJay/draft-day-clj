@@ -128,9 +128,9 @@
 (defn snapshot
   "The document a snapshot file holds. Players carry `:name`, `:pos` and `:team`
   only when whoever wrote it had a universe to name them from."
-  [iso season week limit lists]
+  [fetched-at season week limit lists]
   {:schema_version snapshot-schema-version
-   :fetched_at     iso
+   :fetched_at     fetched-at
    :season         season
    :through_week   week
    :limit          limit
@@ -145,9 +145,9 @@
   "`<dir>/2026/week-04/2026-10-07T07-00-22Z.json`: the season, the weeks played,
   and the time to the second, colons out of the name for filesystems that
   refuse them. A season that is not known is `unknown-season`."
-  [dir season week iso]
+  [dir season week fetched-at]
   (str dir "/" (or season "unknown-season") "/" (week-dir week) "/"
-       (str/replace (str/replace iso #"\.\d+Z$" "Z") ":" "-") ".json"))
+       (str/replace (str/replace fetched-at #"\.\d+Z$" "Z") ":" "-") ".json"))
 
 (def pretty-mapper (json/object-mapper {:pretty true}))
 
@@ -164,12 +164,12 @@
   to write costs the record one list, never the board the list it just
   fetched."
   [dir]
-  (let [lst (fetch-list {})
-        iso (pipeline/now-iso)]
+  (let [lst        (fetch-list {})
+        fetched-at (pipeline/now-iso)]
     (pipeline/best-effort
-     (write-snapshot! dir (snapshot iso (current-season) (current-through-week) default-limit [lst])))
+     (write-snapshot! dir (snapshot fetched-at (current-season) (current-through-week) default-limit [lst])))
     {:lookback-hours lookback-hours
-     :fetched-at     iso
+     :fetched-at     fetched-at
      :adds           (counts-of lst)}))
 
 (defn load-adds
