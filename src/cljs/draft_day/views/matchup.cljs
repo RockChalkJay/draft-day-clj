@@ -108,26 +108,10 @@
    (if (and r (not (:empty? r))) [player-cell r :r week] [empty-cell :r seat?])])
 
 
-(defn lineup-hint
-  "One line under a side's button: what was left on the bench once every game
-  is final, otherwise that the lineup is locked or already the best. Nil while a
-  better lineup is still possible, since the totals row states that gain.
-
-  The gain is tested after rounding, not before: a set lineup that is already
-  the best comes back a float's width either side of zero."
-  [t]
-  (let [{:keys [projected actual]} (:optimal t)
-        gain (fn [o] (util/hundredths (:gain o)))]
-    (cond
-      (and actual (pos? (gain actual)))
-      (str (util/week-points (gain actual)) " left on the bench")
-      actual                         "Nothing left on the bench"
-      (:seats-locked? projected)     "Lineup locked"
-      ;; A gain is stated by the totals row once the best lineup is drawn.
-      (and projected (not (pos? (gain projected)))) "No better lineup")))
-
 (defn side-lineup
   "What a side draws under view `v`: its rows, and what its totals row says.
+  The gain is rounded here, because a set lineup that is already the best comes
+  back a float's width either side of zero.
   A best lineup that is not available — Actual before the week is final — draws
   the set lineup, so a view cannot strand a side on nothing.
 
@@ -189,8 +173,7 @@
         [:<> [:span.mu-rec (db/record-label t)] (:name t)])]
      [:div {:class (str "mu-score" (when-not (number? (:actual t)) " pending"))}
       (util/week-points (or (:official t) (:actual t)))]
-     [lineup-control t v]
-     (when-let [hint (lineup-hint t)] [:span.mu-lock hint])]))
+     [lineup-control t v]]))
 
 (defn game-picker
   "Every game in the league, the manager's own first. A game with one team in it

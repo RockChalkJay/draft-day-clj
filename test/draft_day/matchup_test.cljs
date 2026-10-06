@@ -337,25 +337,13 @@
   (is (= ["a"] (mapv :player-id (:starters (matchup/side-lineup team-t :actual))))
       "a basis that is not available yet draws the set lineup rather than nothing"))
 
-(deftest the-hint-says-what-can-still-be-done-or-what-was-left
-  (is (nil? (matchup/lineup-hint team-t)) "a gain is the totals row's to state")
-  (is (= "Lineup locked"
-         (matchup/lineup-hint (assoc-in team-t [:optimal :projected :seats-locked?] true))))
-  (is (= "9.50 left on the bench"
-         (matchup/lineup-hint (assoc-in team-t [:optimal :actual] {:gain 9.5})))
-      "once the week is final, regret outranks advice"))
-
 (deftest a-best-lineup-already-set-gains-nothing-whatever-the-float-says
   ;; `optimal` sums the same players in two orders, so an unchanged lineup's
   ;; gain lands a float's width either side of zero.
-  (is (= "No better lineup"
-         (matchup/lineup-hint (assoc-in team-t [:optimal :projected :gain] 1e-14))))
   (doseq [g [0.0 -1e-14 1e-14]]
-    (is (= "Nothing left on the bench"
-           (matchup/lineup-hint (assoc-in team-t [:optimal :actual] {:gain g})))))
-  (let [best (matchup/side-lineup (assoc-in team-t [:optimal :projected :gain] 1e-14)
-                                  :projected)]
-    (is (not (re-find #"over set" (pr-str (matchup/totals-label best)))))))
+    (let [best (matchup/side-lineup (assoc-in team-t [:optimal :projected :gain] g)
+                                    :projected)]
+      (is (not (re-find #"over set" (pr-str (matchup/totals-label best))))))))
 
 (deftest the-set-lineup-totals-the-leagues-own-score
   ;; The header shows the score of record; a sum of per-player numbers can miss

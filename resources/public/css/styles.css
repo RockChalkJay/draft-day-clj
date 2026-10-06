@@ -997,7 +997,6 @@ button.pd-latest:focus-visible { outline: 2px solid var(--accent); outline-offse
   box-shadow: inset 0 -2px 0 var(--accent); }
 .mu-lineup:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mu-lineup:disabled { opacity: .45; cursor: not-allowed; }
-.mu-lock { display: block; font-size: 10px; color: var(--muted); margin-top: 4px; }
 /* A best lineup drawn in place: who it moves in, who it benches. */
 .mu-mv { font-size: 10px; margin: 0 4px; }
 .mu-mv.in { color: var(--good); }
