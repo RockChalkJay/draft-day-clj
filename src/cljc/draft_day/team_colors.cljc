@@ -29,14 +29,15 @@
 (defn luminance
   "Relative luminance of a `#RRGGBB` colour, 0 (black) to 1 (white)."
   [hex]
-  (let [channel (fn [i]
-                  (let [c (/ #?(:clj (Integer/parseInt (subs hex i (+ i 2)) 16)
-                                :cljs (js/parseInt (subs hex i (+ i 2)) 16))
-                             255.0)]
-                    (if (<= c 0.03928)
-                      (/ c 12.92)
-                      (Math/pow (/ (+ c 0.055) 1.055) 2.4))))]
-    (+ (* 0.2126 (channel 1)) (* 0.7152 (channel 3)) (* 0.0722 (channel 5)))))
+  (let [parse  #?(:clj #(Integer/parseInt % 16) :cljs #(js/parseInt % 16))
+        linear (fn [c]
+                 (if (<= c 0.03928)
+                   (/ c 12.92)
+                   (Math/pow (/ (+ c 0.055) 1.055) 2.4)))]
+    (->> (re-seq #"[0-9a-fA-F]{2}" hex)
+         (map #(linear (/ (parse %) 255.0)))
+         (map * [0.2126 0.7152 0.0722])
+         (reduce +))))
 
 (defn pair
   "`[lead accent]` for a team, darker first, or nil for one this table does not
