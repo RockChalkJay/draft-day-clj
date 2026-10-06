@@ -174,11 +174,10 @@
   [t v]
   (let [on?   (not= v :set)
         none? (and (not on?) (nil? (best-basis t)))]
-    [:button.mu-lineup {:class        (when on? "on")
-                        :aria-pressed on?
-                        :disabled     none?
-                        :title        (when none? "No better lineup to show yet")
-                        :on-click     #(rf/dispatch [:toggle-lineup-view (:roster-id t)])}
+    [:button.mu-lineup {:class    (when on? "on")
+                        :disabled none?
+                        :title    (when none? "No better lineup to show yet")
+                        :on-click #(rf/dispatch [:toggle-lineup-view (:roster-id t)])}
      (if on? "Set lineup" "Best lineup")]))
 
 (defn team-head [t side v]

@@ -370,13 +370,13 @@
     (is (= :actual (matchup/best-basis final)))
     (is (nil? (matchup/best-basis (dissoc team-t :optimal))))))
 
-(deftest the-button-is-pressed-when-the-best-lineup-is-drawn
+(deftest the-button-names-what-a-click-does-next
   (let [btn  (fn [t v] (matchup/lineup-control t v))
         opts (fn [b] (second b))]
     (is (= "Best lineup" (last (btn team-t :set))))
-    (is (false? (:aria-pressed (opts (btn team-t :set)))))
     (is (= "Set lineup" (last (btn team-t :projected))))
-    (is (true? (:aria-pressed (opts (btn team-t :projected)))))
+    (is (nil? (:aria-pressed (opts (btn team-t :projected))))
+        "the label carries the state; a pressed state beside a flipping label reads backwards")
     (is (:disabled (opts (btn (dissoc team-t :optimal) :set)))
         "nothing to show: disabled rather than a button that does nothing")
     (is (not (:disabled (opts (btn team-t :set)))))))
