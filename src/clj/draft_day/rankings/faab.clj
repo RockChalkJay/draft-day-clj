@@ -94,7 +94,7 @@
   "What the top of Sleeper's trending list adds to a player's claim utility,
   on `claim-weights`' scale. CHOSEN, and the replay backtest cannot rebuild
   past trending lists, so it waits on the snapshots `ingestion.sleeper-trending`
-  keeps."
+  keeps under `data/trends/`."
   1.0)
 
 (def threat-floor

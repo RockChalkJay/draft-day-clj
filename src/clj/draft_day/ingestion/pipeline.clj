@@ -561,6 +561,12 @@
               p))
           players)))
 
+(defn sleeper-id
+  "The id Sleeper's lists name a player by: his Sleeper id, else his own id,
+  which for a team defense is its abbreviation."
+  [p]
+  (or (get-in p [:ids :sleeper]) (:player-id p)))
+
 (defn assoc-trending
   "Join Sleeper's trending adds onto players as `:trending/adds`, by Sleeper id
   as `assoc-weekly` joins, leaving a player off the list unannotated."
@@ -568,7 +574,7 @@
   (if (empty? adds)
     players
     (mapv (fn [p]
-            (if-let [n (get adds (or (get-in p [:ids :sleeper]) (:player-id p)))]
+            (if-let [n (get adds (sleeper-id p))]
               (assoc p :trending/adds n)
               p))
           players)))
@@ -577,7 +583,7 @@
   "Join weekly lines onto players, leaving unprojected players unannotated."
   [players lines]
   (mapv (fn [p]
-          (let [k (or (get-in p [:ids :sleeper]) (:player-id p))]
+          (let [k (sleeper-id p)]
             (if-let [{:keys [stats opponent home? updated-at]} (get lines k)]
               (assoc p
                      :week/stats stats

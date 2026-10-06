@@ -1,0 +1,80 @@
+(ns draft-day.tools.trends
+  "Fetch Sleeper's trending add and drop lists and save them as JSON, for
+  designing and testing the bid model.
+
+  Sleeper keeps no past lists, so a saved one is the only record of what the
+  site's managers were adding and dropping at that moment. Each run is one
+  fetch and one file; when to run it is up to whoever runs it.
+
+    lein run -m draft-day.tools.trends [--types add,drop] [--lookbacks 48]
+                                 [--limit 100] [--dir data/trends]
+
+  The file is `<dir>/<season>/week-NN/<UTC time>.json`, NN being the weeks
+  played according to nflverse (`week-unknown` when that cannot be read). It is the
+  snapshot `ingestion.sleeper-trending` writes whenever the board fetches the
+  list, with drops, other windows and player names too. If any list fails or
+  comes back empty nothing is written, so a file is always complete.
+
+  Exit codes: 0 written, 1 a list failed."
+  (:require [clojure.string :as str]
+            [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.sleeper-trending :as trending]))
+
+(def defaults
+  {:types     ["add" "drop"]
+   :lookbacks [trending/lookback-hours]
+   :limit     trending/default-limit
+   :dir       trending/default-dir})
+
+(defn parse-args
+  "The options `args` give over `defaults`. A flag it does not know is ignored,
+  as in `tools.snapshot`."
+  [args]
+  (let [value (fn [flag] (some (fn [[a b]] (when (= a flag) b)) (partition 2 1 args)))
+        words #(str/split % #",")]
+    (cond-> defaults
+      (value "--types")     (assoc :types (words (value "--types")))
+      (value "--lookbacks") (assoc :lookbacks (mapv parse-long (words (value "--lookbacks"))))
+      (value "--limit")     (assoc :limit (parse-long (value "--limit")))
+      (value "--dir")       (assoc :dir (value "--dir")))))
+
+(defn names-index
+  "`{sleeper-id {:name :pos :team}}` off the cached player universe; empty when
+  there is none."
+  []
+  (->> (:players (pipeline/best-effort (pipeline/cached-universe pipeline/default-cache-path)))
+       (keep (fn [p]
+               (when-let [id (pipeline/sleeper-id p)]
+                 [id {:name (:player-name p) :pos (:position p) :team (:team p)}])))
+       (into {})))
+
+(defn with-names
+  "`lst` with each player's name, position and team, null where `names` has none."
+  [names lst]
+  (update lst :players
+          (fn [ps] (mapv #(merge % {:name nil :pos nil :team nil} (get names (:player_id %))) ps))))
+
+(defn describe
+  "`add 48h: 100 players, drop 48h: 100 players`"
+  [lists]
+  (str/join ", " (map #(format "%s %dh: %d players" (:type %) (:lookback_hours %) (count (:players %)))
+                      lists)))
+
+(defn run
+  "Fetch, save and report; returns the exit code."
+  [args]
+  (let [{:keys [types lookbacks limit dir]} (parse-args args)]
+    (try
+      (let [names (names-index)
+            lists (vec (for [type types, hours lookbacks]
+                         (with-names names (trending/fetch-list {:type type :lookback-hours hours :limit limit}))))
+            snap  (trending/snapshot (pipeline/now-iso) (trending/current-season)
+                                     (trending/current-through-week) limit lists)]
+        (println (format "wrote %s (%s)" (trending/write-snapshot! dir snap) (describe lists)))
+        0)
+      (catch Exception e
+        (binding [*out* *err*] (println "failed:" (ex-message e)))
+        1))))
+
+(defn -main [& args]
+  (System/exit (run args)))

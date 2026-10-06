@@ -21,13 +21,17 @@
   `DRAFTDAY_AS_OF_WEEK` replays a past week: today's list is news that week
   never had.
 
-  Every live fetch also keeps a copy under `snapshot-dir`, named for when it was
-  taken. Sleeper keeps no past lists, so these are the only record a backtest
-  could ever measure `faab/heat-weight` against, and they accumulate as the
-  board is used rather than on anyone's schedule."
-  (:require [clojure.string :as str]
+  Every live fetch also keeps a snapshot under `default-dir`, as JSON in a
+  `<season>/week-NN` folder named for when it was taken. Sleeper keeps no past lists, so
+  these are the only record a backtest could ever measure `faab/heat-weight`
+  against. They accumulate as the board is used, and the `tools.trends` CLI
+  (`dev/draft_day/tools/trends.clj`) writes the same files on whatever schedule it is
+  run, with drops and other windows too."
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.season :as season]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
             [draft-day.json :refer [mapper]]
             [jsonista.core :as json]))
@@ -38,23 +42,34 @@
 
 (def default-cache-path (str "data/trending_adds.v" schema-version ".transit"))
 
-(def snapshot-dir "data/faab_cache/trending")
+(def snapshot-schema-version 1)
 
-(defn trending-url []
-  (str "https://api.sleeper.app/v1/players/nfl/trending/add?lookback_hours="
-       lookback-hours "&limit=100"))
+(def default-dir "data/trends")
+
+(def default-limit 100)
+
+(defn trending-url
+  "The list's URL: `:type` \"add\" or \"drop\", `:lookback-hours`, `:limit`. The
+  board reads the defaults, the 48-hour adds."
+  ([] (trending-url {}))
+  ([{:keys [type limit] :as opts}]
+   (str "https://api.sleeper.app/v1/players/nfl/trending/" (or type "add")
+        "?lookback_hours=" (or (:lookback-hours opts) lookback-hours)
+        "&limit=" (or limit default-limit))))
 
 (defn ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_TRENDING_TTL_HOURS") "1")))
 
 (defn fetch-raw
-  "Network: Sleeper's trending list, `[{:player_id :count}]`."
-  []
-  (let [{:keys [status body error]} (sleeper-http/get! (trending-url) {:timeout 15000})]
-    (cond
-      error          (throw (ex-info "Sleeper trending fetch failed" {:error error}))
-      (= 200 status) (json/read-value body mapper)
-      :else          (throw (ex-info "Sleeper trending non-200" {:status status})))))
+  "Network: Sleeper's trending list, `[{:player_id :count}]`, for the options
+  `trending-url` takes."
+  ([] (fetch-raw {}))
+  ([opts]
+   (let [{:keys [status body error]} (sleeper-http/get! (trending-url opts) {:timeout 15000})]
+     (cond
+       error          (throw (ex-info "Sleeper trending fetch failed" {:error error}))
+       (= 200 status) (json/read-value body mapper)
+       :else          (throw (ex-info "Sleeper trending non-200" {:status status}))))))
 
 (defn normalize
   "`{sleeper-id adds}`, ids as strings, and only positive counts: heat is read
@@ -66,34 +81,103 @@
                   [(str player_id) (long count)])))
         raw))
 
+(defn fetch-list
+  "Network: one list, `{:type :lookback_hours :players [{:rank :player_id :count}]}`,
+  ranked by count. `opts` are the ones `trending-url` takes. An empty answer
+  throws, since Sleeper always has somebody trending and caching nobody would
+  read as a fresh answer."
+  [opts]
+  (let [type   (or (:type opts) "add")
+        hours  (or (:lookback-hours opts) lookback-hours)
+        counts (normalize (fetch-raw (assoc opts :type type :lookback-hours hours)))]
+    (when (empty? counts)
+      (throw (ex-info (str "Sleeper trending " type " list empty") {})))
+    {:type           type
+     :lookback_hours hours
+     :players        (->> (sort-by (fn [[id n]] [(- n) id]) counts)
+                          (map-indexed (fn [i [id n]] {:rank (inc i) :player_id id :count n}))
+                          vec)}))
+
+(defn counts-of
+  "`{sleeper-id count}` for one list."
+  [{:keys [players]}]
+  (into {} (map (juxt :player_id :count)) players))
+
+(defn adds-of
+  "`{sleeper-id count}` for a snapshot's adds over `hours`; empty when it has none."
+  [snap hours]
+  (->> (:lists snap)
+       (filter #(and (= "add" (:type %)) (= hours (:lookback_hours %))))
+       first
+       counts-of))
+
+(defn current-season
+  "The season the week is read for and the snapshot filed under: the calendar
+  year, as `season/resolve-season` defaults it, so a January playoff week lands
+  under the new year."
+  []
+  (season/resolve-season nil))
+
+(defn current-through-week
+  "Weeks played, from the realized cache the app itself reads; nil when nflverse
+  is out of reach."
+  []
+  (pipeline/best-effort
+   (some-> (current-season) pipeline/load-realized :weekly :through-week)))
+
+(defn snapshot
+  "The document a snapshot file holds. Players carry `:name`, `:pos` and `:team`
+  only when whoever wrote it had a universe to name them from."
+  [fetched-at season week limit lists]
+  {:schema_version snapshot-schema-version
+   :fetched_at     fetched-at
+   :season         season
+   :through_week   week
+   :limit          limit
+   :lists          lists})
+
+(defn week-dir
+  "`week-04`, or `week-unknown`."
+  [week]
+  (if week (format "week-%02d" week) "week-unknown"))
+
 (defn snapshot-path
-  "Where a list fetched at `iso` is kept, colons out of the name for
-  filesystems that refuse them."
-  [dir iso]
-  (str dir "/adds-" (str/replace iso ":" "-") ".transit"))
+  "`<dir>/2026/week-04/2026-10-07T07-00-22Z.json`: the season, the weeks played,
+  and the time to the second, colons out of the name for filesystems that
+  refuse them. A season that is not known is `unknown-season`."
+  [dir season week fetched-at]
+  (str dir "/" (or season "unknown-season") "/" (week-dir week) "/"
+       (str/replace (str/replace fetched-at #"\.\d+Z$" "Z") ":" "-") ".json"))
+
+(def pretty-mapper (json/object-mapper {:pretty true}))
+
+(defn write-snapshot!
+  "Save `snap` where `snapshot-path` puts it; returns the path."
+  [dir snap]
+  (let [path (snapshot-path dir (:season snap) (:through_week snap) (:fetched_at snap))]
+    (io/make-parents path)
+    (spit path (json/write-value-as-string snap pretty-mapper))
+    path))
 
 (defn live
-  "The envelope for a fresh list, keeping a snapshot of it. An empty list
-  throws, since Sleeper always has somebody trending and caching nobody would
-  read as a fresh answer. A snapshot that fails to write costs the record one
-  list, never the board the list it just fetched."
+  "The envelope for a fresh list, keeping a snapshot of it. A snapshot that fails
+  to write costs the record one list, never the board the list it just
+  fetched."
   [dir]
-  (let [adds (normalize (fetch-raw))
-        env  {:lookback-hours lookback-hours
-              :fetched-at     (pipeline/now-iso)
-              :adds           adds}]
-    (when (empty? adds)
-      (throw (ex-info "Sleeper trending list empty" {})))
+  (let [lst        (fetch-list {})
+        fetched-at (pipeline/now-iso)]
     (pipeline/best-effort
-     (pipeline/write-transit! (snapshot-path dir (:fetched-at env)) (assoc env :schema-version schema-version)))
-    env))
+     (write-snapshot! dir (snapshot fetched-at (current-season) (current-through-week) default-limit [lst])))
+    {:lookback-hours lookback-hours
+     :fetched-at     fetched-at
+     :adds           (counts-of lst)}))
 
 (defn load-adds
   "`{:fetched-at :lookback-hours :adds {sleeper-id adds}}`, fresh from the cache,
   else live, else whatever is cached however old; nil offline, replaying a past
   week, or with nothing to serve."
   ([] (load-adds {}))
-  ([{:keys [path dir] :or {path default-cache-path dir snapshot-dir}}]
+  ([{:keys [path dir] :or {path default-cache-path dir default-dir}}]
    (when-not (or (pipeline/offline?) (nflverse-weekly/as-of-week))
      (pipeline/load-ttl-cache {:path           path
                                :ttl-hours      (ttl-hours)
