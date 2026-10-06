@@ -986,10 +986,11 @@
     ;; minutes old still answers who is winning.
     (assoc db :matchup-status (str "Matchup failed: " err))))
 
-(rf/reg-event-db :set-lineup-view
+(rf/reg-event-db :toggle-lineup-view
   ;; Per team, so each side of the matchup can show its set or best lineup on
-  ;; its own.
-  (fn [db [_ roster-id v]] (assoc-in db [:lineup-view roster-id] v)))
+  ;; its own. Which basis the best one is drawn by is the view's to resolve.
+  (fn [db [_ roster-id]]
+    (update-in db [:lineup-view roster-id] #(if (= % :best) :set :best))))
 
 (rf/reg-event-db :set-matchup-pick
   ;; No refetch: every team came back in one reply. See `matchup-board`.
