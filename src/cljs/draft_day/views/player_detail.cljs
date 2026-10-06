@@ -78,7 +78,7 @@
   "`[[label value]]` for a Bidding tab, the Bid column's popover kept open: what
   it usually takes, what to bid, the sure bid against what he is worth to you,
   and who is likely to bid. Empty where the league does not bid. Nothing draws it
-  while `db/bid-predictions?` is off; `tabs-for` is where a tab for it goes."
+  while `db/bid-predictions?` is off, and `tabs-for` offers no tab for it yet."
   [{:keys [typical-bid typical-win bid win-prob bid-sure walk-away rivals competition]}]
   (let [pct #(some->> % waivers/win-pct (str " · "))]
     (cond-> []
@@ -314,9 +314,9 @@
 
 (defn season-tab
   "The season table, then the evidence rows the tiles do not already state."
-  [p universe season season?]
+  [p table]
   [:<>
-   [player-stats/stat-table universe season {:in-season? season?}]
+   table
    (band :evidence p #{"Points / game" "Sleeper adds" "Games played"})])
 
 (defn player-detail-modal
@@ -337,8 +337,8 @@
         now      (js/Date.now)]
     (when p
       (let [log      (when universe (game-log-table universe through-week scoring))
-            has-table? (and universe (player-stats/stat-table universe season {:in-season? season?}))
-            tabs     (tabs-for {:log? (boolean log) :season? (boolean has-table?)})
+            table    (when universe (player-stats/stat-table universe season {:in-season? season?}))
+            tabs     (tabs-for {:log? (boolean log) :season? (boolean table)})
             shown    (shown-tab tabs @(rf/subscribe [:player-detail-tab]))
             latest   (latest-line universe news)
             strip    (tiles p week)]
@@ -372,5 +372,5 @@
            (case shown
              :game-log log
              :news     [news-tab news (= :no-espn-id (get-in news [:reply :reason])) now]
-             :season   [season-tab p universe season season?]
+             :season   [season-tab p table]
              nil)]]]))))
