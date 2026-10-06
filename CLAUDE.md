@@ -28,7 +28,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 
 ### Backend: Ingestion
 
-Universe cache: `offline-sample -> fresh-cache -> live -> stale-cache -> bundled-sample`. Base (Sleeper, keyless) + best-effort joins (FantasyPros ECR/auction via Jsoup, ESPN AAV via `java.net.http`). Fetches concurrent, joins sequential. Per-vendor rate limits in `fantasypros/fetch-page` and `sleeper_http.clj`. **Format-scoped columns** (ECR, ADP): fetched for all three formats, stored `:vendor/by-format`, flattened at request time per league's format. **No format fallback** — PPR assumed at ingestion would silently wrong a STANDARD league. Cache versioned (`v15.transit`, `v4.transit`, `v2.transit`); old files not found.
+Universe cache: `offline-sample -> fresh-cache -> live -> stale-cache -> bundled-sample`. Base (Sleeper, keyless) + best-effort joins (FantasyPros ECR/auction via Jsoup, ESPN AAV via `java.net.http`). Fetches concurrent, joins sequential. Per-vendor rate limits in `fantasypros/fetch-page` and `sleeper_http.clj`. **Format-scoped columns** (ECR, ADP): fetched for all three formats, stored `:vendor/by-format`, flattened at request time per league's format. **No format fallback** — PPR assumed at ingestion would silently wrong a STANDARD league. Cache versioned (`v16.transit`, `v4.transit`, realized `v3.transit`); old files not found.
 
 **FantasyPros name scrape trap**: injury badge inside name cell defeats end-anchored pattern. `parse-aav` reads cell text unanchored + checks element structure (two guards failing opposite ways). Hit rate grades the join, not the parse.
 
@@ -43,6 +43,8 @@ Three multimethod pairs on `:provider`: `import-league` (yearly rules), `sync-le
 ### Other ingestion sources
 
 **nflverse**: joins exactly on GSIS id; answers two Qs from one fetch (last season's usage + games over 3 seasons for injury risk). Ships `:nflverse/games-seasons` as `{season length}` map to distinguish missed season from network miss.
+
+**Season table history**: the card's Season table reads `:nflverse/history` for every position. nflverse columns are per position (`nflverse/history-columns`; kickers get made kicks by distance and XPs, folding 50-59 and 60+ into `:fgm_50p`). Defenses have no nflverse row, so `ingestion/sleeper_defense.clj` fills the same keys from Sleeper's season totals, joined on the team abbreviation. In season, a skill player's attempts, carries and targets come from `nflverse_weekly/display-columns` (kept out of `stat-columns`, which a test holds to scoring keys) and a defense's line from `:realized/season-to-date`, where a missing key after a played game reads 0.
 
 **ESPN schedule**: keyless, ~40KB, separate namespace from `espn.clj` (different endpoint, cadence, client). Ships ISO stamp; joins by team (players on bye get no keys).
 

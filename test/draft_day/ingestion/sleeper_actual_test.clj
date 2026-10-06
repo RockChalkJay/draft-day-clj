@@ -14,10 +14,14 @@
                                  :bonus_rec_yd_100 0.0
                                  :rec_tgt 9.0 :off_snp 44.0 :pts_ppr 19.2})]
     (is (= {:rec 5.0 :rec_yd 82.0 :rec_td 1.0} st))
-    (is (nil? (:rec_tgt st)) "a usage column is not a rule")
+    (is (nil? (:rec_tgt st)) "a usage column is nflverse's to carry")
     (is (nil? (:pts_ppr st)) "nor is the provider's own total")
     (is (nil? (:bonus_rec_yd_100 st))
         "a zero is dropped, so silence and futility stay apart")))
+
+(deftest a-defenses-flat-allowed-totals-are-carried-for-display
+  (is (= {:yds_allow 301.0 :pts_allow 19.0}
+         (actual/scored-stats {:yds_allow 301.0 :pts_allow 19.0}))))
 
 (deftest every-carried-key-is-one-a-league-could-state
   (is (every? (set scoring/stat-keys)

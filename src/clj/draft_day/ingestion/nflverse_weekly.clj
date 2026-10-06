@@ -138,6 +138,20 @@
    "rushing_40"                :rush_40p
    "receiving_40"              :rec_40p})
 
+(def display-columns
+  "Columns the player card's season table shows that no weight reaches: attempts,
+  carries and targets, under the keys Sleeper spells them with. Kept apart from
+  `stat-columns` because that map is held to the scoring vocabulary by a test,
+  and a display key is the thing that test exists to keep out of it."
+  {"attempts" :pass_att
+   "carries"  :rush_att
+   "targets"  :rec_tgt})
+
+(def all-columns
+  "`stat-columns` and `display-columns` together: everything a player's
+  season-to-date `:stats` is read from."
+  (merge stat-columns display-columns))
+
 (def refused-columns
   "Columns this file will not map, though each names a stat the app scores.
 
@@ -266,7 +280,7 @@
   (mapv (fn [[w row]]
           (let [opp   (teams/normalize :nflverse (get row "opponent_team"))
                 stats (into {} (remove (comp zero? val))
-                            (add-stats {} stat-columns row))]
+                            (add-stats {} all-columns row))]
             (cond-> {:week w :stats stats}
               opp (assoc :opponent opp))))
         (sort-by first pairs)))
@@ -285,12 +299,12 @@
             (let [recent (filterv (fn [[w _]] (>= w floor)) pairs)]
               (assoc acc gsis
                      (cond-> {:nflverse/season-to-date
-                              (merge (totals pairs stat-columns)
+                              (merge (totals pairs all-columns)
                                      {:usage (:stats (totals pairs usage-columns))})
                               :nflverse/game-log (game-log pairs)}
                        (seq recent)
                        (assoc :nflverse/recent
-                              (merge (totals recent stat-columns)
+                              (merge (totals recent all-columns)
                                      {:usage (:stats (totals recent usage-columns))}))))))
           {}))))
 
