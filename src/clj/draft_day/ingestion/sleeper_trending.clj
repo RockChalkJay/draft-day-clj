@@ -24,8 +24,8 @@
   Every live fetch also keeps a snapshot under `default-dir`, as JSON in a
   `<season>/week-NN` folder named for when it was taken. Sleeper keeps no past lists, so
   these are the only record a backtest could ever measure `faab/heat-weight`
-  against. They accumulate as the board is used, and the `trends` harness
-  (`dev/draft_day/trends.clj`) writes the same files on whatever schedule it is
+  against. They accumulate as the board is used, and the `tools.trends` CLI
+  (`dev/draft_day/tools/trends.clj`) writes the same files on whatever schedule it is
   run, with drops and other windows too."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]

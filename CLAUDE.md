@@ -21,7 +21,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 - `faab.interest`: fit weights to real claims (11 leagues)
 - `faab.sweep`: score FAAB constants one at a time
 - `faab.report`: what Sleeper leagues actually pay
-- `trends`: fetch Sleeper's trending adds/drops and save them as JSON under `data/trends/<season>/week-NN/` (one run, one file)
+- `tools.trends`: fetch Sleeper's trending adds/drops and save them as JSON under `data/trends/<season>/week-NN/` (one run, one file)
 
 ## Architecture
 
@@ -92,7 +92,7 @@ Draft dollars stop at draft; waiver claims are measured in ROS points only (valu
 
 Transactions (`ingestion/transactions.clj`): FAAB auctions per season, disk-cached per league-season (never sent to browser). `transactions/summary` only (counts + bidding profiles). Browser reads cached history by league id (no provider call in `/api/waivers`).
 
-**FAAB model** (`rankings/faab.clj`): conditional logit of rival utility (measured on real claims), Poisson count. **Shared features** (all rivals): last week, season so far, VORP, position, recently dropped. **Rival own**: would he start. Bids stack via gamma draw; bid = argmax utility × (walk-away − bid). Sleeper trending adds to utility (1-hour cache; every live fetch also saved as JSON in `data/trends/<season>/week-NN/`, the same files the `trends` harness writes). **Backtest** (11 leagues): fitted interest + spread cut who-bids loss 38%, win-chance 61% vs hand-set.
+**FAAB model** (`rankings/faab.clj`): conditional logit of rival utility (measured on real claims), Poisson count. **Shared features** (all rivals): last week, season so far, VORP, position, recently dropped. **Rival own**: would he start. Bids stack via gamma draw; bid = argmax utility × (walk-away − bid). Sleeper trending adds to utility (1-hour cache; every live fetch also saved as JSON in `data/trends/<season>/week-NN/`, the same files the `tools.trends` CLI writes). **Backtest** (11 leagues): fitted interest + spread cut who-bids loss 38%, win-chance 61% vs hand-set.
 
 ### Matchups
 

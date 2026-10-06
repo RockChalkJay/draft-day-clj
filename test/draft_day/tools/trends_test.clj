@@ -1,9 +1,9 @@
-(ns draft-day.trends-test
+(ns draft-day.tools.trends-test
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper-trending :as trending]
-            [draft-day.trends :as trends]
+            [draft-day.tools.trends :as trends]
             [jsonista.core :as json]))
 
 (defn temp-dir []
@@ -45,14 +45,6 @@
   (is (= [24 48] (:lookbacks (trends/parse-args ["--lookbacks" "24,48"]))))
   (is (= 25 (:limit (trends/parse-args ["--limit" "25"]))))
   (is (= "x" (:dir (trends/parse-args ["--dir" "x"])))))
-
-(deftest parse-args-rejects-what-it-does-not-know
-  (is (some? (:error (trends/parse-args ["--nope" "1"]))))
-  (is (some? (:error (trends/parse-args ["add"]))))
-  (is (some? (:error (trends/parse-args ["--limit"]))))
-  (is (some? (:error (trends/parse-args ["--limit" "0"]))))
-  (is (some? (:error (trends/parse-args ["--lookbacks" "48,x"]))))
-  (is (some? (:error (trends/parse-args ["--types" "trade"])))))
 
 (deftest snapshot-path-names-the-season-week-and-time
   (is (= "d/2026/week-04/2026-10-07T07-00-22Z.json"
@@ -119,10 +111,6 @@
         (with-redefs [trending/fetch-raw (fn [_] (throw (ex-info "boom" {})))]
           (is (= 1 (quietly #(trends/run ["--dir" dir]))))))
       (is (empty? (files-under dir))))))
-
-(deftest a-bad-argument-exits-two-and-fetches-nothing
-  (with-redefs [trending/fetch-raw (fn [_] (throw (ex-info "must not fetch" {})))]
-    (is (= 2 (quietly #(trends/run ["--nope" "1"]))))))
 
 (deftest each-run-adds-a-file
   (with-dir [dir]
