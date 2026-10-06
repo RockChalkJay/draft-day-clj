@@ -23,10 +23,11 @@
   the id was obtained; the universe half can be missing while `/api/players` is
   still in flight, and the sections that depend on it simply do not render.
 
-  ORDER: identity, then the bid, then what he has done (season stats, week by
-  week), then what he is projected for and the evidence behind it. A manager
-  opens a card to decide a claim, and in season the projection is the least of
-  what he reads; the season table drops its projection column then too.
+  ORDER: the head (in his team's colours), three numbers, one line of the latest
+  news or designation, then tabs — the game log, the news, the season table.
+  The card opens on the game log. A bid, a rest-of-season total and the claim
+  gain are not on it: the bid model is on hold and the totals are the model's
+  working, not a manager's reading.
 
   IT IS MOUNTED FROM `core.cljs`, not from the waivers view. This namespace
   requires `views.compare`, which requires `views.waivers`; a board surface that
@@ -37,6 +38,8 @@
             [draft-day.bio :as bio]
             [draft-day.db :as db]
             [draft-day.game-log :as game-log]
+            [draft-day.team-colors :as team-colors]
+            [draft-day.views.board :as board]
             [draft-day.views.compare :as compare]
             [draft-day.views.controls :as controls]
             [draft-day.views.metrics :as metrics]
@@ -71,15 +74,11 @@
      [:span.pd-value (fmt v)
       (when-let [s (and sub (sub p))] [:span.pd-sub s])]]))
 
-(def bid-labels
-  "The claim band's rows `bidding` already states, left out of the card's claim
-  band so a bid is not read twice."
-  #{"Typical winning bid" "Suggested bid" "Rivals"})
-
 (defn bidding-rows
-  "`[[label value]]` for the card's Bidding section, the Bid column's popover
-  kept open: what it usually takes, what to bid, the sure bid against what he is
-  worth to you, and who is likely to bid. Empty where the league does not bid."
+  "`[[label value]]` for a Bidding tab, the Bid column's popover kept open: what
+  it usually takes, what to bid, the sure bid against what he is worth to you,
+  and who is likely to bid. Empty where the league does not bid. Nothing draws it
+  while `db/bid-predictions?` is off; `tabs-for` is where a tab for it goes."
   [{:keys [typical-bid typical-win bid win-prob bid-sure walk-away rivals competition]}]
   (let [pct #(some->> % waivers/win-pct (str " · "))]
     (cond-> []
@@ -91,13 +90,6 @@
                                    (str (.toFixed rivals 1)
                                         (when-let [ts (seq (:threats competition))]
                                           (str " — " (str/join ", " (map #(str (:name %) " " (waivers/win-pct (:p %))) ts)))))]))))
-
-(defn bidding
-  [p]
-  (when-let [rows (and db/bid-predictions? (seq (bidding-rows p)))]
-    [:div.pd-band
-     [:h4.pd-band-label "Bidding"]
-     (map (fn [[label v]] ^{:key label} [:div.pd-row [:span.pd-label label] [:span.pd-value v]]) rows)]))
 
 (defn band
   "One band's rows with the empty ones dropped, or nil when none survive.
@@ -158,7 +150,7 @@
   — `/api/players` still in flight — drops the face and the bio line; every
   other field here is on the board row."
   [p universe week season]
-  [:div.pd-head
+  [:div.pd-head {:style {:background (team-colors/gradient (or (:team p) (:player-id p)))}}
    ;; `universe` alone, never the board row as a fallback: a waiver row carries
    ;; no `:ids`, so `headshot-url` would build a URL from the GSIS id and ask the
    ;; CDN for a player it has never heard of. Both paths end at the silhouette;
@@ -199,6 +191,134 @@
                 [:td.num.out-note {:col-span (inc (count columns))} "Out"])])
            rows)]]))
 
+(defn tiles
+  "The strip of numbers under the head, `[{:label :value :sub}]`: this week's
+  projection, points a game, and Sleeper's trending adds. A tile with no number
+  is dropped rather than dashed, so a player nobody is adding has two."
+  [p week]
+  (let [gp (or (:season-gp p) (get-in p [:nflverse/season-to-date :games]))]
+    (cond-> []
+      (number? (:week-points p))
+      (conj {:label (if week (str "Wk " week) "Week")
+             :value (util/week-points (:week-points p))
+             :sub   (metrics/week-rank-label p)})
+      (number? (:season-ppg p))
+      (conj {:label "Avg pts"
+             :value (board/format-one-decimal (:season-ppg p))
+             :sub   (str/join " · " (keep identity
+                                          [(when-let [r (:season-pos-rank p)] (str (:position p) r))
+                                           (when (number? gp) (str gp " GP"))]))})
+      (number? (:trending/adds p))
+      (conj {:label "Adds" :value (waivers/format-adds (:trending/adds p)) :sub "48 hrs"}))))
+
+(defn latest-line
+  "What the strip under the tiles says, or nil for nothing worth a line.
+
+  A designation leads, beside whatever Sleeper says about it, because it is the
+  fact a claim turns on; the newest blurb fills the line when there is no note
+  and stands alone for a healthy player. `:kind` is what the view needs to know
+  to make it a button: only a line with something behind it opens the News tab."
+  [universe news]
+  (let [status (:sleeper/injury-status universe)
+        blurb  (first (get-in news [:reply :news]))
+        note   (not-empty (str/join " · " (keep identity [(:sleeper/injury-body-part universe)
+                                                           (:sleeper/injury-notes universe)])))]
+    (cond
+      status {:kind :injury :chip status
+              :text (or note (:headline blurb) "No note from Sleeper")
+              :at   (or (:sleeper/injury-updated universe) (:published blurb))}
+      blurb  {:kind :news :text (:headline blurb) :at (:published blurb)}
+      (= :loading (:state news)) {:kind :loading}
+      (= :failed (:state news))  {:kind :failed :text "News unavailable"})))
+
+(defn tabs-for
+  "`[[key label]]` in display order: the game log when there is one, News always
+  (its empty state says why it is empty), and the Season table when the universe
+  has arrived. Left to right in that order on purpose."
+  [{:keys [log? season?]}]
+  (cond-> []
+    log?     (conj [:game-log "Game log"])
+    true     (conj [:news "News"])
+    season?  (conj [:season "Season"])))
+
+(defn shown-tab
+  "The tab that draws: the one picked if it is offered, else the first one."
+  [tabs picked]
+  (if (some #(= picked (first %)) tabs) picked (ffirst tabs)))
+
+(defn news-tab
+  "The notes themselves, newest first, or a sentence saying why there are none."
+  [news no-espn-id? now]
+  (let [items (get-in news [:reply :news])]
+    (cond
+      (seq items)
+      [:div.pd-news
+       (map (fn [{:keys [published headline story]}]
+              ^{:key (str published headline)}
+              [:article.pd-note
+               [:div.pd-note-at (util/ago now published)]
+               [:h5.pd-note-head headline]
+               (when (and story (not= story headline)) [:p.pd-note-story story])])
+            items)
+       [:p.pd-credit "RotoWire, via ESPN"]]
+      (= :loading (:state news)) [:p.pd-empty "Loading news…"]
+      (= :failed (:state news))  [:p.pd-empty "News unavailable right now."]
+      no-espn-id?                [:p.pd-empty "No news source for this player."]
+      :else                      [:p.pd-empty "Nothing recent."])))
+
+(defn tab-bar
+  "The tablist. Arrow keys move between tabs and Home/End jump to the ends, the
+  pattern a tablist promises a keyboard user."
+  [tabs shown]
+  (let [keys* (mapv first tabs)
+        move  (fn [e k]
+                (when-let [i (first (keep-indexed #(when (= %2 k) %1) keys*))]
+                  (let [n    (count keys*)
+                        next (case (.-key e)
+                               "ArrowRight" (nth keys* (mod (inc i) n))
+                               "ArrowLeft"  (nth keys* (mod (+ i n -1) n))
+                               "Home"       (first keys*)
+                               "End"        (last keys*)
+                               nil)]
+                    (when next
+                      (.preventDefault e)
+                      (rf/dispatch [:set-player-detail-tab next])
+                      (some-> (js/document.getElementById (str "pd-tab-" (name next))) .focus)))))]
+    [:div.pd-tabs {:role "tablist"}
+     (map (fn [[k label]]
+            ^{:key k}
+            [:button.pd-tab {:id (str "pd-tab-" (name k)) :role "tab"
+                             :aria-selected (= k shown) :aria-controls "pd-panel"
+                             :tab-index (if (= k shown) 0 -1)
+                             :class (when (= k shown) "on")
+                             :on-click #(rf/dispatch [:set-player-detail-tab k])
+                             :on-key-down #(move % k)}
+             label])
+          tabs)]))
+
+(defn latest-strip
+  "The one line under the tiles. A button into the News tab while there is
+  something to read there, plain text otherwise."
+  [{:keys [kind chip text at]} shown now]
+  (let [body [:<>
+              (when chip [:span.pd-chip {:class (when (db/serious-injury? chip) "serious")} chip])
+              [:span.pd-latest-text text]
+              (when-let [a (util/ago now at 30)] [:span.pd-latest-at a])]]
+    (case kind
+      (:injury :news) (if (= :news shown)
+                        [:div.pd-latest body]
+                        [:button.pd-latest {:on-click #(rf/dispatch [:set-player-detail-tab :news])} body])
+      :loading        [:div.pd-latest.muted "Loading news…"]
+      :failed         [:div.pd-latest.muted body]
+      nil)))
+
+(defn season-tab
+  "The season table, then the evidence rows the tiles do not already state."
+  [p universe season season?]
+  [:<>
+   [player-stats/stat-table universe season {:in-season? season?}]
+   (band :evidence p #{"Points / game" "Sleeper adds" "Games played"})])
+
 (defn player-detail-modal
   "The modal for `id`, or nothing when the board has no row for him.
 
@@ -212,40 +332,45 @@
         week     (:week @(rf/subscribe [:waiver-meta]))
         {:keys [season through-week]} @(rf/subscribe [:universe])
         scoring  @(rf/subscribe [:scoring-weights])
-        season?  (= :in-season @(rf/subscribe [:season-phase]))]
+        season?  (= :in-season @(rf/subscribe [:season-phase]))
+        news     (get @(rf/subscribe [:player-news]) id)
+        now      (js/Date.now)]
     (when p
-      [:div.modal-overlay
-       {:on-click #(when (= (.-target %) (.-currentTarget %))
-                     (rf/dispatch [:close-modal]))}
-       [:div.modal.modal-wide.pd-modal
-        ;; `role`, but deliberately not `aria-modal`. Nothing here traps focus —
-        ;; Tab walks out of the dialog and into the board behind the scrim — and
-        ;; an attribute telling a screen reader the rest of the page is inert
-        ;; while it is not is the same kind of half-answer the board refuses to
-        ;; give elsewhere. `docs/TODO.md` owns the keyboard story for both
-        ;; boards; this describes what the thing actually does until then.
-        {:role "dialog" :aria-labelledby "pd-title"}
-        [:button.pd-close {:on-click #(rf/dispatch [:close-modal])
-                           :title "Close (Esc)"
-                           :aria-label "Close"} "✕"]
-        [head p universe week season]
-        ;; What to bid first, then what he has done, then what he is projected
-        ;; for: a manager opens this card to decide a claim, and in season a
-        ;; projection is the least of what he wants to read.
-        [:div.pd-body
-         [bidding p]
-         (band :claim p bid-labels)
-         ;; The universe half. `stat-table` returns nil on its own for a kicker,
-         ;; a defense, or a player with no numbers, so there is no second guard
-         ;; here — only the one for the universe not having arrived yet.
-         (when universe
-           [:<>
-            [:div.pd-band
-             [:h4.pd-band-label "Season stats"]
-             [player-stats/stat-table universe season {:in-season? season?}]]
-            (when-let [log (game-log-table universe through-week scoring)]
-              [:div.pd-band
-               [:h4.pd-band-label "Week by week"]
-               log])])
-         (band :horizon p)
-         (band :evidence p)]]])))
+      (let [log      (when universe (game-log-table universe through-week scoring))
+            has-table? (and universe (player-stats/stat-table universe season {:in-season? season?}))
+            tabs     (tabs-for {:log? (boolean log) :season? (boolean has-table?)})
+            shown    (shown-tab tabs @(rf/subscribe [:player-detail-tab]))
+            latest   (latest-line universe news)
+            strip    (tiles p week)]
+        [:div.modal-overlay
+         {:on-click #(when (= (.-target %) (.-currentTarget %))
+                       (rf/dispatch [:close-modal]))}
+         ;; `role`, but deliberately not `aria-modal`. Nothing here traps focus —
+         ;; Tab walks out of the dialog and into the board behind the scrim — and
+         ;; an attribute telling a screen reader the rest of the page is inert
+         ;; while it is not is the same kind of half-answer the board refuses to
+         ;; give elsewhere. `docs/TODO.md` owns the keyboard story for both
+         ;; boards; this describes what the thing actually does until then.
+         [:div.modal.modal-wide.pd-modal {:role "dialog" :aria-labelledby "pd-title"}
+          [:button.pd-close {:on-click #(rf/dispatch [:close-modal])
+                             :title "Close (Esc)"
+                             :aria-label "Close"} "✕"]
+          [head p universe week season]
+          (when (seq strip)
+            [:div.pd-tiles {:style {:grid-template-columns (str "repeat(" (count strip) ", 1fr)")}}
+             (map (fn [{:keys [label value sub]}]
+                    ^{:key label}
+                    [:div.pd-tile
+                     [:div.pd-tile-cap label]
+                     [:div.pd-tile-val value]
+                     (when (seq sub) [:div.pd-tile-sub sub])])
+                  strip)])
+          [latest-strip latest shown now]
+          [tab-bar tabs shown]
+          [:div.pd-body {:id "pd-panel" :role "tabpanel"
+                         :aria-labelledby (str "pd-tab-" (name shown))}
+           (case shown
+             :game-log log
+             :news     [news-tab news (= :no-espn-id (get-in news [:reply :reason])) now]
+             :season   [season-tab p universe season season?]
+             nil)]]]))))

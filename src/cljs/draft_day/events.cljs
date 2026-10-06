@@ -345,7 +345,47 @@
 ;; that needs an argument is `{:kind ... :player-id ...}`. `db/modal-kind` is
 ;; the one reader that knows both shapes, so nothing here has to.
 
-(rf/reg-event-db :show-modal  (fn [db [_ m]] (assoc db :modal m)))
+(def news-fresh-ms
+  "How long a player's news is reused before reopening his card asks again."
+  (* 5 60 1000))
+
+(defn show-modal-effects
+  "A player card opens on the game log and asks for his news; every other modal
+  is just shown."
+  [db m]
+  (let [card? (= :player-detail (db/modal-kind m))]
+    {:db (cond-> (assoc db :modal m)
+           card? (assoc :player-detail-tab :game-log))
+     :fx (cond-> []
+           card? (conj [:dispatch [:fetch-player-news (:player-id m)]]))}))
+
+(rf/reg-event-fx :show-modal
+  (fn [{:keys [db]} [_ m]] (show-modal-effects db m)))
+
+(rf/reg-event-db :set-player-detail-tab
+  (fn [db [_ tab]] (assoc db :player-detail-tab tab)))
+
+;; Reopening a card inside `news-fresh-ms` costs no request. A failure is retried
+;; on the next open, so one dropped request does not blank a player until reload.
+(rf/reg-event-fx :fetch-player-news
+  (fn [{:keys [db]} [_ id]]
+    (let [{:keys [state at]} (get-in db [:player-news id])
+          now (js/Date.now)]
+      (when (and id (not (or (= :loading state)
+                             (and (= :loaded state) at (< (- now at) news-fresh-ms)))))
+        {:db   (assoc-in db [:player-news id] {:state :loading})
+         :http {:method :get
+                :url (str "/api/players/" (js/encodeURIComponent id) "/news")
+                :on-success [:player-news-loaded id]
+                :on-failure [:player-news-failed id]}}))))
+
+(rf/reg-event-db :player-news-loaded
+  (fn [db [_ id reply]]
+    (assoc-in db [:player-news id] {:state :loaded :reply reply :at (js/Date.now)})))
+
+(rf/reg-event-db :player-news-failed
+  (fn [db [_ id _err]]
+    (assoc-in db [:player-news id] {:state :failed})))
 (rf/reg-event-db :close-modal (fn [db _] (assoc db :modal nil)))
 
 (rf/reg-event-db :escape-pressed

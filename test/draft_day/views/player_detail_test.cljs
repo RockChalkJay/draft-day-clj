@@ -134,3 +134,53 @@
             ["Rivals likely to bid" "1.3 — Show me your TDs 31%"]]
            (pd/bidding-rows p)))
     (is (= [] (pd/bidding-rows {})) "a league that does not bid has no Bidding section")))
+
+;; ---- the strip, the latest line and the tabs ----
+
+(def ^:private nacua
+  {:week-points 14.2 :week-pos-rank 8 :position "WR" :season-ppg 17.74
+   :season-pos-rank 6 :season-gp 5 :trending/adds 12400})
+
+(deftest the-strip-is-week-average-and-adds
+  (is (= [{:label "Wk 5" :value "14.20" :sub "WR8"}
+          {:label "Avg pts" :value "17.7" :sub "WR6 · 5 GP"}
+          {:label "Adds" :value "12.4k" :sub "48 hrs"}]
+         (pd/tiles nacua 5))))
+
+(deftest a-tile-without-a-number-is-dropped-not-dashed
+  (is (= ["Wk 5" "Avg pts"] (mapv :label (pd/tiles (dissoc nacua :trending/adds) 5))))
+  (is (= [] (pd/tiles {} 5)))
+  (is (= "Week" (:label (first (pd/tiles nacua nil))))))
+
+(deftest a-designation-leads-the-latest-line
+  (let [injured {:sleeper/injury-status "Questionable" :sleeper/injury-body-part "Hip"
+                 :sleeper/injury-notes "Soreness" :sleeper/injury-updated 1790812230509}
+        news    {:state :loaded :reply {:news [{:headline "Limited Wednesday" :published "2026-09-30T23:47:41Z"}]}}]
+    (is (= {:kind :injury :chip "Questionable" :text "Hip · Soreness" :at 1790812230509}
+           (pd/latest-line injured news)))
+    (is (= "Limited Wednesday" (:text (pd/latest-line (dissoc injured :sleeper/injury-notes :sleeper/injury-body-part) news)))
+        "with no note from Sleeper, the newest blurb fills the line")))
+
+(deftest a-healthy-player-shows-his-newest-blurb
+  (is (= {:kind :news :text "Nix throws 3 TDs" :at "2026-10-01T10:00:00Z"}
+         (pd/latest-line {} {:state :loaded
+                             :reply {:news [{:headline "Nix throws 3 TDs" :published "2026-10-01T10:00:00Z"}
+                                            {:headline "older"}]}}))))
+
+(deftest nothing-to-say-is-no-line-but-loading-and-failure-are-stated
+  (is (nil? (pd/latest-line {} {:state :loaded :reply {:news []}})))
+  (is (nil? (pd/latest-line {} nil)) "never asked: no line, no skeleton")
+  (is (= :loading (:kind (pd/latest-line {} {:state :loading}))))
+  (is (= "News unavailable" (:text (pd/latest-line {} {:state :failed})))))
+
+(deftest tabs-run-game-log-news-season
+  (is (= [[:game-log "Game log"] [:news "News"] [:season "Season"]]
+         (pd/tabs-for {:log? true :season? true})))
+  (is (= [[:news "News"]] (pd/tabs-for {:log? false :season? false}))
+      "News is always there: its empty state says why it is empty")
+  (is (= [:news "News"] (second (pd/tabs-for {:log? true :season? false})))))
+
+(deftest a-tab-that-is-not-offered-falls-back-to-the-first
+  (let [tabs (pd/tabs-for {:log? false :season? true})]
+    (is (= :season (pd/shown-tab tabs :season)))
+    (is (= :news (pd/shown-tab tabs :game-log)) "no game log to show, so the first offered")))
