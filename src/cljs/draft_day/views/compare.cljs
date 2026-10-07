@@ -255,6 +255,7 @@
    [face headshot]
    [:div
     [:div.cmp-name
+     (util/team-logo (:team p))
      [:button.name-btn
       {:on-click #(rf/dispatch [:show-modal {:kind :player-detail
                                              :player-id (:player-id p)}])

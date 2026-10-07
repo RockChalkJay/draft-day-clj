@@ -195,6 +195,7 @@
    (case k
      :rank      [:td.num.muted (:rank p)]
      :name      [:td.player
+                 (util/team-logo (:team p))
                  [:button.name-btn.p-name
                   {:on-click #(open-detail! % p)
                    :tab-index -1
@@ -203,7 +204,6 @@
                  (when-let [st (:sleeper/injury-status p)]
                    (when (db/serious-injury? st)
                      [:span.inj-flag {:title st} " ⚠"]))]
-     :team      [:td (or (:team p) "–")]
      :position  [:td (util/pos-label (assoc p :pos-rank (db/season-rank p)))]
      :bye       [:td.num (or (:bye p) "–")]
      ;; No weekly line is not a weekly zero: he is on bye, or nobody projects
@@ -346,10 +346,12 @@
                           (:player-id p)]
                          ;; A real tab stop here, unlike the board's six hundred:
                          ;; a roster is a dozen rows and walking them is useful.
-                         [:button.name-btn
-                          {:on-click #(open-detail! % p)
-                           :title "Player detail"}
-                          (:player-name p)])
+                         [:<>
+                          (util/team-logo (:team p))
+                          [:button.name-btn
+                           {:on-click #(open-detail! % p)
+                            :title "Player detail"}
+                           (:player-name p)]])
                       (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
                       [:td.num.muted (or (:bye p) "–")]
                       [:td.num (util/week-points (:week-points p))]]))

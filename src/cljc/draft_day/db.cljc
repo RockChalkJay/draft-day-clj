@@ -500,7 +500,6 @@
   [{:key :rank     :label "#"      :tooltip "Rank by live Worth"        :default? true}
    {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert rank"   :default? true}
    {:key :name     :label "Player" :tooltip "Player"                    :default? true}
-   {:key :team     :label "Tm"     :tooltip "NFL team"                  :default? true}
    {:key :bye      :label "Bye"    :tooltip "Bye week"                  :default? true}
    {:key :position :label "Pos"    :tooltip "Position and rank within it — RB1 is the top RB on the board. Fixed for the whole draft; it does not renumber as players go" :default? true}
    {:key :worth    :label "Worth"  :tooltip "Live auction price"        :default? true}
@@ -727,7 +726,6 @@
   "column key -> fn player -> sortable value. :rank is attached in the sub."
   {:rank     :rank
    :name     :player-name
-   :team     :team
    :position pos-sort-key
    :worth    :worth
    :value    :value
@@ -1030,7 +1028,6 @@
   [{:key :rank      :label "#"      :tooltip "Rank by what the claim adds to your starting lineup, then over the player you would drop" :default? true :group :essentials}
    {:key :name      :label "Player" :tooltip "Player"                     :default? true :group :essentials}
    {:key :position  :label "Pos"    :tooltip "Position, and his rank at it on fantasy points so far this season — his preseason rank before week 1" :default? true :group :essentials}
-   {:key :team      :label "Tm"     :tooltip "NFL team"                   :default? true :group :essentials}
    {:key :bye       :label "Bye"    :tooltip "Bye week"                   :default? true :group :essentials}
    {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank when he is not projected — a bye, or nobody's starter" :default? true :group :week}
    {:key :pts       :label "Pts"    :tooltip "Fantasy points so far this season, under your league's scoring" :default? true :group :stats}
@@ -1107,7 +1104,6 @@
   "column key -> fn player -> sortable value. :rank is attached in the sub."
   {:rank      :rank
    :name      :player-name
-   :team      :team
    :position  #(pos-sort-key (assoc % :pos-rank (season-rank %)))
    :bye       :bye
    :week      :week-points

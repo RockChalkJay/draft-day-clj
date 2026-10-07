@@ -1,6 +1,7 @@
 (ns draft-day.views.roster
   (:require [re-frame.core :as rf]
-            [draft-day.db :as db]))
+            [draft-day.db :as db]
+            [draft-day.views.util :as util]))
 
 (defn- avail-cell
   "Open slot: pooled budget still available for its bucket. Blank when the
@@ -35,7 +36,7 @@
             ^{:key i}
             [:tr
              [:td.slot (:pos slot)]
-             [:td.slot-player (if p (:player-name p) [:span.muted "—"])]
+             [:td.slot-player (if p [:<> (util/team-logo (:team p)) (:player-name p)] [:span.muted "—"])]
              [:td.slot-bye {:class (when (contains? uncovered pid) "bye-uncovered")
                             :title (when (contains? uncovered pid)
                                      (str "No bench " (:position p) " covers bye " (:bye p)))}

@@ -1,4 +1,5 @@
-(ns draft-day.views.util)
+(ns draft-day.views.util
+  (:require [draft-day.team-names :as team-names]))
 
 (defn money [n]
   (if (and (number? n) (pos? n)) 
@@ -149,6 +150,21 @@
   [e]
   (not (.contains (.-currentTarget e) (.-relatedTarget e))))
 
+(defn team-logo-url
+  "Sleeper's CDN keys its team logos by the lowercase abbreviation."
+  [team]
+  (str "https://sleepercdn.com/images/team_logos/nfl/" (.toLowerCase team) ".png"))
+
+(defn team-logo
+  "A small logo for an NFL team, its full name on hover, or nil for a player
+  with no team. It stands in for a Tm column."
+  [team]
+  (when team
+    [:img.team-logo {:src     (team-logo-url team)
+                     :alt     team
+                     :title   (team-names/full-name team)
+                     :loading "lazy"}]))
+
 (defn headshot-url
   "Sleeper's CDN keys headshots by Sleeper id; `:player-id` is GSIS for most
   players, so read `[:ids :sleeper]` and fall back to `:player-id` for legacy
@@ -166,7 +182,7 @@
          team-id    (or (:team ids) player-id)]
      (when sleeper-id
        (if (#{"DEF" "DST"} position)
-         (str "https://sleepercdn.com/images/team_logos/nfl/" (.toLowerCase team-id) ".png")
+         (team-logo-url team-id)
          (str "https://sleepercdn.com/content/nfl/players/"
               (when (= size :thumb) "thumb/")
               sleeper-id ".jpg"))))))

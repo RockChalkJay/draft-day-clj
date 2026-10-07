@@ -980,6 +980,12 @@ button.pd-latest:focus-visible { outline: 2px solid var(--accent); outline-offse
 .mu-a.pending { color: var(--muted); font-weight: 400; }
 .mu-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mu-who .name-btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* A flex row, so a long name gives up its own width and the logo at the outer
+   edge is never the part that gets clipped. */
+.mu-side .mu-who { display: flex; align-items: baseline; min-width: 0; }
+.mu-side.r .mu-who { justify-content: flex-end; }
+.mu-side .mu-who > * { flex-shrink: 0; }
+.mu-side .mu-who > .name-btn { flex-shrink: 1; min-width: 0; }
 .mu-meta { color: var(--muted); font-size: 10px; margin: 0 5px; }
 .mu-empty { color: var(--muted); font-style: italic; }
 
@@ -1097,3 +1103,9 @@ header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflo
 @media (max-width: 1100px) {
   .team-body { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* A team's logo leading a name, in place of a Tm column; its title is the
+   team's full name. */
+.team-logo { width: 18px; height: 18px; object-fit: contain; vertical-align: -4px; margin-right: 6px; }
+td.name .team-logo { margin-right: 0; }
+.mu-side.r .team-logo { margin: 0 0 0 6px; }
