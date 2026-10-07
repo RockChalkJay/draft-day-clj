@@ -337,25 +337,13 @@
   (is (= ["a"] (mapv :player-id (:starters (matchup/side-lineup team-t :actual))))
       "a basis that is not available yet draws the set lineup rather than nothing"))
 
-(deftest the-hint-says-what-can-still-be-done-or-what-was-left
-  (is (= "Best by projection: +4.00 still possible" (matchup/lineup-hint team-t)))
-  (is (= "Lineup locked"
-         (matchup/lineup-hint (assoc-in team-t [:optimal :projected :seats-locked?] true))))
-  (is (= "Best by actual: 9.50 left on the bench"
-         (matchup/lineup-hint (assoc-in team-t [:optimal :actual] {:gain 9.5})))
-      "once the week is final, regret outranks advice"))
-
 (deftest a-best-lineup-already-set-gains-nothing-whatever-the-float-says
   ;; `optimal` sums the same players in two orders, so an unchanged lineup's
   ;; gain lands a float's width either side of zero.
-  (is (= "Best by projection: no better lineup"
-         (matchup/lineup-hint (assoc-in team-t [:optimal :projected :gain] 1e-14))))
   (doseq [g [0.0 -1e-14 1e-14]]
-    (is (= "Best by actual: nothing left on the bench"
-           (matchup/lineup-hint (assoc-in team-t [:optimal :actual] {:gain g})))))
-  (let [best (matchup/side-lineup (assoc-in team-t [:optimal :projected :gain] 1e-14)
-                                  :projected)]
-    (is (not (re-find #"over set" (pr-str (matchup/totals-label best)))))))
+    (let [best (matchup/side-lineup (assoc-in team-t [:optimal :projected :gain] g)
+                                    :projected)]
+      (is (not (re-find #"over set" (pr-str (matchup/totals-label best))))))))
 
 (deftest the-set-lineup-totals-the-leagues-own-score
   ;; The header shows the score of record; a sum of per-player numbers can miss
@@ -364,25 +352,40 @@
                                               :set))))
   (is (= 4.0 (:actual (matchup/side-lineup team-t :set))) "the sum, where there is no record"))
 
-(deftest actual-is-offered-only-once-the-week-is-final
-  (let [actual-btn (fn [t] (->> (matchup/lineup-control t :set)
-                                (drop 1) first
-                                (some #(when (= "Best by actual" (last %)) %))))]
-    (is (:disabled (second (actual-btn team-t))))
-    (is (not (:disabled (second (actual-btn (assoc-in team-t [:optimal :actual] {:gain 1.0}))))))))
+(deftest the-best-lineup-is-by-actual-once-the-week-is-final-else-by-projection
+  (let [final (assoc-in team-t [:optimal :actual] {:gain 1.0})]
+    (is (= :projected (matchup/best-basis team-t)))
+    (is (= :actual (matchup/best-basis final)))
+    (is (nil? (matchup/best-basis (dissoc team-t :optimal))))))
+
+(deftest the-button-names-what-a-click-does-next
+  (let [btn  (fn [t v] (matchup/lineup-control t v))
+        opts (fn [b] (second b))]
+    (is (= "Best lineup" (last (btn team-t :set))))
+    (is (= "Set lineup" (last (btn team-t :projected))))
+    (is (nil? (:aria-pressed (opts (btn team-t :projected))))
+        "the label carries the state; a pressed state beside a flipping label reads backwards")
+    (is (:disabled (opts (btn (dissoc team-t :optimal) :set)))
+        "nothing to show: disabled rather than a button that does nothing")
+    (is (not (:disabled (opts (btn team-t :set)))))))
 
 (deftest choosing-a-lineup-is-per-team-and-a-new-game-resets-it
-  (rf/dispatch-sync [:set-lineup-view 1 :projected])
-  (rf/dispatch-sync [:set-lineup-view 2 :actual])
-  (is (= {1 :projected 2 :actual} (:lineup-view @rdb/app-db)))
+  (rf/dispatch-sync [:toggle-lineup-view 1])
+  (is (= {1 :best} (:lineup-view @rdb/app-db)))
+  (rf/dispatch-sync [:toggle-lineup-view 2])
+  (is (= {1 :best 2 :best} (:lineup-view @rdb/app-db)))
+  (rf/dispatch-sync [:toggle-lineup-view 1])
+  (is (= {1 :set 2 :best} (:lineup-view @rdb/app-db)))
   (rf/dispatch-sync [:set-matchup-pick "3"])
   (is (= {} (:lineup-view @rdb/app-db))))
 
-(deftest a-view-whose-basis-is-gone-falls-back-with-its-button
-  (is (= :projected (matchup/shown-view team-t :projected)))
-  (is (= :set (matchup/shown-view team-t :actual))
-      "the actual basis goes with the scoreboard; a lit button over the set lineup is worse")
-  (is (= :set (matchup/shown-view team-t :set))))
+(deftest a-best-lineup-with-no-basis-falls-back-with-its-button
+  (is (= :projected (matchup/shown-view team-t :best)))
+  (is (= :actual (matchup/shown-view (assoc-in team-t [:optimal :actual] {:gain 1.0}) :best)))
+  (is (= :set (matchup/shown-view (dissoc team-t :optimal) :best))
+      "a pressed button over the set lineup is worse than an unpressed one")
+  (is (= :set (matchup/shown-view team-t :set)))
+  (is (= :set (matchup/shown-view team-t nil))))
 
 (deftest a-best-lineup-marks-who-it-moves
   (is (re-find #"moved-in" (pr-str (matchup/player-cell {:player-id "b" :player-name "B"

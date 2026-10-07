@@ -949,7 +949,6 @@ button.pd-latest:focus-visible { outline: 2px solid var(--accent); outline-offse
 .mu-score { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 /* A score nobody has yet recedes rather than reading as a result. */
 .mu-score.pending { color: var(--muted); font-weight: 400; }
-.mu-proj { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .mu-vs { text-align: center; color: var(--muted); font-size: 11px;
   text-transform: uppercase; letter-spacing: .06em; }
 
@@ -991,23 +990,19 @@ button.pd-latest:focus-visible { outline: 2px solid var(--accent); outline-offse
    is not advice if the reader cannot see what he did. */
 .mu-view .mu-sep ~ .mu-row { opacity: .62; }
 
-/* Each side's own Set lineup | Best by projection | Best by actual. */
-.mu-lineup { display: inline-flex; border: 1px solid var(--border); border-radius: 8px;
-  overflow: hidden; margin-top: 8px; }
-.mu-lineup button { background: transparent; color: var(--muted); border: 0; padding: 4px 10px;
-  font-size: 11px; }
-.mu-lineup button + button { border-left: 1px solid var(--border); }
-.mu-lineup button.on { background: var(--panel2); color: var(--text);
+/* Each side's own Best lineup / Set lineup toggle; pressed while the best one is drawn. */
+.mu-lineup { background: transparent; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px; min-height: 24px; font-size: 11px; margin-top: 8px; }
+.mu-lineup.on { background: var(--panel2); color: var(--text);
   box-shadow: inset 0 -2px 0 var(--accent); }
-.mu-lineup button:disabled { opacity: .45; cursor: not-allowed; }
-.mu-lock { display: block; font-size: 10px; color: var(--muted); margin-top: 4px; }
+.mu-lineup:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mu-lineup:disabled { opacity: .45; cursor: not-allowed; }
 /* A best lineup drawn in place: who it moves in, who it benches. */
 .mu-mv { font-size: 10px; margin: 0 4px; }
 .mu-mv.in { color: var(--good); }
 .mu-mv.out { color: var(--warn); }
 .mu-side.l.moved-in { box-shadow: inset 3px 0 0 var(--good); padding-left: 6px; }
 .mu-side.r.moved-in { box-shadow: inset -3px 0 0 var(--good); padding-right: 6px; }
-.mu-optnote { color: var(--muted); font-size: 11px; font-weight: 400; }
 .mu-gain { color: var(--good); font-size: 11px; font-weight: 600; margin-left: 4px; }
 
 @media (max-width: 900px) {

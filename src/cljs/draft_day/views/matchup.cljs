@@ -25,10 +25,11 @@
   THE BENCH IS DRAWN, dimmed, under the starters, so a best lineup that benches
   somebody still shows what he did.
 
-  EACH SIDE SHOWS ITS SET LINEUP OR ITS BEST ONE, on its own control: the lineup
-  that scores, the best one still possible by projection (moving only players
-  whose games have not started), or the best one by what was scored (once every
-  game is final). The best lineup is drawn in place of the set one rather than
+  EACH SIDE SHOWS ITS SET LINEUP OR ITS BEST ONE, on its own button: the lineup
+  that scores, or the best one — by projection while games remain (moving only
+  players whose games have not started), by what was scored once every game is
+  final. The button does not ask which; `best-basis` answers with the one that
+  can be believed. The best lineup is drawn in place of the set one rather than
   described in a box beside it — a player moved in is marked ▲, a starter who
   loses his seat leads the bench marked ▼ — because \"start T. Hill\" is easier
   to weigh with T. Hill in the row he would take.
@@ -107,30 +108,10 @@
    (if (and r (not (:empty? r))) [player-cell r :r week] [empty-cell :r seat?])])
 
 
-(def lineup-views
-  [[:set "Set lineup"] [:projected "Best by projection"] [:actual "Best by actual"]])
-
-(defn lineup-hint
-  "One line under a side's control saying what its best lineup would change,
-  by the basis that can currently be believed: by what was scored once every
-  game is final, by projection before that.
-
-  The gain is tested after rounding, not before: a set lineup that is already
-  the best comes back a float's width either side of zero."
-  [t]
-  (let [{:keys [projected actual]} (:optimal t)
-        gain (fn [o] (util/hundredths (:gain o)))]
-    (cond
-      (and actual (pos? (gain actual)))
-      (str "Best by actual: " (util/week-points (gain actual)) " left on the bench")
-      actual                         "Best by actual: nothing left on the bench"
-      (:seats-locked? projected)     "Lineup locked"
-      (and projected (pos? (gain projected)))
-      (str "Best by projection: +" (util/week-points (gain projected)) " still possible")
-      projected                      "Best by projection: no better lineup")))
-
 (defn side-lineup
   "What a side draws under view `v`: its rows, and what its totals row says.
+  The gain is rounded here, because a set lineup that is already the best comes
+  back a float's width either side of zero.
   A best lineup that is not available — Actual before the week is final — draws
   the set lineup, so a view cannot strand a side on nothing.
 
@@ -154,29 +135,34 @@
      :projected (:projected t)
      :actual    (or (:official t) (:actual t))}))
 
-(defn shown-view
-  "The view a side actually draws: the one picked, unless that basis is gone.
+(defn best-basis
+  "What a side's best lineup is drawn by: what was scored once every game is
+  final, else the projection, else nil."
+  [t]
+  (cond (get-in t [:optimal :actual])    :actual
+        (get-in t [:optimal :projected]) :projected))
 
-  The actual basis vanishes with the scoreboard `week-final?` needs, so the rows
-  and the control resolve it here once rather than disagreeing — a highlighted
+(defn shown-view
+  "The view a side actually draws: its best lineup when that is picked and has a
+  basis, else the set one.
+
+  The actual basis arrives with the scoreboard `week-final?` needs, so the rows
+  and the control resolve it here once rather than disagreeing — a pressed
   button over the set lineup."
   [t v]
-  (if (and v (not= v :set) (get-in t [:optimal v])) v :set))
+  (if (= v :best) (or (best-basis t) :set) :set))
 
 (defn lineup-control
-  "Set lineup | Best by projection | Best by actual, for one side."
+  "One button, for one side, between its set lineup and its best one. `v` is the
+  view already drawn, so a basis that is gone leaves the button unpressed."
   [t v]
-  (let [actual? (some? (get-in t [:optimal :actual]))]
-    [:div.mu-lineup
-     (map (fn [[k label]]
-            (let [off? (and (= k :actual) (not actual?))]
-              ^{:key k}
-              [:button {:class    (when (= v k) "on")
-                        :disabled off?
-                        :title    (when off? "Available once all games are final")
-                        :on-click #(rf/dispatch [:set-lineup-view (:roster-id t) k])}
-               label]))
-          lineup-views)]))
+  (let [on?   (not= v :set)
+        none? (and (not on?) (nil? (best-basis t)))]
+    [:button.mu-lineup {:class    (when on? "on")
+                        :disabled none?
+                        :title    (when none? "No better lineup to show yet")
+                        :on-click #(rf/dispatch [:toggle-lineup-view (:roster-id t)])}
+     (if on? "Set lineup" "Best lineup")]))
 
 (defn team-head [t side v]
   (let [mine? (= side :l)]
@@ -187,9 +173,7 @@
         [:<> [:span.mu-rec (db/record-label t)] (:name t)])]
      [:div {:class (str "mu-score" (when-not (number? (:actual t)) " pending"))}
       (util/week-points (or (:official t) (:actual t)))]
-     [:div.mu-proj (str "projected " (util/week-points (:projected t)))]
-     [lineup-control t v]
-     (when-let [hint (lineup-hint t)] [:span.mu-lock hint])]))
+     [lineup-control t v]]))
 
 (defn game-picker
   "Every game in the league, the manager's own first. A game with one team in it
@@ -228,14 +212,13 @@
 
 
 (defn totals-label
-  "\"Starters\" under a set lineup; under a best one, which basis and what it
-  gains over the lineup that is set. `gain` arrives rounded from
-  `side-lineup`, so the test and the digits read one value."
+  "\"Starters\" under a set lineup; under a best one, what it gains over the
+  lineup that is set. `gain` arrives rounded from `side-lineup`, so the test
+  and the digits read one value."
   [{:keys [basis gain]}]
   [:div.mu-who
    (if basis
      [:<> "Best lineup "
-      [:span.mu-optnote (if (= basis :actual) "by actual" "by projection")]
       (when (and (number? gain) (pos? gain))
         [:span.mu-gain (str "+" (util/week-points gain) " over set")])]
      "Starters")])
