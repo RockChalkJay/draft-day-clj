@@ -18,7 +18,7 @@
             [draft-day.views.waivers :as waivers]))
 
 (def columns
-  [[:slot "Slot"] [:name "Player"] [:position "Pos"] [:team "Team"] [:opp "Opp"]
+  [[:slot "Slot"] [:name "Player"] [:position "Pos"] [:team "Team"] [:bye "Bye"] [:opp "Opp"]
    [:week "Week"] [:risk "Risk"] [:inj "Inj"]])
 
 (defn roster-groups

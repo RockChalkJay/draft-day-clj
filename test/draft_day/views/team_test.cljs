@@ -40,6 +40,11 @@
   (is (= "–" (last (team/team-cell :slot {:starter? true} 3)))
       "a starter whose seat is unknown is not labelled bench"))
 
+(deftest the-roster-table-shows-the-bye-week
+  (is (= [:td.num 7] (team/team-cell :bye {:bye 7} 3)))
+  (is (= [:td.num "–"] (team/team-cell :bye {} 3)))
+  (is (some #{[:bye "Bye"]} team/columns)))
+
 (defn- with-synced-team!
   ([waivers] (with-synced-team! waivers 1))
   ([waivers mine]
