@@ -138,7 +138,7 @@
          [:div.nt-head
           [face p]
           [:div.nt-main
-           [:div.nt-name (:player-name p)]
+           [:div.nt-name (util/team-logo (:team p)) (:player-name p)]
            [:div.nt-meta (util/pos-label p) " · " (:team p) [bye-tag p] [risk-tag p]]]
           [tier-chip p]]
          ;; What he costs. Two the model says, two the market says, and the two

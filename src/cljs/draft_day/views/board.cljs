@@ -150,8 +150,7 @@
 (defn- cell [k p]
   (case k
     :rank     [:td.num.muted (:rank p)]
-    :name     [:td.name [star-toggle p] (:player-name p) (cliff-marker p) (sleeper-badge p)]
-    :team     [:td.muted (:team p)]
+    :name     [:td.name [star-toggle p] (util/team-logo (:team p)) (:player-name p) (cliff-marker p) (sleeper-badge p)]
     :position [:td [:span.pill (util/pos-label p)]]
     :worth    [:td.num.bold (util/money (:worth p))]
     :value    [:td.num.muted (util/money (:value p))]

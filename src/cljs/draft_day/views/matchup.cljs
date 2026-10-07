@@ -57,9 +57,10 @@
         nums [^{:key :p} [:div.mu-p (util/week-points (:week-points p))]
               ^{:key :a} [:div {:class (str "mu-a" (when-not (number? (:actual p)) " pending"))}
                           (util/week-points (:actual p))]]
-        who  [:div.mu-who {:key :who}
-              (when (= side :l) mark)
-              (if (:unvalued? p)
+        ;; The text reads the same on both sides; only the logo moves, to the
+        ;; outer edge, so no row's tags shift it.
+        logo (util/team-logo (:team p))
+        text [(if (:unvalued? p)
                 [:span.muted {:title (str "No projection for id " (:player-id p))}
                  (:player-id p)]
                 [:button.name-btn
@@ -68,11 +69,13 @@
                   :tab-index -1
                   :title "Player detail"}
                  (:player-name p)])
+              mark
               (when (:parked? p) [:span.mu-meta {:title "IR or taxi"} "IR"])
               [:span.mu-meta (str (when (and (nil? (:slot p)) (:position p))
                                     (str (:position p) " · "))
-                                  (waivers/week-matchup p week))]
-              (when (= side :r) mark)]]
+                                  (waivers/week-matchup p week))]]
+        who  (into [:div.mu-who {:key :who}]
+                   (if (= side :l) (cons logo text) (concat text [logo])))]
     (into [:div {:class (str "mu-side " (name side) (when (:moved-in? p) " moved-in"))}]
           (if (= side :l) (cons who nums) (conj (vec (reverse nums)) who)))))
 

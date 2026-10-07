@@ -26,7 +26,9 @@
   [:tr {:class (when bench? "bench")}
    [:td.slot (if bench? (or (:position p) "–") (or (:slot p) "–"))]
    [:td (let [nm (if bench? (:player-name p) [:b (:player-name p)])]
-          (cond
+          [:<>
+           (util/team-logo (:team p))
+           (cond
             (:unvalued? p)
             [:span.muted {:title (str "No player for id " (:player-id p))} (:player-id p)]
 
@@ -35,8 +37,7 @@
                                :title    "Player detail"}
              nm]
 
-            :else nm))]
-   [:td.muted (:team p)]])
+            :else nm)])]])
 
 (defn style-tag
   "How this team bids, as a tag on its name with the evidence as its title, or
