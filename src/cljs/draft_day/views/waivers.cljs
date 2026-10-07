@@ -351,13 +351,14 @@
                            :title "Player detail"}
                           (:player-name p)])
                       (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
+                      [:td.num.muted (or (:bye p) "–")]
                       [:td.num (util/week-points (:week-points p))]]))
              group (fn [label rows]
                      (when (seq rows)
-                       [:<> [:tr.roster-group [:td {:col-span 3} label]] (map row rows)]))
+                       [:<> [:tr.roster-group [:td {:col-span 4} label]] (map row rows)]))
              {:keys [starters bench parked]} roster]
          [:table.roster
-          [:thead [:tr [:th.slot "Pos"] [:th "Player"] [:th.num "Wk"]]]
+          [:thead [:tr [:th.slot "Pos"] [:th "Player"] [:th.num "Bye"] [:th.num "Wk"]]]
           [:tbody
            (group "Starters" (mapv #(assoc % :starter? true) starters))
            (group "Bench" bench)
