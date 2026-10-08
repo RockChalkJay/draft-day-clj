@@ -10,6 +10,7 @@
     lein run -m draft-day.tools.projections [--week N] [--dir data/projections]
     lein run -m draft-day.tools.projections --report [--dir data/trends]
                                  [--gap-hours 72] [--min-files 3]
+    lein run -m draft-day.tools.projections --help
 
   The file is `<dir>/<season>/week-NN/<UTC time>.json`, NN being the week the
   line is *for* (the week being played), where `tools.trends` files by weeks
@@ -29,13 +30,14 @@
   and a newest snapshot older than `--gap-hours`. It works on `data/trends` as
   well, where a count of 24 or more a day is the norm.
 
-  Run from cron in Denver time, Wednesday 08:00 (after Sleeper's overnight
-  waiver run), Thursday 16:30 (before Thursday night's kickoff) and Sunday 10:15
-  (after the early window's inactives, 90 minutes before its 11:00 kickoff).
+  Run from cron, Wednesday after Sleeper's overnight waiver run, Thursday before
+  Thursday night's kickoff and Sunday after the early window's inactives,
+  90 minutes before kickoff.
 
   Exit codes: 0 written (or reported), 1 the line failed or a flag was bad."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [clojure.tools.cli :as cli]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.matchups.sleeper :as sleeper-state]
             [draft-day.ingestion.pipeline :as pipeline]
@@ -53,35 +55,36 @@
 
 (def default-min-files 3)
 
-(defn flag-value
-  "The text after `flag` in `args`, nil if the flag is absent. A flag with
-  nothing after it throws."
-  [args flag]
-  (when-let [i (first (keep-indexed (fn [i a] (when (= a flag) i)) args))]
-    (or (nth args (inc i) nil)
-        (throw (ex-info (str flag " needs a value") {})))))
+(defn positive-number
+  "A `cli-options` validation: the parsed value is a positive whole number."
+  [flag]
+  [#(and % (pos? %)) (str flag " must be a positive whole number")])
 
-(defn whole-number
-  "`text` as a positive integer; throws naming `flag` otherwise."
-  [flag text]
-  (let [n (parse-long text)]
-    (if (and n (pos? n))
-      n
-      (throw (ex-info (str flag " needs a positive whole number, got " text) {})))))
+(def cli-options
+  [[nil "--week N" "The week the line is for (default: the week Sleeper shows)"
+    :parse-fn parse-long :validate (positive-number "--week")]
+   [nil "--dir DIR" "Where the snapshots live" :default default-dir]
+   [nil "--report" "Report on the snapshots under --dir instead of taking one"]
+   [nil "--gap-hours H" "Report: flag a gap, or a newest snapshot, older than this"
+    :default default-gap-hours :parse-fn parse-long :validate (positive-number "--gap-hours")]
+   [nil "--min-files N" "Report: flag a finished week with fewer files than this"
+    :default default-min-files :parse-fn parse-long :validate (positive-number "--min-files")]
+   ["-h" "--help" "Print this and exit"]])
+
+(defn usage
+  "The option summary `--help` prints."
+  []
+  (:summary (cli/parse-opts [] cli-options)))
 
 (defn parse-args
-  "The options `args` give over the defaults. A flag it does not know is ignored,
-  as in `tools.trends`; a number that is not one throws."
+  "The options `args` give over the defaults. A flag it does not know, a number
+  that is not a positive whole one, or a stray argument throws."
   [args]
-  (let [value   (partial flag-value args)
-        numeric (fn [opts k flag]
-                  (if-let [text (value flag)] (assoc opts k (whole-number flag text)) opts))]
-    (-> {:dir default-dir :gap-hours default-gap-hours :min-files default-min-files}
-        (cond-> (some #{"--report"} args) (assoc :report? true)
-                (value "--dir")           (assoc :dir (value "--dir")))
-        (numeric :week "--week")
-        (numeric :gap-hours "--gap-hours")
-        (numeric :min-files "--min-files"))))
+  (let [{:keys [options errors arguments]} (cli/parse-opts args cli-options)
+        errors (concat errors (map #(str "unexpected argument " %) arguments))]
+    (if (seq errors)
+      (throw (ex-info (str/join "; " errors) {}))
+      options)))
 
 (defn season-and-week
   "`{:season :week}` off one Sleeper state reply: `week` if given, else the week
@@ -240,7 +243,10 @@
 (defn -main [& args]
   (System/exit
    (try (let [opts (parse-args args)]
-          (if (:report? opts) (report opts) (run opts)))
+          (cond
+            (:help opts)   (do (println (usage)) 0)
+            (:report opts) (report opts)
+            :else          (run opts)))
         (catch clojure.lang.ExceptionInfo e
           (warn! (str "failed: " (ex-message e)))
           1))))

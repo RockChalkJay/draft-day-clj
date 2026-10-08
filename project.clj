@@ -41,5 +41,6 @@
   :test-selectors {:default     (complement :integration)
                    :integration :integration
                    :all         (constantly true)}
-  :profiles {:dev     {:source-paths ["dev"]}
+  :profiles {:dev     {:source-paths ["dev"]
+                       :dependencies [[org.clojure/tools.cli "1.0.206"]]}
              :uberjar {:aot :all}})

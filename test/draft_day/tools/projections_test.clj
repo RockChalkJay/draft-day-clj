@@ -64,13 +64,15 @@
          (projections/parse-args [])))
   (is (= 5 (:week (projections/parse-args ["--week" "5"]))))
   (is (= "x" (:dir (projections/parse-args ["--dir" "x"]))))
-  (is (true? (:report? (projections/parse-args ["--report"]))))
+  (is (true? (:report (projections/parse-args ["--report"]))))
   (is (= 12 (:gap-hours (projections/parse-args ["--gap-hours" "12"]))))
-  (is (= 2 (:min-files (projections/parse-args ["--min-files" "2"])))))
+  (is (= 2 (:min-files (projections/parse-args ["--min-files" "2"]))))
+  (is (true? (:help (projections/parse-args ["--help"])))))
 
-(deftest a-malformed-flag-throws-rather-than-falling-back
+(deftest a-malformed-or-unknown-flag-throws-rather-than-falling-back
   (doseq [args [["--week" "five"] ["--week" "5.0"] ["--week" "0"] ["--week" "-3"]
-                ["--gap-hours" "abc"] ["--gap-hours" "1.5"] ["--min-files" "x"] ["--week"]]]
+                ["--gap-hours" "abc"] ["--gap-hours" "1.5"] ["--min-files" "x"] ["--week"]
+                ["--wek" "5"] ["stray"]]]
     (is (thrown? clojure.lang.ExceptionInfo (projections/parse-args args))
         (str "should reject " args))))
 
