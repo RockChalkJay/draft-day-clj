@@ -30,9 +30,11 @@
   the last, and a newest snapshot older than `--gap-hours`. It works on
   `data/trends` as well, where hourly runs make the per-week count far higher.
 
-  Run from cron, Wednesday after Sleeper's overnight waiver run, Thursday before
-  Thursday night's kickoff and Sunday after the early window's inactives,
-  90 minutes before kickoff.
+  Run from cron at 10:00 AM Wednesday (after waivers clear, about 3:10 AM in
+  the author's league, a per-league setting), 6:30 PM Thursday (before Thursday
+  night's 8:15 PM kickoff) and 12:15 PM Sunday (after the 1:00 PM games'
+  inactives at 11:30 AM; Also, take note that an international game kicks off
+  earlier, typically 9:30 AM. All times are Eastern. The files are named in UTC.
 
   Exit codes: 0 written (or reported), 1 the line failed or a flag was bad."
   (:require [clojure.java.io :as io]
