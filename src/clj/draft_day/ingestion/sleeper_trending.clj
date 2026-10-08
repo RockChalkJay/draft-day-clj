@@ -152,12 +152,14 @@
 (def pretty-mapper (json/object-mapper {:pretty true}))
 
 (defn write-snapshot!
-  "Save `snap` where `snapshot-path` puts it; returns the path."
-  [dir snap]
-  (let [path (snapshot-path dir (:season snap) (:through_week snap) (:fetched_at snap))]
-    (io/make-parents path)
-    (spit path (json/write-value-as-string snap pretty-mapper))
-    path))
+  "Save `snap` where `snapshot-path` puts it, in the folder for `week` (default
+  the weeks played the snapshot names); returns the path."
+  ([dir snap] (write-snapshot! dir snap (:through_week snap)))
+  ([dir snap week]
+   (let [path (snapshot-path dir (:season snap) week (:fetched_at snap))]
+     (io/make-parents path)
+     (spit path (json/write-value-as-string snap pretty-mapper))
+     path)))
 
 (defn live
   "The envelope for a fresh list, keeping a snapshot of it. A snapshot that fails
