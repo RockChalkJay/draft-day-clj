@@ -81,12 +81,11 @@ for the known gaps between a league's real rules and what the board can score.
   realized points a game. It unlocks per-stat prior strengths and the
   probabilistic weekly-gap alternative to `confidence`.
 
-- **Archive weekly projections, and run `tools.trends` on a schedule.** The
-  weekly projection cache is one TTL file that overwrites itself, so nothing can
-  re-derive `confidence/win-rates` (which came from a one-off 2025 pull, with no
-  script in `dev/`). Trending lists are archived under `data/trends/` and Sleeper
-  keeps no past ones, so that data cannot be recovered later. Archive each
-  week's line the same way, and add a report that regenerates the table.
+- **Regenerate `confidence/win-rates` from the archive.** `win-rates` came from
+  a one-off 2025 pull, with no script in `dev/`. `tools.projections` now saves
+  each week's line under `data/projections/` on a schedule, so once a few weeks
+  have accumulated a report can pair them with the realized points and rebuild
+  the table, defenses and the deep-pool split included.
 
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
   computes and returns it (`src/clj/draft_day/rankings/engine.clj:89`)

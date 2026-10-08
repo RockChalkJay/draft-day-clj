@@ -280,13 +280,12 @@ projections. *Harness:* for each season and week `w`, rank players on the
 `w + 1…` by position, against two baselines — the prorated preseason line and
 realized points a game.
 
-**3. Nothing re-derives the weekly-confidence table, or keeps what it would
-need.** `win-rates` came from a one-off 2025 pull (no script in `dev/` produces
-it), and the weekly projection cache is one TTL file that overwrites itself,
-where trending lists are archived under `data/trends/`. Archive each week's line
-the same way, add a report that regenerates the table, and fill the rows it
-lacks: defenses, and the deep-pool split that matters most for waivers
-(`docs/TODO.md`).
+**3. Nothing re-derives the weekly-confidence table.** `win-rates` came from a
+one-off 2025 pull (no script in `dev/` produces it). `tools.projections` now
+archives each week's line, kickoffs and the injury list under `data/projections/`
+the way `tools.trends` archives trending lists, so a report can regenerate the
+table and fill the rows it lacks: defenses, and the deep-pool split that matters
+most for waivers (`docs/TODO.md`).
 
 **4. ESPN leagues bid blind.** `ingestion/transactions` has only a Sleeper
 provider, so ESPN rivals are priced from Sleeper-wide data alone, and
@@ -326,9 +325,9 @@ leagues, which correlate 0.37 to 0.56 (`docs/TODO.md`).
 ### The order I would do them in
 
 1. ~~Injury-aware rest-of-season (item 1)~~ — done.
-2. Start archiving weekly projections, and run `tools.trends` on a schedule all
-   season. Sleeper keeps no past trending lists, so that data cannot be
-   recovered later.
+2. ~~Start archiving weekly projections, and run `tools.trends` on a schedule
+   all season~~ — done. Sleeper keeps no past trending lists and revises past
+   weeks' projections, so neither can be recovered later.
 3. Build the in-season backtest (item 2). It unlocks `PRIOR-GAMES`,
    `stash-share`, per-stat priors and the weekly-confidence alternative.
 
