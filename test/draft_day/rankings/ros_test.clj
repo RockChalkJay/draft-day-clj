@@ -150,3 +150,18 @@
                      (player :pre {:rec 17.0} :played 8 :realized {:rec 40.0}))
                     ppr (ctx 8)))]
       (is (< 3.28 (/ (get-in p [:ros/stats :rec]) (:ros/games-remaining p)) 3.29)))))
+
+(deftest a-serious-designation-has-no-games-left-in-season
+  (let [ros-of (fn [status week]
+                 (let [[p peer] (alongside-a-projected-peer
+                                 (cond-> (player :pre {:rec 85.0})
+                                   status (assoc :sleeper/injury-status status)))]
+                   (first (ros/with-ros [p peer] ppr (ctx week)))))]
+    (testing "IR in season prices at zero, a healthy twin does not"
+      (is (zero? (:ros-points (ros-of "IR" 8))))
+      (is (pos? (:ros-points (ros-of nil 8)))))
+    (testing "a designation that is not serious changes nothing"
+      (is (= (:ros-points (ros-of nil 8)) (:ros-points (ros-of "Questionable" 8))))
+      (is (= (:ros-points (ros-of nil 8)) (:ros-points (ros-of "Out" 8)))))
+    (testing "preseason, a PUP tag is not a season-long absence"
+      (is (= (:ros-points (ros-of nil 0)) (:ros-points (ros-of "PUP" 0)))))))

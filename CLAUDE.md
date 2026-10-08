@@ -86,6 +86,8 @@ Draft dollars stop at draft; waiver claims are measured in ROS points only (valu
 
 `rankings/ros.clj`: blends preseason + realized per-stat on per-game basis, prorates games remaining. Realized as *total* (not games × per-game) so the expression collapses to preseason at zero games (right for rookies, DST, August board). **Sleeper's realized where available, nflverse otherwise** (one source per player, never mixed). Why Sleeper: (1) nflverse has no DST rows at all; (2) first-downs count differs ~1/4 of player-weeks; (3) no TD length. Sleeper's score reproduces league totals exactly (player detail week-by-week agrees to cent). **`:through-week` stays nflverse only** (ros leans on realized columns being unable to disagree; two sources = Nov league on Aug projection).
 
+A player with a `db/serious-injury?` designation has zero games remaining once `:through-week` is positive, so his `:ros-points` is 0 until Sleeper clears the tag.
+
 `:through-week` on universe envelope (one fact/request, game-day cadence; don't drift off old cache). Separate 1-hour cache for realized (fetched with every req, cached separately). Missing weekly file = week 0 + no realized (board degrades to preseason). `season-games` passed in (rankings has no NFL calendar).
 
 ### Waiver board  
