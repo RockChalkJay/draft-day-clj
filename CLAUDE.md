@@ -22,7 +22,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 - `faab.sweep`: score FAAB constants one at a time
 - `faab.report`: what Sleeper leagues actually pay
 - `tools.trends`: fetch Sleeper's trending adds/drops and save them as JSON under `data/trends/<season>/week-NN/` (one run, one file)
-- `tools.projections`: save the week's Sleeper projection line, ESPN kickoffs and the injury list as JSON under `data/projections/<season>/week-NN/` (NN = the week the line is for; one run, one file). Sleeper revises past weeks' lines after the games, so a vintage line cannot be refetched. `--report [--dir data/trends]` lists snapshots per week with the longest gap
+- `tools.projections`: save the week's raw Sleeper projection entries, ESPN kickoffs and the injury list as JSON under `data/projections/<season>/week-NN/` (NN = the week the line is for; one run, one file). Sleeper revises past weeks' lines after the games, so a vintage line cannot be refetched. `--report [--dir data/trends]` lists snapshots per week and flags gaps, short and missing weeks, and a stale newest snapshot
 
 ## Architecture
 
