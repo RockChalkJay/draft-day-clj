@@ -71,18 +71,6 @@ for the known gaps between a league's real rules and what the board can score.
   that matters most for a waiver board — where discrimination is *worst* — is
   recorded in prose rather than in the table the code reads.
 
-- **Injured players are priced as healthy in season.** `:sleeper/injury-status`
-  reaches the `Inj` column, the player card, the durability scale and the
-  matchup row, but nothing in `rankings.ros`, `:lineup-upgrade`, `:walk-away`,
-  `waiver/rival-needs` or `faab/claim-features` reads it. A back lost for the
-  season keeps `rate × games_remaining`: two identical backs, one on IR, both
-  score 87.7 ROS points. The draft board's reason for ignoring injuries (the
-  room already prices them) does not reach a manager's own walk-away. Smallest
-  fix: zero the games remaining for `db/serious-injury?` designations until they
-  clear; the alternative is an expected-games-lost table per designation, which
-  needs history because Sleeper gives no return dates. Judge it on the in-season
-  backtest below.
-
 - **There is no in-season backtest.** The benchmark scores preseason draft
   boards only, so `ros/PRIOR-GAMES`, `waiver/stash-share`, the rest-of-season
   blend and the weekly projection have never been scored against what happened.
