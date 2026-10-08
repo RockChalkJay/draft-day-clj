@@ -142,27 +142,42 @@
   (or (espn-schedule/fetch season week)
       (do (warn! "kickoffs failed: ESPN scoreboard gave no teams") {})))
 
+(defn fetch-lines
+  "`lines-of` the week's entries; throws when Sleeper projects nobody."
+  [season week]
+  (let [lines (lines-of (sleeper/fetch-weekly-entries season week))]
+    (if (empty? lines)
+      (throw (ex-info (str "week " week " line empty") {}))
+      lines)))
+
+(defn take-snapshot
+  "Fetch the week's line, kickoffs and injuries into a snapshot document. Throws
+  when no week is known or the line is empty."
+  [week]
+  (let [fetched-at (pipeline/now-iso)
+        {:keys [season] target :week} (season-and-week week)
+        target     (or target (throw (ex-info "no week known; pass --week" {})))
+        lines      (fetch-lines season target)]
+    (snapshot fetched-at season target
+              (pipeline/best-effort (some-> season pipeline/load-realized :weekly :through-week))
+              lines
+              (fetch-kickoffs season target)
+              (fetch-injuries))))
+
+(defn describe
+  "`week 5: 437 players, 30 teams with kickoffs, 876 injuries`"
+  [{:keys [target_week lines kickoffs injuries]}]
+  (format "week %d: %d players, %d teams with kickoffs, %s injuries"
+          target_week (count lines) (count kickoffs) (if injuries (count injuries) "no")))
+
 (defn run
   "Fetch, save and report; returns the exit code."
   [{:keys [dir week]}]
   (try
-    (let [fetched-at (pipeline/now-iso)
-          {:keys [season] target :week} (season-and-week week)]
-      (when-not target
-        (throw (ex-info "no week known; pass --week" {})))
-      (let [lines (lines-of (sleeper/fetch-weekly-entries season target))]
-        (when (empty? lines)
-          (throw (ex-info (str "week " target " line empty") {})))
-        (let [snap (snapshot fetched-at season target
-                             (pipeline/best-effort
-                              (some-> season pipeline/load-realized :weekly :through-week))
-                             lines
-                             (fetch-kickoffs season target)
-                             (fetch-injuries))]
-          (println (format "wrote %s (week %d: %d players, %d teams with kickoffs, %s injuries)"
-                           (trending/write-snapshot! dir snap target) target (count lines)
-                           (count (:kickoffs snap))
-                           (if-let [inj (:injuries snap)] (count inj) "no")))))
+    (let [snap (take-snapshot week)]
+      (println (format "wrote %s (%s)"
+                       (trending/write-snapshot! dir snap (:target_week snap))
+                       (describe snap)))
       0)
     (catch Exception e
       (warn! (str "failed: " (ex-message e)))
