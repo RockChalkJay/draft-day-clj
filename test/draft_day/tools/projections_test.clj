@@ -60,18 +60,18 @@
 
 (deftest parse-args-reads-the-flags
   (is (= {:dir projections/default-dir :gap-hours projections/default-gap-hours
-          :min-files projections/default-min-files}
+          :runs-per-week projections/default-runs-per-week}
          (projections/parse-args [])))
   (is (= 5 (:week (projections/parse-args ["--week" "5"]))))
   (is (= "x" (:dir (projections/parse-args ["--dir" "x"]))))
   (is (true? (:report (projections/parse-args ["--report"]))))
   (is (= 12 (:gap-hours (projections/parse-args ["--gap-hours" "12"]))))
-  (is (= 2 (:min-files (projections/parse-args ["--min-files" "2"]))))
+  (is (= 2 (:runs-per-week (projections/parse-args ["--runs-per-week" "2"]))))
   (is (true? (:help (projections/parse-args ["--help"])))))
 
 (deftest a-malformed-or-unknown-flag-throws-rather-than-falling-back
   (doseq [args [["--week" "five"] ["--week" "5.0"] ["--week" "0"] ["--week" "-3"]
-                ["--gap-hours" "abc"] ["--gap-hours" "1.5"] ["--min-files" "x"] ["--week"]
+                ["--gap-hours" "abc"] ["--gap-hours" "1.5"] ["--runs-per-week" "x"] ["--week"]
                 ["--wek" "5"] ["stray"]]]
     (is (thrown? clojure.lang.ExceptionInfo (projections/parse-args args))
         (str "should reject " args))))
@@ -170,7 +170,7 @@
 (defn reported
   "What `report` prints for `dir` at `now` under `opts`."
   [dir opts]
-  (with-out-str (projections/report (merge {:dir dir :gap-hours 72 :min-files 3 :now now} opts))))
+  (with-out-str (projections/report (merge {:dir dir :gap-hours 72 :runs-per-week 3 :now now} opts))))
 
 (deftest the-report-counts-files-and-finds-the-longest-gap
   (with-dir [dir]

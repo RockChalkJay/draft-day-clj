@@ -9,7 +9,7 @@
 
     lein run -m draft-day.tools.projections [--week N] [--dir data/projections]
     lein run -m draft-day.tools.projections --report [--dir data/trends]
-                                 [--gap-hours 72] [--min-files 3]
+                                 [--gap-hours 72] [--runs-per-week 3]
     lein run -m draft-day.tools.projections --help
 
   The file is `<dir>/<season>/week-NN/<UTC time>.json`, NN being the week the
@@ -26,9 +26,9 @@
 
   `--report` lists the snapshots under a directory per week with the longest gap
   between two of them, and flags a gap over `--gap-hours`, a finished week with
-  fewer than `--min-files` files, a week missing between the first and the last,
-  and a newest snapshot older than `--gap-hours`. It works on `data/trends` as
-  well, where a count of 24 or more a day is the norm.
+  fewer than `--runs-per-week` snapshots, a week missing between the first and
+  the last, and a newest snapshot older than `--gap-hours`. It works on
+  `data/trends` as well, where hourly runs make the per-week count far higher.
 
   Run from cron, Wednesday after Sleeper's overnight waiver run, Thursday before
   Thursday night's kickoff and Sunday after the early window's inactives,
@@ -53,7 +53,9 @@
 
 (def default-gap-hours 72)
 
-(def default-min-files 3)
+(def default-runs-per-week
+  "The snapshots a finished week should hold: one per scheduled cron run."
+  3)
 
 (defn positive-number
   "A `cli-options` validation: the parsed value is a positive whole number."
@@ -67,8 +69,8 @@
    [nil "--report" "Report on the snapshots under --dir instead of taking one"]
    [nil "--gap-hours H" "Report: flag a gap, or a newest snapshot, older than this"
     :default default-gap-hours :parse-fn parse-long :validate (positive-number "--gap-hours")]
-   [nil "--min-files N" "Report: flag a finished week with fewer files than this"
-    :default default-min-files :parse-fn parse-long :validate (positive-number "--min-files")]
+   [nil "--runs-per-week N" "Report: flag a finished week with fewer snapshots than this"
+    :default default-runs-per-week :parse-fn parse-long :validate (positive-number "--runs-per-week")]
    ["-h" "--help" "Print this and exit"]])
 
 (defn usage
@@ -197,12 +199,12 @@
 
 (defn flags
   "The problems with one week: `GAP` for a gap over `gap-hours`, `FEW` for fewer
-  than `min-files` files. The newest folder is still filling, so it is never
+  than `runs-per-week` snapshots. The newest folder is still filling, so it is never
   `FEW`."
-  [{:keys [gap-hours min-files]} newest? {n :count :keys [longest-gap-hours]}]
+  [{:keys [gap-hours runs-per-week]} newest? {n :count :keys [longest-gap-hours]}]
   (cond-> []
     (and longest-gap-hours (> longest-gap-hours gap-hours)) (conj "GAP")
-    (and (not newest?) (< n min-files))                     (conj "FEW")))
+    (and (not newest?) (< n runs-per-week))                 (conj "FEW")))
 
 (defn missing-weeks
   "`[season week]` for each week absent between a season's first and last."
