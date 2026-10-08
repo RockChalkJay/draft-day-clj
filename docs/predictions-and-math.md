@@ -32,8 +32,7 @@ flowchart LR
   (fit on eleven leagues, priced from 5,658 league-seasons) and the
   weekly-confidence table (one season) are measured; inflation, the
   floor/ceiling band and the rest-of-season prior are hand-set.
-- **Biggest gaps:** injured players are priced as healthy in season, and
-  nothing backtests the in-season numbers. Superflex leagues are mispriced, a
+- **Biggest gaps:** nothing backtests the in-season numbers. Superflex leagues are mispriced, a
   known limitation that is deferred. Alternatives are in the last section.
 
 ## The forecast: stat line → points
@@ -126,6 +125,11 @@ spread over `6 + played`. The 6 (`PRIOR-GAMES`) is chosen, not measured.
 *Example:* a back projected for 1,020 rushing yards (60 a game) who has 560 in
 7 games (80 a game) through week 8 has a rate of (6 × 60 + 560) / 13 = 70.8,
 so 10 games left is 707.7.
+
+A player with a serious designation (`db/serious-injury?`: IR, PUP, NFI,
+suspension, NA, DNR) has zero games remaining once a week has been played, so
+his `ros-points` is 0 until Sleeper clears the tag. Sleeper gives no return
+dates, so this is deliberately blunt; preseason designations are ignored.
 
 `games_remaining = (18 − through_week) − bye_left`, with `bye_left` 1 if the bye
 is ahead, 0 if past and `weeks_left / 18` if unknown. Realized production is
@@ -247,7 +251,7 @@ bidders). `/api/waivers` computes all of it; the UI hides it while
 
 Nothing ships on argument — `model/blend.clj` holds two ideas that won on two
 seasons and lost on five — so each item names what would judge it. These are
-recommendations; none is implemented.
+recommendations; none is implemented except item 1.
 
 ### Known limitation, deferred
 
@@ -258,17 +262,14 @@ Treat the numbers in a superflex league with caution.
 
 ### Gaps with a known fix
 
-**1. Injured players are priced as healthy.** The designation
-(`:sleeper/injury-status`) reaches the `Inj` column, the player card, the
-durability scale and the matchup row, but never the server's rest-of-season
-blend, `:lineup-upgrade`, `:walk-away`, the rivals' needs or the bid features:
-two identical backs, one on IR, both come out at 87.7 ROS points. The draft
-board ignores injuries because the room already prices them, and that argument
-does not reach your own walk-away. *Fix:* zero the games remaining for
-`db/serious-injury?` designations (IR, PUP, NFI, suspension, NA, DNR) until they
-clear. *Alternatives:* an expected-games-lost table per designation (Sleeper
-gives no return dates, so it needs history), or warn only, as `Inj` does today.
-Judge it on item 2.
+**1. Injured players were priced as healthy. (Implemented.)** The designation
+(`:sleeper/injury-status`) reached the `Inj` column and the player card but not
+the rest-of-season blend, so two identical backs, one on IR, both came out at
+87.7 ROS points. `ros/ros-for` now zeroes the games remaining for
+`db/serious-injury?` designations once `through-week` is positive. The draft
+board still ignores injuries because the room already prices them.
+*Alternatives:* an expected-games-lost table per designation (Sleeper gives no
+return dates, so it needs history). Judge it on item 2.
 
 **2. There is no in-season backtest.** The benchmark scores preseason draft
 boards only, so `PRIOR-GAMES`, `stash-share`, the rest-of-season blend and the
@@ -324,7 +325,7 @@ leagues, which correlate 0.37 to 0.56 (`docs/TODO.md`).
 
 ### The order I would do them in
 
-1. Injury-aware rest-of-season (item 1): small, guarded by `db/serious-injury?`.
+1. ~~Injury-aware rest-of-season (item 1)~~ — done.
 2. Start archiving weekly projections, and run `tools.trends` on a schedule all
    season. Sleeper keeps no past trending lists, so that data cannot be
    recovered later.

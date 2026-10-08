@@ -2,8 +2,12 @@
   "Blend preseason and realized production into rest-of-season totals. The
   realized rate is shrunk toward the preseason rate using a fixed prior, then
   prorated over the player's remaining games. A stat projected for no player
-  takes no prior; a missing realized line therefore preserves the projection."
-  (:require [draft-day.scoring :as scoring]))
+  takes no prior; a missing realized line therefore preserves the projection.
+
+  A player with a serious designation (`db/serious-injury?`) has no games
+  remaining in season, until Sleeper clears the tag."
+  (:require [draft-day.db :as db]
+            [draft-day.scoring :as scoring]))
 
 (def PRIOR-GAMES
   "Number of prior games represented by the preseason projection."
@@ -47,8 +51,13 @@
 (defn- ros-for
   "Return one player's rest-of-season columns, or nil when no games remain."
   [{:keys [stats] :as player} {:keys [through-week season-games prior-games projected]}]
-  (let [left   (games-remaining (assoc player :through-week through-week
-                                       :season-games season-games))
+  ;; Preseason tags (PUP, NFI) clear before the season, so week 0 ignores them.
+  (let [out?   (and (pos? (long (or through-week 0)))
+                    (db/serious-injury? (:sleeper/injury-status player)))
+        left   (if out?
+                 0.0
+                 (games-remaining (assoc player :through-week through-week
+                                         :season-games season-games)))
         realized (or (:realized/season-to-date player)
                      (:nflverse/season-to-date player))
         played (get realized :games 0)
