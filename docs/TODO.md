@@ -71,6 +71,35 @@ for the known gaps between a league's real rules and what the board can score.
   that matters most for a waiver board — where discrimination is *worst* — is
   recorded in prose rather than in the table the code reads.
 
+- **Injured players are priced as healthy in season.** `:sleeper/injury-status`
+  reaches the `Inj` column, the player card, the durability scale and the
+  matchup row, but nothing in `rankings.ros`, `:lineup-upgrade`, `:walk-away`,
+  `waiver/rival-needs` or `faab/claim-features` reads it. A back lost for the
+  season keeps `rate × games_remaining`: two identical backs, one on IR, both
+  score 87.7 ROS points. The draft board's reason for ignoring injuries (the
+  room already prices them) does not reach a manager's own walk-away. Smallest
+  fix: zero the games remaining for `db/serious-injury?` designations until they
+  clear; the alternative is an expected-games-lost table per designation, which
+  needs history because Sleeper gives no return dates. Judge it on the in-season
+  backtest below.
+
+- **There is no in-season backtest.** The benchmark scores preseason draft
+  boards only, so `ros/PRIOR-GAMES`, `waiver/stash-share`, the rest-of-season
+  blend and the weekly projection have never been scored against what happened.
+  The data exists: nflverse and Sleeper actuals, plus the benchmark's vintage
+  preseason projections. For each season and week `w`, rank players on the
+  `ros-points` computable through `w`, score against points scored in weeks
+  `w + 1…` by position, against two baselines: the prorated preseason line and
+  realized points a game. It unlocks per-stat prior strengths and the
+  probabilistic weekly-gap alternative to `confidence`.
+
+- **Archive weekly projections, and run `tools.trends` on a schedule.** The
+  weekly projection cache is one TTL file that overwrites itself, so nothing can
+  re-derive `confidence/win-rates` (which came from a one-off 2025 pull, with no
+  script in `dev/`). Trending lists are archived under `data/trends/` and Sleeper
+  keeps no past ones, so that data cannot be recovered later. Archive each
+  week's line the same way, and add a report that regenerates the table.
+
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
   computes and returns it (`src/clj/draft_day/rankings/engine.clj:89`)
   precisely so the client does not recompose `inflation × market-heat` itself
