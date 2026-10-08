@@ -81,12 +81,6 @@
       (quietly #(projections/run {:dir dir :week 7}))
       (is (re-find #"/2026/week-07/" (first (files-under dir)))))))
 
-(deftest the-week-falls-back-to-the-one-after-those-played
-  (with-dir [dir]
-    (with-stubs [matchups/current-week (fn [& _] (throw (ex-info "down" {})))]
-      (quietly #(projections/run {:dir dir}))
-      (is (re-find #"/2026/week-05/" (first (files-under dir)))))))
-
 (deftest a-failed-injury-list-still-lands-the-line
   (with-dir [dir]
     (with-stubs [sleeper-players/live (fn [] (throw (ex-info "boom" {})))]
@@ -109,9 +103,8 @@
     (testing "a line that errors"
       (with-stubs [sleeper/fetch-weekly (fn [& _] (throw (ex-info "boom" {})))]
         (is (= 1 (quietly #(projections/run {:dir dir}))))))
-    (testing "no week known"
-      (with-stubs [matchups/current-week (fn [& _] nil)
-                   trending/current-through-week (constantly nil)]
+    (testing "Sleeper does not name the week, however many weeks nflverse has finished"
+      (with-stubs [matchups/current-week (fn [& _] nil)]
         (is (= 1 (quietly #(projections/run {:dir dir}))))))
     (is (empty? (files-under dir)))))
 

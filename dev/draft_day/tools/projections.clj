@@ -8,7 +8,7 @@
   file; when to run it is up to whoever runs it.
 
     lein run -m draft-day.tools.projections [--week N] [--dir data/projections]
-    lein run -m draft-day.tools.projections --report [--dir data/trends] [--gap-hours 36]
+    lein run -m draft-day.tools.projections --report [--dir data/trends] [--gap-hours 72]
 
   The file is `<dir>/<season>/week-NN/<UTC time>.json`, NN being the week the
   line is *for* (the week being played), where `tools.trends` files by weeks
@@ -42,7 +42,7 @@
 
 (def default-dir "data/projections")
 
-(def default-gap-hours 36)
+(def default-gap-hours 72)
 
 (defn parse-args
   "The options `args` give over the defaults. A flag it does not know is ignored,
@@ -57,12 +57,10 @@
 
 (defn target-week
   "The week to file under: `week` if given, else the one Sleeper says is being
-  played, else the one after the weeks nflverse has finished. nil if none is
-  known."
+  played, else nil. It is never derived from the weeks nflverse has finished,
+  which names next week once Thursday's game is in."
   [week]
-  (or week
-      (pipeline/best-effort (matchups/current-week :sleeper {}))
-      (some-> (trending/current-through-week) inc)))
+  (or week (pipeline/best-effort (matchups/current-week :sleeper {}))))
 
 (defn snapshot
   "The document a snapshot file holds."
