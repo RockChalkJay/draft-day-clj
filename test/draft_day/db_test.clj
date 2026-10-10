@@ -25,10 +25,12 @@
 
 (deftest a-position-filter-hides-columns-it-has-no-figure-for
   (let [cols (mapv #(assoc % :visible? true) (db/default-columns db/waiver-column-catalog))
-        on   #(set (map :key (filter :visible? (db/columns-for-position cols db/waiver-columns-by-key %))))]
+        on   #(set (map :key (filter db/shown? (db/columns-for-position cols db/waiver-columns-by-key %))))]
     (is (= cols (db/columns-for-position cols db/waiver-columns-by-key nil)))
     (is (contains? (on "RB") :tgt))
     (is (not (contains? (on "K") :tgt)))
+    (is (every? :visible? (db/columns-for-position cols db/waiver-columns-by-key "K"))
+        "an off-position column keeps the manager's choice")
     (is (not (contains? (on "QB") :rec)))
     (is (contains? (on "QB") :car))
     (is (contains? (on "K") :pts) "a column with no :positions stays")

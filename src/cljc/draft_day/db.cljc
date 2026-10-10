@@ -516,6 +516,12 @@
   [spec pos]
   (or (nil? pos) (nil? (:positions spec)) (contains? (:positions spec) pos)))
 
+(defn usage-position?
+  "Is `pos` one with targets or carries? True for an unknown position, as
+  `applies?` is, so a player with no position keeps his figures."
+  [pos]
+  (applies? {:positions usage-positions} pos))
+
 (defn column-tip
   "The help text for `col` at position `pos`: its `:tooltips` entry for that
   position, else its `:tooltip`."
@@ -524,41 +530,46 @@
 
 (defn columns-for-position
   "The stored `cols` as a board filtered to `pos` shows them: a column that says
-  nothing about that position is hidden and marked `:off-position?`, so the
-  picker can grey it out. The stored layout is untouched, as with
-  `waiver-columns-for`, and `pos` nil (All) changes nothing."
+  nothing about that position is marked `:off-position?`, keeping its stored
+  `:visible?` so the picker can grey it out without unchecking it. Readers of
+  what is drawn use `shown?`. `pos` nil (All) changes nothing."
   [cols by-key pos]
   (if (nil? pos)
     cols
     (mapv (fn [c]
             (if (applies? (by-key (:key c)) pos)
               c
-              (assoc c :visible? false :off-position? true)))
+              (assoc c :off-position? true)))
           cols)))
+
+(defn shown?
+  "Is this column, as `columns-for-position` returned it, drawn?"
+  [c]
+  (and (:visible? c) (not (:off-position? c))))
 
 (def column-catalog
   "Ordered column definitions; :default? seeds initial visibility."
   [{:key :rank     :label "#"      :tooltip "Rank by live Worth"        :default? true}
-   {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert consensus rank":default? true}
+   {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert consensus rank" :default? true}
    {:key :name     :label "Player" :tooltip "Player"                    :default? true}
    {:key :bye      :label "Bye"    :tooltip "Bye week"                  :default? true}
    {:key :position :label "Pos"    :tooltip "Position and rank within it — RB1 is the top RB on the board. Fixed for the whole draft; it does not renumber as players go" :default? true}
-   {:key :worth    :label "Worth"  :tooltip "What he is likely to cost now: Value adjusted for the money left in the room":default? true}
-   {:key :value    :label "Value"  :tooltip "Dollar value of his projected points above a replacement player. Does not change during the draft":default? true}
-   {:key :market   :label "Mkt"    :tooltip "Average of ESPN and FantasyPros auction prices, scaled to your league's budget" :default? true}
+   {:key :worth    :label "Worth"  :tooltip "What he is likely to cost now: Value adjusted for the money left in the room" :default? true}
+   {:key :value    :label "Value"  :tooltip "Dollar value of his projected points above a replacement player. Does not change during the draft" :default? true}
+   {:key :market   :label "Mkt"    :tooltip "Average of the ESPN and FantasyPros auction prices he has, scaled to your league's budget" :default? true}
    {:key :espn-value :label "ESPN" :tooltip "ESPN auction value in dollars, before scaling to your league" :default? true}
    {:key :fp-aav   :label "FP$"    :tooltip "FantasyPros auction value in dollars, before scaling to your league" :default? true}
    {:key :bargain  :label "Barg"   :tooltip "Value minus Worth. Green = priced under his value, a target; red = priced over it, a reach" :default? true}
-   {:key :vorp     :label "VORP"   :tooltip "Projected points above a replacement player at his position":default? true}
+   {:key :vorp     :label "VORP"   :tooltip "Projected points above a replacement player at his position" :default? true}
    {:key :risk     :label "Risk"   :tooltip risk-tip :default? true}
    {:key :inj      :label "Inj"    :tooltip "Current injury status, from Sleeper"     :default? false}
    {:key :edge     :label "Edge"   :tooltip "Worth minus Market price. Green = the model likes him more than the market does" :default? false}
    {:key :adp      :label "ADP"    :tooltip "Average draft position on Sleeper" :default? false}
    {:key :tier     :label "Tier"   :tooltip "Group of players of similar value, split at big gaps. Within the position when filtered to one, across the whole board otherwise" :default? false}
    {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros' expert tier at the same scale as Tier — within the position while filtered, overall otherwise; blank where FantasyPros has no match" :default? false}
-   {:key :proj     :label "Proj"   :tooltip "Projected fantasy points for the season, under your league's scoring":default? false}
-   {:key :ceiling  :label "Ceil"   :tooltip "Optimistic projection: the projection plus a margin that grows with expert disagreement about him":default? false}
-   {:key :floor    :label "Floor"  :tooltip "Pessimistic projection: the projection minus a margin that grows with expert disagreement about him":default? false}
+   {:key :proj     :label "Proj"   :tooltip "Projected fantasy points for the season, under your league's scoring" :default? false}
+   {:key :ceiling  :label "Ceil"   :tooltip "Optimistic projection: the projection plus a margin that grows with expert disagreement about him" :default? false}
+   {:key :floor    :label "Floor"  :tooltip "Pessimistic projection: the projection minus a margin that grows with expert disagreement about him" :default? false}
    ;; Usage. What a player actually did last season, and what ESPN expects this
    ;; one — blank where the source has no row, which for the prior-season three
    ;; is exactly the rookies.

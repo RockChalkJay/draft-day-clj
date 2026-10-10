@@ -141,7 +141,7 @@
   (fn [[cols pos] _] (db/columns-for-position cols db/columns-by-key pos)))
 
 (rf/reg-sub :visible-columns :<- [:position-columns]
-  (fn [cols _] (filterv :visible? cols)))
+  (fn [cols _] (filterv db/shown? cols)))
 
 ;; ---- board: filter to undrafted, apply pos/search, rank by worth, sort ----
 
@@ -499,7 +499,7 @@
     (db/columns-for-position (db/waiver-columns-for cols ls) db/waiver-columns-by-key pos)))
 
 (rf/reg-sub :visible-waiver-columns :<- [:league-waiver-columns]
-  (fn [cols _] (filterv :visible? cols)))
+  (fn [cols _] (filterv db/shown? cols)))
 
 (rf/reg-sub :waiver-meta :<- [:waivers]
   (fn [w _] (select-keys w [:through-week :season-games :week :week-fetched-at])))

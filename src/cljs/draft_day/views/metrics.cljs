@@ -34,7 +34,7 @@
   player with no role rather than a position without the measure."
   [{:nflverse/keys [season-to-date] :keys [position]}]
   (let [{:keys [games usage]} season-to-date]
-    (when (and games (pos? games) (db/applies? {:positions db/usage-positions} position))
+    (when (and games (pos? games) (db/usage-position? position))
       (/ (+ (or (:targets usage) 0) (or (:carries usage) 0)) games))))
 
 (defn week-rank-label

@@ -54,7 +54,7 @@
          (grouped cols labels groups))]
    [:div.col-menu-foot
     [:button.link-btn {:on-click #(rf/dispatch [reset-event])} "Reset to defaults"]
-    [:span.muted (str (count (filter :visible? cols)) " shown")]]])
+    [:span.muted (str (count (filter db/shown? cols)) " shown")]]])
 
 (defn picker
   "A \"Columns\" button opening `checklist`. Order is changed by dragging the

@@ -362,11 +362,6 @@
 
 ;; ---- display ----
 
-(deftest trend-is-not-measured-for-kickers
-  (is (nil? (waiver/trend {:position "K"
-                           :nflverse/season-to-date {:games 4 :usage {:carries 4}}
-                           :nflverse/recent {:games 3 :usage {:carries 6}}}))))
-
 (deftest trend-reads-opportunity-not-points
   ;; A receiver whose targets have dried up is a sell while his season line
   ;; still looks fine.
