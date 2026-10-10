@@ -344,7 +344,7 @@
   "Recent opportunity per game over the season's, or nil; above 1.0 means the
   role is growing. Volume, not points — a back who has taken over the carries is
   a buy before the touchdowns arrive. DISPLAY ONLY, see the ns docstring."
-  [{:nflverse/keys [season-to-date recent]}]
+  [{:nflverse/keys [season-to-date recent] :keys [position]}]
   (let [per-game (fn [{:keys [games usage]}]
                    (when (and games (pos? games))
                      (/ (+ (double (get usage :targets 0.0))
@@ -352,7 +352,8 @@
                         games)))
         season   (per-game season-to-date)
         window   (per-game recent)]
-    (when (and season window (pos? season))
+    (when (and season window (pos? season)
+               (db/applies? {:positions db/usage-positions} position))
       (/ window season))))
 
 (defn with-trend [fas]

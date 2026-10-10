@@ -146,7 +146,7 @@ The Matchup view (`views/matchup.cljs`) is the third board and the one that is *
 
 **`rf/reg-sub` takes no docstring.** A string in that position is read as an input spec and registers a handler that cannot be derefed, with no compile error — so every sub in `subs.cljs` documents itself in a `;;` comment above the form.
 
-The board is data-driven: `:columns` is an ordered vector of `{:key :visible?}` against `db/column-catalog`, so columns can be toggled/reordered without touching render code. A catalog change needs no storage bump — see above.
+The board is data-driven: `:columns` is an ordered vector of `{:key :visible?}` against `db/column-catalog`, so columns can be toggled/reordered without touching render code. A catalog entry may name the `:positions` it is about and a `:tooltips` map of per-position help text (`db/column-tip`); with a position filter set, `db/columns-for-position` hides what does not apply and the picker greys it out, with the stored layout untouched. The compare tile and player card apply the same `:positions` to `views/metrics` rows, so a kicker never shows an Opportunity of 0.0. A catalog change needs no storage bump — see above.
 
 Which tier scale the board shows is not a setting: `:board-players` resolves `:tier` from `[:tiers (db/tier-scale pos-filter)]`, shadowing the flat alias the server ships, so a position filter switches scale with no refetch and everything downstream (row striping, the legend, the Tier column, sorting) keeps reading one key. Rows are tier-striped in every view for the same reason — before the overall scale existed, striping was switched off unless filtered, because a tier 2 RB beside a tier 2 WR meant nothing.
 

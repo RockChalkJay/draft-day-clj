@@ -147,7 +147,7 @@
                                    (rf/dispatch [:watch-toggle (:player-id p)]))}
      (if on? "⭐" "☆")]))
 
-(defn- cell [k p]
+(defn- cell* [k p]
   (case k
     :rank     [:td.num.muted (:rank p)]
     :name     [:td.name [star-toggle p] (util/team-logo (:team p)) (:player-name p) (cliff-marker p) (sleeper-badge p)]
@@ -199,6 +199,14 @@
                  (or (:bye p) "–")])
     [:td "–"]))
 
+(defn- cell
+  "One cell. A column that says nothing about the player's position (targets on
+  a kicker) is a dash rather than a zero."
+  [k p]
+  (if (db/applies? (db/columns-by-key k) (:position p))
+    (cell* k p)
+    [:td.num.muted "–"]))
+
 ;; ---- header + rows ----
 
 ;; A header is both a sort button and a drag handle. That is not a conflict:
@@ -230,7 +238,7 @@
         active? (= (:key sort) k)
         {:keys [dragging over]} @drag]
     [:th {:on-click #(rf/dispatch [sort-event k])
-          :title (:tooltip d)
+          :title (db/column-tip d @(rf/subscribe [:pos-filter]))
           :draggable true
           :on-drag-start (fn [e]
                            (util/column-drag-start! e k)

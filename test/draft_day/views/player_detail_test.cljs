@@ -145,7 +145,8 @@
   (is (= [{:label "Wk 5" :value "14.20" :sub "WR8"}
           {:label "Avg pts" :value "17.7" :sub "WR6 · 5 GP"}
           {:label "Adds" :value "12.4k" :sub "48 hrs"}]
-         (pd/tiles nacua 5))))
+         (map #(dissoc % :tip) (pd/tiles nacua 5))))
+  (is (every? (comp seq :tip) (pd/tiles nacua 5)) "every tile says what it is"))
 
 (deftest a-tile-without-a-number-is-dropped-not-dashed
   (is (= ["Wk 5" "Avg pts"] (mapv :label (pd/tiles (dissoc nacua :trending/adds) 5))))

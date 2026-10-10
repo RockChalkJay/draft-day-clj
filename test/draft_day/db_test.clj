@@ -8,6 +8,33 @@
 
 ;; ---- roster / teams ----
 
+(deftest applies-says-whether-a-spec-covers-a-position
+  (is (db/applies? {:positions db/receiving-positions} "WR"))
+  (is (not (db/applies? {:positions db/receiving-positions} "QB")))
+  (is (db/applies? {} "K") "no :positions means every position")
+  (is (db/applies? {:positions db/usage-positions} nil) "no position filter hides nothing"))
+
+(deftest column-tip-prefers-the-position-text
+  (let [col {:tooltip "general" :tooltips {"QB" "quarterback"}}]
+    (is (= "quarterback" (db/column-tip col "QB")))
+    (is (= "general" (db/column-tip col "RB")))
+    (is (= "general" (db/column-tip col nil)))))
+
+(deftest every-column-has-help-text
+  (is (every? (comp seq :tooltip) (concat db/column-catalog db/waiver-column-catalog))))
+
+(deftest a-position-filter-hides-columns-it-has-no-figure-for
+  (let [cols (mapv #(assoc % :visible? true) (db/default-columns db/waiver-column-catalog))
+        on   #(set (map :key (filter :visible? (db/columns-for-position cols db/waiver-columns-by-key %))))]
+    (is (= cols (db/columns-for-position cols db/waiver-columns-by-key nil)))
+    (is (contains? (on "RB") :tgt))
+    (is (not (contains? (on "K") :tgt)))
+    (is (not (contains? (on "QB") :rec)))
+    (is (contains? (on "QB") :car))
+    (is (contains? (on "K") :pts) "a column with no :positions stays")
+    (is (:off-position? (first (filter #(= :tgt (:key %)) (db/columns-for-position cols db/waiver-columns-by-key "K"))))
+        "so the picker can grey it out")))
+
 (deftest roster-template-expands-in-catalog-order
   (testing "each slot label repeats by its config count, in roster-order"
     (is (= ["QB" "RB" "RB" "WR" "WR" "TE" "FLEX" "K" "DST"
