@@ -1,7 +1,7 @@
 # Scoring coverage
 
 Where a league's real rules and what Draft Day can score come apart, and what
-is left of the gap. Linked from the [README](../README.md#the-math).
+is left of the gap. Linked from the [math](math.md) and the [README](../README.md).
 
 ## The gap was vocabulary, not shape
 
