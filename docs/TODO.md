@@ -116,12 +116,11 @@ for the known gaps between a league's real rules and what the board can score.
   `test/draft_day/integration/espn_league_test.clj` checks all three against a
   live league and skips out loud without `DRAFTDAY_ESPN_SWID`/`_S2`/`_LEAGUE`
   in the environment. Run it once against a real league and the guesses stop
-  being guesses. Run against a real league it turns up one gap that is not a
-  guess: `unsupported-scoring` reports two dozen of that league's rules as bare
-  `ESPN stat 123`, so a manager comparing the import against his settings page
-  is handed numbers rather than names. `stat-labels` is what needs the entries —
-  the ids cluster in the kicking and defensive-points bands (63, 77, 85,
-  123-136, 198, 201, 206, 209).
+  being guesses. A real league has now been read: 89-92 and 123-125 are the
+  points-allowed bands, 128-136 the yards-allowed bands, and 101-104 the return
+  touchdowns. Still unnamed: 63, 93, 206 and 209, which report as bare ids until
+  a settings page says what they are. The 93 and 94 labels that sat in
+  `stat-labels` were wrong and are gone.
 
 - **ESPN's `:playoff-week-start` is deliberately unread.** `nil` is already the
   legal answer for a host that says nothing, and `waiver/claims-left` degrades

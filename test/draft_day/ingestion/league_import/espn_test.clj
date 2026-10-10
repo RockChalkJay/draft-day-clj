@@ -124,6 +124,47 @@
 (deftest an-unnamed-rule-still-says-which-one-it-was
   (is (= ["ESPN stat 991"] (espn/unsupported-scoring [{:statId 991 :points 3.0}]))))
 
+;; Trimmed from a live 12-team league's scoringItems: [statId base D/ST-override].
+(def ^:private live-items
+  (map (fn [[id points dst]]
+         (cond-> {:statId id :points points :pointsOverrides {}}
+           dst (assoc-in [:pointsOverrides :16] dst)))
+       [[20 -2 nil] [72 -2 nil] [85 -1 nil]
+        [89 0 5] [90 0 4] [91 0 3] [92 0 1]
+        [95 0 2] [96 0 2] [97 0 2] [98 0 2] [99 0 1]
+        [123 0 -1] [124 0 -3] [125 0 -5]
+        [128 0 5] [129 0 3] [130 0 2]
+        [132 0 -1] [133 0 -3] [134 0 -5] [135 0 -6] [136 0 -7]
+        [3 0.04 nil] [24 0.1 nil] [42 0.1 nil] [53 1 nil] [86 1 nil]
+        [209 1 1] [19 2 nil] [26 2 nil] [44 2 nil] [206 2 2]
+        [80 3 nil] [4 4 nil] [77 4 nil] [198 5 nil] [25 6 nil] [43 6 nil]
+        [63 6 nil] [93 6 6] [101 6 6] [102 6 6] [103 6 6] [104 6 6]
+        [201 6 nil]]))
+
+(deftest an-override-equal-to-the-base-is-no-premium
+  (is (empty? (espn/dropped-overrides
+               {:statId 101 :points 6 :pointsOverrides {:16 6.0}}))
+      "6 for everyone and 6 for the D/ST is one rule, whatever its spelling")
+  (is (= {:6 1.5} (espn/dropped-overrides
+                   {:statId 53 :points 1.0 :pointsOverrides {:6 1.5}}))
+      "a tight end's half point is a premium and still reports"))
+
+(deftest yards-allowed-bands-score-from-the-defenses-override
+  (let [s (espn/scoring-config live-items)]
+    (is (= 5.0 (:yds_allow_0_100 s)))
+    (is (= 2.0 (:yds_allow_200_299 s)))
+    (is (not (contains? s :yds_allow_300_349)) "ESPN states no 300-349 rule here")
+    (is (= -1.0 (:yds_allow_350_399 s)))
+    (is (= -7.0 (:yds_allow_550p s)))))
+
+(deftest a-live-league-reports-only-the-rules-it-cannot-price
+  (is (= ["ESPN stat 206" "ESPN stat 209" "ESPN stat 63" "ESPN stat 93"
+          "field goals 60+" "fumble return TD" "interception return TD"
+          "kickoff return TD" "points allowed 0" "points allowed 1-6"
+          "points allowed 14-17" "points allowed 28-34" "points allowed 35-45"
+          "points allowed 46+" "points allowed 7-13" "punt return TD"]
+         (espn/unsupported-scoring live-items))))
+
 (deftest the-roster-config-pools-every-flex-and-benches-what-it-cannot-express
   (is (= {:qb 1 :rb 2 :wr 2 :te 1 :flex 1 :k 1 :dst 1 :bench 6}
          (:roster (imported))))
