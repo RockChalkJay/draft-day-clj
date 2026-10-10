@@ -156,7 +156,7 @@
    ;; only one of them makes a request first.
    [face universe]
    [:div.pd-who
-    [:h2#pd-title.pd-name (util/player-ident p week {:extra [(compare/status-chip p)]})]
+    [:h2#pd-title.pd-name (util/player-ident p week {:logo? false :extra [(compare/status-chip p)]})]
     [:p.pd-meta (str/join " · " (meta-segments p week))]
     ;; From the universe, like the face: `:bio` is a static fact and this is the
     ;; document that carries them. nil for a player nobody knows anything about.

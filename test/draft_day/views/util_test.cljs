@@ -167,5 +167,7 @@
     (is (re-find #"Bye" (pr-str (util/player-ident {:player-name "A" :team "LAR" :bye 3} 3 nil))))
     (let [s (pr-str (util/player-ident {:player-name "A" :team "LAR"} 3 {:mirror? true}))]
       (is (< (.indexOf s "\"A\"") (.indexOf s "team-logo")))))
+  (testing "the logo can be left off"
+    (is (not (re-find #"team-logo" (pr-str (util/player-ident {:player-name "A" :team "LAR"} 3 {:logo? false}))))))
   (testing "an unvalued player shows his id"
     (is (re-find #"No player for id" (pr-str (util/player-ident {:player-id "x" :unvalued? true} 3 nil))))))

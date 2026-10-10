@@ -288,9 +288,11 @@
   there is no game to state.
 
   `:on-click` makes the name a button; `:mirror?` puts the logo at the outer
-  edge for a right-hand column; `:extra` follows the opponent."
-  [p week {:keys [on-click mirror? extra]}]
-  (let [logo (team-logo (:team p))
+  edge for a right-hand column; `:logo? false` leaves it off, as the player card
+  does since its head is already in the team's colours; `:extra` follows the
+  opponent."
+  [p week {:keys [on-click mirror? extra logo?] :or {logo? true}}]
+  (let [logo (when logo? (team-logo (:team p)))
         nm   (cond
                (:unvalued? p) [:span.muted {:title (str "No player for id " (:player-id p))}
                                (:player-id p)]
