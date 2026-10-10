@@ -135,8 +135,13 @@
 (rf/reg-sub :market :<- [:ranked]
   (fn [r _] (select-keys r [:inflation :inflation-index :market-heat :market-multiplier])))
 
-(rf/reg-sub :visible-columns :<- [:columns]
-  (fn [cols _] (filterv :visible? cols)))
+;; The stored columns under the position filter (`db/columns-for-position`); the
+;; picker reads it too, to grey out what that position has no figure for.
+(rf/reg-sub :position-columns :<- [:columns] :<- [:pos-filter]
+  (fn [[cols pos] _] (db/columns-for-position cols db/columns-by-key pos)))
+
+(rf/reg-sub :visible-columns :<- [:position-columns]
+  (fn [cols _] (filterv db/shown? cols)))
 
 ;; ---- board: filter to undrafted, apply pos/search, rank by worth, sort ----
 
@@ -489,11 +494,12 @@
 (rf/reg-sub :draft-has-picks? (fn [db _] (db/drafted-anything? db)))
 
 ;; The stored columns as the active league shows them — see `db/waiver-columns-for`.
-(rf/reg-sub :league-waiver-columns :<- [:waiver-columns] :<- [:league-sync]
-  (fn [[cols ls] _] (db/waiver-columns-for cols ls)))
+(rf/reg-sub :league-waiver-columns :<- [:waiver-columns] :<- [:league-sync] :<- [:pos-filter]
+  (fn [[cols ls pos] _]
+    (db/columns-for-position (db/waiver-columns-for cols ls) db/waiver-columns-by-key pos)))
 
 (rf/reg-sub :visible-waiver-columns :<- [:league-waiver-columns]
-  (fn [cols _] (filterv :visible? cols)))
+  (fn [cols _] (filterv db/shown? cols)))
 
 (rf/reg-sub :waiver-meta :<- [:waivers]
   (fn [w _] (select-keys w [:through-week :season-games :week :week-fetched-at])))

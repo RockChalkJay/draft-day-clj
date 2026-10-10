@@ -65,8 +65,9 @@
   `:bar?`, `:better` and `:calibrated?` are ignored here: all three are
   statements about a comparison, and there is no second player to lean toward.
   Ignoring them is why `metrics/rows` can be one list — see its ns docstring."
-  [{:keys [label f fmt sub tip]} p]
-  (let [v (f p)]
+  [{:keys [label fmt sub] :as row} p]
+  (let [v   (metrics/row-value row p)
+        tip (metrics/row-tip row [(:position p)])]
     [:div.pd-row
      ;; `title` rather than a second line of type, as the tile does — a
      ;; definition under every label would put more words on screen than numbers.
@@ -100,7 +101,7 @@
   and in preseason most of the evidence band is genuinely absent."
   ([k p] (band k p #{}))
   ([k p skip]
-   (when-let [rs (seq (filter #(and (some? ((:f %) p)) (not (skip (:label %))))
+   (when-let [rs (seq (filter #(and (some? (metrics/row-value % p)) (not (skip (:label %))))
                               (metrics/rows-by-band k)))]
      ;; No `:key`: `into [:<>]` makes these positional children, not a seq. The
      ;; rows inside are a seq and carry their own.
@@ -201,15 +202,18 @@
       (number? (:week-points p))
       (conj {:label (if week (str "Wk " week) "Week")
              :value (util/week-points (:week-points p))
-             :sub   (metrics/week-rank-label p)})
+             :sub   (metrics/week-rank-label p)
+             :tip   "Projected points for this week's game"})
       (number? (:season-ppg p))
       (conj {:label "Avg pts"
+             :tip   "Fantasy points per game this season, under your league's scoring"
              :value (board/format-one-decimal (:season-ppg p))
              :sub   (str/join " · " (keep identity
                                           [(when-let [r (:season-pos-rank p)] (str (:position p) r))
                                            (when (number? gp) (str gp " GP"))]))})
       (number? (:trending/adds p))
-      (conj {:label "Adds" :value (waivers/format-adds (:trending/adds p)) :sub "48 hrs"}))))
+      (conj {:label "Adds" :value (waivers/format-adds (:trending/adds p)) :sub "48 hrs"
+             :tip "Times he was added in the last 48 hours across Sleeper leagues"}))))
 
 (defn latest-line
   "What the strip under the tiles says, or nil for nothing worth a line.
@@ -358,9 +362,9 @@
           [head p universe week season]
           (when (seq strip)
             [:div.pd-tiles {:style {:grid-template-columns (str "repeat(" (count strip) ", 1fr)")}}
-             (map (fn [{:keys [label value sub]}]
+             (map (fn [{:keys [label value sub tip]}]
                     ^{:key label}
-                    [:div.pd-tile
+                    [:div.pd-tile {:title tip}
                      [:div.pd-tile-cap label]
                      [:div.pd-tile-val value]
                      (when (seq sub) [:div.pd-tile-sub sub])])

@@ -10,7 +10,7 @@
             [draft-day.db :as db]))
 
 (def board-picker
-  {:sub :columns :labels db/columns-by-key
+  {:sub :position-columns :labels db/columns-by-key
    :toggle :toggle-column :reset :reset-columns})
 
 (def waiver-picker
@@ -42,17 +42,19 @@
             (map (fn [c]
                    (let [k (:key c)]
                      ^{:key k}
-                     [:label.col-check {:class (when (:faab-only? c) "off")
-                                        :title (when (:faab-only? c) "This league doesn't run FAAB")}
+                     [:label.col-check {:class (when (or (:faab-only? c) (:off-position? c)) "off")
+                                        :title (cond
+                                                 (:faab-only? c) "This league doesn't run FAAB"
+                                                 (:off-position? c) "Not tracked for the position selected")}
                       [:input {:type "checkbox" :checked (boolean (:visible? c))
-                               :disabled (:faab-only? c)
+                               :disabled (or (:faab-only? c) (:off-position? c))
                                :on-change #(rf/dispatch [toggle k])}]
                       " " (:label (labels k))]))
                  cs)])
          (grouped cols labels groups))]
    [:div.col-menu-foot
     [:button.link-btn {:on-click #(rf/dispatch [reset-event])} "Reset to defaults"]
-    [:span.muted (str (count (filter :visible? cols)) " shown")]]])
+    [:span.muted (str (count (filter db/shown? cols)) " shown")]]])
 
 (defn picker
   "A \"Columns\" button opening `checklist`. Order is changed by dragging the

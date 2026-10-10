@@ -25,6 +25,22 @@
   (is (nil? (metrics/opportunity-per-game {:nflverse/season-to-date {:games 0}})))
   (is (nil? (metrics/opportunity-per-game {}))))
 
+(deftest opportunity-is-not-measured-for-quarterbacks-kickers-and-defenses
+  (let [line {:nflverse/season-to-date {:games 10 :usage {}}}]
+    (is (nil? (metrics/opportunity-per-game (assoc line :position "QB"))))
+    (is (nil? (metrics/opportunity-per-game (assoc line :position "K"))))
+    (is (nil? (metrics/opportunity-per-game (assoc line :position "DST"))))
+    (is (= 0.0 (metrics/opportunity-per-game (assoc line :position "WR"))))))
+
+(deftest a-row-helps-with-the-position-it-is-drawn-for
+  (let [row (first (filter #(= "Opportunity / game" (:label %)) metrics/rows))]
+    (is (= "Targets per game this season" (metrics/row-tip row ["WR"])))
+    (is (= "Carries plus targets per game this season" (metrics/row-tip row ["RB" "RB"])))
+    (is (= "Targets plus carries per game this season" (metrics/row-tip row ["WR" "RB"]))
+        "a mixed pair gets the general text")
+    (is (nil? (metrics/row-value row {:position "K"
+                                      :nflverse/season-to-date {:games 3 :usage {:carries 9}}})))))
+
 ;; ---- the comparison semantics carried on a shared row ----
 ;; `:bar?`, `:better` and `:big?` are read only by the tile; the detail modal
 ;; ignores them. They are pinned here anyway, because they live on this list and

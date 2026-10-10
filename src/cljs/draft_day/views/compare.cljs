@@ -178,9 +178,10 @@
 (defn metric-row
   "One row. `sep` is `confidence/separation` for the pair, and only a row marked
   `:calibrated?` consults it — the rest have no measurement behind them."
-  [{:keys [label f fmt better bar? big? sub tip calibrated?] :or {bar? true}} a b sep]
-  (let [va     (f a)
-        vb     (f b)
+  [{:keys [label fmt better bar? big? sub calibrated?] :or {bar? true} :as row} a b sep]
+  (let [va     (metrics/row-value row a)
+        vb     (metrics/row-value row b)
+        tip    (metrics/row-tip row [(:position a) (:position b)])
         track? (drawable? bar? va vb)
         even?  (measured-tie? calibrated? sep)
         lean   (when (and track? (not even?)) (lean va vb better))]
@@ -200,8 +201,8 @@
 
 (defn row-has-value?
   "Does either side carry this row's metric?"
-  [{:keys [f]} a b]
-  (or (some? (f a)) (some? (f b))))
+  [row a b]
+  (or (some? (metrics/row-value row a)) (some? (metrics/row-value row b))))
 
 (defn band
   "One band's rows with the empty ones dropped, or nil when none survive.

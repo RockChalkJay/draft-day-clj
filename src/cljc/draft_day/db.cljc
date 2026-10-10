@@ -495,37 +495,90 @@
 ;; so a column can be hidden/shown and drag-reordered. Rendering + sort accessors
 ;; live in views.board keyed by :key.
 
+(def receiving-positions
+  "Positions that catch passes, so the only ones with targets or receptions."
+  #{"RB" "WR" "TE"})
+
+(def usage-positions
+  "Positions with a usage line at all: targets or carries. Kickers and defenses
+  have neither, and nflverse publishes no row for them."
+  #{"QB" "RB" "WR" "TE"})
+
+(def risk-tip
+  "One definition for every Risk column and tile, so they cannot drift apart."
+  (str "Games missed per season over up to his last 3 seasons, for any reason"
+       " (injury, benching, suspension). 1 = rarely misses, 5 = often. Blank for"
+       " rookies. A serious injury status forces 5"))
+
+(defn applies?
+  "Does a catalog entry or metric row (`spec`) say anything about `pos`? A spec
+  with no `:positions` applies to all, and so does an unknown position."
+  [spec pos]
+  (or (nil? pos) (nil? (:positions spec)) (contains? (:positions spec) pos)))
+
+(defn receiving-position?
+  "Is `pos` one whose role is measured in targets and carries? Not a
+  quarterback, whose role is his dropbacks, which neither counts. True for an
+  unknown position, as `applies?` is."
+  [pos]
+  (applies? {:positions receiving-positions} pos))
+
+(defn column-tip
+  "The help text for `col` at position `pos`: its `:tooltips` entry for that
+  position, else its `:tooltip`."
+  [col pos]
+  (or (get-in col [:tooltips pos]) (:tooltip col)))
+
+(defn columns-for-position
+  "The stored `cols` as a board filtered to `pos` shows them: a column that says
+  nothing about that position is marked `:off-position?`, keeping its stored
+  `:visible?` so the picker can grey it out without unchecking it. Readers of
+  what is drawn use `shown?`. `pos` nil (All) changes nothing."
+  [cols by-key pos]
+  (if (nil? pos)
+    cols
+    (mapv (fn [c]
+            (if (applies? (by-key (:key c)) pos)
+              c
+              (assoc c :off-position? true)))
+          cols)))
+
+(defn shown?
+  "Is this column, as `columns-for-position` returned it, drawn?"
+  [c]
+  (and (:visible? c) (not (:off-position? c))))
+
 (def column-catalog
   "Ordered column definitions; :default? seeds initial visibility."
   [{:key :rank     :label "#"      :tooltip "Rank by live Worth"        :default? true}
-   {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert rank"   :default? true}
+   {:key :ecr      :label "ECR"    :tooltip "FantasyPros expert consensus rank" :default? true}
    {:key :name     :label "Player" :tooltip "Player"                    :default? true}
    {:key :bye      :label "Bye"    :tooltip "Bye week"                  :default? true}
    {:key :position :label "Pos"    :tooltip "Position and rank within it — RB1 is the top RB on the board. Fixed for the whole draft; it does not renumber as players go" :default? true}
-   {:key :worth    :label "Worth"  :tooltip "Live auction price"        :default? true}
-   {:key :value    :label "Value"  :tooltip "Stable VBD dollars"        :default? true}
-   {:key :market   :label "Mkt"    :tooltip "Market price — ESPN + FantasyPros consensus, scaled to your league" :default? true}
-   {:key :espn-value :label "ESPN" :tooltip "ESPN live auction value ($, raw)" :default? true}
-   {:key :fp-aav   :label "FP$"    :tooltip "FantasyPros auction value ($, raw)" :default? true}
-   {:key :bargain  :label "Barg"   :tooltip "Value − Worth (green target / red reach)" :default? true}
-   {:key :vorp     :label "VORP"   :tooltip "Value over replacement"    :default? true}
-   {:key :risk     :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile); a serious designation forces 5. Blank where there is no history to judge" :default? true}
-   {:key :inj      :label "Inj"    :tooltip "Current injury status"     :default? false}
-   {:key :edge     :label "Edge"   :tooltip "Worth − Market (green: model likes more than the market)" :default? false}
-   {:key :adp      :label "ADP"    :tooltip "Sleeper average draft position" :default? false}
-   {:key :tier     :label "Tier"   :tooltip "Tier — within the position while filtered to one, across the whole board otherwise" :default? false}
+   {:key :worth    :label "Worth"  :tooltip "What he is likely to cost now: Value adjusted for the money left in the room" :default? true}
+   {:key :value    :label "Value"  :tooltip "Dollar value of his projected points above a replacement player. Does not change during the draft" :default? true}
+   {:key :market   :label "Mkt"    :tooltip "Average of the ESPN and FantasyPros auction prices he has, scaled to your league's budget" :default? true}
+   {:key :espn-value :label "ESPN" :tooltip "ESPN auction value in dollars, before scaling to your league" :default? true}
+   {:key :fp-aav   :label "FP$"    :tooltip "FantasyPros auction value in dollars, before scaling to your league" :default? true}
+   {:key :bargain  :label "Barg"   :tooltip "Value minus Worth. Green = priced under his value, a target; red = priced over it, a reach" :default? true}
+   {:key :vorp     :label "VORP"   :tooltip "Projected points above a replacement player at his position" :default? true}
+   {:key :risk     :label "Risk"   :tooltip risk-tip :default? true}
+   {:key :inj      :label "Inj"    :tooltip "Current injury status, from Sleeper"     :default? false}
+   {:key :edge     :label "Edge"   :tooltip "Worth minus Market price. Green = the model likes him more than the market does" :default? false}
+   {:key :adp      :label "ADP"    :tooltip "Average draft position on Sleeper" :default? false}
+   {:key :tier     :label "Tier"   :tooltip "Group of players of similar value, split at big gaps. Within the position when filtered to one, across the whole board otherwise" :default? false}
    {:key :fp-tier  :label "FP T"   :tooltip "FantasyPros' expert tier at the same scale as Tier — within the position while filtered, overall otherwise; blank where FantasyPros has no match" :default? false}
-   {:key :proj     :label "Proj"   :tooltip "Projected fantasy points"  :default? false}
-   {:key :ceiling  :label "Ceil"   :tooltip "Ceiling projection (p90)"  :default? false}
-   {:key :floor    :label "Floor"  :tooltip "Floor projection (p10)"    :default? false}
+   {:key :proj     :label "Proj"   :tooltip "Projected fantasy points for the season, under your league's scoring" :default? false}
+   {:key :ceiling  :label "Ceil"   :tooltip "Optimistic projection: the projection plus a margin that grows with expert disagreement about him" :default? false}
+   {:key :floor    :label "Floor"  :tooltip "Pessimistic projection: the projection minus a margin that grows with expert disagreement about him" :default? false}
    ;; Usage. What a player actually did last season, and what ESPN expects this
    ;; one — blank where the source has no row, which for the prior-season three
    ;; is exactly the rookies.
-   {:key :prior-tgt     :label "Tgt"  :tooltip "Targets last season — blank for rookies" :default? false}
-   {:key :prior-rec     :label "Rec"  :tooltip "Receptions last season — blank for rookies" :default? false}
-   {:key :prior-tgt-pct :label "Tgt%" :tooltip "Share of his team's targets last season — blank for rookies" :default? false}
-   {:key :proj-tgt      :label "pTgt" :tooltip "Projected targets this season (ESPN)" :default? false}
-   {:key :proj-rec      :label "pRec" :tooltip "Projected receptions this season (ESPN)" :default? false}])
+   {:key :prior-tgt     :label "Tgt"  :tooltip "Targets last season. Blank for rookies" :positions receiving-positions :default? false}
+   {:key :prior-rec     :label "Rec"  :tooltip "Receptions last season. Blank for rookies" :positions receiving-positions :default? false}
+   {:key :prior-tgt-pct :label "Tgt%" :tooltip "Share of his team's targets last season. Blank for rookies" :positions receiving-positions :default? false}
+   {:key :proj-tgt      :label "pTgt" :tooltip "Projected targets this season, from ESPN" :positions receiving-positions :default? false}
+   {:key :proj-rec      :label "pRec" :tooltip "Projected receptions this season, from ESPN" :positions receiving-positions :default? false}])
 
 (def columns-by-key (into {} (map (juxt :key identity)) column-catalog))
 
@@ -1025,32 +1078,42 @@
 (def waiver-column-catalog
   "Ordered column definitions for the waiver board. `:group` is the heading the
   column picker files it under (`waiver-column-groups`)."
-  [{:key :rank      :label "#"      :tooltip "Rank by what the claim adds to your starting lineup, then over the player you would drop" :default? true :group :essentials}
+  [{:key :rank      :label "#"      :tooltip "Ranked by the points he would add to your starting lineup for the rest of the season, then by the gain over the player you would drop" :default? true :group :essentials}
    {:key :name      :label "Player" :tooltip "Player"                     :default? true :group :essentials}
-   {:key :position  :label "Pos"    :tooltip "Position, and his rank at it on fantasy points so far this season — his preseason rank before week 1" :default? true :group :essentials}
+   {:key :position  :label "Pos"    :tooltip "Position, and his rank at it on fantasy points so far this season (preseason rank before week 1)" :default? true :group :essentials}
    {:key :bye       :label "Bye"    :tooltip "Bye week"                   :default? true :group :essentials}
-   {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank when he is not projected — a bye, or nobody's starter" :default? true :group :week}
+   {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank on a bye or when he is not projected" :default? true :group :week}
    {:key :pts       :label "Pts"    :tooltip "Fantasy points so far this season, under your league's scoring" :default? true :group :stats}
    {:key :avg       :label "Avg"    :tooltip "Fantasy points per game played this season" :default? true :group :stats}
    {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true :group :stats}
    {:key :typical   :label "Bid"    :tooltip "What it usually takes to win him, and your chance of winning with that bid. Hover for the suggested bid and the rivals behind it. An estimate. Blank when the league does not run FAAB or your budget is spent" :default? true :group :bidding}
    {:key :rivals    :label "Rivals" :tooltip "How many other teams are expected to bid on him" :default? true :group :bidding}
-   {:key :adds      :label "Adds"   :tooltip "Sleeper trending adds over the last 48 hours, across every Sleeper league. Blank when he is not among the hundred most added" :default? true :group :bidding}
-   {:key :risk      :label "Risk"   :tooltip "Injury risk — games missed per season over the last three, 1 (durable) to 5 (fragile)" :default? true :group :essentials}
-   {:key :inj       :label "Inj"    :tooltip "Current injury status"      :default? true :group :essentials}
-   {:key :week-rank :label "Wk#"    :tooltip "Rank within his position on this week's projection — WR19 rather than 4.2. Blank when he is not projected this week" :default? false :group :week}
+   {:key :adds      :label "Adds"   :tooltip "Times he was added in the last 48 hours across Sleeper leagues. Blank unless he is among the 100 most added" :default? true :group :bidding}
+   {:key :risk      :label "Risk"   :tooltip risk-tip :default? true :group :essentials}
+   {:key :inj       :label "Inj"    :tooltip "Current injury status, from Sleeper"      :default? true :group :essentials}
+   {:key :week-rank :label "Wk#"    :tooltip "Rank at his position on this week's projection, e.g. WR19. Blank when he is not projected" :default? false :group :week}
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false :group :week}
-   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points this claim adds to your STARTING lineup, after the drop. 0 means he would never start" :default? false :group :projections}
-   {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points this claim gains you, over the player you would drop" :default? false :group :projections}
-   {:key :bid       :label "Sugg."  :tooltip "Suggested bid and its chance to win: about a dollar over the top rival bid he is likely to draw, never more than he is worth to you" :default? false :group :bidding}
-   {:key :trend     :label "Trend"  :tooltip "Recent opportunity per game against his season rate — above 1.0 means the role is growing" :default? false :group :projections}
-   {:key :form      :label "Form"   :tooltip "Points per game over the last three weeks under your league's rules" :default? false :group :projections}
-   {:key :tgt       :label "Tgt"    :tooltip "Targets this season"        :default? false :group :stats}
-   {:key :car       :label "Car"    :tooltip "Carries this season"        :default? false :group :stats}
-   {:key :rec       :label "Rec"    :tooltip "Receptions this season"     :default? false :group :stats}
-   {:key :yds       :label "Yds"    :tooltip "Passing, rushing and receiving yards this season" :default? false :group :stats}
-   {:key :td        :label "TD"     :tooltip "Passing, rushing and receiving touchdowns this season" :default? false :group :stats}
-   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season value over replacement" :default? false :group :projections}])
+   {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points he adds to your starting lineup, after the drop. 0 = he would not start" :default? false :group :projections}
+   {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points he gains you over the player you would drop, whether or not he would start" :default? false :group :projections}
+   {:key :bid       :label "Sugg."  :tooltip "Suggested bid and its chance to win: about $1 over the top rival bid he is likely to draw, never more than he is worth to you" :default? false :group :bidding}
+   {:key :trend     :label "Trend"  :tooltip "Targets plus carries per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"
+    :tooltips {"RB" "Carries plus targets per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"
+               "WR" "Targets per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"
+               "TE" "Targets per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"}
+    :positions receiving-positions :default? false :group :projections}
+   {:key :form      :label "Form"   :tooltip "Fantasy points per game over the last 3 weeks, under your league's scoring" :default? false :group :projections}
+   {:key :tgt       :label "Tgt"    :tooltip "Targets this season" :positions receiving-positions :default? false :group :stats}
+   {:key :car       :label "Car"    :tooltip "Carries this season" :positions usage-positions :default? false :group :stats}
+   {:key :rec       :label "Rec"    :tooltip "Receptions this season" :positions receiving-positions :default? false :group :stats}
+   {:key :yds       :label "Yds"    :tooltip "Passing, rushing and receiving yards this season"
+    :tooltips {"QB" "Passing and rushing yards this season" "RB" "Rushing and receiving yards this season"
+               "WR" "Receiving and rushing yards this season" "TE" "Receiving and rushing yards this season"}
+    :positions usage-positions :default? false :group :stats}
+   {:key :td        :label "TD"     :tooltip "Passing, rushing and receiving touchdowns this season"
+    :tooltips {"QB" "Passing and rushing touchdowns this season" "RB" "Rushing and receiving touchdowns this season"
+               "WR" "Receiving and rushing touchdowns this season" "TE" "Receiving and rushing touchdowns this season"}
+    :positions usage-positions :default? false :group :stats}
+   {:key :ros-vorp  :label "VORP"   :tooltip "Rest-of-season points above a replacement player at his position" :default? false :group :projections}])
 
 (def waiver-column-groups
   "The column picker's headings, in the order it draws them."

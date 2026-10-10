@@ -29,10 +29,12 @@
 
 (defn opportunity-per-game
   "Targets plus carries per game, or nil. Volume rather than points, and the
-  same measure `waiver/trend` is a ratio of — a role is what a claim is buying."
-  [{:nflverse/keys [season-to-date]}]
+  same measure `waiver/trend` is a ratio of — a role is what a claim is buying.
+  Nil for a quarterback, kicker or defense: their role is not carries and
+  targets, and a 0.0 there would read as a player with no role."
+  [{:nflverse/keys [season-to-date] :keys [position]}]
   (let [{:keys [games usage]} season-to-date]
-    (when (and games (pos? games))
+    (when (and games (pos? games) (db/receiving-position? position))
       (/ (+ (or (:targets usage) 0) (or (:carries usage) 0)) games))))
 
 (defn week-rank-label
@@ -103,20 +105,20 @@
    ;; Rest-of-season points over a per-position replacement level: the one
    ;; number that survives a cross-position pair. See `db/vorp-sort-key`.
    {:band :horizon  :label "Over replacement" :f :ros-vorp :fmt board/format-whole
-    :tip (str "Rest-of-season points above a replacement player at his position"
-              " — the one number that compares a QB to a TE")}
+    :tip (str "Rest-of-season points above a replacement player at his position."
+              " The one number that compares a QB to a TE")}
    ;; Lineup leads; Upgrade under it is the bench question — see
    ;; `db/waiver-rank-key`.
    {:band :claim    :label "Lineup gain"    :f :lineup-upgrade :fmt claim-points
-    :tip (str "Rest-of-season points this claim adds to your starting lineup,"
-              " after the drop. 0 means he would never start")}
+    :tip (str "Rest-of-season points he adds to your starting lineup, after the"
+              " drop. 0 = he would not start")}
    {:band :claim    :label "Upgrade"        :f :upgrade :fmt claim-points
-    :tip (str "Rest-of-season points over the player you would drop, whether or"
-              " not he would ever start")}
+    :tip (str "Rest-of-season points he gains you over the player you would drop,"
+              " whether or not he would start")}
    {:band :claim    :bid? true :label "Typical winning bid" :f :typical-bid :bar? false
     :fmt #(if (number? %) (str "$" %) "–")
     :sub #(some-> (:typical-win %) waivers/win-pct (str " to win"))
-    :tip "What it usually takes to win him: the median highest rival bid"}
+    :tip "What it usually takes to win him: the median of the highest rival bids"}
    {:band :claim    :bid? true :label "Suggested bid"  :f :bid :bar? false
     :fmt #(if (number? %) (str "$" %) "–")
     :sub #(some-> (:win-prob %) waivers/win-pct (str " to win"))}
@@ -127,26 +129,43 @@
     :tip "Fantasy points so far this season, under your league's scoring"}
    {:band :evidence :label "Points / game"  :f :season-ppg :fmt board/format-one-decimal}
    {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend
-    :tip (str "Recent opportunity per game against his season rate — above"
-              " 1.0× means the role is growing")}
+    :positions db/receiving-positions
+    :tip (db/column-tip (db/waiver-columns-by-key :trend) nil)
+    :tips (:tooltips (db/waiver-columns-by-key :trend))}
    ;; Realized production, so the tile keeps a directional bar here that the
    ;; weekly row does not — see `views.compare`'s ns docstring.
    {:band :evidence :label "Form / game"    :f :form-points
     :fmt board/format-one-decimal
-    :tip "Points per game over the last three weeks, under your league's rules"}
+    :tip "Fantasy points per game over the last 3 weeks, under your league's scoring"}
    {:band :evidence :label "Opportunity / game" :f opportunity-per-game
     :fmt #(if (number? %) (.toFixed % 1) "–")
-    :tip "Targets plus carries per game this season"}
+    :positions db/receiving-positions
+    :tip "Targets plus carries per game this season"
+    :tips {"RB" "Carries plus targets per game this season"
+           "WR" "Targets per game this season"
+           "TE" "Targets per game this season"}}
    {:band :evidence :label "Games played"   :bar? false
     :f #(or (:season-gp %) (get-in % [:nflverse/season-to-date :games]))
     :fmt number-or-dash}
    {:band :evidence :label "Sleeper adds"   :f :trending/adds :bar? false
     :fmt waivers/format-adds
-    :tip "Sleeper trending adds over the last 48 hours, across every Sleeper league"}
+    :tip "Times he was added in the last 48 hours across Sleeper leagues"}
    {:band :evidence :label "Injury risk"    :f :injury-risk :better :lower
     :fmt number-or-dash
-    :tip (str "Games missed per season over the last three, 1 (durable) to"
-              " 5 (fragile)")}])
+    :tip db/risk-tip}])
+
+(defn row-tip
+  "A row's help text for the players it is drawn for: its `:tips` entry when
+  every position given is the same one, else the general `:tip`. A mixed pair
+  gets the general text, which states the split."
+  [{:keys [tip tips]} positions]
+  (let [ps (set positions)]
+    (or (when (= 1 (count ps)) (get tips (first ps))) tip)))
+
+(defn row-value
+  "A row's value for `p`, or nil where the row says nothing about his position."
+  [{:keys [f] :as row} p]
+  (when (db/applies? row (:position p)) (f p)))
 
 (defn shown-rows
   "`rows` as the screen draws them: bid predictions only when `bids?`."
