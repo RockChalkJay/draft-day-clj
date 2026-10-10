@@ -16,6 +16,7 @@ the status line reads `sample`. That is real data from
 
 - [Why this exists](#why-this-exists)
 - [Getting started](#getting-started)
+- [Tools](#tools)
 - [Documentation](#documentation)
 - [Glossary](#glossary)
 
@@ -139,6 +140,30 @@ All optional.
 | `DRAFTDAY_AS_OF_WEEK` | unset | dev only: truncate the in-season data at a week, so a finished season replays as one in progress |
 | `DRAFTDAY_ESPN_SWID` / `_S2` / `_LEAGUE` / `_SEASON` | unset | `lein test :integration` only: check ESPN's stat ids, slot table and team abbreviations against a live league |
 
+## Tools
+
+`dev/` holds the command-line tools and research harnesses behind the app. They
+are not shipped; they are how the model gets measured, and how data that
+Sleeper will not give back later gets saved.
+
+| Tool | Does |
+| --- | --- |
+| `tools.trends` | saves Sleeper's trending add and drop lists as timestamped JSON |
+| `tools.projections` | saves the week's raw projection line, kickoffs and injury list, and reports gaps in what has been saved |
+| `tools.snapshot` | regenerates the committed offline sample universe |
+| `tools.refresh-player-ids` | regenerates the committed Sleeper-to-GSIS id crosswalk, refusing to change an id that already resolved |
+| `benchmark.report` | scores ranking models against real historical draft outcomes |
+| `replay.report` | replays real auctions and compares Worth with what rooms paid |
+| `faab.*` | measure, fit and score the waiver-bid model on real Sleeper leagues |
+| `lineup-report` | compares the lineup upgrade with the bench delta on a real league |
+
+```bash
+lein run -m draft-day.tools.trends
+```
+
+Full usage, flags, output locations and a cron schedule are in
+**[dev/draft_day/tools/README.md](dev/draft_day/tools/README.md)**.
+
 ## Documentation
 
 | Read | For |
@@ -151,7 +176,8 @@ All optional.
 | [docs/predictions-and-math.md](docs/predictions-and-math.md) | what is predicted, what is measured, what is only chosen, and where it is weakest |
 | [docs/scoring-coverage.md](docs/scoring-coverage.md) | where a league's real rules and what the board can score come apart |
 | [docs/api.md](docs/api.md) | the JSON API |
-| [docs/development.md](docs/development.md) | tests, replaying a season, the research harnesses |
+| [docs/development.md](docs/development.md) | tests, and replaying a finished season as one in progress |
+| [dev/draft_day/tools/README.md](dev/draft_day/tools/README.md) | the data-collection tools and research harnesses |
 | [docs/TODO.md](docs/TODO.md) | the working list |
 
 ## Glossary
