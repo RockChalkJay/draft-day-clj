@@ -10,11 +10,12 @@ is worth claiming on waivers and what share of your FAAB he is worth.
 above a sortable player table showing Worth, Value, Market, Bargain, VORP and
 injury risk for every player.](docs/img/board.png)
 
-<sub>Screenshots are captured against the bundled offline universe, which is why
-the status line reads `sample`. That is real data from
+<sub>This screenshot is captured against the bundled offline universe, which is
+why the status line reads `sample`. That is real data from
 `resources/sample_players.edn`, not placeholder rows.</sub>
 
 - [Why this exists](#why-this-exists)
+- [See it work](#see-it-work)
 - [Getting started](#getting-started)
 - [Tools](#tools)
 - [Documentation](#documentation)
@@ -65,6 +66,30 @@ down over months. So the **Waivers** tab re-projects every player over the games
 that are actually left, measures what a claim adds to *your starting lineup*,
 and prices it against the FAAB you have left. **My Team**, **Matchup** and
 **League** tabs sit beside it, fed by your real Sleeper or ESPN league.
+
+## See it work
+
+**The draft.** Put a player on the block, enter the winning price and the team,
+and the whole board re-prices. Here the first pick goes for $88 against a $90
+value and the second for $61 against $86, so the room is underspending and the
+market multiplier in the header ticks up to ×1.01.
+
+![Nominating Jahmyr Gibbs, bidding $88 and recording the pick, then
+nominating Bijan Robinson at $61 for another team. Bankroll, max bid and the
+market multiplier in the header update, and the board re-prices.](docs/img/draft-in-action.gif)
+
+**The waivers.** In season, the Waivers tab ranks what is left. Filter to a
+position, click two players to put them side by side, and open either one's
+card for the week's projection, his game log and his news.
+
+![The Waivers tab filtered to running backs, two players compared side by side
+across this week, over replacement, trend, form and adds, and then one player's
+card open on its game log.](docs/img/waivers-compare.gif)
+
+<sub>The draft GIF is captured against the bundled offline universe, so its
+status line reads `sample`. The waivers GIF is week 5 of the 2026 season from
+live data, with no league connected, so it ranks everyone rather than who is
+actually free.</sub>
 
 ## Getting started
 
