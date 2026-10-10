@@ -20,15 +20,24 @@
   (:require [draft-day.ingestion.league-sync.sleeper :as sync-sleeper]
             [draft-day.ingestion.matchups :as matchups]))
 
+(defn nfl-state
+  "Network: Sleeper's season state, `{:season :week :display_week :season_type}`."
+  []
+  (sync-sleeper/get-json "state/nfl"
+                         {:empty-is-missing? true
+                          :not-found-msg "Sleeper season state unavailable"}))
+
+(defn state-week
+  "The week `state` shows, or nil when it is no week."
+  [state]
+  (let [wk (if (= "regular" (:season_type state))
+             (or (:week state) (:display_week state))
+             (or (:display_week state) (:week state)))]
+    (when (and (number? wk) (pos? wk)) wk)))
+
 (defmethod matchups/current-week :sleeper
   [_ _req]
-  (let [state (sync-sleeper/get-json "state/nfl"
-                                     {:empty-is-missing? true
-                                      :not-found-msg "Sleeper season state unavailable"})]
-    (let [wk (if (= "regular" (:season_type state))
-               (or (:week state) (:display_week state))
-               (or (:display_week state) (:week state)))]
-      (when (and (number? wk) (pos? wk)) wk))))
+  (state-week (nfl-state)))
 
 (defmethod matchups/fetch-raw-matchups :sleeper
   [_ {:keys [league-id week]}]

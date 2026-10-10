@@ -78,7 +78,7 @@
   (let [allow-changes (boolean (some #{"--allow-changes"} args))
         old  (player-ids/read-snapshot player-ids/snapshot-resource)
         rows (fetch-rows)
-        snap (build rows (str (java.time.LocalDate/now)))
+        snap (build rows (str (java.time.LocalDate/now java.time.ZoneOffset/UTC)))
         {:keys [changed filled dropped]} (diff-crosswalks (:rows old)
                                                           (:rows snap))]
     (println (format "%d CSV rows -> %d with a sleeper id" (count rows) (:n snap)))

@@ -1,0 +1,271 @@
+(ns draft-day.tools.projections
+  "Save the week's Sleeper projection entries, its kickoffs and the injury list
+  as JSON, for scoring the weekly board against what happened.
+
+  Sleeper revises a past week's line after the games (its `updated_at` lands
+  after the week), so the line the board showed on Sunday morning cannot be
+  fetched later. Each run is one live fetch and one file; when to run it is up
+  to whoever runs it.
+
+    lein run -m draft-day.tools.projections [--week N] [--dir data/projections]
+    lein run -m draft-day.tools.projections --report [--dir data/trends]
+                                 [--gap-hours 72] [--runs-per-week 3]
+    lein run -m draft-day.tools.projections --help
+
+  The file is `<dir>/<season>/week-NN/<UTC time>.json`, NN being the week the
+  line is *for* (the week being played), where `tools.trends` files by weeks
+  played. Both are in the document as `target_week` and `through_week`. The
+  season and week come from one Sleeper state reply, so a January playoff week
+  keeps the season it belongs to. `lines` holds Sleeper's own entries, with
+  every stat and its point totals, for the players it projects; `injuries` is
+  the complete designation list as of the run. If the line comes back empty
+  nothing is written; a failed injury or kickoff fetch is reported on stderr and
+  leaves its key null or empty while the line still lands. `through_week` is
+  read through the realized cache, as `tools.trends` reads it, and is null when
+  that is out of reach.
+
+  `--report` lists the snapshots under a directory per week with the longest gap
+  between two of them, and flags a gap over `--gap-hours`, a finished week with
+  fewer than `--runs-per-week` snapshots, a week missing between the first and
+  the last, and a newest snapshot older than `--gap-hours`. It works on
+  `data/trends` as well, where hourly runs make the per-week count far higher.
+
+  Run from cron at 10:00 AM Wednesday (after waivers clear, about 3:10 AM in
+  the author's league, a per-league setting), 6:30 PM Thursday (before Thursday
+  night's 8:15 PM kickoff) and 12:15 PM Sunday (after the 1:00 PM games'
+  inactives at 11:30 AM; Also, take note that an international game kicks off
+  earlier, typically 9:30 AM. All times are Eastern. The files are named in UTC.
+
+  Exit codes: 0 written (or reported), 1 the line failed or a flag was bad."
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.tools.cli :as cli]
+            [draft-day.ingestion.espn-schedule :as espn-schedule]
+            [draft-day.ingestion.matchups.sleeper :as sleeper-state]
+            [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.sleeper :as sleeper]
+            [draft-day.ingestion.sleeper-players :as sleeper-players]
+            [draft-day.ingestion.sleeper-trending :as trending]
+            [jsonista.core :as json])
+  (:import (java.time Duration Instant)))
+
+(def schema-version 1)
+
+(def default-dir "data/projections")
+
+(def default-gap-hours 72)
+
+(def default-runs-per-week
+  "The snapshots a finished week should hold: one per scheduled cron run."
+  3)
+
+(defn positive-number
+  "A `cli-options` validation: the parsed value is a positive whole number."
+  [flag]
+  [#(and % (pos? %)) (str flag " must be a positive whole number")])
+
+(def cli-options
+  [[nil "--week N" "The week the line is for (default: the week Sleeper shows)"
+    :parse-fn parse-long :validate (positive-number "--week")]
+   [nil "--dir DIR" "Where the snapshots live" :default default-dir]
+   [nil "--report" "Report on the snapshots under --dir instead of taking one"]
+   [nil "--gap-hours H" "Report: flag a gap, or a newest snapshot, older than this"
+    :default default-gap-hours :parse-fn parse-long :validate (positive-number "--gap-hours")]
+   [nil "--runs-per-week N" "Report: flag a finished week with fewer snapshots than this"
+    :default default-runs-per-week :parse-fn parse-long :validate (positive-number "--runs-per-week")]
+   ["-h" "--help" "Print this and exit"]])
+
+(defn usage
+  "The option summary `--help` prints."
+  []
+  (:summary (cli/parse-opts [] cli-options)))
+
+(defn parse-args
+  "The options `args` give over the defaults. A flag it does not know, a number
+  that is not a positive whole one, or a stray argument throws."
+  [args]
+  (let [{:keys [options errors arguments]} (cli/parse-opts args cli-options)
+        errors (concat errors (map #(str "unexpected argument " %) arguments))]
+    (if (seq errors)
+      (throw (ex-info (str/join "; " errors) {}))
+      options)))
+
+(defn season-and-week
+  "`{:season :week}` off one Sleeper state reply: `week` if given, else the week
+  being played, nil when Sleeper does not say. The season is the state's own,
+  else the calendar year's. The week is never derived from the weeks nflverse
+  has finished, which names next week once Thursday's game is in."
+  [week]
+  (let [state (pipeline/best-effort (sleeper-state/nfl-state))]
+    {:season (or (some-> state :season str parse-long) (trending/current-season))
+     :week   (or week (sleeper-state/state-week state))}))
+
+(defn lines-of
+  "`{sleeper-id entry}` for the raw `entries` Sleeper projects a score for. The
+  entry keeps its stat map whole, with the point totals, and drops the player
+  record riding along on it, whose injury fields are the stale ones."
+  [entries]
+  (into {}
+        (keep (fn [{:keys [player_id stats] :as entry}]
+                (when (and player_id (:pts_ppr stats))
+                  [player_id (select-keys entry [:stats :team :opponent :game_id :status
+                                                 :company :updated_at :last_modified])])))
+        entries))
+
+(defn snapshot
+  "The document a snapshot file holds."
+  [fetched-at season target through lines kickoffs injuries]
+  {:schema_version schema-version
+   :fetched_at     fetched-at
+   :season         season
+   :target_week    target
+   :through_week   through
+   :lines          lines
+   :kickoffs       kickoffs
+   :injuries       injuries})
+
+(defn warn!
+  "`msg` on stderr."
+  [msg]
+  (binding [*out* *err*] (println msg)))
+
+(defn fetch-injuries
+  "The designations `{sleeper-id {...}}`, or nil, with the reason on stderr."
+  []
+  (try (:injuries (sleeper-players/live))
+       (catch Exception e
+         (warn! (str "injuries failed: " (ex-message e)))
+         nil)))
+
+(defn fetch-kickoffs
+  "The week's kickoffs by team, or `{}`, with a note on stderr when ESPN gave
+  none."
+  [season week]
+  (or (espn-schedule/fetch season week)
+      (do (warn! "kickoffs failed: ESPN scoreboard gave no teams") {})))
+
+(defn fetch-lines
+  "`lines-of` the week's entries; throws when Sleeper projects nobody."
+  [season week]
+  (let [lines (lines-of (sleeper/fetch-weekly-entries season week))]
+    (if (empty? lines)
+      (throw (ex-info (str "week " week " line empty") {}))
+      lines)))
+
+(defn take-snapshot
+  "Fetch the week's line, kickoffs and injuries into a snapshot document. Throws
+  when no week is known or the line is empty."
+  [week]
+  (let [fetched-at (pipeline/now-iso)
+        {:keys [season] target :week} (season-and-week week)
+        target     (or target (throw (ex-info "no week known; pass --week" {})))
+        lines      (fetch-lines season target)]
+    (snapshot fetched-at season target
+              (pipeline/best-effort (some-> season pipeline/load-realized :weekly :through-week))
+              lines
+              (fetch-kickoffs season target)
+              (fetch-injuries))))
+
+(defn describe
+  "`week 5: 437 players, 30 teams with kickoffs, 876 injuries`"
+  [{:keys [target_week lines kickoffs injuries]}]
+  (format "week %d: %d players, %d teams with kickoffs, %s injuries"
+          target_week (count lines) (count kickoffs) (if injuries (count injuries) "no")))
+
+(defn run
+  "Fetch, save and report; returns the exit code."
+  [{:keys [dir week]}]
+  (try
+    (let [snap (take-snapshot week)]
+      (println (format "wrote %s (%s)"
+                       (trending/write-snapshot! dir snap (:target_week snap))
+                       (describe snap)))
+      0)
+    (catch Exception e
+      (warn! (str "failed: " (ex-message e)))
+      1)))
+
+(defn file-instant
+  "When a snapshot file was taken, read off its name: `2026-10-07T07-00-22Z.json`."
+  [^java.io.File f]
+  (let [[_ date h m s] (re-matches #"(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z\.json" (.getName f))]
+    (when date (Instant/parse (str date "T" h ":" m ":" s "Z")))))
+
+(defn week-summaries
+  "One map per week folder under `dir`, in order: `:season` and `:week` (nil for
+  `week-unknown`) off the path, `:path`, `:count`, `:first`, `:last` and
+  `:longest-gap-hours` (nil for fewer than two files)."
+  [dir]
+  (->> (file-seq (io/file dir))
+       (filter #(.isDirectory ^java.io.File %))
+       (filter #(re-matches #"week-.+" (.getName ^java.io.File %)))
+       (sort-by #(.getPath ^java.io.File %))
+       (map (fn [^java.io.File d]
+              (let [times (sort (keep file-instant (.listFiles d)))]
+                {:path              (.getPath d)
+                 :season            (.getName (.getParentFile d))
+                 :week              (some-> (re-matches #"week-(\d+)" (.getName d)) second parse-long)
+                 :count             (count times)
+                 :first             (first times)
+                 :last              (last times)
+                 :longest-gap-hours (when (next times)
+                                      (->> (map vector times (rest times))
+                                           (map (fn [[a b]] (.toMinutes (Duration/between a b))))
+                                           (reduce max)
+                                           (#(/ % 60.0))))})))))
+
+(defn flags
+  "The problems with one week: `GAP` for a gap over `gap-hours`, `FEW` for fewer
+  than `runs-per-week` snapshots. The newest folder is still filling, so it is never
+  `FEW`."
+  [{:keys [gap-hours runs-per-week]} newest? {n :count :keys [longest-gap-hours]}]
+  (cond-> []
+    (and longest-gap-hours (> longest-gap-hours gap-hours)) (conj "GAP")
+    (and (not newest?) (< n runs-per-week))                 (conj "FEW")))
+
+(defn missing-weeks
+  "`[season week]` for each week absent between a season's first and last."
+  [summaries]
+  (mapcat (fn [[season ws]]
+            (let [present (set (keep :week ws))]
+              (when (seq present)
+                (map (fn [w] [season w])
+                     (remove present (range (apply min present) (apply max present)))))))
+          (group-by :season summaries)))
+
+(defn report-line
+  "`data/projections/2026/week-05  3 files  2026-10-08T14:00:03Z to ...  longest gap 52.0h  GAP`"
+  [flagged {:keys [path longest-gap-hours] n :count start :first end :last}]
+  (str/join "  " (concat [path
+                          (format "%d file%s" n (if (= 1 n) "" "s"))
+                          (str start " to " end)
+                          (str "longest gap " (if longest-gap-hours (format "%.1fh" longest-gap-hours) "-"))]
+                         flagged)))
+
+(defn report
+  "Print a line per week folder under `dir`, then each missing week and the age
+  of the newest snapshot; returns the exit code. `now` is the clock, for tests."
+  [{:keys [dir gap-hours now] :as opts :or {now (Instant/now)}}]
+  (let [weeks  (week-summaries dir)
+        newest (last (sort-by :last (filter :last weeks)))]
+    (if (empty? weeks)
+      (println "no snapshots under" dir)
+      (do
+        (run! (fn [w] (println (report-line (flags opts (identical? w newest) w) w))) weeks)
+        (run! (fn [[season w]] (println (format "%s/week-%02d  MISSING" season w))) (missing-weeks weeks))
+        (when newest
+          (let [age (/ (.toMinutes (Duration/between (:last newest) now)) 60.0)]
+            (println (format "newest snapshot %s, %.1fh ago%s" (:last newest) age
+                             (if (> age gap-hours) "  STALE" "")))))))
+    0))
+
+(defn -main [& args]
+  (System/exit
+   (try (let [opts (parse-args args)]
+          (cond
+            (:help opts)   (do (println (usage)) 0)
+            (:report opts) (report opts)
+            :else          (run opts)))
+        (catch clojure.lang.ExceptionInfo e
+          (warn! (str "failed: " (ex-message e)))
+          1))))

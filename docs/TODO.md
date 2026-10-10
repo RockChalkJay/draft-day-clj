@@ -5,6 +5,14 @@ they are done rather than struck through. See the [README](../README.md) for
 what the app is and how it works, and [scoring-coverage.md](scoring-coverage.md)
 for the known gaps between a league's real rules and what the board can score.
 
+- **Convert the other dev tools to `clojure.tools.cli`.** `tools.snapshot`
+  (`--season`, `--allow-partial`), `tools.trends` (`--types`, `--lookbacks`,
+  `--limit`, `--dir`) and `tools.refresh-player-ids` (`--allow-changes`) each
+  read their flags by hand, so a mistyped flag is ignored and a run quietly does
+  something else. `tools.projections` is the pattern to copy: an options vector,
+  `--help`, and a bad flag exits 1. The `parse-args` tests in `snapshot_test.clj`
+  and `trends_test.clj` pin today's return shapes and will need updating.
+
 - **Remove the 🚨 for tier cliffs. Postion views with tier coloring accomplish the same thing in a clean way.**
 
 - **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
@@ -81,12 +89,11 @@ for the known gaps between a league's real rules and what the board can score.
   realized points a game. It unlocks per-stat prior strengths and the
   probabilistic weekly-gap alternative to `confidence`.
 
-- **Archive weekly projections, and run `tools.trends` on a schedule.** The
-  weekly projection cache is one TTL file that overwrites itself, so nothing can
-  re-derive `confidence/win-rates` (which came from a one-off 2025 pull, with no
-  script in `dev/`). Trending lists are archived under `data/trends/` and Sleeper
-  keeps no past ones, so that data cannot be recovered later. Archive each
-  week's line the same way, and add a report that regenerates the table.
+- **Regenerate `confidence/win-rates` from the archive.** `win-rates` came from
+  a one-off 2025 pull, with no script in `dev/`. `tools.projections` now saves
+  each week's line under `data/projections/` on a schedule, so once a few weeks
+  have accumulated a report can pair them with the realized points and rebuild
+  the table, defenses and the deep-pool split included.
 
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
   computes and returns it (`src/clj/draft_day/rankings/engine.clj:89`)
