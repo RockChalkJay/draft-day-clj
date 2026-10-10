@@ -188,11 +188,6 @@
   (is (= 1 (:my-roster-id (league-entry))))
   (is (some #{:fetch-waivers} (dispatched))))
 
-(deftest a-synced-league-is-persisted
-  (with-league!)
-  (rf/dispatch-sync [:league-synced lk synced])
-  (is (contains? (last (:persist @captured)) :leagues)))
-
 (deftest a-sync-survives-a-reload
   (with-league!)
   (rf/dispatch-sync [:league-synced lk synced])
