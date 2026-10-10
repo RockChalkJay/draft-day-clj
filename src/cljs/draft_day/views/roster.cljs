@@ -36,7 +36,7 @@
             ^{:key i}
             [:tr
              [:td.slot (:pos slot)]
-             [:td.slot-player (if p [:<> (util/team-logo (:team p)) (:player-name p)] [:span.muted "—"])]
+             [:td.slot-player (if p (util/player-ident p nil nil) [:span.muted "—"])]
              [:td.slot-bye {:class (when (contains? uncovered pid) "bye-uncovered")
                             :title (when (contains? uncovered pid)
                                      (str "No bench " (:position p) " covers bye " (:bye p)))}

@@ -59,23 +59,16 @@
                           (util/week-points (:actual p))]]
         ;; The text reads the same on both sides; only the logo moves, to the
         ;; outer edge, so no row's tags shift it.
-        logo (util/team-logo (:team p))
-        text [(if (:unvalued? p)
-                [:span.muted {:title (str "No projection for id " (:player-id p))}
-                 (:player-id p)]
-                [:button.name-btn
-                 {:on-click #(rf/dispatch [:show-modal {:kind :player-detail
-                                                        :player-id (:player-id p)}])
-                  :tab-index -1
-                  :title "Player detail"}
-                 (:player-name p)])
-              mark
-              (when (:parked? p) [:span.mu-meta {:title "IR or taxi"} "IR"])
-              [:span.mu-meta (str (when (and (nil? (:slot p)) (:position p))
-                                    (str (:position p) " · "))
-                                  (waivers/week-matchup p week))]]
-        who  (into [:div.mu-who {:key :who}]
-                   (if (= side :l) (cons logo text) (concat text [logo])))]
+        who  [:div.mu-who {:key :who}
+              (util/player-ident
+               p week
+               {:mirror?  (= side :r)
+                :on-click #(rf/dispatch [:show-modal {:kind :player-detail
+                                                      :player-id (:player-id p)}])
+                :extra    [mark
+                           (when (:parked? p) [:span.mu-meta {:title "IR or taxi"} "IR"])
+                           (when (and (nil? (:slot p)) (:position p))
+                             [:span.mu-meta (:position p)])]})]]
     (into [:div {:class (str "mu-side " (name side) (when (:moved-in? p) " moved-in"))}]
           (if (= side :l) (cons who nums) (conj (vec (reverse nums)) who)))))
 

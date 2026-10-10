@@ -309,9 +309,9 @@
 
 (deftest a-bench-player-names-his-own-position-in-his-meta
   ;; A bench row has no shared seat label down the middle to say it.
-  (is (re-find #"RB · " (pr-str (matchup/player-cell {:player-id "a" :player-name "A"
-                                                      :position "RB"} :l 3))))
-  (is (not (re-find #"RB · " (pr-str (matchup/player-cell {:player-id "a" :player-name "A"
+  (is (re-find #"mu-meta \"RB" (pr-str (matchup/player-cell {:player-id "a" :player-name "A"
+                                                                        :position "RB"} :l 3))))
+  (is (not (re-find #"mu-meta \"RB" (pr-str (matchup/player-cell {:player-id "a" :player-name "A"
                                                            :position "RB" :slot "RB"} :l 3))))
       "a starter's seat is already down the middle"))
 

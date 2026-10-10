@@ -979,6 +979,7 @@ button.pd-latest:focus-visible { outline: 2px solid var(--accent); outline-offse
    cannot be misread as a bad performance. */
 .mu-a.pending { color: var(--muted); font-weight: 400; }
 .mu-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mu-who .p-ident { display: flex; align-items: baseline; min-width: 0; }
 .mu-who .name-btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 /* A flex row, so a long name gives up its own width and the logo at the outer
    edge is never the part that gets clipped. */
@@ -1107,5 +1108,11 @@ header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflo
 /* A team's logo leading a name, in place of a Tm column; its title is the
    team's full name. */
 .team-logo { width: 18px; height: 18px; object-fit: contain; vertical-align: -4px; margin-right: 6px; }
-td.name .team-logo { margin-right: 0; }
 .mu-side.r .team-logo { margin: 0 0 0 6px; }
+
+/* A player's identity: logo, name, opponent. One shape on every surface. */
+.p-ident { display: inline-flex; align-items: baseline; min-width: 0; }
+.p-ident > * { flex-shrink: 0; }
+.p-ident > .name-btn, .p-ident > .p-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.p-opp { margin-left: 6px; font-size: 11px; color: var(--muted); font-weight: 400; }
+.pd-head .p-opp { color: rgba(255,255,255,.88); font-size: 13px; }

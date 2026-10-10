@@ -169,7 +169,8 @@
            [:div.side-line [:span.muted "Nothing to fix in your lineup."]])]))))
 
 (defn best-claims-card []
-  (let [w @(rf/subscribe [:waivers])]
+  (let [w    @(rf/subscribe [:waivers])
+        week (:week @(rf/subscribe [:season-header]))]
     (when w
       (let [claims (best-claims (:players w) 3)]
         [:div.side-card
@@ -178,7 +179,7 @@
            (map (fn [p]
                   ^{:key (:player-id p)}
                   [:div.side-line
-                   [:span (:player-name p) [:span.muted (str " " (:position p))]]
+                   [:span (util/player-ident p week nil) [:span.muted (str " " (:position p))]]
                    [:span.good (str "+" (js/Math.round (:lineup-upgrade p))
                                     (when (and db/bid-predictions? (number? (:bid p)))
                                       (str " · $" (:bid p)

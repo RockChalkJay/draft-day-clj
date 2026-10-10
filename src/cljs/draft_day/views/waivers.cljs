@@ -127,39 +127,9 @@
   (when-let [rest (bid-title p bidding)]
     (str "Suggested bid: $" (:bid p) (some->> (:win-prob p) win-pct (str " · ")) "\n" rest)))
 
-;; ---- this week's game ----
-;; Two sources answer "who does he play". Sleeper's opponent rides in the same
-;; document as its weekly projection, so it wins where it has an opinion — a
-;; tile showing a projection against an opponent from elsewhere can disagree
-;; with itself. ESPN's scoreboard fills the rest, which is most of the board.
-;;
-;; They are never mixed: pairing one source's opponent with the other's home
-;; flag would agree almost always and occasionally invent a matchup neither
-;; published. `db/waiver-sort-accessors` sorts Opp on the same pair.
+(def matchup-source util/matchup-source)
 
-(defn matchup-source
-  "Which source answers, with both fields read off that one, or nil."
-  [p]
-  (cond
-    (:week/opponent p)
-    {:opponent (:week/opponent p) :home? (:week/home? p)}
-
-    (:kickoff/opponent p)
-    {:opponent (:kickoff/opponent p) :home? (:kickoff/home? p)
-     :neutral? (:kickoff/neutral? p)}))
-
-(defn week-matchup
-  "`vs NE` / `@ SEA` / `Bye` / `–`. A nil `:home?` is an unknown side rather
-  than an away one and prints the opponent bare; a neutral site prints `vs`
-  from both sides, since neither team is at home."
-  [p week]
-  (let [{:keys [opponent home? neutral?]} (matchup-source p)]
-    (cond
-      (and opponent neutral?)     (str "vs " opponent)
-      (and opponent (nil? home?)) opponent
-      opponent                    (str (if home? "vs " "@ ") opponent)
-      (and week (= week (:bye p))) "Bye"
-      :else "–")))
+(def week-matchup util/week-matchup)
 
 (defn kickoff-title
   "The Opp cell's tooltip, or nil. A tooltip rather than a column: a catalog
@@ -193,15 +163,12 @@
   (case k
     :rank      [:td.num.muted (:rank p)]
     :name      [:td.player
-                (util/team-logo (:team p))
-                [:button.name-btn.p-name
+                (util/player-ident
+                 p week
                  {:on-click #(open-detail! % p)
-                  :tab-index -1
-                  :title "Player detail"}
-                 (:player-name p)]
-                (when-let [st (:sleeper/injury-status p)]
-                  (when (db/serious-injury? st)
-                    [:span.inj-flag {:title st} " ⚠"]))]
+                  :extra    [(when-let [st (:sleeper/injury-status p)]
+                               (when (db/serious-injury? st)
+                                 [:span.inj-flag {:title st} " ⚠"]))]})]
     :position  [:td (util/pos-label (assoc p :pos-rank (db/season-rank p)))]
     :bye       [:td.num (or (:bye p) "–")]
     ;; No weekly line is not a weekly zero: he is on bye, or nobody projects
@@ -309,7 +276,8 @@
         synced?   @(rf/subscribe [:league-synced?])
         team      @(rf/subscribe [:my-sync-team])
         pickable  @(rf/subscribe [:comparable-by-id])
-        comparing (set @(rf/subscribe [:compare]))]
+        comparing (set @(rf/subscribe [:compare]))
+        week      (:week @(rf/subscribe [:season-header]))]
     [:div.roster-panel.waiver-roster
      [:div.roster-head [:h3 "My Roster"]]
      (cond
@@ -349,17 +317,7 @@
                                   (or (:slot p) "–")
                                   (or (:position p) "–"))]
                       [:td.slot-player
-                       (if (:unvalued? p)
-                         [:span.muted {:title (str "No player for id " (:player-id p))}
-                          (:player-id p)]
-                         ;; A real tab stop here, unlike the board's six hundred:
-                         ;; a roster is a dozen rows and walking them is useful.
-                         [:<>
-                          (util/team-logo (:team p))
-                          [:button.name-btn
-                           {:on-click #(open-detail! % p)
-                            :title "Player detail"}
-                           (:player-name p)]])
+                       (util/player-ident p week {:on-click #(open-detail! % p)})
                       (when (:drop? p) [:span.drop-tag {:title "A claim would cost this seat"} " ↓"])]
                       [:td.num.muted (or (:bye p) "–")]
                       [:td.num (util/week-points (:week-points p))]]))
