@@ -81,7 +81,6 @@
 
 (deftest an-unscorable-rule-is-named-not-numbered
   (let [u (set (:unsupported-scoring (imported)))]
-    (is (contains? u "points allowed 0"))
     (is (contains? u "kickoff return TD"))
     (is (contains? u "yards allowed"))
     (is (not (contains? u "rushing attempts"))
@@ -141,6 +140,18 @@
         [63 6 nil] [93 6 6] [101 6 6] [102 6 6] [103 6 6] [104 6 6]
         [201 6 nil]]))
 
+(deftest points-allowed-rules-import-as-bands-not-keys
+  (is (= [{:lo 0 :hi 0 :points 5.0} {:lo 1 :hi 6 :points 4.0}
+          {:lo 7 :hi 13 :points 3.0} {:lo 14 :hi 17 :points 1.0}
+          {:lo 28 :hi 34 :points -1.0} {:lo 35 :hi 45 :points -3.0}
+          {:lo 46 :hi nil :points -5.0}]
+         (:pts-allowed-bands (espn/scoring-config live-items))))
+  (is (not-any? #(re-find #"pts_allow_\d" (name %))
+                (keys (espn/scoring-config live-items)))
+      "the host's fixed buckets would pay a game its league scores otherwise")
+  (is (nil? (:pts-allowed-bands (espn/scoring-config [{:statId 89 :points 0}])))
+      "a rule the league does not pay is not a band"))
+
 (deftest an-override-equal-to-the-base-is-no-premium
   (is (empty? (espn/dropped-overrides
                {:statId 101 :points 6 :pointsOverrides {:16 6.0}}))
@@ -160,9 +171,7 @@
 (deftest a-live-league-reports-only-the-rules-it-cannot-price
   (is (= ["ESPN stat 206" "ESPN stat 209" "ESPN stat 63" "ESPN stat 93"
           "field goals 60+" "fumble return TD" "interception return TD"
-          "kickoff return TD" "points allowed 0" "points allowed 1-6"
-          "points allowed 14-17" "points allowed 28-34" "points allowed 35-45"
-          "points allowed 46+" "points allowed 7-13" "punt return TD"]
+          "kickoff return TD" "punt return TD"]
          (espn/unsupported-scoring live-items))))
 
 (deftest the-roster-config-pools-every-flex-and-benches-what-it-cannot-express

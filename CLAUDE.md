@@ -30,7 +30,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 
 ### Backend: Ingestion
 
-Universe cache: `offline-sample -> fresh-cache -> live -> stale-cache -> bundled-sample`. Base (Sleeper, keyless) + best-effort joins (FantasyPros ECR/auction via Jsoup, ESPN AAV via `java.net.http`). Fetches concurrent, joins sequential. Per-vendor rate limits in `fantasypros/fetch-page` and `sleeper_http.clj`. **Format-scoped columns** (ECR, ADP): fetched for all three formats, stored `:vendor/by-format`, flattened at request time per league's format. **No format fallback** — PPR assumed at ingestion would silently wrong a STANDARD league. Cache versioned (`v16.transit`, `v4.transit`, realized `v3.transit`); old files not found.
+Universe cache: `offline-sample -> fresh-cache -> live -> stale-cache -> bundled-sample`. Base (Sleeper, keyless) + best-effort joins (FantasyPros ECR/auction via Jsoup, ESPN AAV via `java.net.http`). Fetches concurrent, joins sequential. Per-vendor rate limits in `fantasypros/fetch-page` and `sleeper_http.clj`. **Format-scoped columns** (ECR, ADP): fetched for all three formats, stored `:vendor/by-format`, flattened at request time per league's format. **No format fallback** — PPR assumed at ingestion would silently wrong a STANDARD league. Cache versioned (`v17.transit`, `v5.transit`, realized `v4.transit`); old files not found.
 
 **FantasyPros name scrape trap**: injury badge inside name cell defeats end-anchored pattern. `parse-aav` reads cell text unanchored + checks element structure (two guards failing opposite ways). Hit rate grades the join, not the parse.
 
@@ -65,6 +65,8 @@ Three multimethod pairs on `:provider`: `import-league` (yearly rules), `sync-le
 **Live half** (after every pick): `value` (VBD → salary-cap $/stable) → `inflation` (conserving + per-position market + phase decay) → `worth`/`bargain`, `tcm` (tier-cliff multiplier; display only).
 
 **Injury risk** (static, display-only): 1-5 from games missed per season / years-in-league (min 3 seasons), floored at 5 by serious designation. Measures availability (games played), not injury. Does not feed Value/Worth (market prices carry injury already). `db/serious-injury-statuses` in cljc (server + browser both use).
+
+**Points allowed**: a host's grid is not Sleeper's, so ESPN imports it as `:pts-allowed-bands` (`[{:lo :hi :points}]`, `:hi` nil = open top) instead of `:pts_allow_*` keys; presets and Sleeper leagues keep the keys. `scoring/resolve-buckets` restates bands as weights on per-score counts (`:pts_allow_at_17`): realized games count their real `pts_allow`, a projection counts its bucket at the middle (14-20 -> 17), so projections stay approximate.
 
 **Scoring**: multimethod dispatch on `:model` keyword (`:points` default). Candidate models from benchmark harness register in `rankings/model/blend.clj`; ship by keyword, not code porting.
 

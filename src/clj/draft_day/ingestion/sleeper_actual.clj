@@ -45,12 +45,14 @@
 
 (defn scored-stats
   "Return scored Sleeper stats as doubles, omitting zeros from sparse rows, plus
-  `display-keys`."
+  `display-keys` and the game's points allowed as a count (`scoring/pts-allow-game`),
+  which is kept even for a shutout."
   [stats]
-  (into {} (keep (fn [k]
-                   (when-let [v (get stats k)]
-                     (when-not (zero? v) [k (double v)]))))
-        (concat scoring/stat-keys display-keys)))
+  (merge (into {} (keep (fn [k]
+                          (when-let [v (get stats k)]
+                            (when-not (zero? v) [k (double v)]))))
+               (concat scoring/stat-keys display-keys))
+         (scoring/pts-allow-game (:pts_allow stats))))
 
 (defn entry->row
   "Convert a raw entry to a played-game row, using positive `gp` as the gate."
