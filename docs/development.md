@@ -31,10 +31,17 @@ seen doing anything.
 
 ## Research harnesses
 
-`dev/` holds two research tools. **They are not part of the shipped API or
-SPA**, and their caches under `data/` are gitignored and re-fetchable. Both are
-in the `:dev` profile, which Leiningen activates by default for
-`run`/`test`/`repl` — no `with-profile` needed.
+`dev/` holds research harnesses and command-line tools. **They are not part of
+the shipped API or SPA**, and their caches under `data/` are gitignored and
+re-fetchable. All of it is in the `:dev` profile, which Leiningen activates by
+default for `run`/`test`/`repl` — no `with-profile` needed.
+
+Besides the two documented below, `dev/draft_day/faab/` holds the waiver-bid
+harnesses (`replay`, `interest`, `sweep`, `report`), `dev/draft_day/lineup_report.clj`
+compares the lineup upgrade with the bench delta, and `dev/draft_day/tools/`
+holds the CLIs that save trending lists and weekly projections and regenerate
+the committed sample universe and id crosswalk. Each file's namespace docstring
+says what it does and how to run it.
 
 ### Benchmark
 

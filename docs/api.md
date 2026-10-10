@@ -156,8 +156,9 @@ Takes `{:provider :league-id :season :credentials :scoring :league :roster
  :week-fetched-at "…"
  :my-roster-id    1
  :matchups        [ … ]    ; who plays whom
- :teams           [ … ]}   ; one per roster: seats, projected and actual points,
-                           ; and the best lineup by projection and by actual
+ :teams           [ … ]}   ; one per roster: {:roster-id :name :wins :losses :ties
+                           ;  :starters :bench :projected :actual :official
+                           ;  :optimal {:projected … :actual …}}
 ```
 
 Unlike the other boards this is a **live fetch on every request**, because a
