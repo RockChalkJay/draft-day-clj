@@ -188,17 +188,6 @@
   (is (= 1 (:my-roster-id (league-entry))))
   (is (some #{:fetch-waivers} (dispatched))))
 
-(deftest the-league-id-comes-back-with-the-rosters
-  ;; So a re-sync is one click. The input lives in a component-local atom that
-  ;; empties on reload; without this the manager returns to persisted, month-old
-  ;; rosters with no record of which league they came from.
-  (with-league!)
-  (rf/dispatch-sync [:league-synced lk synced])
-  (rf/clear-subscription-cache!)
-  (is (= "987654" (sub [:synced-league-id])))
-  (is (contains? (last (:persist @captured)) :leagues)
-      "and it is persisted along with them"))
-
 (deftest a-sync-survives-a-reload
   (with-league!)
   (rf/dispatch-sync [:league-synced lk synced])

@@ -480,12 +480,6 @@
 (rf/reg-sub :league-synced? :<- [:league-sync]
   (fn [ls _] (boolean (seq (:teams ls)))))
 
-;; Which league the persisted rosters came from, so a re-sync is one click. It
-;; rides on the sync reply rather than being stored separately, because the two
-;; must not be able to disagree about which league is on screen.
-(rf/reg-sub :synced-league-id :<- [:active-league]
-  (fn [lg _] (:league-id lg)))
-
 (rf/reg-sub :drafts (fn [db _] (:drafts db)))
 
 ;; Whether there is a draft worth archiving — the same question
