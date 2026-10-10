@@ -30,11 +30,11 @@
 (defn opportunity-per-game
   "Targets plus carries per game, or nil. Volume rather than points, and the
   same measure `waiver/trend` is a ratio of — a role is what a claim is buying.
-  Nil for a kicker or a defense, who have neither: a 0.0 there would read as a
-  player with no role rather than a position without the measure."
+  Nil for a quarterback, kicker or defense: their role is not carries and
+  targets, and a 0.0 there would read as a player with no role."
   [{:nflverse/keys [season-to-date] :keys [position]}]
   (let [{:keys [games usage]} season-to-date]
-    (when (and games (pos? games) (db/usage-position? position))
+    (when (and games (pos? games) (db/receiving-position? position))
       (/ (+ (or (:targets usage) 0) (or (:carries usage) 0)) games))))
 
 (defn week-rank-label
@@ -129,7 +129,7 @@
     :tip "Fantasy points so far this season, under your league's scoring"}
    {:band :evidence :label "Points / game"  :f :season-ppg :fmt board/format-one-decimal}
    {:band :evidence :label "Trend"          :f :trend :fmt waivers/format-trend
-    :positions db/usage-positions
+    :positions db/receiving-positions
     :tip (db/column-tip (db/waiver-columns-by-key :trend) nil)
     :tips (:tooltips (db/waiver-columns-by-key :trend))}
    ;; Realized production, so the tile keeps a directional bar here that the
@@ -139,10 +139,9 @@
     :tip "Fantasy points per game over the last 3 weeks, under your league's scoring"}
    {:band :evidence :label "Opportunity / game" :f opportunity-per-game
     :fmt #(if (number? %) (.toFixed % 1) "–")
-    :positions db/usage-positions
-    :tip "Targets plus carries per game this season (a QB's counts carries only)"
-    :tips {"QB" "Carries per game this season (passes are not counted)"
-           "RB" "Carries plus targets per game this season"
+    :positions db/receiving-positions
+    :tip "Targets plus carries per game this season"
+    :tips {"RB" "Carries plus targets per game this season"
            "WR" "Targets per game this season"
            "TE" "Targets per game this season"}}
    {:band :evidence :label "Games played"   :bar? false

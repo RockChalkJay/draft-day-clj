@@ -516,11 +516,12 @@
   [spec pos]
   (or (nil? pos) (nil? (:positions spec)) (contains? (:positions spec) pos)))
 
-(defn usage-position?
-  "Is `pos` one with targets or carries? True for an unknown position, as
-  `applies?` is, so a player with no position keeps his figures."
+(defn receiving-position?
+  "Is `pos` one whose role is measured in targets and carries? Not a
+  quarterback, whose role is his dropbacks, which neither counts. True for an
+  unknown position, as `applies?` is."
   [pos]
-  (applies? {:positions usage-positions} pos))
+  (applies? {:positions receiving-positions} pos))
 
 (defn column-tip
   "The help text for `col` at position `pos`: its `:tooltips` entry for that
@@ -1095,12 +1096,11 @@
    {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points he adds to your starting lineup, after the drop. 0 = he would not start" :default? false :group :projections}
    {:key :upgrade   :label "Upg"    :tooltip "Rest-of-season points he gains you over the player you would drop, whether or not he would start" :default? false :group :projections}
    {:key :bid       :label "Sugg."  :tooltip "Suggested bid and its chance to win: about $1 over the top rival bid he is likely to draw, never more than he is worth to you" :default? false :group :bidding}
-   {:key :trend     :label "Trend"  :tooltip "Targets plus carries per game over the last 3 weeks, against his season rate (a QB's counts carries only). Above 1.0 = a growing role"
-    :tooltips {"QB" "Carries per game over the last 3 weeks, against his season rate (passes are not counted). Above 1.0 = he is running more"
-               "RB" "Carries plus targets per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"
+   {:key :trend     :label "Trend"  :tooltip "Targets plus carries per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"
+    :tooltips {"RB" "Carries plus targets per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"
                "WR" "Targets per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"
                "TE" "Targets per game over the last 3 weeks, against his season rate. Above 1.0 = a growing role"}
-    :positions usage-positions :default? false :group :projections}
+    :positions receiving-positions :default? false :group :projections}
    {:key :form      :label "Form"   :tooltip "Fantasy points per game over the last 3 weeks, under your league's scoring" :default? false :group :projections}
    {:key :tgt       :label "Tgt"    :tooltip "Targets this season" :positions receiving-positions :default? false :group :stats}
    {:key :car       :label "Car"    :tooltip "Carries this season" :positions usage-positions :default? false :group :stats}

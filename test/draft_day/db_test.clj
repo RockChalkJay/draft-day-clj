@@ -32,6 +32,8 @@
     (is (every? :visible? (db/columns-for-position cols db/waiver-columns-by-key "K"))
         "an off-position column keeps the manager's choice")
     (is (not (contains? (on "QB") :rec)))
+    (is (not (contains? (on "QB") :trend)) "a quarterback's role is not carries and targets")
+    (is (contains? (on "RB") :trend))
     (is (contains? (on "QB") :car))
     (is (contains? (on "K") :pts) "a column with no :positions stays")
     (is (:off-position? (first (filter #(= :tgt (:key %)) (db/columns-for-position cols db/waiver-columns-by-key "K"))))
