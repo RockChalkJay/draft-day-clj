@@ -136,11 +136,3 @@
       (throw (ex-info "no priced drafts to build a price curve from"
                       {:n-picks n-picks :cache-dir cache-dir})))
     c))
-
-(defn standard-drafts
-  "The 1-QB drafts. The benchmark simulates a single-quarterback lineup, and a
-  superflex room spends a visibly different share of its pool on quarterbacks —
-  so the curve the simulator uses should come from rooms shaped like the one it
-  is simulating, even though the corpus holds both."
-  [drafts]
-  (remove :superflex? drafts))

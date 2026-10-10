@@ -93,15 +93,6 @@
     (is (= [1000 500 1] (pc/clearing-prices c 2000))
         "the deep tail floors at $1 rather than handing the model free players")))
 
-;; ---- corpus slicing ---------------------------------------------------------
-
-(deftest superflex-rooms-are-separable
-  ;; The benchmark simulates a single-quarterback lineup, and a superflex room
-  ;; spends a different share of its pool on quarterbacks. Only possible to
-  ;; separate because the corpus records league type per draft.
-  (let [ds [(draft [10] {:superflex? true}) (draft [10]) (draft [10] {:superflex? false})]]
-    (is (= 2 (count (pc/standard-drafts ds))))))
-
 ;; ---- the pairing a consumer should use --------------------------------------
 
 (deftest for-picks-builds-the-grid-at-the-callers-own-pick-count

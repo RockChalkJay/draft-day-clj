@@ -103,14 +103,6 @@
   [{:keys [players]}]
   (into {} (map (juxt :player_id :count)) players))
 
-(defn adds-of
-  "`{sleeper-id count}` for a snapshot's adds over `hours`; empty when it has none."
-  [snap hours]
-  (->> (:lists snap)
-       (filter #(and (= "add" (:type %)) (= hours (:lookback_hours %))))
-       first
-       counts-of))
-
 (defn current-season
   "The season the week is read for and the snapshot filed under: the calendar
   year, as `season/resolve-season` defaults it, so a January playoff week lands

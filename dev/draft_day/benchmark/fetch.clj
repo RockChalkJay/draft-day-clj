@@ -135,5 +135,3 @@
     (let [v (f)]
       (pipeline/write-transit! path v)
       v)))
-
-(defn cache-exists? [path] (.exists (io/file path)))

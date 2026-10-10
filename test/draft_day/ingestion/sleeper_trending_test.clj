@@ -93,7 +93,7 @@
       (let [env  (trending/load-adds {:path (temp-path) :dir dir})
             path (trending/snapshot-path dir 2026 4 (:fetched-at env))
             snap (json/read-value (slurp path) mapper)]
-        (is (= (:adds env) (trending/adds-of snap 48)) "the list as it was, under the time it was fetched")
+        (is (= (:adds env) (trending/counts-of (first (:lists snap)))) "the list as it was, under the time it was fetched")
         (is (= 2026 (:season snap)))
         (is (= 4 (:through_week snap)))
         (is (= [["add" 48]] (map (juxt :type :lookback_hours) (:lists snap)))
@@ -114,14 +114,6 @@
   (doseq [body [nil [] [{:player_id "a" :count 0}]]]
     (with-redefs [trending/fetch-raw (constantly body)]
       (is (thrown? clojure.lang.ExceptionInfo (trending/fetch-list {}))))))
-
-(deftest adds-of-reads-the-adds-over-one-window
-  (let [snap {:lists [{:type "add" :lookback_hours 24 :players [{:player_id "1" :count 3}]}
-                      {:type "add" :lookback_hours 48 :players [{:player_id "2" :count 7}]}
-                      {:type "drop" :lookback_hours 48 :players [{:player_id "9" :count 1}]}]}]
-    (is (= {"2" 7} (trending/adds-of snap 48)))
-    (is (= {"1" 3} (trending/adds-of snap 24)))
-    (is (= {} (trending/adds-of snap 72)))))
 
 (deftest write-snapshot-names-the-week-and-time
   (let [dir (temp-dir)
