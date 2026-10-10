@@ -68,7 +68,7 @@
     (when-let [pos (:waiver-position team)] [:span (str "Waiver #" pos)])]
    [:table.roster
     [:thead
-     [:tr [:th.slot "Slot"] [:th "Player"] [:th.slot-bye "Bye"]]]
+     [:tr [:th.slot "Pos"] [:th "Player"] [:th.slot-bye "Bye"]]]
     [:tbody
      (map #(player-row % false (openable (:player-id %))) starters)
      (when (seq bench)
