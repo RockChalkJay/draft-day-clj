@@ -60,6 +60,12 @@
     (is (= "–" (slot {:position "WR"} false)))
     (is (= "WR" (slot {:position "WR"} true)) "below the bench line the column is a position")))
 
+(deftest a-held-player-shows-his-bye-week-or-a-dash
+  (let [bye (fn [p] (last (last (league/player-row p false false))))]
+    (is (= 9 (bye {:player-id "a" :player-name "A" :bye 9})))
+    (is (= "–" (bye {:player-id "b" :player-name "B"}))
+        "a player with no bye, or one the universe cannot name, reads as a dash")))
+
 (deftest a-league-with-no-sync-says-where-to-get-one
   (is (re-find #"Sync a league" (render league/season-view))))
 

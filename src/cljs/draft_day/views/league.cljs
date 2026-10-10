@@ -37,7 +37,8 @@
                                :title    "Player detail"}
              nm]
 
-            :else nm)])]])
+            :else nm)])]
+   [:td.slot-bye (or (:bye p) "–")]])
 
 (defn style-tag
   "How this team bids, as a tag on its name with the evidence as its title, or
@@ -66,13 +67,15 @@
         [:span.muted {:title "The host did not report this team's FAAB"} "FAAB –"]))
     (when-let [pos (:waiver-position team)] [:span (str "Waiver #" pos)])]
    [:table.roster
+    [:thead
+     [:tr [:th.slot "Slot"] [:th "Player"] [:th.slot-bye "Bye"]]]
     [:tbody
      (map #(player-row % false (openable (:player-id %))) starters)
      (when (seq bench)
-       [:<> [:tr.roster-group [:td {:col-span 3} "Bench"]]
+       [:<> [:tr.roster-group [:td {:col-span 4} "Bench"]]
         (map #(player-row % true (openable (:player-id %))) bench)])
      (when (seq parked)
-       [:<> [:tr.roster-group [:td {:col-span 3} "IR"]]
+       [:<> [:tr.roster-group [:td {:col-span 4} "IR"]]
         (map #(player-row % true (openable (:player-id %))) parked)])]]])
 
 (defn season-view []

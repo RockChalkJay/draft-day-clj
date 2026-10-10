@@ -83,6 +83,8 @@
                 [:span "Max bid " [:b (str "$" max-bid)]]
                 [:span (str filled " of " seats " filled")]]
                [:table.roster
+                [:thead
+                 [:tr [:th.slot "Slot"] [:th "Player"] [:th.slot-bye "Bye"] [:th.slot-budget "$"]]]
                 [:tbody
                  (map-indexed
                   (fn [i slot]
@@ -91,6 +93,7 @@
                       [:tr
                        [:td.slot (:pos slot)]
                        [:td (if p (:player-name p) [:span.muted "—"])]
+                       [:td.slot-bye (when p (or (:bye p) "–"))]
                        [:td.num.muted (when p (str "$" (get-in drafted [(:player-id slot) :price])))]]))
                   (:roster t))]]]))
           teams)]))
