@@ -138,10 +138,11 @@
         :position              (canon-pos pos)
         :team                  (or team (:team_abbr player))
         :bye                   nil
-        :stats                 (complete-season-line
-                                (apply dissoc (scored-stats stats) season-only-noise)
-                                (some-> weekly scored-stats)
-                                (implied-games stats weekly))
+        :stats                 (scoring/with-pts-allow-counts
+                                (complete-season-line
+                                 (apply dissoc (scored-stats stats) season-only-noise)
+                                 (some-> weekly scored-stats)
+                                 (implied-games stats weekly)))
         :vendor/by-format      (adp-by-format stats)
         :sleeper/injury-status (:injury_status player)
         :sleeper/years-exp     (:years_exp player)}))))
@@ -273,7 +274,7 @@
   and keeps `:home?` nil when the schedule data is unavailable instead of guessing."
   [{:keys [stats opponent team updated_at]} homes]
   (when (and stats (:pts_ppr stats))
-    {:stats      (scored-stats stats)
+    {:stats      (scoring/with-pts-allow-counts (scored-stats stats))
      :opponent   opponent
      ;; nil, not false, when the schedule did not arrive: an empty home set
      ;; would read as "everyone is away" and print `@ OPP` over every home

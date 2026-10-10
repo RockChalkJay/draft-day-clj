@@ -165,3 +165,17 @@
       (is (= (:ros-points (ros-of nil 8)) (:ros-points (ros-of "Out" 8)))))
     (testing "preseason, a PUP tag is not a season-long absence"
       (is (= (:ros-points (ros-of nil 0)) (:ros-points (ros-of "PUP" 0)))))))
+
+(deftest a-defense-is-priced-by-the-bands-of-the-games-it-has-played
+  (let [bands  {:pts-allowed-bands [{:lo 1 :hi 6 :points 4}
+                                    {:lo 14 :hi 17 :points 1}]}
+        pre    (scoring/with-pts-allow-counts {:pts_allow_14_20 17.0})
+        ros-of (fn [p] (:ros-points (first (ros/with-ros
+                                             (alongside-a-projected-peer p)
+                                             bands (ctx 8)))))
+        none   (ros-of (player :pre pre))
+        played (ros-of (player :pre pre :played 8
+                               :realized {:pts_allow_at_3 8.0}))]
+    (is (< 9.9 none 10.1) "ten games left at the band the projection falls in")
+    (is (> played none)
+        "a defense that has been allowing 3 a game is pulled up toward the 4-point band")))

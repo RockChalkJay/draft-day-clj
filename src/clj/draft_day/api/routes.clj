@@ -227,7 +227,7 @@
   browser: the client picks which vendor format to warn about from the same
   field, and the two spellings of this `cond` had already drifted on strings."
   [s]
-  (select-keys (scoring/resolve-config s) scoring/stat-keys))
+  (scoring/bounded-config (scoring/resolve-config s)))
 
 
 (defn- coerce-league-state [ls]

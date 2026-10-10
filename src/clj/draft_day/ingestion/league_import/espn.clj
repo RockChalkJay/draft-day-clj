@@ -231,6 +231,27 @@
               points
               0)))
 
+(def points-allowed-ranges
+  "ESPN statId -> the `[lo hi]` points a defense allowed that the rule is
+  about; `hi` nil is an open top. ESPN's grid is not Sleeper's, and a league
+  may set only some of it, so these become `:pts-allowed-bands` rather than
+  keys. 121 and 122, which the sequence suggests are 18-21 and 22-27, are left
+  out until a league that pays them confirms it."
+  {89 [0 0] 90 [1 6] 91 [7 13] 92 [14 17]
+   123 [28 34] 124 [35 45] 125 [46 nil]})
+
+(defn pts-allowed-bands
+  "Pure: ESPN's scoring items -> the league's `:pts-allowed-bands`, or nil when
+  it pays for none. A rule set to zero is not a band."
+  [items]
+  (let [bands (keep (fn [{:keys [statId] :as item}]
+                      (when-let [[lo hi] (points-allowed-ranges statId)]
+                        (let [points (stat-weight item)]
+                          (when-not (zero? points)
+                            {:lo lo :hi hi :points points}))))
+                    items)]
+    (not-empty (vec (sort-by :lo bands)))))
+
 (defn stat-keys-for
   "The app's scoring keys for one ESPN stat id, as a seq. Empty for an id the
   app cannot score. The one place `stat-ids`' scalar-or-vector value is
@@ -242,13 +263,15 @@
 (defn scoring-config
   "Pure: ESPN's scoring items -> `{stat-key weight}` over the keys the app
   scores, each weighted by `stat-weight`. One id may carry several keys — see
-  `stat-ids`."
+  `stat-ids`. The points-allowed rules ride along as `:pts-allowed-bands`."
   [items]
-  (into {}
-        (mapcat (fn [{:keys [statId] :as item}]
-                  (let [w (stat-weight item)]
-                    (map (fn [key] [key w]) (stat-keys-for statId)))))
-        items))
+  (let [bands (pts-allowed-bands items)]
+    (cond-> (into {}
+                  (mapcat (fn [{:keys [statId] :as item}]
+                            (let [w (stat-weight item)]
+                              (map (fn [key] [key w]) (stat-keys-for statId)))))
+                  items)
+      bands (assoc :pts-allowed-bands bands))))
 
 (defn same-as-base?
   "Does an override pay what the base already pays? Compared as numbers, since
@@ -284,7 +307,8 @@
        (keep (fn [{:keys [statId] :as item}]
                (cond
                  (seq (dropped-overrides item)) (str (stat-label statId) " (position-specific)")
-                 (nil? (stat-ids statId)) (stat-label statId))))
+                 (and (nil? (stat-ids statId))
+                      (not (points-allowed-ranges statId))) (stat-label statId))))
        distinct sort vec))
 
 (def lineup-slots
