@@ -124,7 +124,11 @@
   line's: one ESPN weight for every kick under forty covers three buckets, and
   its total-FG-missed rule covers both miss buckets. The kicking ids were read
   off a live league's scoring page; 201 (FG 60+) is unmapped on purpose, since
-  folding it into `:fgm_50p` pays a fifty-yarder at the sixty-yard rate."
+  folding it into `:fgm_50p` pays a fifty-yarder at the sixty-yard rate.
+
+  128-136 are the nine yards-allowed bands, 0-99 up to 550+, in the order the
+  app's `:yds_allow_*` keys run. Read off a live league's weights (5, 3, 2, -1,
+  -3, -5, -6, -7 around an unset 300-349) rather than ESPN's documentation."
   {3   :pass_yd
    4   :pass_td
    19  :pass_2pt
@@ -148,6 +152,15 @@
    97  :blk_kick
    98  :safe
    99  :sack
+   128 :yds_allow_0_100
+   129 :yds_allow_100_199
+   130 :yds_allow_200_299
+   131 :yds_allow_300_349
+   132 :yds_allow_350_399
+   133 :yds_allow_400_449
+   134 :yds_allow_450_499
+   135 :yds_allow_500_549
+   136 :yds_allow_550p
    198 :fgm_50p})
 
 (def stat-labels
@@ -159,16 +172,18 @@
 
   Three kicking labels that used to sit here named the wrong rules, and a wrong
   name is worse than a number: a live league puts those bands on 77, 198 and
-  201, and its misses on 85."
+  201, and its misses on 85. 93 and 94 are unnamed: a live league pays 93
+  six points to everyone, which no points-allowed band does."
   {23  "rushing attempts"    58  "targets"
    68  "fumbles"             87  "extra points attempted"
    201 "field goals 60+"     89  "points allowed 0"
    90  "points allowed 1-6"  91  "points allowed 7-13"
-   92  "points allowed 14-17" 93 "points allowed 18-21"
-   94  "points allowed 22-27" 101 "kickoff return TD"
+   92  "points allowed 14-17" 101 "kickoff return TD"
    102 "punt return TD"      103 "interception return TD"
    104 "fumble return TD"    105 "blocked kick return TD"
-   120 "points allowed"      127 "yards allowed"})
+   120 "points allowed"      123 "points allowed 28-34"
+   124 "points allowed 35-45" 125 "points allowed 46+"
+   127 "yards allowed"})
 
 (defn stat-label [id] (get stat-labels id (str "ESPN stat " id)))
 
@@ -199,8 +214,12 @@
   belongs in `unsupported-scoring` beside the reception premium.
 
   Every defense-only id `stat-ids` maps belongs here. One that does not imports
-  at 0.0 with nothing failing to say so, which is the bug this set exists for."
-  #{95 96 97 98 99})
+  at 0.0 with nothing failing to say so, which is the bug this set exists for.
+
+  The points-allowed and yards-allowed bands are here too, mapped or not: an id
+  the app cannot score still reports by its own name rather than as a premium
+  on somebody else's rule."
+  #{89 90 91 92 95 96 97 98 99 123 124 125 128 129 130 131 132 133 134 135 136})
 
 (defn stat-weight
   "Pure: one scoring item -> the weight the app scores it at. The D/ST override
@@ -231,15 +250,25 @@
                     (map (fn [key] [key w]) (stat-keys-for statId)))))
         items))
 
+(defn same-as-base?
+  "Does an override pay what the base already pays? Compared as numbers, since
+  ESPN writes the same weight as `6` in one place and `6.0` in another."
+  [base v]
+  (and (number? base) (number? v) (== base v)))
+
 (defn dropped-overrides
   "Pure: the per-position overrides on one item the import could not apply.
 
   Empty for a defense-only stat whose sole override `stat-weight` took, so
   Settings stops warning about scoring it imported correctly. A second position
-  on one of those still reports: one weight cannot hold both."
-  [{:keys [statId pointsOverrides]}]
-  (cond-> pointsOverrides
-    (defense-only-stats statId) (dissoc dst-override-key)))
+  on one of those still reports: one weight cannot hold both. An override equal
+  to the base is no premium either — ESPN files a return touchdown as 6 for
+  everyone and 6 for the D/ST — and is dropped from the report."
+  [{:keys [statId points pointsOverrides]}]
+  (let [premiums (into {} (remove (fn [[_ v]] (same-as-base? points v)))
+                       pointsOverrides)]
+    (cond-> premiums
+      (defense-only-stats statId) (dissoc dst-override-key))))
 
 (defn unsupported-scoring
   "The league's own rules a flat stat-line model cannot score, sorted.
