@@ -362,6 +362,12 @@
 
 ;; ---- display ----
 
+(deftest trend-is-not-measured-for-a-quarterback
+  (let [qb {:nflverse/season-to-date {:games 4 :usage {:carries 8}}
+            :nflverse/recent {:games 3 :usage {:carries 18}}}]
+    (is (some? (waiver/trend qb)) "the same line is a trend for a back")
+    (is (nil? (waiver/trend (assoc qb :position "QB"))))))
+
 (deftest trend-reads-opportunity-not-points
   ;; A receiver whose targets have dried up is a sell while his season line
   ;; still looks fine.
