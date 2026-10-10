@@ -66,8 +66,8 @@
   (is (= ["WR7" "LAR" "Bye 8"]
          (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR" :bye 8} nil))))
 
-(deftest a-real-matchup-keeps-its-place
-  (is (= ["WR7" "LAR" "@ SEA" "Bye 8"]
+(deftest the-matchup-is-in-the-name-not-the-meta-line
+  (is (= ["WR7" "LAR" "Bye 8"]
          (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR" :bye 8
                             :week/opponent "SEA" :week/home? false}
                            3))))
@@ -78,14 +78,14 @@
 
 ;; ---- the kickoff ----
 
-(deftest the-kickoff-sits-beside-the-matchup
+(deftest the-kickoff-follows-the-team
   (let [segs (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR" :bye 8
                                 :week/opponent "SEA" :week/home? false
                                 :kickoff/at "2026-09-13T17:00Z"
                                 :kickoff/status "STATUS_SCHEDULED"}
                                3)]
-    (is (= ["WR7" "LAR" "@ SEA"] (take 3 segs)))
-    (is (re-find #"\d:\d\d" (nth segs 3)) "a wall-clock time follows the matchup")
+    (is (= ["WR7" "LAR"] (take 2 segs)))
+    (is (re-find #"\d:\d\d" (nth segs 2)) "a wall-clock time follows the team")
     (is (= "Bye 8" (last segs)))))
 
 (deftest a-game-already-played-says-so
@@ -101,7 +101,7 @@
 
 (deftest no-scoreboard-drops-the-segment-rather-than-dashing-it
   ;; A fetch that failed is not evidence that there is no game.
-  (is (= ["WR7" "LAR" "@ SEA" "Bye 8"]
+  (is (= ["WR7" "LAR" "Bye 8"]
          (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR" :bye 8
                             :week/opponent "SEA" :week/home? false}
                            3))))
@@ -110,7 +110,7 @@
 
 (deftest a-neutral-site-names-the-ground
   ;; "vs SF" says nothing about a game in Melbourne.
-  (is (= ["WR7" "LAR" "vs SF" "Melbourne Cricket Ground"]
+  (is (= ["WR7" "LAR" "Melbourne Cricket Ground"]
          (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
                             :kickoff/opponent "SF" :kickoff/home? true
                             :kickoff/neutral? true
@@ -118,7 +118,7 @@
                            1))))
 
 (deftest an-ordinary-game-does-not-name-its-stadium
-  (is (= ["WR7" "LAR" "@ SEA"]
+  (is (= ["WR7" "LAR"]
          (pd/meta-segments {:position "WR" :pos-rank 7 :team "LAR"
                             :kickoff/opponent "SEA" :kickoff/home? false
                             :kickoff/neutral? false

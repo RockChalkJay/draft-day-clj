@@ -256,15 +256,12 @@
    [face headshot]
    [:div
     [:div.cmp-name
-     (util/team-logo (:team p))
-     [:button.name-btn
+     (util/player-ident
+      p week
       {:on-click #(rf/dispatch [:show-modal {:kind :player-detail
                                              :player-id (:player-id p)}])
-       :title "Player detail"}
-      (:player-name p)]
-     [status-chip p]]
-    [:p.cmp-meta (util/pos-label (assoc p :pos-rank (db/season-rank p))) " · " (or (:team p) "FA")
-     " · " (waivers/week-matchup p week)]]])
+       :extra    [(status-chip p)]})]
+    [:p.cmp-meta (util/pos-label (assoc p :pos-rank (db/season-rank p))) " · " (or (:team p) "FA")]]])
 
 (defn band-content
   "One band as it is drawn — its surviving rows, then the prose that belongs

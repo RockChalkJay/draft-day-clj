@@ -1238,7 +1238,7 @@
 
 ;; ---- the matchup has two possible sources ----
 ;; Sleeper publishes an opponent only for the players it projects; the ESPN
-;; scoreboard covers every team playing. See `waivers/matchup-source`.
+;; scoreboard covers every team playing. See `util/matchup-source`.
 
 (deftest espn-answers-the-matchup-sleeper-does-not-project
   (is (= "@ SEA" (waivers/week-matchup

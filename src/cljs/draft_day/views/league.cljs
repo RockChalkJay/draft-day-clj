@@ -21,24 +21,14 @@
   The first cell is a seat for a starter and a position below the bench line.
   A starter whose seat is unknown gets a dash — his position there would read
   as the seat `db/starter-seats` declined to guess."
-  [p bench? openable?]
+  ([p bench? openable?] (player-row p bench? openable? nil))
+  ([p bench? openable? week]
   ^{:key (:player-id p)}
   [:tr {:class (when bench? "bench")}
    [:td.slot (if bench? (or (:position p) "–") (or (:slot p) "–"))]
-   [:td (let [nm (if bench? (:player-name p) [:b (:player-name p)])]
-          [:<>
-           (util/team-logo (:team p))
-           (cond
-            (:unvalued? p)
-            [:span.muted {:title (str "No player for id " (:player-id p))} (:player-id p)]
-
-            openable?
-            [:button.name-btn {:on-click #(waivers/open-detail! % p)
-                               :title    "Player detail"}
-             nm]
-
-            :else nm)])]
-   [:td.slot-bye (or (:bye p) "–")]])
+   [:td (util/player-ident p week
+                           (when openable? {:on-click #(waivers/open-detail! % p)}))]
+   [:td.slot-bye (or (:bye p) "–")]]))
 
 (defn style-tag
   "How this team bids, as a tag on its name with the evidence as its title, or
@@ -50,7 +40,7 @@
     [:span.style-tag {:title (when profile (bid-history/style-line profile))}
      (get bid-history/style-labels (if profile (:style profile) :new))]))
 
-(defn team-card [{:keys [team starters bench parked mine? profile]} faab? openable
+(defn team-card [{:keys [team starters bench parked mine? profile week]} faab? openable
                  & [history?]]
   [:div.team-card {:class (when mine? "mine")}
    [:div.team-head.split
@@ -70,13 +60,13 @@
     [:thead
      [:tr [:th.slot "Pos"] [:th "Player"] [:th.slot-bye "Bye"]]]
     [:tbody
-     (map #(player-row % false (openable (:player-id %))) starters)
+     (map #(player-row % false (openable (:player-id %)) week) starters)
      (when (seq bench)
        [:<> [:tr.roster-group [:td {:col-span 4} "Bench"]]
-        (map #(player-row % true (openable (:player-id %))) bench)])
+        (map #(player-row % true (openable (:player-id %)) week) bench)])
      (when (seq parked)
        [:<> [:tr.roster-group [:td {:col-span 4} "IR"]]
-        (map #(player-row % true (openable (:player-id %))) parked)])]]])
+        (map #(player-row % true (openable (:player-id %)) week) parked)])]]])
 
 (defn season-view []
   (let [synced?  @(rf/subscribe [:league-synced?])
@@ -85,6 +75,7 @@
         ls       @(rf/subscribe [:league-sync])
         openable @(rf/subscribe [:comparable-by-id])
         profiles @(rf/subscribe [:league-bid-profiles])
+        week     (:week @(rf/subscribe [:season-header]))
         faab?   (= "faab" (some-> ls :waiver :type name))]
     (cond
       (not synced?)
@@ -101,6 +92,7 @@
       [:div.league-grid
        (map (fn [r]
               ^{:key (get-in r [:team :roster-id])}
-              [team-card (assoc r :profile (bid-history/team-profile (:team r) profiles))
+              [team-card (assoc r :week week
+                            :profile (bid-history/team-profile (:team r) profiles))
                faab? openable (some? profiles)])
             rosters)])))

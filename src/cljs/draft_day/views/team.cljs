@@ -178,7 +178,7 @@
            (map (fn [p]
                   ^{:key (:player-id p)}
                   [:div.side-line
-                   [:span (:player-name p) [:span.muted (str " " (:position p))]]
+                   [:span (util/player-ident p (:week w) nil) [:span.muted (str " " (:position p))]]
                    [:span.good (str "+" (js/Math.round (:lineup-upgrade p))
                                     (when (and db/bid-predictions? (number? (:bid p)))
                                       (str " · $" (:bid p)

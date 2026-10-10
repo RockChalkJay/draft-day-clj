@@ -152,3 +152,20 @@
     (is (= "29d ago" (util/ago now "2026-09-02T12:00:00Z" 30)))
     (is (nil? (util/ago now "garbage")))
     (is (nil? (util/ago now nil)))))
+
+(deftest player-ident-reads-logo-name-opponent
+  (let [p {:player-id "a" :player-name "Cooper Kupp" :team "LAR"
+           :week/opponent "SEA" :week/home? false}
+        s (pr-str (util/player-ident p 3 nil))]
+    (is (re-find #"Cooper Kupp" s))
+    (is (re-find #"@ SEA" s))
+    (is (< (.indexOf s "team-logo") (.indexOf s "Cooper Kupp") (.indexOf s "@ SEA"))))
+  (testing "no week, no opponent"
+    (is (not (re-find #"p-opp" (pr-str (util/player-ident {:player-name "A" :team "LAR"
+                                                          :week/opponent "SEA"} nil nil))))))
+  (testing "a bye prints, a mirror moves the logo to the end"
+    (is (re-find #"Bye" (pr-str (util/player-ident {:player-name "A" :team "LAR" :bye 3} 3 nil))))
+    (let [s (pr-str (util/player-ident {:player-name "A" :team "LAR"} 3 {:mirror? true}))]
+      (is (< (.indexOf s "\"A\"") (.indexOf s "team-logo")))))
+  (testing "an unvalued player shows his id"
+    (is (re-find #"No player for id" (pr-str (util/player-ident {:player-id "x" :unvalued? true} 3 nil))))))

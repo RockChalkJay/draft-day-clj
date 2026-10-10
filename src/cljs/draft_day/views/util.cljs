@@ -252,3 +252,55 @@
   [status detail]
   (when (and status (not= "STATUS_SCHEDULED" status))
     detail))
+
+(defn matchup-source
+  "Which source answers \"who does he play\", with both fields read off that
+  one, or nil. Sleeper's opponent rides with its weekly projection, so it wins
+  where it has an opinion; ESPN's scoreboard fills the rest. Never mixed: one
+  source's opponent with the other's home flag would occasionally invent a
+  matchup neither published. `db/waiver-sort-accessors` sorts Opp on the same
+  pair."
+  [p]
+  (cond
+    (:week/opponent p)
+    {:opponent (:week/opponent p) :home? (:week/home? p)}
+
+    (:kickoff/opponent p)
+    {:opponent (:kickoff/opponent p) :home? (:kickoff/home? p)
+     :neutral? (:kickoff/neutral? p)}))
+
+(defn week-matchup
+  "`vs NE` / `@ SEA` / `Bye` / `–`. A nil `:home?` is an unknown side rather
+  than an away one and prints the opponent bare; a neutral site prints `vs`
+  from both sides, since neither team is at home."
+  [p week]
+  (let [{:keys [opponent home? neutral?]} (matchup-source p)]
+    (cond
+      (and opponent neutral?)     (str "vs " opponent)
+      (and opponent (nil? home?)) opponent
+      opponent                    (str (if home? "vs " "@ ") opponent)
+      (and week (= week (:bye p))) "Bye"
+      :else "–")))
+
+(defn player-ident
+  "`logo name opponent` — the one way a player is named. Opponent reads off
+  `week-matchup` and is dropped when `week` is nil (the draft half has none) or
+  there is no game to state.
+
+  `:on-click` makes the name a button; `:mirror?` puts the logo at the outer
+  edge for a right-hand column; `:extra` follows the opponent."
+  [p week {:keys [on-click mirror? extra]}]
+  (let [logo (team-logo (:team p))
+        nm   (cond
+               (:unvalued? p) [:span.muted {:title (str "No player for id " (:player-id p))}
+                               (:player-id p)]
+               on-click       [:button.name-btn {:on-click on-click :tab-index -1
+                                                 :title "Player detail"}
+                               (:player-name p)]
+               :else          [:span.p-name (:player-name p)])
+        opp  (when week
+               (let [m (week-matchup p week)]
+                 (when (not= "–" m) [:span.p-opp m])))
+        parts (keep identity (concat [nm opp] extra))]
+    (into [:span.p-ident]
+          (if mirror? (concat parts [logo]) (cons logo parts)))))

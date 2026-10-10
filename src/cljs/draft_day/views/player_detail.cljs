@@ -135,11 +135,9 @@
 (defn meta-segments
   "Position and team always survive: a player the board could rank has both."
   [p week]
-  (let [matchup (waivers/week-matchup p week)
-        at      (util/kickoff-label (:kickoff/at p))
+  (let [at      (util/kickoff-label (:kickoff/at p))
         done    (util/kickoff-status-label (:kickoff/status p) (:kickoff/detail p))]
     (cond-> [(util/pos-label (assoc p :pos-rank (db/season-rank p))) (or (:team p) "FA")]
-      (not= "–" matchup)   (conj matchup)
       at                   (conj at)
       done                 (conj done)
       (and (:kickoff/neutral? p)
@@ -158,7 +156,7 @@
    ;; only one of them makes a request first.
    [face universe]
    [:div.pd-who
-    [:h2#pd-title.pd-name (:player-name p) [compare/status-chip p]]
+    [:h2#pd-title.pd-name (util/player-ident p week {:extra [(compare/status-chip p)]})]
     [:p.pd-meta (str/join " · " (meta-segments p week))]
     ;; From the universe, like the face: `:bio` is a static fact and this is the
     ;; document that carries them. nil for a player nobody knows anything about.

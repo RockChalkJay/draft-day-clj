@@ -48,7 +48,7 @@
                           (filter some?)
                           (str/join " "))}
      [:span.w-grip {:title "Drag to reorder"} "⠿"]
-     [:span.w-name (util/team-logo (:team p)) (:player-name p) [:span.w-pos (util/pos-label p)]]
+     [:span.w-name (util/player-ident p nil nil) [:span.w-pos (util/pos-label p)]]
      [:span.w-worth (util/money (:worth p))]
      [:span.w-mkt (util/money-rnd (:market p))]
      [:button.w-remove {:title    "Remove from watch list"
