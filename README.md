@@ -790,6 +790,7 @@ camelCase conversion.
 | `POST` | `/api/waivers` | the in-season board: free agents, upgrades and bids |
 | `POST` | `/api/league/sync` | who is rostered right now, and what is left to bid |
 | `POST` | `/api/cache/reset` | drop the on-disk universe cache |
+| `POST` | `/api/sensei/mcp` | Sensei's tools for a Claude app, over MCP; this machine only |
 
 ### `POST /api/rankings`
 
@@ -907,6 +908,17 @@ The reply names its provider because `rankings.waiver` picks its id crosswalk
 off it. `/api/waivers` refuses a synced league that names none rather than
 guessing Sleeper — the guess would resolve nobody in an ESPN league and hand
 back a board on which its whole roster is available.
+
+### `POST /api/sensei/mcp`
+
+Sensei, the AI assistant for waiver and lineup calls, as a Model Context
+Protocol server: JSON-RPC over the Streamable HTTP transport, JSON responses
+only. Its three tools (`my_team`, `waiver_targets`, `player_news`) read
+`/api/waivers`' own board for the league that `DRAFTDAY_SENSEI_PROVIDER`,
+`DRAFTDAY_SENSEI_LEAGUE_ID` and `DRAFTDAY_SENSEI_ROSTER_ID` name. A request
+from anywhere but loopback, or with a browser `Origin` other than localhost, is
+a `403`. How to connect Claude Code, why it is built this way, and what it
+measured are in [docs/sensei.md](docs/sensei.md).
 
 ## Development
 

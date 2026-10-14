@@ -924,3 +924,20 @@
   (let [rows (mapcat (juxt :starters :bench) (:teams (parse (matchup matchup-req))))]
     (is (not-any? #(contains? % :nflverse/game-log) (apply concat rows)))
     (is (not-any? #(contains? % :week/stats) (apply concat rows)))))
+
+;; ---- sensei ----
+
+(deftest sensei-is-mounted-for-this-machine
+  (let [post (fn [remote-addr]
+               (routes/app {:request-method :post :uri "/api/sensei/mcp" :remote-addr remote-addr
+                            :headers {"content-type" "application/json"}
+                            :body (input-stream (json/write-value-as-string
+                                                 {:jsonrpc "2.0" :id 1 :method "initialize"
+                                                  :params {:protocolVersion "2025-06-18"}}))}))
+        resp (post "127.0.0.1")]
+    (is (= 200 (:status resp)))
+    (is (= "sensei" (get-in (parse resp) [:result :serverInfo :name])))
+    (is (= 403 (:status (post "10.0.0.7"))))
+    (is (= 405 (:status (routes/app {:request-method :get :uri "/api/sensei/mcp"
+                                     :remote-addr "127.0.0.1" :headers {}})))
+        "no event stream to open")))

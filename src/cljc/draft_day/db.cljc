@@ -85,6 +85,13 @@
   [roster-cfg]
   (scoring-slots (roster-template roster-cfg)))
 
+(defn replacement-config
+  "The slots replacement level is priced over, out of a roster config: K, DST
+  and the bench are left out, since replacement prices none of them. Shared so
+  the browser's requests and Sensei's server-built ones send the same thing."
+  [roster-cfg]
+  (select-keys roster-cfg [:qb :rb :wr :te :flex]))
+
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
 (def persist-keys

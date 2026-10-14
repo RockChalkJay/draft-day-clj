@@ -1,0 +1,253 @@
+(ns draft-day.sensei.tools
+  "Sensei's tools: what a model may ask Draft Day, each answered off the board
+  the Waivers tab draws.
+
+  A tool states the engine's numbers and never computes one of its own, so
+  Sensei and the screen cannot disagree. The rows are the waiver board's columns
+  read through `db/waiver-sort-accessors`, and their legend is the column
+  catalog's tooltips, so a column's meaning is written once.
+
+  What the screen holds back, the tools hold back: the bid model's predictions
+  while `db/bid-predictions?` is off, and raw rest-of-season points, which no
+  surface shows. A row is compact on purpose, since every token of it is spent
+  against the manager's Claude plan.
+
+  The tools read the server through `deps`, a map of delays, rather than by
+  requiring `routes`, which mounts them."
+  (:require [clojure.string :as str]
+            [draft-day.db :as db]
+            [draft-day.ingestion.match :as match]
+            [draft-day.sensei.context :as context]))
+
+(defn deps
+  "What the tools read for one request, each computed at most once and only
+  when a tool asks: `:body`, the league's /api/waivers body; `:reply`, the
+  waiver board for it; `:players`, the universe; and `:news`, a fn of an ESPN
+  id. The server's half is `routes/sensei-server`."
+  [{:keys [waivers-reply players news]} league]
+  (let [body (delay (context/league-context league))]
+    {:body    body
+     :reply   (delay (let [b @body] (if (:error b) b (waivers-reply b))))
+     :players (delay (players))
+     :news    news}))
+
+(defn tool-error
+  "A failure the model should read, as opposed to a bug."
+  [msg]
+  (ex-info msg {:sensei/tool-error true}))
+
+(defn need
+  "The value behind one of `deps`' delays; a tool error when it is an error."
+  [deps k]
+  (let [v @(get deps k)]
+    (if-let [e (and (map? v) (:error v))]
+      (throw (tool-error e))
+      v)))
+
+(def row-columns
+  "The waiver board's columns a row carries, by `db/waiver-column-catalog` key.
+  Name, position, team and opponent lead every row outside this list, because
+  their cells are formatted rather than read."
+  [:bye :week :week-rank :pts :avg :gp :form :trend :tgt :car :rec :yds :td
+   :adds :lineup :upgrade :ros-vorp :risk])
+
+(defn columns
+  "`row-columns`, and the bid model's while it is on."
+  []
+  (cond-> row-columns
+    db/bid-predictions? (into [:typical :bid :rivals])))
+
+(defn rounded
+  "A double to one place, or two for the trend ratio, which lives near 1.0."
+  [k v]
+  (if (and (number? v) (not (integer? v)))
+    (let [scale (if (= k :trend) 100.0 10.0)]
+      (/ (Math/round (* scale (double v))) scale))
+    v))
+
+(defn opponent
+  "`vs SEA` or `@ SEA`, off either source `util/week-matchup` reads; nil on a
+  bye or before a schedule."
+  [p]
+  (when-let [opp (or (:week/opponent p) (:kickoff/opponent p))]
+    (let [home? (if (some? (:week/home? p)) (:week/home? p) (:kickoff/home? p))]
+      (str (case home? true "vs " false "@ " "") opp))))
+
+(defn injury
+  "Sleeper's designation with the body part, e.g. `Questionable (Hamstring)`."
+  [p]
+  (when-let [status (:sleeper/injury-status p)]
+    (cond-> status
+      (:sleeper/injury-body-part p) (str " (" (:sleeper/injury-body-part p) ")"))))
+
+(defn row
+  "One player as the tools state him: a few keys in a fixed order, nothing nil,
+  numbers rounded, and no column the board would hide at his position (a
+  quarterback's targets read 0.0, which says nothing)."
+  [p]
+  (let [pos  (:position p)
+        lead [[:name (:player-name p)]
+              [:player-id (:player-id p)]
+              [:position pos]
+              [:pos-rank (db/season-rank p)]
+              [:team (:team p)]
+              [:slot (:slot p)]
+              [:opp (opponent p)]
+              [:inj (injury p)]
+              [:drop-candidate (when (:drop? p) true)]
+              [:unvalued (when (:unvalued? p) true)]]
+        cols (keep (fn [k] (when (db/applies? (db/waiver-columns-by-key k) pos)
+                             [k ((db/waiver-sort-accessors k) p)]))
+                   (columns))]
+    (->> (concat lead cols)
+         (keep (fn [[k v]] (when (some? v) [k (rounded k v)])))
+         (apply concat)
+         (apply array-map))))
+
+(defn legend
+  "What each row key means, off the column catalog's tooltips."
+  []
+  (->> (columns)
+       (keep (fn [k] (when-let [tip (:tooltip (db/waiver-columns-by-key k))]
+                       (str "- " (name k) ": " tip))))
+       (into ["- pos-rank: his rank at his position on fantasy points so far (preseason rank before week 1)"
+              "- opp: this week's opponent"
+              "- inj: Sleeper's injury designation"])
+       (str/join "\n")))
+
+(defn my-team
+  "The manager's roster split as My Team draws it, through `db/team-roster`,
+  with the seat a claim would cost marked."
+  [deps _args]
+  (let [{:keys [league my-roster-id]} (need deps :body)
+        reply   (need deps :reply)
+        players (need deps :players)
+        team    (some #(when (= my-roster-id (:roster-id %)) %) (:teams league))
+        xwalk   (db/provider->player-id players (:provider league) (:provider-players league))
+        ;; As the `:league-rosters` sub builds it: the waiver reply's rows over
+        ;; the universe's, so a player the board did not value still shows.
+        by-id   (into (into {} (map (juxt :player-id identity)) players)
+                      (map (juxt :player-id identity))
+                      (:my-roster-players reply))
+        drop-id (get-in reply [:drop-candidate :player-id])
+        ;; Flagged before `row`, as the `:my-roster` sub flags it, so the row
+        ;; keeps its key order.
+        rows    (fn [ps] (mapv #(row (cond-> % (= drop-id (:player-id %)) (assoc :drop? true)))
+                               ps))
+        {:keys [starters bench parked]} (db/team-roster team league xwalk by-id)]
+    {:team            (:name team)
+     :record          (select-keys team [:wins :losses])
+     :week            (:week reply)
+     :through-week    (:through-week reply)
+     :faab            (select-keys (:faab reply) [:type :budget :left])
+     :claims-left     (:claims-left reply)
+     :drop-candidate  (some-> (:drop-candidate reply) (select-keys [:player-id :player-name :position]))
+     :starters        (rows starters)
+     :bench           (rows bench)
+     :injured-reserve (rows parked)}))
+
+(def max-targets 25)
+
+(defn waiver-targets
+  "The free agents in the Waivers tab's order (`db/waiver-rank-key`), at one
+  position or all."
+  [deps {:keys [position limit]}]
+  (let [reply (need deps :reply)
+        pos   (some-> position str str/upper-case)
+        n     (-> (if (number? limit) (long limit) 10) (max 1) (min max-targets))]
+    (when (and pos (not (some #{pos} db/positions)))
+      (throw (tool-error (str "position must be one of " (str/join ", " db/positions)))))
+    {:week           (:week reply)
+     :through-week   (:through-week reply)
+     :drop-candidate (get-in reply [:drop-candidate :player-name])
+     :players        (->> (:players reply)
+                          (filter #(or (nil? pos) (= pos (:position %))))
+                          (sort-by db/waiver-rank-key)
+                          (take n)
+                          (mapv row))}))
+
+(defn find-players
+  "Universe players matching `q`: by player id exactly, else by name through
+  `match/normalize-name`, the same key every join uses."
+  [players q]
+  (let [q (str/trim (str q))]
+    (or (seq (filter #(= q (:player-id %)) players))
+        (let [k (match/normalize-name q)]
+          (filter #(= k (match/normalize-name (:player-name %))) players)))))
+
+(def default-news-items
+  "Five, not the feed's ten: a note runs to a paragraph, and the older half
+  rarely changes a call."
+  5)
+
+(defn player-news
+  "A player's latest Rotowire notes off ESPN, newest first, and Sleeper's
+  designation."
+  [deps {:keys [player limit]}]
+  (let [[p & more :as hits] (find-players (need deps :players) player)
+        n (-> (if (number? limit) (long limit) default-news-items) (max 1) (min 10))]
+    (cond
+      (empty? hits)
+      (throw (tool-error (str "no player matches " (pr-str player))))
+
+      more
+      (throw (tool-error (str (pr-str player) " matches more than one player; ask again by id: "
+                              (str/join "; " (map #(str (:player-id %) " " (:player-name %) " "
+                                                        (:position %) " " (:team %))
+                                                  hits)))))
+
+      :else
+      (let [espn  (get-in p [:ids :espn])
+            reply (when espn ((:news deps) (str espn)))]
+        (cond-> {:player (select-keys (row p) [:player-id :name :position :team :inj])
+                 :news   (vec (take n (:news reply)))}
+          (:sleeper/injury-notes p) (assoc :injury-notes (:sleeper/injury-notes p))
+          (seq (:errors reply))     (assoc :errors (mapv :message (:errors reply)))
+          (nil? espn)               (assoc :reason "no ESPN id for this player, so no news feed"))))))
+
+(def tools
+  "Every tool, in the order a client lists them."
+  [{:name         "my_team"
+    :title        "My team"
+    :description  (str "The manager's roster this week: starters (with the seat each fills), bench and "
+                       "injured reserve, FAAB left, claims left, and the drop a waiver claim would cost "
+                       "(marked drop-candidate). Call this first.\n\nRow keys:\n" (legend))
+    :input-schema {:type "object" :properties {} :additionalProperties false}
+    :handler      my-team}
+   {:name         "waiver_targets"
+    :title        "Waiver targets"
+    :description  (str "Free agents in the league, best claim first: ordered by lineup, then upgrade, "
+                       "both measured against the drop-candidate. Filter by position to answer a "
+                       "question about one.\n\nRow keys:\n" (legend))
+    :input-schema {:type                 "object"
+                   :properties           {:position {:type "string" :enum db/positions
+                                                     :description "Only this position"}
+                                          :limit    {:type "integer" :minimum 1 :maximum max-targets
+                                                     :description "How many players (default 10)"}}
+                   :additionalProperties false}
+    :handler      waiver-targets}
+   {:name         "player_news"
+    :title        "Player news"
+    :description  (str "A player's latest news notes (Rotowire, via ESPN), newest first, and his "
+                       "injury designation. Use before leaning on an injury or a role change.")
+    :input-schema {:type                 "object"
+                   :properties           {:player {:type        "string"
+                                                   :description "Full name, or the player-id a row carries"}
+                                          :limit  {:type "integer" :minimum 1 :maximum 10
+                                                   :description "How many notes (default 5)"}}
+                   :required             ["player"]
+                   :additionalProperties false}
+    :handler      player-news}])
+
+(defn by-name [tool-name] (some #(when (= tool-name (:name %)) %) tools))
+
+(defn run
+  "`{:result data}`, or `{:error msg}` for a failure the model should read.
+  Anything else is a bug and is thrown."
+  [tool deps args]
+  (try
+    {:result ((:handler tool) deps (or args {}))}
+    (catch clojure.lang.ExceptionInfo e
+      (if (:sensei/tool-error (ex-data e))
+        {:error (ex-message e)}
+        (throw e)))))

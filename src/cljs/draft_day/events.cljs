@@ -134,9 +134,6 @@
 
 ;; ---- rankings recompute ----
 
-(defn- replacement-config [roster]
-  (select-keys roster [:qb :rb :wr :te :flex]))
-
 (defn- league-state [db]
   {:teams              (:teams db)
    :drafted-player-ids (vec (keys (:drafted db)))
@@ -155,7 +152,7 @@
         :http {:method :post :url "/api/rankings"
                :body {:num-teams          (get-in db [:config :num-teams])
                       :scoring            (get-in db [:config :scoring])
-                      :replacement-config (replacement-config (get-in db [:config :roster]))
+                      :replacement-config (db/replacement-config (get-in db [:config :roster]))
                       :league-state       (league-state db)}
                ;; Rules ride along so the board can be compared against the
                ;; rules in force when it is *read* — see the ns docstring.
@@ -898,10 +895,10 @@
   (let [lg (db/active-league db)]
     {:scoring            (get-in db [:config :scoring])
      :num-teams          (get-in db [:config :num-teams])
-     :replacement-config (replacement-config (get-in db [:config :roster]))
+     :replacement-config (db/replacement-config (get-in db [:config :roster]))
      :league             (:sync lg)
      :my-roster-id       (:my-roster-id lg)
-     ;; The whole roster config, not `replacement-config` — that drops K and
+     ;; The whole roster config, not `db/replacement-config` — that drops K and
      ;; DST, which fill starting slots. See `waiver/with-lineup-upgrade`.
      :roster             (get-in db [:config :roster])
      :roster-size        (count (db/roster-template (get-in db [:config :roster])))}))
