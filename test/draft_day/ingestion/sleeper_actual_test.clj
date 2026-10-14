@@ -20,8 +20,12 @@
         "a zero is dropped, so silence and futility stay apart")))
 
 (deftest a-defenses-flat-allowed-totals-are-carried-for-display
-  (is (= {:yds_allow 301.0 :pts_allow 19.0}
+  (is (= {:yds_allow 301.0 :pts_allow 19.0 :pts_allow_at_19 1.0}
          (actual/scored-stats {:yds_allow 301.0 :pts_allow 19.0}))))
+
+(deftest a-shutout-is-counted-though-zero-is-dropped-from-sparse-rows
+  (is (= {:pts_allow_at_0 1.0}
+         (actual/scored-stats {:pts_allow 0.0 :sack 0.0}))))
 
 (deftest every-carried-key-is-one-a-league-could-state
   (is (every? (set scoring/stat-keys)

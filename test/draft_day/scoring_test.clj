@@ -126,3 +126,61 @@
         "a league that scores every kick the same still uses the summed total")
     (is (= 15.0 (scoring/player-points line {:fgm 3.0 :fgm_40_49 0.0}))
         "a bucket set to zero is not a league stating its distances")))
+
+(def ^:private espn-bands
+  [{:lo 0 :hi 0 :points 5} {:lo 1 :hi 6 :points 4} {:lo 7 :hi 13 :points 3}
+   {:lo 14 :hi 17 :points 1} {:lo 28 :hi 34 :points -1}
+   {:lo 35 :hi 45 :points -3} {:lo 46 :hi nil :points -5}])
+
+(defn- game-points
+  "What one game allowing `pts` scores under `bands`."
+  [bands pts]
+  (scoring/player-points {:stats (scoring/pts-allow-game pts)}
+                         {:pts-allowed-bands bands}))
+
+(deftest a-game-scores-the-band-it-fell-in
+  (is (= [5.0 4.0 4.0 3.0 3.0 1.0 1.0]
+         (mapv #(game-points espn-bands %) [0 1 6 7 13 14 17]))
+      "both edges of a band belong to it")
+  (testing "a score between bands, which the league did not state, pays nothing"
+    (is (= [0.0 0.0 0.0] (mapv #(game-points espn-bands %) [18 22 27]))))
+  (testing "the open top band runs to the end"
+    (is (= [-5.0 -5.0] (mapv #(game-points espn-bands %) [46 71])))
+    (is (= -5.0 (game-points espn-bands 140)) "a score off the grid counts as the last"))
+  (testing "the host's one 14-20 bucket would have paid 18 as it paid 17"
+    (is (= [1.0 0.0] (mapv #(game-points espn-bands %) [17 20])))))
+
+(deftest realized-games-add-up-per-band
+  (let [season (apply merge-with + (map scoring/pts-allow-game [3 10 17 20 38]))]
+    (is (= (+ 4.0 3.0 1.0 0.0 -3.0)
+           (scoring/player-points {:stats season}
+                                  {:pts-allowed-bands espn-bands}))
+        "five games, each in its own band; the 20 falls in the gap")))
+
+(deftest a-projected-bucket-counts-at-its-middle
+  (let [line (scoring/with-pts-allow-counts {:pts_allow_14_20 17.0 :sack 40.0})]
+    (is (= 17.0 (:pts_allow_at_17 line)))
+    (is (= 40.0 (:sack line)) "the rest of the line is untouched")
+    (is (= 17.0 (scoring/player-points {:stats line}
+                                       {:pts-allowed-bands espn-bands}))
+        "17 games projected in 14-20 pay the 14-17 band's point each")))
+
+(deftest bands-and-presets-do-not-touch-each-other
+  (testing "a config without bands resolves to itself"
+    (is (= (dissoc (:ppr scoring/presets) :fgm)
+           (scoring/resolve-buckets (:ppr scoring/presets)))
+        "only the flat :fgm goes, as it always did"))
+  (testing "resolving twice changes nothing"
+    (let [once (scoring/resolve-buckets {:pts-allowed-bands espn-bands})]
+      (is (= once (scoring/resolve-buckets once)))))
+  (testing "a league that scores only bands is still a league"
+    (is (scoring/scores-anything? {:pts-allowed-bands espn-bands}))
+    (is (not (scoring/scores-anything? {:pts-allowed-bands [{:lo 0 :hi 6 :points 0}]})))))
+
+(deftest a-client-cannot-widen-the-band-list
+  (is (= 20 (count (:pts-allowed-bands
+                    (scoring/bounded-config
+                     {:pts-allowed-bands (repeat 500 {:lo 0 :hi 1 :points 1})})))))
+  (is (nil? (:pts-allowed-bands
+             (scoring/bounded-config {:pts-allowed-bands [{:lo "x" :points 1}]})))
+      "a malformed band is dropped, not scored as something"))

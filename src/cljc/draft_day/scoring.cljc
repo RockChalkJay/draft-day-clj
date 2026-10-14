@@ -132,13 +132,84 @@
   double-counting one kick."
   [:fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p])
 
+(def pts-allow-cap
+  "The most points allowed that gets a count of its own; a worse game counts as
+  this one. An open-ended top band runs up to here."
+  80)
+
+(defn pts-allow-count-key
+  "The stat key counting games in which a defense allowed exactly `n` points,
+  e.g. `:pts_allow_at_17`. A league that grades points allowed in bands of its
+  own weights these, because the host's fixed `:pts_allow_*` buckets cannot say
+  which band a game fell in."
+  [n]
+  (keyword (str "pts_allow_at_" (min pts-allow-cap (max 0 (long n))))))
+
+(def pts-allow-bucket-points
+  "The points allowed a host's fixed bucket stands for, where the projection
+  states only the bucket. Sleeper's own buckets, at their middle."
+  {:pts_allow_0 0 :pts_allow_1_6 3 :pts_allow_7_13 10 :pts_allow_14_20 17
+   :pts_allow_21_27 24 :pts_allow_28_34 31 :pts_allow_35p 38})
+
+(defn with-pts-allow-counts
+  "Pure: a projected stat line -> the same line with its points-allowed buckets
+  restated as per-score counts (see `pts-allow-count-key`). The projection
+  states a bucket and not a score, so each bucket counts at its middle."
+  [stats]
+  (reduce-kv (fn [acc k pts]
+               (let [n (get stats k)]
+                 (if (and (number? n) (pos? n))
+                   (update acc (pts-allow-count-key pts) (fnil + 0.0) (double n))
+                   acc)))
+             stats
+             pts-allow-bucket-points))
+
+(defn pts-allow-game
+  "Pure: one played game's real points allowed -> its count stat, or `{}` for a
+  line that has none (every player but a defense)."
+  [pts]
+  (if (number? pts)
+    {(pts-allow-count-key (Math/round (double pts))) 1.0}
+    {}))
+
+(defn clean-bands
+  "Pure: a points-allowed band list, or nil, made safe to score. A band is
+  `{:lo :hi :points}` with `:hi` nil for an open top. Anything malformed is
+  dropped, and the list is capped so a client cannot amplify per-player work."
+  [bands]
+  (let [ok (->> (when (sequential? bands) bands)
+                (filter (fn [{:keys [lo hi points]}]
+                          (and (number? lo) (number? points)
+                               (or (nil? hi) (and (number? hi) (<= lo hi))))))
+                (take 20)
+                (mapv (fn [{:keys [lo hi points]}]
+                        {:lo (long lo) :hi (some-> hi long)
+                         :points (usable-weight points)})))]
+    (when (seq ok) ok)))
+
+(defn band-weights
+  "Pure: a band list -> `{count-key points}`, one entry per score a band covers.
+  The first band to cover a score wins."
+  [bands]
+  (reduce (fn [acc {:keys [lo hi points]}]
+            (reduce (fn [acc n]
+                      (let [k (pts-allow-count-key n)]
+                        (if (contains? acc k) acc (assoc acc k points))))
+                    acc
+                    (range (max 0 lo) (inc (min pts-allow-cap (or hi pts-allow-cap))))))
+          {}
+          bands))
+
 (defn scores-anything?
   "True when the config has at least one usable weight that can move points.
   An empty or all-zero config is treated as a non-league configuration rather
   than a real scoring setup."
   [scoring]
-  (boolean (some #(not (zero? (usable-weight %)))
-                 (vals (apply dissoc scoring unprojected-stats)))))
+  (boolean (or (some #(not (zero? (usable-weight %)))
+                     (vals (apply dissoc scoring :pts-allowed-bands
+                                  unprojected-stats)))
+               (some #(not (zero? (usable-weight (:points %))))
+                     (clean-bands (:pts-allowed-bands scoring))))))
 
 (defn scores-by-distance?
   "True when the config weights field goals by distance instead of using the flat `:fgm` key."
@@ -146,11 +217,26 @@
   (boolean (some #(not (zero? (usable-weight (get scoring %)))) fg-buckets)))
 
 (defn resolve-buckets
-  "Remove the flat `:fgm` weight when the config scores field goals by distance.
-  This is a config-level normalization shared by all players so a league does not
-  double-count a made kick."
+  "Remove the flat `:fgm` weight when the config scores field goals by distance,
+  and restate `:pts-allowed-bands` as weights on the per-score counts. This is a
+  config-level normalization shared by all players so a league does not
+  double-count a made kick, and it is idempotent."
   [scoring]
-  (cond-> scoring (scores-by-distance? scoring) (dissoc :fgm)))
+  (let [bands (:pts-allowed-bands scoring)]
+    (cond-> scoring
+      (scores-by-distance? scoring) (dissoc :fgm)
+      (contains? scoring :pts-allowed-bands)
+      (-> (dissoc :pts-allowed-bands)
+          (merge (band-weights (clean-bands bands)))))))
+
+(defn bounded-config
+  "Pure: a scoring config reduced to the keys the engine reads — the stat keys
+  and a cleaned band list — so an oversized client map cannot amplify
+  per-player scoring."
+  [scoring]
+  (let [bands (clean-bands (:pts-allowed-bands scoring))]
+    (cond-> (select-keys scoring stat-keys)
+      bands (assoc :pts-allowed-bands bands))))
 
 (defn resolved-points
   "Score a player using an already-normalized config.
