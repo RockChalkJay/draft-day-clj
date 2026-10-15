@@ -13,6 +13,17 @@
   "Number of prior games represented by the preseason projection."
   6.0)
 
+(def ^:const RECENT-WEIGHT
+  "Share of the realized rate taken from the recent window rather than the whole
+  season, once the window holds a full `recent-window` of games. A back promoted
+  by an injury ahead of him is not the player his bench weeks describe. CHOSEN,
+  NOT MEASURED — same standing as `PRIOR-GAMES`."
+  0.5)
+
+(def ^:const RECENT-WINDOW
+  "Games in a full recent window; a shorter one earns proportionally less weight."
+  3.0)
+
 (defn games-remaining
   "Return games remaining after `through-week`, subtracting a future bye.
   Players without a recorded bye receive the expected fractional bye."
@@ -28,10 +39,16 @@
 (defn blend
   "Blend projected and realized totals by stat key. `played` is the player's
   game count, and keys outside `projected` are treated as having no prior."
-  [{:keys [pre realized played games-remaining season-games prior-games projected]}]
+  [{:keys [pre realized played games-remaining season-games prior-games projected
+           recent recent-games recent-weight]}]
   (let [played      (double (or played 0))
         prior       (double (or prior-games PRIOR-GAMES))
-        season-games (double season-games)]
+        season-games (double season-games)
+        recent-games (double (or recent-games 0))
+        w            (if (pos? recent-games)
+                       (* (double (or recent-weight RECENT-WEIGHT))
+                          (min 1.0 (/ recent-games RECENT-WINDOW)))
+                       0.0)]
     (when (and (pos? (+ prior played)) (pos? games-remaining))
       (into {}
             (keep (fn [k]
@@ -44,7 +61,11 @@
                                    (/ (+ (* prior-k pre-pg) (double (get realized k 0.0)))
                                       denom)
                                    0.0)
-                          total  (* rate games-remaining)]
+                          recent-rate (if (pos? recent-games)
+                                        (/ (double (get recent k 0.0)) recent-games)
+                                        rate)
+                          total  (* (+ (* (- 1.0 w) rate) (* w recent-rate))
+                                    games-remaining)]
                       (when-not (zero? total) [k total]))))
             (into (set (keys pre)) (keys realized))))))
 
@@ -58,13 +79,18 @@
                  0.0
                  (games-remaining (assoc player :through-week through-week
                                          :season-games season-games)))
-        realized (or (:realized/season-to-date player)
-                     (:nflverse/season-to-date player))
+        ;; One source per player: the window comes from the same feed as the season.
+        sleeper? (some? (:realized/season-to-date player))
+        realized (if sleeper?
+                   (:realized/season-to-date player)
+                   (:nflverse/season-to-date player))
+        recent   (if sleeper? (:realized/recent player) (:nflverse/recent player))
         played (get realized :games 0)
         real   (get realized :stats {})
         line   (blend {:pre stats :realized real :played played
                        :games-remaining left :season-games season-games
-                       :prior-games prior-games :projected projected})]
+                       :prior-games prior-games :projected projected
+                       :recent (:stats recent) :recent-games (:games recent)})]
     (when line
       {:ros/stats           line
        :ros/games-remaining left
