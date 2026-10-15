@@ -2,7 +2,8 @@
   "Does weighting a player's last games into his rest-of-season rate predict
   the rest of his season better than his whole season does?
 
-  Research, not shipped — it settles `ros/RECENT-WEIGHT`. For each past season
+  Research, not shipped — it is the evidence that `ros` takes no weight on recent
+  games. For each past season
   and each as-of week it replays what `nflverse-weekly/accumulate` would have
   known then, predicts points per game, and scores that against the points per
   game the player actually put up in the weeks after.
@@ -25,6 +26,10 @@
   games they went on to play. The standard error is a bootstrap over *players*,
   because one player asked about at five as-of weeks is not five independent
   observations. A gate is reported with the number of asks it fired on.
+
+  The volume-surging subset stands in for a back promoted by an injury ahead
+  of him. It cannot identify one: there is no historical injury or depth-chart
+  data here, so a promotion caused by a teammate's injury is untested.
 
       lein run -m draft-day.benchmark.ros-recent -- --seasons 2022,2023,2024,2025"
   (:require [clojure.string :as str]
@@ -55,15 +60,15 @@
   "One map per receiving-position player asked about at `as-of`: his season and
   recent rates as of then, and the points per game he went on to score."
   [cfg positions rows as-of]
-  (let [known  (weekly/accumulate (weekly/season-rows rows as-of))
-        future (->> (weekly/season-rows rows last-week)
-                    (filter (fn [[_ w _]] (> w as-of)))
-                    (reduce (fn [acc [g w row]] (update acc g (fnil conj []) [w row])) {}))]
+  (let [known       (weekly/accumulate (weekly/season-rows rows as-of))
+        after-by-id (->> (weekly/season-rows rows last-week)
+                         (filter (fn [[_ w _]] (> w as-of)))
+                         (reduce (fn [acc [g w row]] (update acc g (fnil conj []) [w row])) {}))]
     (into []
           (keep (fn [[gsis line]]
                   (let [season (:nflverse/season-to-date line)
                         recent (:nflverse/recent line)
-                        after  (get future gsis)
+                        after  (get after-by-id gsis)
                         s-ppg  (per-game cfg season)
                         r-ppg  (per-game cfg recent)
                         s-opp  (opportunities season)
