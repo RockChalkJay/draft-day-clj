@@ -166,11 +166,10 @@
     (testing "preseason, a PUP tag is not a season-long absence"
       (is (= (:ros-points (ros-of nil 0)) (:ros-points (ros-of "PUP" 0)))))))
 
-(deftest a-promoted-backup-is-priced-off-his-new-role
-  (let [rate (fn [p] (let [r (first (ros/with-ros [p] ppr (ctx 9)))]
-                       (/ (get-in r [:ros/stats :rec]) (:ros/games-remaining r))))
-        bench (player :pre {:rec 30.0} :played 9 :realized {:rec 18.0})
-        promoted (assoc-in bench [:nflverse/recent] {:games 3 :stats {:rec 18.0}})
-        thin     (assoc-in bench [:nflverse/recent] {:games 1 :stats {:rec 6.0}})]
-    (is (< (rate bench) (rate thin) (rate promoted))
-        "six receptions a game lately outweighs two a game earlier, more so with a full window")))
+(deftest recent-games-do-not-move-the-rate
+  (let [pts (fn [p] (:ros-points (first (ros/with-ros [p] ppr (ctx 9)))))
+        bench (player :pre {:rec 30.0} :played 9 :realized {:rec 18.0})]
+    (is (= (pts bench)
+           (pts (assoc bench :nflverse/recent {:games 3 :stats {:rec 18.0}}))
+           (pts (assoc bench :realized/recent {:games 3 :stats {:rec 18.0}})))
+        "a hot window predicted the rest of the season worse than the season rate did")))
