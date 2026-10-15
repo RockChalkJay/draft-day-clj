@@ -354,8 +354,33 @@
   (reset! realized-memo nil)
   (delete-cache! default-realized-cache-path))
 
+(defn resolve-realized
+  "Set `:realized/line` on a player: `{:source :season-to-date :recent}`, from
+  Sleeper's realized line where it has one, else nflverse's. The window comes
+  from the same source as the season, so a player is never read from two feeds,
+  and Sleeper having no window does not send it to nflverse's. Nil, and no key,
+  when neither feed has played him. The raw columns stay: the player card and
+  `waiver/trend` read nflverse's usage."
+  [player]
+  (let [sleeper? (some? (:realized/season-to-date player))
+        season   (if sleeper?
+                   (:realized/season-to-date player)
+                   (:nflverse/season-to-date player))
+        recent   (if sleeper? (:realized/recent player) (:nflverse/recent player))]
+    (cond-> player
+      season (assoc :realized/line
+                    (cond-> {:source (if sleeper? :sleeper :nflverse)
+                             :season-to-date season}
+                      recent (assoc :recent recent))))))
+
+(defn resolve-realized-all
+  "`resolve-realized` over a universe envelope's players."
+  [env]
+  (update env :players (partial mapv resolve-realized)))
+
 (defn assoc-realized
-  "Join a realized envelope onto a universe envelope and set `:through-week`."
+  "Join a realized envelope onto a universe envelope, resolve each player's
+  realized line, and set `:through-week`."
   [env {:keys [weekly sleeper]}]
   (-> env
       (apply-enrichment :nflverse/weekly (:by-key weekly)
@@ -366,6 +391,7 @@
                         {:key-fn            #(or (get-in % [:ids :sleeper])
                                                  (:player-id %))
                          :expected-partial? true})
+      resolve-realized-all
       (assoc :through-week (or (:through-week weekly) 0))))
 
 (defonce ^:private joined-memo (atom nil))
@@ -376,7 +402,7 @@
   join is memoized on both inputs, since every board request asks for it."
   [{:keys [source season] :as env}]
   (if-not (#{"live" "cache"} source)
-    env
+    (resolve-realized-all env)
     (let [realized (load-realized (season/resolve-season season))
           {:keys [base joined] r :realized} @joined-memo]
       (if (and (identical? base env) (identical? r realized))

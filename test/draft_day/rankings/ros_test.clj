@@ -14,8 +14,9 @@
       :or   {bye 7}}]
   (cond-> {:player-id "p" :position "WR" :bye bye}
     pre      (assoc :stats pre)
-    played   (assoc :nflverse/season-to-date
-                    {:games played :stats (or realized {})})))
+    played   (assoc :realized/line
+                    {:source :nflverse
+                     :season-to-date {:games played :stats (or realized {})}})))
 
 (defn- alongside-a-projected-peer
   "`p` on a board that also carries an ordinarily projected player.
@@ -112,7 +113,7 @@
 (deftest a-stat-no-preseason-line-carries-takes-no-prior
   (let [board [{:player-id "k" :position "K" :bye 7
                 :stats {:fgm_40_49 10.0 :fgm_50p 5.0}
-                :nflverse/season-to-date {:games 3 :stats {:fgm_0_19 3.0 :fgm_40_49 2.0}}}]
+                :realized/line {:season-to-date {:games 3 :stats {:fgm_0_19 3.0 :fgm_40_49 2.0}}}}]
         p     (first (ros/with-ros board ppr (ctx 3)))
         left  (:ros/games-remaining p)
         per-game (fn [k] (/ (get-in p [:ros/stats k]) left))]
@@ -136,20 +137,17 @@
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"season-games"
                         (ros/with-ros [(player :pre {:rec 1.0})] ppr {:through-week 3}))))
 
-(deftest sleepers-own-realized-line-wins-over-nflverses
-  (let [both (-> (player :pre {:rec 17.0})
-                 (assoc :nflverse/season-to-date {:games 8 :stats {:rec 20.0}}
-                        :realized/season-to-date {:games 8 :stats {:rec 40.0}}))
-        p    (first (ros/with-ros (alongside-a-projected-peer both) ppr (ctx 8)))
-        rate (/ (get-in p [:ros/stats :rec]) (:ros/games-remaining p))]
-    (is (< 3.28 rate 3.29))
-    (is (= 8 (:ros/games-played p))))
-  (testing "and nflverse answers where Sleeper did not"
-    (let [p (first (ros/with-ros
-                    (alongside-a-projected-peer
-                     (player :pre {:rec 17.0} :played 8 :realized {:rec 40.0}))
-                    ppr (ctx 8)))]
-      (is (< 3.28 (/ (get-in p [:ros/stats :rec]) (:ros/games-remaining p)) 3.29)))))
+(deftest the-resolved-line-is-the-only-one-read
+  (let [rate (fn [p]
+               (let [r (first (ros/with-ros (alongside-a-projected-peer p) ppr (ctx 8)))]
+                 (/ (get-in r [:ros/stats :rec]) (:ros/games-remaining r))))
+        base (player :pre {:rec 17.0} :played 8 :realized {:rec 40.0})]
+    (is (< 3.28 (rate base) 3.29))
+    (is (= (rate base)
+           (rate (assoc base
+                        :realized/season-to-date {:games 8 :stats {:rec 400.0}}
+                        :nflverse/season-to-date {:games 8 :stats {:rec 0.0}})))
+        "the raw columns are not a second opinion")))
 
 (deftest a-serious-designation-has-no-games-left-in-season
   (let [ros-of (fn [status week]
@@ -170,6 +168,5 @@
   (let [pts (fn [p] (:ros-points (first (ros/with-ros [p] ppr (ctx 9)))))
         bench (player :pre {:rec 30.0} :played 9 :realized {:rec 18.0})]
     (is (= (pts bench)
-           (pts (assoc bench :nflverse/recent {:games 3 :stats {:rec 18.0}}))
-           (pts (assoc bench :realized/recent {:games 3 :stats {:rec 18.0}})))
+           (pts (assoc-in bench [:realized/line :recent] {:games 3 :stats {:rec 18.0}})))
         "a hot window predicted the rest of the season worse than the season rate did")))

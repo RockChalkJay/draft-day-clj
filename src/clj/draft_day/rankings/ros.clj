@@ -63,8 +63,7 @@
                  0.0
                  (games-remaining (assoc player :through-week through-week
                                          :season-games season-games)))
-        realized (or (:realized/season-to-date player)
-                     (:nflverse/season-to-date player))
+        realized (:season-to-date (:realized/line player))
         played (get realized :games 0)
         real   (get realized :stats {})
         line   (blend {:pre stats :realized real :played played

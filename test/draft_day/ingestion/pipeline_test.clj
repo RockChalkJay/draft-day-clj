@@ -520,6 +520,30 @@
         (is (every? #(false? (:ok? (get-in r [:sources %])))
                     pipeline/realized-source-labels))))))
 
+(deftest each-player-reads-one-realized-feed
+  (let [nfl    {:games 8 :stats {:rec 20.0} :usage {:targets 50.0}}
+        nfl-r  {:games 3 :stats {:rec 9.0}}
+        slp    {:games 8 :stats {:rec 40.0}}
+        slp-r  {:games 3 :stats {:rec 18.0}}
+        line   #(:realized/line (pipeline/resolve-realized %))]
+    (testing "Sleeper's line wins, and its window comes with it"
+      (is (= {:source :sleeper :season-to-date slp :recent slp-r}
+             (line {:realized/season-to-date slp :realized/recent slp-r
+                    :nflverse/season-to-date nfl :nflverse/recent nfl-r}))))
+    (testing "Sleeper with no window does not borrow nflverse's"
+      (is (= {:source :sleeper :season-to-date slp}
+             (line {:realized/season-to-date slp
+                    :nflverse/season-to-date nfl :nflverse/recent nfl-r}))))
+    (testing "nflverse answers where Sleeper did not"
+      (is (= {:source :nflverse :season-to-date nfl :recent nfl-r}
+             (line {:nflverse/season-to-date nfl :nflverse/recent nfl-r}))))
+    (testing "neither feed, no line"
+      (is (not (contains? (pipeline/resolve-realized {:player-id "rookie"}) :realized/line))))
+    (testing "the raw columns stay for the readers that want nflverse's usage"
+      (is (= nfl (:nflverse/season-to-date
+                  (pipeline/resolve-realized {:realized/season-to-date slp
+                                              :nflverse/season-to-date nfl})))))))
+
 (deftest realized-columns-have-their-own-short-cache
   (with-redefs [pipeline/offline? (constantly false)]
     (let [path  (tmp "realized")
@@ -547,8 +571,13 @@
       (.delete (io/file path)))))
 
 (deftest a-sample-universe-keeps-its-own-realized-columns
-  (let [sample {:source "sample" :through-week 9 :players []}]
-    (is (identical? sample (pipeline/with-realized sample)))))
+  (let [line   {:games 2 :stats {:rec 5.0}}
+        sample {:source "sample" :through-week 9
+                :players [{:player-id "p" :nflverse/season-to-date line}]}
+        [p]    (:players (pipeline/with-realized sample))]
+    (is (= 9 (:through-week (pipeline/with-realized sample))) "not rejoined")
+    (is (= line (:nflverse/season-to-date p)))
+    (is (= :nflverse (get-in p [:realized/line :source])) "but resolved like the rest")))
 
 (defn- ttl-cache-path []
   (let [f (java.io.File/createTempFile "ttl-cache" ".transit")]

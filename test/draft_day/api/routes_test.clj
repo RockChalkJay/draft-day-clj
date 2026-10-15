@@ -490,9 +490,11 @@
                :ros-points 91.0 :week-points 12.4 :form-points 8.2
                :nflverse/recent {:games 3 :stats {:rec 18.0}}
                :nflverse/season-to-date {:games 8 :usage {:targets 60}}
+               :realized/line {:source :nflverse :season-to-date {:games 8}}
                :ros/stats {:rec 90.0} :week/stats {:rec 6.0}
                :week/opponent "SF"}])]
     (is (not (contains? p :nflverse/recent)))
+    (is (not (contains? p :realized/line)))
     (is (= {:games 8 :usage {:targets 60}} (:nflverse/season-to-date p)))
     (is (= [91.0 12.4 8.2 "SF"]
            ((juxt :ros-points :week-points :form-points :week/opponent) p))
