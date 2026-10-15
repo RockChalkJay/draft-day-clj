@@ -73,10 +73,13 @@
     ;; the provenance (season, fetched-at, what validation dropped) that makes
     ;; "cache" a checkable claim rather than an unfalsifiable one.
     ;;
+    ;; `:realized/line` is server-side working state that repeats the season and
+    ;; recent maps already shipped beside it.
+    ;;
     ;; The per-format vendor bundle is stripped rather than flattened: there is
     ;; no league here to pick a format for, and the client reads the flat vendor
     ;; columns off /api/rankings anyway.
-    (json-response 200 {:players  (vendor/without-bundle players)
+    (json-response 200 {:players  (mapv #(dissoc % :realized/line) (vendor/without-bundle players))
                         :count    (count players)
                         :source   source
                         :universe (dissoc u :players :expires-at)})))
