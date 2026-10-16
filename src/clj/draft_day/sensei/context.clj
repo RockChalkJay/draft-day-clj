@@ -97,12 +97,20 @@
   call tries again rather than pinning a failure for the whole TTL."
   [cache ttl-ms k f]
   (let [now    (now-ms)
-        fresh? (fn [{:keys [at]}] (and at (< (- now at) ttl-ms)))
-        entry  (-> (swap! cache #(if (fresh? (get % k)) % (assoc % k {:at now :value (delay (f))})))
+        stale? #(>= now (:until % 0))
+        entry  (-> (swap! cache #(cond-> %
+                                         (stale? (get % k))
+                                         (assoc k {:until (+ now ttl-ms)
+                                                   :value (delay (f))})))
                    (get k))
-        evict! #(swap! cache (fn [m] (cond-> m (identical? entry (get m k)) (dissoc k))))
-        v      (try @(:value entry) (catch Exception e (evict!) (throw e)))]
-    (when (or (:error v) (seq (:errors v))) (evict!))
+        evict! #(swap! cache (fn [m]
+                               (cond-> m
+                                       (identical? entry (get m k))
+                                       (dissoc k))))
+        v      (try @(:value entry)
+                    (catch Exception e (evict!) (throw e)))]
+    (when (or (:error v)
+              (seq (:errors v))) (evict!))
     v))
 
 (defonce ^:private contexts (atom {}))
