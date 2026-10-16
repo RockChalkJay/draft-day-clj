@@ -28,8 +28,7 @@
   The in-season half runs on the same statelessness as the draft board: the
   browser owns the synced league and re-POSTs it, and the server holds nothing
   between requests."
-  (:require [clojure.string :as str]
-            [re-frame.core :as rf]
+  (:require [re-frame.core :as rf]
             [draft-day.db :as db]
             [draft-day.providers :as providers]
             [draft-day.scoring :as scoring]
@@ -134,9 +133,6 @@
 
 ;; ---- rankings recompute ----
 
-(defn- replacement-config [roster]
-  (select-keys roster [:qb :rb :wr :te :flex]))
-
 (defn- league-state [db]
   {:teams              (:teams db)
    :drafted-player-ids (vec (keys (:drafted db)))
@@ -155,7 +151,7 @@
         :http {:method :post :url "/api/rankings"
                :body {:num-teams          (get-in db [:config :num-teams])
                       :scoring            (get-in db [:config :scoring])
-                      :replacement-config (replacement-config (get-in db [:config :roster]))
+                      :replacement-config (db/replacement-config (get-in db [:config :roster]))
                       :league-state       (league-state db)}
                ;; Rules ride along so the board can be compared against the
                ;; rules in force when it is *read* — see the ns docstring.
@@ -705,21 +701,6 @@
               [:dispatch [:import-league req]]
               [:dispatch [:reload-universe]]]}))))
 
-(defn my-roster-id-for
-  "Which roster in this league belongs to `user-id`, or nil.
-
-  Case-folded, which costs a numeric Sleeper id nothing and is the difference
-  between finding the manager's own team and not on ESPN: his user id *is* his
-  SWID, ESPN publishes it uppercase in a team's `owners` array, and a manager
-  who pasted his cookie in lower case would otherwise land on a board with no
-  roster, no budget and no drop until he found the dropdown."
-  [teams user-id]
-  (when (not-empty (str user-id))
-    (let [mine (str/lower-case (str user-id))]
-      (some (fn [t] (when (= (str/lower-case (str (:owner-id t))) mine)
-                      (:roster-id t)))
-            teams))))
-
 (rf/reg-event-fx :league-synced [persist]
   (fn [{:keys [db]} [_ k resp]]
     ;; Repaired on the way *in*, not only at boot: a provider that grew or
@@ -729,8 +710,8 @@
           ;; Only when unset: a manager who corrected the dropdown must not
           ;; have that undone by the next re-sync.
           mine     (or (:my-roster-id entry)
-                       (my-roster-id-for (:teams league)
-                                         (:user-id (db/league-account db entry))))]
+                       (db/my-roster-id-for (:teams league)
+                                            (:user-id (db/league-account db entry))))]
       {:db (-> db
                (update-in [:leagues k] merge
                           ;; Client clock: it answers "how old is what I am
@@ -898,10 +879,10 @@
   (let [lg (db/active-league db)]
     {:scoring            (get-in db [:config :scoring])
      :num-teams          (get-in db [:config :num-teams])
-     :replacement-config (replacement-config (get-in db [:config :roster]))
+     :replacement-config (db/replacement-config (get-in db [:config :roster]))
      :league             (:sync lg)
      :my-roster-id       (:my-roster-id lg)
-     ;; The whole roster config, not `replacement-config` — that drops K and
+     ;; The whole roster config, not `db/replacement-config` — that drops K and
      ;; DST, which fill starting slots. See `waiver/with-lineup-upgrade`.
      :roster             (get-in db [:config :roster])
      :roster-size        (count (db/roster-template (get-in db [:config :roster])))}))

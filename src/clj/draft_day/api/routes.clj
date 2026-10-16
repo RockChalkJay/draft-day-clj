@@ -34,6 +34,7 @@
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]
+            [draft-day.sensei.mcp :as sensei-mcp]
             [draft-day.rankings.market :as market]
             [draft-day.rankings.vendor :as vendor]
             [draft-day.rankings.league-state :as ls]
@@ -390,116 +391,111 @@
       {:week live-week :through-week (min through (dec live-week))}
       {:week (inc through) :through-week through})))
 
+(defn waivers-reply
+  "The in-season board for an /api/waivers body, as data: rest-of-season value
+  over the free agents a synced league leaves available, and what to bid for
+  them; or `{:error msg}` for a body the board cannot price. Sensei's tools read
+  the same board through this, so they cannot disagree with the Waivers tab.
+
+  Stateless on `rankings-handler`'s terms but none of its money: a waiver claim
+  is one seat against a budget spent down over months (see `rankings.waiver`).
+  `:through-week` comes from the universe envelope, not the request, so the
+  board cannot price a week the data has not reached; in preseason it is 0."
+  [{:keys [scoring num-teams replacement-config league my-roster-id roster-size roster]}]
+  (let [scoring* (resolve-scoring scoring)]
+    (cond
+      ;; Same guard and the same reason as the rankings board: an all-zero
+      ;; config scores every player 0.0, and a waiver board where nobody is an
+      ;; upgrade over anybody is a lie, not a board.
+      (not (scoring/scores-anything? scoring*))
+      {:error "scoring config has no non-zero weight on a projected stat"}
+
+      ;; `rankings.waiver` picks its id crosswalk off this. Defaulting it would
+      ;; read an ESPN league through the Sleeper id map, resolve nobody, and
+      ;; hand back a board on which the whole league is available — which is
+      ;; not a degraded answer but a confident wrong one.
+      (and (seq (:teams league)) (nil? (:provider league)))
+      {:error "synced league does not name its provider — re-sync it"}
+
+      :else
+      (let [{:keys [players season through-week]} (universe false)
+            season*      (season/resolve-season season)
+            season-games (nflverse/games-in-season season*)
+            ;; The weekly line is loaded per request rather than with the
+            ;; universe: see `pipeline/load-weekly`.
+            {:keys [week through-week]} (waiver-weeks through-week (current-nfl-week))
+            weekly       (pipeline/load-weekly season* week)
+            adds         (trending/load-adds)
+            ctx      {:league             league
+                      :my-roster-id       my-roster-id
+                      :roster-size        roster-size
+                      :num-teams          (or num-teams 12)
+                      :replacement-config replacement-config
+                      :through-week       through-week
+                      :season-games       season-games
+                      :playoff-week-start (:playoff-week-start league)
+                      ;; The scoring seats, for `waiver/with-lineup-upgrade`.
+                      ;; Off `:roster` and deliberately not
+                      ;; `replacement-config`: that one drops K and DST
+                      ;; because replacement prices neither, which is right
+                      ;; there and wrong here — both fill a starting slot and
+                      ;; both score.
+                      :starting-slots (when roster (db/starting-slots roster))
+                      ;; The disk cache the last sync left: this board makes
+                      ;; no provider call and carries no credential.
+                      :bid-history (transactions/cached-history
+                                    (:provider league) (:league-id league) (:season league))}
+            board    (-> players
+                         ;; No vendor column is drawn on this board, and
+                         ;; ECR/ADP are preseason numbers besides.
+                         vendor/without-bundle
+                         ;; Before the log goes: rivals' claims are aimed
+                         ;; partly by last week's game.
+                         (waiver/with-last-game through-week)
+                         without-history
+                         (waiver-board-inputs scoring*)
+                         (ros/with-ros scoring* ctx)
+                         (pipeline/assoc-weekly (:lines weekly))
+                         (pipeline/assoc-trending (:adds adds))
+                         (waiver/with-week-points scoring*)
+                         ;; The second positional rank, over this week rather
+                         ;; than the preseason. Deliberately not folded into
+                         ;; `waiver-board-inputs`: that runs before the weekly
+                         ;; line is joined, so there would be nothing to rank.
+                         (pos-rank/with-pos-rank :week-points :week-pos-rank)
+                         (waiver/with-form-points scoring*)
+                         ;; The Pos cell's rank in season: on points scored,
+                         ;; not the preseason projection ranked above.
+                         (pos-rank/with-pos-rank :season-points :season-pos-rank)
+                         ;; Independent of the weekly line — see
+                         ;; `pipeline/assoc-kickoffs`.
+                         (pipeline/assoc-kickoffs (:kickoffs weekly)))
+            out      (waiver/waiver-board board ctx)]
+        (assoc out
+               :players      (-> (:players out)
+                                 without-projection-internals
+                                 (without-preseason through-week))
+               ;; The same strip: these are full rows too. `some->` so nil survives,
+               ;; meaning no team picked, which `mapv` would flatten to empty.
+               :my-roster-players
+               (some-> (:my-roster-players out)
+                       without-projection-internals
+                       (without-preseason through-week))
+               :through-week through-week
+               :season-games season-games
+               ;; nil with no weekly line; the board then reads rest-of-season only.
+               :week         (:week weekly)
+               :week-fetched-at (:fetched-at weekly)
+               ;; nil offline or when Sleeper never answered; rivals bid on need alone.
+               :trending     (some-> adds (select-keys [:fetched-at :lookback-hours])))))))
+
 (defn waivers-handler
-  "The in-season board: rest-of-season value over the free agents a synced
-  league actually leaves available, and what to bid for them.
-
-  Stateless on exactly the same terms as `rankings-handler` — the browser owns
-  the synced league and re-POSTs it — but it shares none of that handler's
-  money. Auction dollars price a whole roster out of a fixed bankroll on draft
-  night; a waiver claim is one seat against a budget spent down over months. See
-  `rankings.waiver`.
-
-  `:through-week` comes from the universe envelope rather than from the request,
-  so the board cannot be asked to price a week the data has not reached. In
-  preseason it is 0 and this is the preseason board, which is the honest answer
-  rather than an error."
+  "POST /api/waivers: `waivers-reply` as JSON, and a 400 for a body it cannot
+  price."
   [req]
   (try
-    (let [{:keys [scoring num-teams replacement-config league my-roster-id roster-size
-                  roster]}
-          (read-json-body req)
-          scoring* (resolve-scoring scoring)]
-      (cond
-        ;; Same guard and the same reason as the rankings board: an all-zero
-        ;; config scores every player 0.0, and a waiver board where nobody is an
-        ;; upgrade over anybody is a lie, not a board.
-        (not (scoring/scores-anything? scoring*))
-        (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
-
-        ;; `rankings.waiver` picks its id crosswalk off this. Defaulting it would
-        ;; read an ESPN league through the Sleeper id map, resolve nobody, and
-        ;; hand back a board on which the whole league is available — which is
-        ;; not a degraded answer but a confident wrong one.
-        (and (seq (:teams league)) (nil? (:provider league)))
-        (json-response 400 {:error "synced league does not name its provider — re-sync it"})
-
-        :else
-        (let [{:keys [players season through-week]} (universe false)
-              season*      (season/resolve-season season)
-              season-games (nflverse/games-in-season season*)
-              ;; The weekly line is loaded per request rather than with the
-              ;; universe: see `pipeline/load-weekly`.
-              {:keys [week through-week]} (waiver-weeks through-week (current-nfl-week))
-              weekly       (pipeline/load-weekly season* week)
-              adds         (trending/load-adds)
-              ctx      {:league             league
-                        :my-roster-id       my-roster-id
-                        :roster-size        roster-size
-                        :num-teams          (or num-teams 12)
-                        :replacement-config replacement-config
-                        :through-week       through-week
-                        :season-games       season-games
-                        :playoff-week-start (:playoff-week-start league)
-                        ;; The scoring seats, for `waiver/with-lineup-upgrade`.
-                        ;; Off `:roster` and deliberately not
-                        ;; `replacement-config`: that one drops K and DST
-                        ;; because replacement prices neither, which is right
-                        ;; there and wrong here — both fill a starting slot and
-                        ;; both score.
-                        :starting-slots (when roster (db/starting-slots roster))
-                        ;; The disk cache the last sync left: this board makes
-                        ;; no provider call and carries no credential.
-                        :bid-history (transactions/cached-history
-                                      (:provider league) (:league-id league) (:season league))}
-              board    (-> players
-                           ;; No vendor column is drawn on this board, and
-                           ;; ECR/ADP are preseason numbers besides.
-                           vendor/without-bundle
-                           ;; Before the log goes: rivals' claims are aimed
-                           ;; partly by last week's game.
-                           (waiver/with-last-game through-week)
-                           without-history
-                           (waiver-board-inputs scoring*)
-                           (ros/with-ros scoring* ctx)
-                           (pipeline/assoc-weekly (:lines weekly))
-                           (pipeline/assoc-trending (:adds adds))
-                           (waiver/with-week-points scoring*)
-                           ;; The second positional rank, over this week rather
-                           ;; than the preseason. Deliberately not folded into
-                           ;; `waiver-board-inputs`: that runs before the weekly
-                           ;; line is joined, so there would be nothing to rank.
-                           (pos-rank/with-pos-rank :week-points :week-pos-rank)
-                           (waiver/with-form-points scoring*)
-                           ;; The Pos cell's rank in season: on points scored,
-                           ;; not the preseason projection ranked above.
-                           (pos-rank/with-pos-rank :season-points :season-pos-rank)
-                           ;; Independent of the weekly line — see
-                           ;; `pipeline/assoc-kickoffs`.
-                           (pipeline/assoc-kickoffs (:kickoffs weekly)))
-              out      (waiver/waiver-board board ctx)]
-          (json-response 200 (assoc out
-                                    :players      (-> (:players out)
-                                                      without-projection-internals
-                                                      (without-preseason through-week))
-                                    ;; Same strip as :players — these are full
-                                    ;; rows and carry the same working state.
-                                    ;; `some->` so nil survives: it means no team
-                                    ;; picked, which `mapv` would flatten to an
-                                    ;; empty roster.
-                                    :my-roster-players
-                                    (some-> (:my-roster-players out)
-                                            without-projection-internals
-                                            (without-preseason through-week))
-                                    :through-week through-week
-                                    :season-games season-games
-                                    ;; nil when there is no weekly line at all;
-                                    ;; the board then reads rest-of-season only.
-                                    :week         (:week weekly)
-                                    :week-fetched-at (:fetched-at weekly)
-                                    ;; nil offline or when Sleeper never answered;
-                                    ;; rivals then bid on need alone.
-                                    :trending     (some-> adds (select-keys [:fetched-at :lookback-hours])))))))
+    (let [reply (waivers-reply (read-json-body req))]
+      (json-response (if (:error reply) 400 200) reply))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
@@ -580,6 +576,15 @@
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
+(def sensei-server
+  "What Sensei's tools read off this server: the waiver board, the universe, a
+  player's news and the environment, where the accounts are. Through vars, so a
+  REPL redefinition reaches the tools."
+  {:waivers-reply #'waivers-reply
+   :players       #(:players (universe false))
+   :news          #'espn-news/player-news
+   :env           #(System/getenv)})
+
 (def app
   (ring/ring-handler
    (ring/router
@@ -592,7 +597,8 @@
      ["/api/matchup"  {:post matchup-handler}]
      ["/api/league/import"   {:post league-import-handler}]
      ["/api/league/sync"     {:post league-sync-handler}]
-     ["/api/account/connect" {:post account-connect-handler}]]
+     ["/api/account/connect" {:post account-connect-handler}]
+     ["/api/sensei/mcp"      {:post (sensei-mcp/handler sensei-server)}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})

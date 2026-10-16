@@ -12,7 +12,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 **Frontend** (shadow-cljs with `:lein true`):
 - `npm run watch` (port 8280), `npm run release`, `npm test` (cljs-only: `events`, `subs`, `waivers`, six `views/*`)
 
-**Env vars**: `DRAFTDAY_OFFLINE=1`, `DRAFTDAY_CACHE_TTL_HOURS` (24), `DRAFTDAY_WEEKLY_TTL_HOURS` (1), `DRAFTDAY_REALIZED_TTL_HOURS` (1), `DRAFTDAY_TRENDING_TTL_HOURS` (1), `DRAFTDAY_NEWS_TTL_MINUTES` (15), `DRAFTDAY_INJURY_TTL_HOURS` (3), `DRAFTDAY_AS_OF_WEEK=N` (replay week N), `DRAFTDAY_ESPN_SWID/S2/LEAGUE/SEASON` (integration only)
+**Env vars**: `DRAFTDAY_OFFLINE=1`, `DRAFTDAY_CACHE_TTL_HOURS` (24), `DRAFTDAY_WEEKLY_TTL_HOURS` (1), `DRAFTDAY_REALIZED_TTL_HOURS` (1), `DRAFTDAY_TRENDING_TTL_HOURS` (1), `DRAFTDAY_NEWS_TTL_MINUTES` (15), `DRAFTDAY_INJURY_TTL_HOURS` (3), `DRAFTDAY_AS_OF_WEEK=N` (replay week N), `DRAFTDAY_ESPN_SWID/S2/LEAGUE/SEASON` (integration tests, and an ESPN account's cookies for Sensei), `DRAFTDAY_SENSEI_SLEEPER_USER` (Sensei's Sleeper account; Sensei finds the leagues itself)
 
 **Research harnesses** (`dev/`, `:dev` profile, active by default):
 - `benchmark.report`: score model vs historical outcomes
@@ -79,7 +79,18 @@ Three multimethod pairs on `:provider`: `import-league` (yearly rules), `sync-le
 - `POST /api/league/sync`: same body → rosters + bid-history refresh. **No default provider** (would misread ESPN as Sleeper). `:bid-history-error` if refresh fails/times out; rosters go out with cached history. Re-sync button shows status.
 - `POST /api/account/connect`: `{:provider :credentials :season}` → leagues via `league-sync/find-leagues`. **POST not GET** (espn_s2 in query reaches history/logs). **No default provider** (typo'd ESPN was looked up as Sleeper → "user not found").
 - Waivers handler: run `:points`, `:injury-risk`, `:pos-rank` (from static) before `with-ros` (waiver board scores on `:ros-points`). Strip projection internals before respond.
+- `POST /api/sensei/mcp`: Sensei's MCP endpoint (see below). Loopback only.
 - Serves SPA from `resources/public`.
+
+### Sensei (AI assistant)
+
+The AI feature is called **Sensei** everywhere: namespaces, routes, env vars, docs, the MCP server name. Never "advisor". `docs/sensei.md` has the decision record and measurements.
+
+**Layers**: `sensei.context` takes the env's *accounts*, discovers their leagues (`league-sync/find-leagues`, this season only), finds the manager's team by owner id (`db/my-roster-id-for`, shared with the browser) and rebuilds the `/api/waivers` body per league server-side (import + sync, round-tripped through JSON so it is the body the browser sends; reused 30 s per league, shared by parallel calls, errors never kept). `sensei.tools` holds the tools (`leagues`, `my_team`, `waiver_targets`, `player_news`), pure projections of `routes/waivers-reply`; the first three take a `league` (key or name) and with several leagues and none named answer with the choices, never a guess — also when an account could not be listed. `sensei.mcp` is a hand-rolled MCP server (JSON-RPC, Streamable HTTP, JSON responses only). The official Java SDK's transport is a Servlet and won't mount on http-kit. Tools reach the server through a `deps` map of delays (`routes/sensei-server`), not by requiring `routes`, which mounts them. The persona lives in `resources/sensei/instructions.md`, served as the MCP `instructions`.
+
+**Rules**: tools state engine numbers, never their own. They hold back what the UI holds back: bid predictions while `db/bid-predictions?` is off, and raw `:ros-points`. Columns go through `db/waiver-sort-accessors` and `db/applies?`. No credential is ever a tool argument, and `leagues` states neither the account's user id (an ESPN user id is the SWID) nor its credentials. The endpoint refuses non-loopback addresses, non-localhost `Origin`s (DNS rebinding) and non-localhost `Host`s or forwarding headers (a tunnel connects from loopback). `context/mask` runs over every reply text at the `call-tool` exit.
+
+**Terms**: running Sensei on the owner's Claude Pro plan (`claude -p` / Agent SDK on a subscription login) is allowed **for personal use only**. Serving anyone else needs their own Claude plan through Anthropic's own flow, or an API key. Don't build a feature that routes other users through the owner's subscription. Next step is an in-app panel via `claude -p` (`--bare` won't read a subscription login, so isolate with `--tools ""`, `--strict-mcp-config` and a fixed cwd outside the repo).
 
 ### In-season: ROS blend
 

@@ -85,6 +85,13 @@
   [roster-cfg]
   (scoring-slots (roster-template roster-cfg)))
 
+(defn replacement-config
+  "The slots replacement level is priced over, out of a roster config: K, DST
+  and the bench are left out, since replacement prices none of them. Shared so
+  the browser's requests and Sensei's server-built ones send the same thing."
+  [roster-cfg]
+  (select-keys roster-cfg [:qb :rb :wr :te :flex]))
+
 (defn- default-name [i] (if (zero? i) "You" (str "Team " (inc i))))
 
 (def persist-keys
@@ -130,6 +137,24 @@
   "The league everything on screen is about, or nil when none is connected."
   [db]
   (get-in db [:leagues (:active-league db)]))
+
+(defn my-roster-id-for
+  "Which roster in this league belongs to `user-id`, or nil.
+
+  Case-folded, which costs a numeric Sleeper id nothing and is the difference
+  between finding the manager's own team and not on ESPN: his user id *is* his
+  SWID, ESPN publishes it uppercase in a team's `owners` array, and a manager
+  who pasted his cookie in lower case would otherwise land on a board with no
+  roster, no budget and no drop until he found the dropdown.
+
+  Shared with the server because Sensei has no dropdown to fall back on: it
+  finds the manager's team here or not at all."
+  [teams user-id]
+  (when (not-empty (str user-id))
+    (let [mine (str/lower-case (str user-id))]
+      (some (fn [t] (when (= (str/lower-case (str (:owner-id t))) mine)
+                      (:roster-id t)))
+            teams))))
 
 (defn league-account
   "The account a league is read through, or nil for one added by bare id.

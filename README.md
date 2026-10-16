@@ -26,6 +26,7 @@ which is why the status line reads `sample` — that is real data from
 - [Fantasy football, and the math, in one pass](#fantasy-football-and-the-math-in-one-pass)
 - [Quick start](#quick-start)
 - [Using it](#using-it)
+  - [Connect Sensei](#connect-sensei)
 - [Architecture](#architecture)
   - [Ingestion](#ingestion) · [Rankings engine](#rankings-engine)
 - [The data](#the-data)
@@ -195,7 +196,9 @@ shadow-cljs also serves `resources/public` on :8280, but nothing answers
 | `DRAFTDAY_CACHE_TTL_HOURS` | `24` | how long the on-disk player cache stays fresh |
 | `DRAFTDAY_WEEKLY_TTL_HOURS` | `1` | the same window for the weekly line, which moves far faster |
 | `DRAFTDAY_AS_OF_WEEK` | unset | dev only: truncate the in-season data at a week, so a finished season replays as one in progress |
-| `DRAFTDAY_ESPN_SWID` / `_S2` / `_LEAGUE` | unset | `lein test :integration` only: check ESPN's stat ids, slot table and team abbreviations against a live league. Without them those tests skip out loud |
+| `DRAFTDAY_SENSEI_SLEEPER_USER` | unset | your Sleeper username. [Sensei](#connect-sensei) lists your Sleeper leagues from it |
+| `DRAFTDAY_ESPN_SWID` / `_S2` | unset | your ESPN session cookies. [Sensei](#connect-sensei) lists your ESPN leagues with them; both are needed, and `lein test :integration` reads them too |
+| `DRAFTDAY_ESPN_LEAGUE` | unset | `lein test :integration` only: check ESPN's stat ids, slot table and team abbreviations against a live league. Without it those tests skip out loud |
 | `DRAFTDAY_ESPN_SEASON` | current | which season the ESPN integration test reads |
 
 ## Using it
@@ -264,6 +267,82 @@ projection the ROS line is correcting) and `ECR`.
 
 See [The waiver wire](#the-waiver-wire) for how each of those is computed and
 why none of them is a dollar the auction invented.
+
+### Connect Sensei
+
+[Sensei](docs/sensei.md) is the AI assistant that Claude Code reaches over MCP,
+and it answers about every league you play in. It needs to know *you*, not your
+leagues: it finds the leagues itself, and the team your account owns in each is
+yours. The server reads your accounts from its environment.
+
+| Host | Variables | Where the value comes from |
+| --- | --- | --- |
+| Sleeper | `DRAFTDAY_SENSEI_SLEEPER_USER` | your Sleeper username; nothing secret |
+| ESPN | `DRAFTDAY_ESPN_SWID` and `DRAFTDAY_ESPN_S2` | two cookies from your signed-in browser, below. Both are needed: with only one, ESPN is ignored |
+
+Either host alone is enough.
+
+**Get the ESPN values.** Sign in at [fantasy.espn.com](https://fantasy.espn.com/football/),
+open DevTools (⌥⌘I on a Mac), and go to **Application** → **Storage** →
+**Cookies** → `https://fantasy.espn.com` (**Storage** → **Cookies** in Firefox;
+in Safari, turn on the Develop menu first, then **Show Web Inspector** →
+**Storage**). Filter for `swid` and `espn_s2` and copy each **Value**:
+
+- `SWID` looks like `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`. Keep the braces.
+- `espn_s2` is one long string, 60 characters or more, with `%` escapes in it.
+  Copy it as shown; do not decode it.
+
+Settings asks for the same two cookies when you connect ESPN in the app. Those
+live in your browser's localStorage and the server never reads them, so the
+server's environment needs its own copy.
+
+**Treat `espn_s2` like a password.** It is a live login to your ESPN account.
+Keep it out of commits, screenshots, issues and chat. It stops working when ESPN
+signs you out or you change your password, and then you copy a fresh one.
+
+**Set them for one run:**
+
+```bash
+DRAFTDAY_SENSEI_SLEEPER_USER=your_sleeper_username \
+DRAFTDAY_ESPN_SWID='{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}' \
+DRAFTDAY_ESPN_S2='AEB...%3D' \
+lein run
+```
+
+**Or keep them in your shell's startup file** (`~/.zshrc` for zsh, `~/.bashrc`
+for bash), with `export` on every line and the SWID in single quotes (a shell
+gives bare braces a meaning). In fish, use `set -Ux NAME value` instead:
+
+```bash
+export DRAFTDAY_SENSEI_SLEEPER_USER=your_sleeper_username
+export DRAFTDAY_ESPN_SWID='{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}'
+export DRAFTDAY_ESPN_S2='AEB...%3D'
+```
+
+The `export` is the part that goes wrong. A line like `NAME=value` on its own is
+a shell variable that no program you start can see; the command-line form above
+works because the assignments sit in front of `lein run`.
+
+After editing, `source` that file (for example `source ~/.zshrc`) or open a new
+terminal, and check that `env | grep -o '^DRAFTDAY[A-Z_]*'` prints your names.
+Then **restart `lein run`**: the server reads its environment once, at startup.
+An IDE run configuration does not read your startup file; set the variables in
+the configuration, or start the server from a terminal. If other people use your
+machine, keep the exports in a separate file that is `chmod 600` and `source` it
+from your startup file.
+
+**Connect Claude Code** once the server is up (the port is `PORT`, 8080 by
+default):
+
+```bash
+claude mcp add --transport http sensei http://127.0.0.1:8080/api/sensei/mcp
+```
+
+Ask about your team, or run `/mcp__sensei__weekly_review`. If Sensei answers
+"has no league to read", the variables are not reaching the server, which is
+almost always the missing `export` or the missing restart. "ESPN league lookup
+failed" with a 401 means the cookies have expired. [docs/sensei.md](docs/sensei.md)
+has the rest, including what Sensei will and will not do with a league.
 
 ## Architecture
 
@@ -790,6 +869,7 @@ camelCase conversion.
 | `POST` | `/api/waivers` | the in-season board: free agents, upgrades and bids |
 | `POST` | `/api/league/sync` | who is rostered right now, and what is left to bid |
 | `POST` | `/api/cache/reset` | drop the on-disk universe cache |
+| `POST` | `/api/sensei/mcp` | Sensei's tools for a Claude app, over MCP; this machine only |
 
 ### `POST /api/rankings`
 
@@ -907,6 +987,19 @@ The reply names its provider because `rankings.waiver` picks its id crosswalk
 off it. `/api/waivers` refuses a synced league that names none rather than
 guessing Sleeper — the guess would resolve nobody in an ESPN league and hand
 back a board on which its whole roster is available.
+
+### `POST /api/sensei/mcp`
+
+Sensei, the AI assistant for waiver and lineup calls, as a Model Context
+Protocol server: JSON-RPC over the Streamable HTTP transport, JSON responses
+only. Its tools (`leagues`, `my_team`, `waiver_targets`, `player_news`) read
+`/api/waivers`' own board for every league that the accounts in the server's env
+play in: `DRAFTDAY_SENSEI_SLEEPER_USER`, and the ESPN cookies `DRAFTDAY_ESPN_SWID`
+and `DRAFTDAY_ESPN_S2`. A request from anywhere but loopback, with a browser
+`Origin` or a `Host` other than localhost, or relayed by a proxy or tunnel, is a
+`403`. How to connect Claude Code, why it is built this way, and what it
+measured are in [docs/sensei.md](docs/sensei.md). Setting the variables is covered
+in [Connect Sensei](#connect-sensei).
 
 ## Development
 
