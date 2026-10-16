@@ -20,8 +20,10 @@ export DRAFTDAY_ESPN_S2=<espn_s2>                # the cookies Settings asks for
 lein run
 ```
 
-Either host alone is enough. The ESPN names are the ones the integration tests
-already read. Sensei lists each account's leagues for the season, as Settings'
+Either host alone is enough, but ESPN needs both cookies. The README's
+[Connect Sensei](../README.md#connect-sensei) says where to find them in your
+browser and how to keep them in your shell's startup file, including the
+`export` that is easy to leave off. The ESPN names are the ones the integration tests already read. Sensei lists each account's leagues for the season, as Settings'
 Connect does, and takes the team the account owns as yours, so a league joined
 tomorrow is there tomorrow and there is no league or roster id to look up. The
 `leagues` tool lists them with the key the other tools take; a question that
