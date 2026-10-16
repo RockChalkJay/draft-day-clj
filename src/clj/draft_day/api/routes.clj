@@ -577,11 +577,13 @@
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
 (def sensei-server
-  "What Sensei's tools read off this server: the waiver board, the universe and
-  a player's news. Through vars, so a REPL redefinition reaches the tools."
+  "What Sensei's tools read off this server: the waiver board, the universe, a
+  player's news and the environment, where the accounts are. Through vars, so a
+  REPL redefinition reaches the tools."
   {:waivers-reply #'waivers-reply
    :players       #(:players (universe false))
-   :news          #'espn-news/player-news})
+   :news          #'espn-news/player-news
+   :env           #(System/getenv)})
 
 (def app
   (ring/ring-handler

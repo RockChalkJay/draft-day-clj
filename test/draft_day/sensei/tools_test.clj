@@ -83,25 +83,90 @@
 
 (deftest a-failed-context-is-the-models-to-read
   (is (= {:error "sync failed: 502"}
-         (call "my_team" {} (fx/deps {:body {:error "sync failed: 502"}
-                                      :reply {:error "sync failed: 502"}})))))
+         (call "my_team" {} (fx/deps {:body  (constantly {:error "sync failed: 502"})
+                                      :reply (constantly {:error "sync failed: 502"})})))))
 
 (deftest the-board-is-read-only-when-a-tool-needs-it
   (let [boards (atom 0)
         server {:waivers-reply (fn [_] (swap! boards inc) fx/reply)
                 :players       (constantly fx/players)
-                :news          (constantly {:news [] :errors []})}]
-    (with-redefs [context/league-context (constantly fx/body)]
-      (let [deps (tools/deps server nil)]
+                :news          (constantly {:news [] :errors []})
+                :env           (constantly {})}
+        found  {:leagues [fx/entry fx/entry-2] :errors []}]
+    (with-redefs [context/leagues        (constantly found)
+                  context/league-context #(if (= (:key %) (:key fx/entry)) fx/body fx/body-2)]
+      (let [deps (tools/deps server)]
         (call "player_news" {:player "p1"} deps)
-        (is (zero? @boards) "news needs no board")
-        (call "my_team" {} deps)
-        (call "waiver_targets" {} deps)
-        (is (= 1 @boards) "one board per request, however many tools read it")))
-    (with-redefs [context/league-context (constantly {:error "no league"})]
-      (let [deps (tools/deps server nil)]
+        (call "leagues" {} deps)
+        (is (zero? @boards) "neither news nor the league list needs a board")
+        (call "my_team" {:league "sleeper:123"} deps)
+        (call "waiver_targets" {:league "Main League"} deps)
+        (is (= 1 @boards) "one board per league per request, however many tools read it")
+        (call "waiver_targets" {:league "espn:456"} deps)
+        (is (= 2 @boards) "another league is another board")
+        (call "waiver_targets" {:position "LB" :league "espn:456"} deps)
+        (is (= 2 @boards))))
+    (with-redefs [context/leagues        (constantly {:leagues [fx/entry] :errors []})
+                  context/league-context (constantly {:error "no league"})]
+      (let [deps (tools/deps server)]
         (is (= {:error "no league"} (call "waiver_targets" {} deps)))
-        (is (= 1 @boards) "no board is priced for a league that did not load")))))
+        (is (= 2 @boards) "no board is priced for a league that did not load")))))
+
+(deftest a-bad-position-costs-no-board
+  (let [deps (fx/deps {:reply (fn [_] (throw (ex-info "priced a board" {})))})]
+    (is (re-find #"position must be one of" (:error (call "waiver_targets" {:position "LB"} deps))))))
+
+;; ---- more than one league ----
+
+(def ^:private two {:leagues [fx/entry fx/entry-2] :errors []})
+
+(defn- two-leagues
+  ([] (two-leagues two))
+  ([found]
+   (fx/deps {:found found
+             :body  #(if (= (:key %) (:key fx/entry)) fx/body fx/body-2)
+             :reply #(if (= (:key %) (:key fx/entry)) fx/reply fx/reply-2)})))
+
+(deftest leagues-states-each-league-and-never-the-account
+  (let [{:keys [result]} (call "leagues" {} (two-leagues (assoc two :errors ["ESPN league lookup failed: 502"])))]
+    (is (= [{:league "sleeper:123" :name "Main League" :provider "Sleeper" :season "2026" :teams 2}
+            {:league "espn:456" :name "Work League" :provider "ESPN" :season "2026" :teams 10}]
+           (:leagues result)))
+    (is (= ["ESPN league lookup failed: 502"] (:errors result)) "an account that could not be listed says so")
+    (is (not-any? #(re-find % (pr-str result)) [#"SWID" #"S2SECRET" #"u-me" #"credentials" #"user-id"])
+        "an ESPN user id is the SWID, half the cookie pair")))
+
+(deftest no-leagues-says-how-to-get-some
+  (is (re-find #"DRAFTDAY_SENSEI_SLEEPER_USER"
+               (:error (call "leagues" {} (fx/deps {:found {:leagues [] :errors []}})))))
+  (is (re-find #"ESPN league lookup failed: 401"
+               (:error (call "leagues" {} (fx/deps {:found {:leagues [] :errors ["ESPN league lookup failed: 401"]}}))))))
+
+(deftest a-league-tool-names-its-league-when-there-are-several
+  (testing "none named"
+    (doseq [t ["my_team" "waiver_targets"]]
+      (is (re-find #"sleeper:123 \(Main League\); espn:456 \(Work League\)"
+                   (:error (call t {} (two-leagues)))) t)))
+  (testing "by key, or by name in any case"
+    (is (= {:key "espn:456" :name "Work League"}
+           (get-in (call "my_team" {:league "espn:456"} (two-leagues)) [:result :league])))
+    (is (= {:key "espn:456" :name "Work League"}
+           (get-in (call "waiver_targets" {:league "work LEAGUE"} (two-leagues)) [:result :league]))))
+  (testing "each answers from its own board"
+    (is (= 7 (get-in (call "waiver_targets" {:league "sleeper:123"} (two-leagues)) [:result :week])))
+    (is (= 8 (get-in (call "waiver_targets" {:league "espn:456"} (two-leagues)) [:result :week])))
+    (is (= "Mine" (get-in (call "my_team" {:league "sleeper:123"} (two-leagues)) [:result :team])))
+    (is (= "Work Team" (get-in (call "my_team" {:league "espn:456"} (two-leagues)) [:result :team]))))
+  (testing "one that is not there"
+    (is (re-find #"No league matches \"nope\"" (:error (call "my_team" {:league "nope"} (two-leagues)))))))
+
+(deftest the-only-league-needs-no-name-unless-another-could-not-be-listed
+  (is (= "sleeper:123" (get-in (call "my_team" {} (fx/deps)) [:result :league :key])))
+  (let [lonely (fx/deps {:found {:leagues [fx/entry] :errors ["ESPN league lookup failed: 502"]}})]
+    (is (re-find #"Not listed: ESPN league lookup failed: 502" (:error (call "my_team" {} lonely)))
+        "the only league there is, is not known to be the only league")
+    (is (= "sleeper:123" (get-in (call "my_team" {:league "sleeper:123"} lonely) [:result :league :key]))
+        "named, it answers")))
 
 (deftest every-tool-has-a-schema-and-a-handler
   (doseq [t tools/tools]

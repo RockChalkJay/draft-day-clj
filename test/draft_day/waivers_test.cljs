@@ -613,10 +613,10 @@
 (deftest matching-an-owner-is-string-identity-not-number-identity
   ;; Roster ids and owner ids cross the wire as strings; a fixture or an older
   ;; persisted shape may hold either.
-  (is (= 7 (events/my-roster-id-for (:teams owned) "u-me")))
-  (is (nil? (events/my-roster-id-for (:teams owned) nil)))
-  (is (nil? (events/my-roster-id-for (:teams owned) "")))
-  (is (nil? (events/my-roster-id-for [] "u-me"))))
+  (is (= 7 (db/my-roster-id-for (:teams owned) "u-me")))
+  (is (nil? (db/my-roster-id-for (:teams owned) nil)))
+  (is (nil? (db/my-roster-id-for (:teams owned) "")))
+  (is (nil? (db/my-roster-id-for [] "u-me"))))
 
 (defn- connect!
   ([resp] (connect! :sleeper {:username "jay"} resp))

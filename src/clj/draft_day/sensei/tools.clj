@@ -12,37 +12,68 @@
   surface shows. A row is compact on purpose, since every token of it is spent
   against the manager's Claude plan.
 
-  The tools read the server through `deps`, a map of delays, rather than by
-  requiring `routes`, which mounts them."
+  A manager may play in several leagues, so a tool that is about one takes a
+  `league` argument, resolved by `context/pick`. The tools read the server
+  through `deps` rather than by requiring `routes`, which mounts them."
   (:require [clojure.string :as str]
             [draft-day.db :as db]
             [draft-day.ingestion.match :as match]
+            [draft-day.providers :as providers]
             [draft-day.sensei.context :as context]))
+
+(defn per-league
+  "`f` of a league entry, computed at most once per league for as long as the
+  returned fn lives: one request, so a batch that asks after the same league
+  twice prices its board once, and one that asks after two prices two."
+  [f]
+  (let [seen (atom {})]
+    (fn [entry]
+      @(get (swap! seen #(cond-> % (not (contains? % (:key entry))) (assoc (:key entry) (delay (f entry)))))
+            (:key entry)))))
 
 (defn deps
   "What the tools read for one request, each computed at most once and only
-  when a tool asks: `:body`, the league's /api/waivers body; `:reply`, the
-  waiver board for it; `:players`, the universe; and `:news`, a fn of an ESPN
-  id. The server's half is `routes/sensei-server`."
-  [{:keys [waivers-reply players news]} league]
-  (let [body (delay (context/league-context league))]
-    {:body    body
-     :reply   (delay (let [b @body] (if (:error b) b (waivers-reply b))))
-     :players (delay (players))
-     :news    news}))
+  when a tool asks: `:found`, the accounts' leagues; `:body` and `:reply`, fns of
+  a league entry giving its /api/waivers body and the waiver board for it;
+  `:players`, the universe; `:news`, a fn of an ESPN id; and `:accounts`, whose
+  secrets the reply is masked against. The server's half is
+  `routes/sensei-server`."
+  [{:keys [waivers-reply players news env]}]
+  (let [accounts (context/accounts (env))
+        body     (per-league context/league-context)]
+    {:accounts accounts
+     :found    (delay (context/leagues accounts))
+     :body     body
+     :reply    (per-league (fn [entry] (let [b (body entry)] (if (:error b) b (waivers-reply b)))))
+     :players  (delay (players))
+     :news     news}))
 
 (defn tool-error
   "A failure the model should read, as opposed to a bug."
   [msg]
   (ex-info msg {:sensei/tool-error true}))
 
+(defn checked
+  "`v`, or a tool error when it is an `{:error msg}`."
+  [v]
+  (if-let [e (and (map? v) (:error v))]
+    (throw (tool-error e))
+    v))
+
 (defn need
   "The value behind one of `deps`' delays; a tool error when it is an error."
   [deps k]
-  (let [v @(get deps k)]
-    (if-let [e (and (map? v) (:error v))]
-      (throw (tool-error e))
-      v)))
+  (checked @(get deps k)))
+
+(defn the-league
+  "The league entry a call is about, off its `league` argument."
+  [deps {:keys [league]}]
+  (checked (context/pick (need deps :found) league)))
+
+(defn named
+  "A league as a reply states it, so every answer says which league it is about."
+  [entry]
+  (select-keys entry [:key :name]))
 
 (def row-columns
   "The waiver board's columns a row carries, by `db/waiver-column-catalog` key.
@@ -118,9 +149,10 @@
 (defn my-team
   "The manager's roster split as My Team draws it, through `db/team-roster`,
   with the seat a claim would cost marked."
-  [deps _args]
-  (let [{:keys [league my-roster-id]} (need deps :body)
-        reply   (need deps :reply)
+  [deps args]
+  (let [entry   (the-league deps args)
+        {:keys [league my-roster-id]} (checked ((:body deps) entry))
+        reply   (checked ((:reply deps) entry))
         players (need deps :players)
         team    (some #(when (= my-roster-id (:roster-id %)) %) (:teams league))
         xwalk   (db/provider->player-id players (:provider league) (:provider-players league))
@@ -135,7 +167,8 @@
         rows    (fn [ps] (mapv #(row (cond-> % (= drop-id (:player-id %)) (assoc :drop? true)))
                                ps))
         {:keys [starters bench parked]} (db/team-roster team league xwalk by-id)]
-    {:team            (:name team)
+    {:league          (named entry)
+     :team            (:name team)
      :record          (select-keys team [:wins :losses])
      :week            (:week reply)
      :through-week    (:through-week reply)
@@ -148,17 +181,26 @@
 
 (def max-targets 25)
 
+(defn position-arg
+  "The `position` argument as the board spells it, or nil for none. Checked
+  before any league is read, so a bad one costs no board."
+  [position]
+  (let [pos (some-> position str str/upper-case)]
+    (when (and pos (not (some #{pos} db/positions)))
+      (throw (tool-error (str "position must be one of " (str/join ", " db/positions)))))
+    pos))
+
 (defn waiver-targets
   "The free agents ranked as the Waivers tab's # column ranks them
   (`db/waiver-rank-key`), at one position or all. The tab opens sorted by Adds
   instead, which is a sort and not a claim order."
-  [deps {:keys [position limit]}]
-  (let [reply (need deps :reply)
-        pos   (some-> position str str/upper-case)
-        n     (-> (if (number? limit) (long limit) 10) (max 1) (min max-targets))]
-    (when (and pos (not (some #{pos} db/positions)))
-      (throw (tool-error (str "position must be one of " (str/join ", " db/positions)))))
-    {:week           (:week reply)
+  [deps {:keys [position limit] :as args}]
+  (let [pos   (position-arg position)
+        n     (-> (if (number? limit) (long limit) 10) (max 1) (min max-targets))
+        entry (the-league deps args)
+        reply (checked ((:reply deps) entry))]
+    {:league         (named entry)
+     :week           (:week reply)
      :through-week   (:through-week reply)
      :drop-candidate (get-in reply [:drop-candidate :player-name])
      :players        (->> (:players reply)
@@ -206,22 +248,61 @@
           (seq (:errors reply))     (assoc :errors (mapv :message (:errors reply)))
           (nil? espn)               (assoc :reason "no ESPN id for this player, so no news feed"))))))
 
+(defn league-row
+  "One league as `leagues` states it. The entry also holds the account's user id
+  and credentials; neither is copied, since an ESPN user id is the SWID and so
+  half the cookie pair."
+  [l]
+  (->> [[:league (:key l)]
+        [:name (:name l)]
+        [:provider (providers/label (:provider l))]
+        [:season (:season l)]
+        [:teams (:num-teams l)]]
+       (keep (fn [[k v]] (when (some? v) [k v])))
+       (apply concat)
+       (apply array-map)))
+
+(defn leagues
+  "The leagues the manager plays in, by the key every league tool takes, and
+  any account that could not be listed."
+  [deps _args]
+  (let [{:keys [leagues errors]} (need deps :found)]
+    (when (empty? leagues)
+      (throw (tool-error (context/no-leagues errors))))
+    (cond-> {:leagues (mapv league-row leagues)}
+      (seq errors) (assoc :errors errors))))
+
+(def league-property
+  {:type        "string"
+   :description (str "Which league: a key or name from the `leagues` tool. Optional when the "
+                     "manager plays in only one.")})
+
 (def tools
   "Every tool, in the order a client lists them."
-  [{:name         "my_team"
-    :title        "My team"
-    :description  (str "The manager's roster this week: starters (with the seat each fills), bench and "
-                       "injured reserve, FAAB left, claims left, and the drop a waiver claim would cost "
-                       "(marked drop-candidate). Call this first.\n\nRow keys:\n" (legend))
+  [{:name         "leagues"
+    :title        "Leagues"
+    :description  (str "The leagues the manager plays in, each with the key that the league argument of "
+                       "my_team and waiver_targets takes. Call this first when the question does not "
+                       "name a league.")
     :input-schema {:type "object" :properties {} :additionalProperties false}
+    :handler      leagues}
+   {:name         "my_team"
+    :title        "My team"
+    :description  (str "The manager's roster this week in one league: starters (with the seat each fills), "
+                       "bench and injured reserve, FAAB left, claims left, and the drop a waiver claim "
+                       "would cost (marked drop-candidate).\n\nRow keys:\n" (legend))
+    :input-schema {:type                 "object"
+                   :properties           {:league league-property}
+                   :additionalProperties false}
     :handler      my-team}
    {:name         "waiver_targets"
     :title        "Waiver targets"
-    :description  (str "Free agents in the league, best claim first: ordered by lineup, then upgrade, "
+    :description  (str "Free agents in one league, best claim first: ordered by lineup, then upgrade, "
                        "both measured against the drop-candidate. Filter by position to answer a "
                        "question about one.\n\nRow keys:\n" (legend))
     :input-schema {:type                 "object"
-                   :properties           {:position {:type "string" :enum db/positions
+                   :properties           {:league   league-property
+                                          :position {:type "string" :enum db/positions
                                                      :description "Only this position"}
                                           :limit    {:type "integer" :minimum 1 :maximum max-targets
                                                      :description "How many players (default 10)"}}

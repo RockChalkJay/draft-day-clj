@@ -61,12 +61,35 @@
 
 (defn news [espn-id] {:news [{:headline (str "note " espn-id)}] :errors []})
 
+(def entry
+  "A discovered Sleeper league, as `context/discover` leaves it: the account's
+  user id and credentials ride along."
+  {:key "sleeper:123" :provider :sleeper :league-id "123" :name "Main League"
+   :season "2026" :num-teams 2 :user-id "u-me" :credentials {:username "me"}})
+
+(def entry-2
+  "A second league, on another host, whose user id is a SWID."
+  {:key "espn:456" :provider :espn :league-id "456" :name "Work League"
+   :season "2026" :num-teams 10 :user-id "{SWID-0000}"
+   :credentials {:swid "SWID-0000" :espn-s2 "S2SECRET"}})
+
+(def body-2 (assoc-in body [:league :teams 0 :name] "Work Team"))
+
+(def reply-2 (assoc reply :week 8))
+
 (defn deps
-  "Tool deps over the fixtures, any of `:body`, `:reply` and `:news` replaced."
+  "Tool deps over the fixtures, any of `:found`, `:body`, `:reply` (fns of a
+  league entry) and `:news` replaced."
   ([] (deps {}))
   ([overrides]
-   (let [m (merge {:body body :reply reply :news news} overrides)]
-     {:body    (delay (:body m))
-      :reply   (delay (:reply m))
-      :players (delay players)
-      :news    (:news m)})))
+   (let [m (merge {:found {:leagues [entry] :errors []}
+                   :body  (constantly body)
+                   :reply (constantly reply)
+                   :news  news}
+                  overrides)]
+     {:accounts []
+      :found    (delay (:found m))
+      :body     (:body m)
+      :reply    (:reply m)
+      :players  (delay players)
+      :news     (:news m)})))

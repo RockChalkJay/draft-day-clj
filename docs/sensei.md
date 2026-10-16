@@ -10,17 +10,24 @@ This document records how Sensei reaches a model and why, what the first step
 
 ## Use it
 
-Sensei answers from one league, named by three env vars on the server:
+Sensei answers about every league you play in, found from your accounts. Name
+the accounts in the server's env, not the leagues:
 
 ```bash
-export DRAFTDAY_SENSEI_PROVIDER=sleeper          # or espn
-export DRAFTDAY_SENSEI_LEAGUE_ID=<league id>
-export DRAFTDAY_SENSEI_ROSTER_ID=<roster id>    # your team; a wrong id lists the teams
+export DRAFTDAY_SENSEI_SLEEPER_USER=<sleeper username>
+export DRAFTDAY_ESPN_SWID='{...}'                # ESPN, if you play there:
+export DRAFTDAY_ESPN_S2=<espn_s2>                # the cookies Settings asks for
 lein run
 ```
 
-An ESPN league also needs `DRAFTDAY_ESPN_SWID` and `DRAFTDAY_ESPN_S2`, the
-names the integration tests already read.
+Either host alone is enough. The ESPN names are the ones the integration tests
+already read. Sensei lists each account's leagues for the season, as Settings'
+Connect does, and takes the team the account owns as yours, so a league joined
+tomorrow is there tomorrow and there is no league or roster id to look up. The
+`leagues` tool lists them with the key the other tools take; a question that
+names a league ("my work league") needs nothing more, and with one league there
+is nothing to name. `/mcp__sensei__weekly_review` reviews every league in turn,
+or one if you give it a `league`.
 
 Then connect Claude Code to the endpoint. For one session, with nothing written
 to Claude Code's config:
@@ -84,18 +91,30 @@ the owner uses it.
 ## How it works
 
 ```
-  sensei.context   {provider league-id roster-id} -> the /api/waivers body
-  sensei.tools     my_team, waiver_targets, player_news
+  sensei.context   accounts -> leagues -> the /api/waivers body of each
+  sensei.tools     leagues, my_team, waiver_targets, player_news
   sensei.mcp       POST /api/sensei/mcp
        ^ Claude Code (now)      ^ claude -p (next)      ^ API adapter (later)
 ```
 
-**The league without a browser.** The browser owns a league's state, but a
+**The leagues without a browser.** The browser owns a league's state, but a
 connected league's rules are whatever its import says and its rosters are
 whatever its sync says. `sensei.context` runs both, concurrently, and builds
 the body the Waivers tab would post. It round-trips that body through JSON, so
 the board sees what it always sees. The only fact neither call knows is which
-team is the manager's.
+team is the manager's, and the account that found the league answers it:
+`db/my-roster-id-for` matches the account's user id to a team's owner, the same
+function the browser uses when a league is first synced.
+
+**Several leagues at once.** Nothing is held per process, so leagues do not
+interfere: a tool call carries its `league`, a batch prices one board per league
+it asks about, and a league's import and sync are shared for 30 seconds between
+calls (Claude fires a turn's tools in parallel), with a failed fetch never kept.
+The account list is kept ten minutes. With more than one league, and no `league`
+named, a tool answers with the choices rather than guessing: a wrong guess is
+one league's board under another's name. The same holds if an account could not
+be listed, since then the only league found is not known to be the only one.
+Every reply states its league.
 
 **One board.** The waiver board's pipeline moved out of `waivers-handler` into
 `routes/waivers-reply`, and the tools read it there. Rows are the board's
@@ -108,9 +127,11 @@ Team does.
 FAAB figure on a claim. No raw rest-of-season points, which no surface shows.
 `lineup`, `upgrade` and VORP stay.
 
-**No credential reaches the model.** No tool takes one. ESPN cookies come from
-the environment, and a provider error is masked before it becomes a tool
-result.
+**No credential reaches the model.** No tool takes one. Cookies come from the
+environment, a league's entry carries them no further than the import and sync,
+and `leagues` states neither the account's user id (on ESPN it is the SWID) nor
+its credentials. Every tool reply is masked against every account's secrets on
+its way out, in each spelling an error might echo.
 
 **This machine only.** http-kit listens on every interface, so the endpoint
 refuses anything but loopback. It also refuses a browser `Origin` other than
@@ -151,15 +172,16 @@ the run draws on the plan's limits.
 
 ## Open questions
 
+- **One account per host.** The env holds one ESPN cookie pair and one Sleeper
+  username. A second ESPN login is out of reach, and so is a team the account
+  co-owns when ESPN lists someone else first: the team is found by owner id, and
+  ESPN publishes one.
 - **The drop candidate ignores byes.** Both answers overruled it.
   `waiver/drop-candidate` nominated the Colts DST in the week the Vikings DST,
   the starter, was on bye. That is a board finding, not a Sensei one.
 - **"What if I drop someone else?"** `lineup` and `upgrade` are measured
   against the board's drop, and the model said it could not price another one.
   A tool that takes the drop as an argument would answer it.
-- **Calls in one turn rebuild the league.** Claude calls tools in parallel,
-  and each HTTP request runs its own import and sync. A short memo per league
-  would save a second per turn.
 - **The in-app panel (`claude -p`).** Each new working directory leaves an
   empty auto-memory folder under `~/.claude/projects`, even with
   `--no-session-persistence`, so the panel should run from one fixed

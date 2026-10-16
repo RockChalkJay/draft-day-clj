@@ -37,13 +37,26 @@
   []
   (slurp (io/resource "sensei/instructions.md")))
 
+(defn weekly-review
+  "The prompt's text: one league when `league` names it, else every league the
+  manager plays in, one at a time."
+  [{:keys [league]}]
+  (str (if (str/blank? league)
+         (str "Review my team in every league I play in, one league at a time, naming the league "
+              "before each section. In each, check")
+         (str "Review my team in the league " (pr-str league) ". Check"))
+       " my lineup for injuries, byes and anyone on my bench who should start instead. "
+       "Then look at the waiver wire for claims worth making, naming the drop for each. "
+       "Finish with my moves in priority order."))
+
 (def prompts
   [{:name        "weekly_review"
     :title       "Weekly review"
     :description "Check this week's lineup, the waiver wire and the drop a claim would cost."
-    :text        (str "Review my team for this week. Check my lineup for injuries, byes and anyone "
-                      "on my bench who should start instead. Then look at the waiver wire for claims "
-                      "worth making, naming the drop for each. Finish with my moves in priority order.")}])
+    :arguments   [{:name        "league"
+                   :description "A league key or name from the leagues tool; leave empty to review every league."
+                   :required    false}]
+    :text        weekly-review}])
 
 (defn rpc-result [id result] {:jsonrpc "2.0" :id id :result result})
 
@@ -72,9 +85,10 @@
   one by a path nobody thought to mask."
   [deps id {tool-name :name arguments :arguments}]
   (if-let [tool (tools/by-name tool-name)]
-    (let [mask (partial context/mask (context/secrets))
+    (let [deps* @deps
+          mask  (partial context/mask (context/secrets (:accounts deps*)))
           {:keys [result error]}
-          (try (tools/run tool @deps arguments)
+          (try (tools/run tool deps* arguments)
                (catch Exception e
                  ;; The message and the frame it came from, not the throwable: a
                  ;; stack trace prints every cause's message, unmasked.
@@ -86,10 +100,10 @@
                       :isError (boolean error)}))
     (rpc-error id -32602 (str "unknown tool: " tool-name))))
 
-(defn get-prompt [id {prompt-name :name}]
+(defn get-prompt [id {prompt-name :name arguments :arguments}]
   (if-let [p (some #(when (= prompt-name (:name %)) %) prompts)]
     (rpc-result id {:description (:description p)
-                    :messages    [{:role "user" :content {:type "text" :text (:text p)}}]})
+                    :messages    [{:role "user" :content {:type "text" :text ((:text p) arguments)}}]})
     (rpc-error id -32602 (str "unknown prompt: " prompt-name))))
 
 (defn respond
@@ -169,7 +183,7 @@
       (let [msg (try (json/read-value (:body req) mapper) (catch Exception _ ::unreadable))]
         (if (= ::unreadable msg)
           (json-response 400 (rpc-error nil -32700 "parse error"))
-          (let [deps    (delay (tools/deps server (context/env-league)))
+          (let [deps    (delay (tools/deps server))
                 replies (if (sequential? msg)
                           (not-empty (into [] (keep #(respond deps %)) msg))
                           (respond deps msg))]

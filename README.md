@@ -913,11 +913,12 @@ back a board on which its whole roster is available.
 
 Sensei, the AI assistant for waiver and lineup calls, as a Model Context
 Protocol server: JSON-RPC over the Streamable HTTP transport, JSON responses
-only. Its three tools (`my_team`, `waiver_targets`, `player_news`) read
-`/api/waivers`' own board for the league that `DRAFTDAY_SENSEI_PROVIDER`,
-`DRAFTDAY_SENSEI_LEAGUE_ID` and `DRAFTDAY_SENSEI_ROSTER_ID` name. A request
-from anywhere but loopback, with a browser `Origin` or a `Host` other than
-localhost, or relayed by a proxy or tunnel, is a `403`. How to connect Claude Code, why it is built this way, and what it
+only. Its tools (`leagues`, `my_team`, `waiver_targets`, `player_news`) read
+`/api/waivers`' own board for every league that the accounts in the server's env
+play in: `DRAFTDAY_SENSEI_SLEEPER_USER`, and the ESPN cookies `DRAFTDAY_ESPN_SWID`
+and `DRAFTDAY_ESPN_S2`. A request from anywhere but loopback, with a browser
+`Origin` or a `Host` other than localhost, or relayed by a proxy or tunnel, is a
+`403`. How to connect Claude Code, why it is built this way, and what it
 measured are in [docs/sensei.md](docs/sensei.md).
 
 ## Development

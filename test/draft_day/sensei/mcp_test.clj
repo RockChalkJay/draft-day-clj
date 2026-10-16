@@ -12,15 +12,17 @@
 (def ^:private server
   {:waivers-reply (constantly fx/reply)
    :players       (constantly fx/players)
-   :news          fx/news})
+   :news          fx/news
+   :env           (constantly {})})
 
 (defn- post
   "POST one message, or a batch, from this machine unless `req` says
-  otherwise, with the league resolving to `ctx`."
+  otherwise, with the manager in one league whose context is `ctx`."
   ([msg] (post msg {}))
   ([msg req] (post msg req fx/body))
   ([msg req ctx]
-   (with-redefs [context/league-context (constantly ctx)]
+   (with-redefs [context/leagues        (constantly {:leagues [fx/entry] :errors []})
+                 context/league-context (constantly ctx)]
      ((mcp/handler server)
       (-> {:remote-addr "127.0.0.1"
            :headers     {"content-type" "application/json"}
@@ -53,7 +55,7 @@
 
 (deftest tools-list-states-every-tool-read-only
   (let [tools (get-in (rpc (request 2 "tools/list")) [:json :result :tools])]
-    (is (= ["my_team" "waiver_targets" "player_news"] (map :name tools)))
+    (is (= ["leagues" "my_team" "waiver_targets" "player_news"] (map :name tools)))
     (is (every? #(= "object" (get-in % [:inputSchema :type])) tools))
     (is (every? #(true? (get-in % [:annotations :readOnlyHint])) tools))))
 
@@ -83,10 +85,18 @@
   (is (= 202 (:status (post [{:jsonrpc "2.0" :method "notifications/initialized"}])))))
 
 (deftest prompts-carry-the-weekly-review
-  (is (= ["weekly_review"] (map :name (get-in (rpc (request 9 "prompts/list")) [:json :result :prompts]))))
-  (let [msg (get-in (rpc (request 10 "prompts/get" {:name "weekly_review"})) [:json :result :messages 0])]
+  (let [[p :as listed] (get-in (rpc (request 9 "prompts/list")) [:json :result :prompts])]
+    (is (= ["weekly_review"] (map :name listed)))
+    (is (= [{:name "league" :required false}]
+           (map #(select-keys % [:name :required]) (:arguments p)))
+        "a league is optional"))
+  (let [text (fn [params] (get-in (rpc (request 10 "prompts/get" params)) [:json :result :messages 0 :content :text]))
+        msg  (get-in (rpc (request 10 "prompts/get" {:name "weekly_review"})) [:json :result :messages 0])]
     (is (= "user" (:role msg)))
-    (is (str/includes? (get-in msg [:content :text]) "waiver wire"))))
+    (is (str/includes? (get-in msg [:content :text]) "waiver wire"))
+    (is (str/includes? (text {:name "weekly_review"}) "every league I play in") "none named: all of them")
+    (is (str/includes? (text {:name "weekly_review" :arguments {:league "Work League"}}) "Work League"))
+    (is (not (str/includes? (text {:name "weekly_review" :arguments {:league "Work League"}}) "every league")))))
 
 (deftest only-this-machine-is-answered
   (testing "another host on the network"

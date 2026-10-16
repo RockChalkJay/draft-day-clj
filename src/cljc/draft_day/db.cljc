@@ -138,6 +138,24 @@
   [db]
   (get-in db [:leagues (:active-league db)]))
 
+(defn my-roster-id-for
+  "Which roster in this league belongs to `user-id`, or nil.
+
+  Case-folded, which costs a numeric Sleeper id nothing and is the difference
+  between finding the manager's own team and not on ESPN: his user id *is* his
+  SWID, ESPN publishes it uppercase in a team's `owners` array, and a manager
+  who pasted his cookie in lower case would otherwise land on a board with no
+  roster, no budget and no drop until he found the dropdown.
+
+  Shared with the server because Sensei has no dropdown to fall back on: it
+  finds the manager's team here or not at all."
+  [teams user-id]
+  (when (not-empty (str user-id))
+    (let [mine (str/lower-case (str user-id))]
+      (some (fn [t] (when (= (str/lower-case (str (:owner-id t))) mine)
+                      (:roster-id t)))
+            teams))))
+
 (defn league-account
   "The account a league is read through, or nil for one added by bare id.
 

@@ -8,6 +8,14 @@
 
 ;; ---- roster / teams ----
 
+(deftest the-managers-team-is-found-by-owner-whatever-the-case-or-type
+  (let [teams [{:roster-id "1" :owner-id "{ABCDEF12-0000}"} {:roster-id "2" :owner-id 4417}]]
+    (is (= "1" (db/my-roster-id-for teams "{abcdef12-0000}")) "ESPN publishes the SWID uppercase")
+    (is (= "2" (db/my-roster-id-for teams "4417")) "a numeric owner id matches its string")
+    (is (nil? (db/my-roster-id-for teams nil)))
+    (is (nil? (db/my-roster-id-for teams "")))
+    (is (nil? (db/my-roster-id-for teams "nobody")))))
+
 (deftest applies-says-whether-a-spec-covers-a-position
   (is (db/applies? {:positions db/receiving-positions} "WR"))
   (is (not (db/applies? {:positions db/receiving-positions} "QB")))
