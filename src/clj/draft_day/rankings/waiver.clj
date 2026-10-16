@@ -379,13 +379,14 @@
   stats and per-game for the same reasons `ros.clj` is. Takes a config
   `scoring/resolve-buckets` has already been over — `with-form-points` does it."
   [player scoring]
-  (per-game-points (or (:realized/recent player) (:nflverse/recent player)) scoring))
+  (per-game-points (:recent (:realized/line player)) scoring))
 
 (defn season-line
-  "His season so far, `{:games :stats}`: Sleeper's line where it arrived, else
-  nflverse's — which publishes no team defense, so only Sleeper's has one."
+  "His season so far, `{:games :stats}`, from the line `pipeline/resolve-realized`
+  chose: Sleeper's where it arrived, else nflverse's — which publishes no team
+  defense, so only Sleeper's has one."
   [player]
-  (or (:realized/season-to-date player) (:nflverse/season-to-date player)))
+  (:season-to-date (:realized/line player)))
 
 (defn season-points
   "Points over the season so far under the league's own weights, or nil before

@@ -53,6 +53,16 @@
       (is (= "Hip" (get-in by-id ["rb3" :sleeper/injury-body-part])))
       (is (nil? (get-in by-id ["rb4" :sleeper/injury-status])) "a player the list does not name is healthy"))))
 
+(deftest players-endpoint-does-not-ship-the-resolved-realized-line
+  ;; The line repeats the season and recent maps that ship beside it.
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe
+                (fn [& _] (assoc-in fixture [:players 0 :nflverse/season-to-date]
+                                    {:games 4 :stats {:rush_yd 300.0}}))]
+    (let [p (first (:players (parse (routes/players-handler {:query-params {}}))))]
+      (is (= 4 (get-in p [:nflverse/season-to-date :games])))
+      (is (not (contains? p :realized/line))))))
+
 (deftest players-endpoint-does-not-ship-the-per-format-bundle
   ;; There is no league on this endpoint to pick a format for, and the client
   ;; reads the flat vendor columns off /api/rankings — so shipping all three
@@ -490,9 +500,11 @@
                :ros-points 91.0 :week-points 12.4 :form-points 8.2
                :nflverse/recent {:games 3 :stats {:rec 18.0}}
                :nflverse/season-to-date {:games 8 :usage {:targets 60}}
+               :realized/line {:source :nflverse :season-to-date {:games 8}}
                :ros/stats {:rec 90.0} :week/stats {:rec 6.0}
                :week/opponent "SF"}])]
     (is (not (contains? p :nflverse/recent)))
+    (is (not (contains? p :realized/line)))
     (is (= {:games 8 :usage {:targets 60}} (:nflverse/season-to-date p)))
     (is (= [91.0 12.4 8.2 "SF"]
            ((juxt :ros-points :week-points :form-points :week/opponent) p))

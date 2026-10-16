@@ -73,10 +73,13 @@
     ;; the provenance (season, fetched-at, what validation dropped) that makes
     ;; "cache" a checkable claim rather than an unfalsifiable one.
     ;;
+    ;; `:realized/line` is server-side working state that repeats the season and
+    ;; recent maps already shipped beside it.
+    ;;
     ;; The per-format vendor bundle is stripped rather than flattened: there is
     ;; no league here to pick a format for, and the client reads the flat vendor
     ;; columns off /api/rankings anyway.
-    (json-response 200 {:players  (vendor/without-bundle players)
+    (json-response 200 {:players  (mapv #(dissoc % :realized/line) (vendor/without-bundle players))
                         :count    (count players)
                         :source   source
                         :universe (dissoc u :players :expires-at)})))
@@ -326,7 +329,8 @@
   Its *sibling* `:nflverse/season-to-date` must not: Tgt, Car and the season
   stat columns read it, which is why the two are named separately rather than
   the prefix dropped. Both `:realized/` columns go, the season-to-date one
-  included — it is scored into `:season-points` before this runs.
+  included — it is scored into `:season-points` before this runs. So does
+  `:realized/line`, which holds the same two maps.
 
   `:kickoff/started?` goes too: it is a function of `:kickoff/status`, which
   ships beside it, and only the matchup board reads the boolean. So do the
@@ -334,6 +338,7 @@
   [players]
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
                  :nflverse/recent :realized/recent :realized/season-to-date
+                 :realized/line
                  :realized/last-game :last-points :last-week :dropped?
                  :kickoff/started?)
         players))

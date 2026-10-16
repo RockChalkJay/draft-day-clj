@@ -181,7 +181,7 @@
   (let [through (dec w)
         by-id   (actual/accumulate (filterv #(<= (:week %) through) rows))]
     (-> (mapv (fn [p]
-                (cond-> (merge p (get by-id (:player-id p)))
+                (cond-> (pipeline/resolve-realized (merge p (get by-id (:player-id p))))
                   (get byes (:team p)) (assoc :bye (get byes (:team p)))))
               players)
         (ros/with-ros scoring {:through-week through

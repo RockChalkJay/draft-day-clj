@@ -397,8 +397,8 @@
   (let [ppr (scoring/resolve-config :ppr)
         [a] (waiver/with-form-points
               [{:player-id "a"
-                :nflverse/recent {:games 3 :stats {:rush_yd 240.0 :rec 15.0
-                                                   :rec_yd 180.0 :rush_td 3.0}}}]
+                :realized/line {:recent {:games 3 :stats {:rush_yd 240.0 :rec 15.0
+                                                          :rec_yd 180.0 :rush_td 3.0}}}}]
               ppr)]
     ;; 24 + 15 + 18 + 18 = 75 over 3 games
     (is (< (abs (- 25.0 (:form-points a))) 1e-9))))
@@ -410,14 +410,14 @@
   (let [ppr (scoring/resolve-config :ppr)
         got (fn [p] (:form-points (first (waiver/with-form-points [p] ppr))))]
     (is (nil? (got {:player-id "preseason"})))
-    (is (nil? (got {:player-id "no-games" :nflverse/recent {:games 0 :stats {}}})))
-    (is (nil? (got {:player-id "no-stats" :nflverse/recent {:games 2 :stats {}}})))))
+    (is (nil? (got {:player-id "no-games" :realized/line {:recent {:games 0 :stats {}}}})))
+    (is (nil? (got {:player-id "no-stats" :realized/line {:recent {:games 2 :stats {}}}})))))
 
 (deftest the-last-game-and-the-season-ride-beside-form
   (let [ppr (scoring/resolve-config :ppr)
         [a b] (-> [{:player-id "a"
                     :realized/game-log [{:week 6 :stats {:rec 2.0}} {:week 7 :stats {:rec 5.0 :rec_yd 60.0}}]
-                    :realized/season-to-date {:games 2 :stats {:rec 7.0 :rec_yd 60.0}}}
+                    :realized/line {:season-to-date {:games 2 :stats {:rec 7.0 :rec_yd 60.0}}}}
                    {:player-id "b"}]
                   (waiver/with-last-game 7)
                   (waiver/with-form-points ppr))]
@@ -683,15 +683,15 @@
     (is (= (Math/round (cap-of "DST")) (rows "d")) "capped, and the rest left unspent")
     (is (<= (rows "w") (Math/round (cap-of "WR"))))))
 
-(deftest season-points-are-scored-under-the-leagues-rules-from-sleepers-line-first
+(deftest season-points-are-scored-under-the-leagues-rules-from-the-resolved-line
   (let [ppr (scoring/resolve-config :ppr)
         [a b c] (waiver/with-form-points
-                  [{:player-id "a" :realized/season-to-date {:games 2 :stats {:rec 10.0 :rec_yd 100.0}}
+                  [{:player-id "a" :realized/line {:season-to-date {:games 2 :stats {:rec 10.0 :rec_yd 100.0}}}
                     :nflverse/season-to-date {:games 2 :stats {:rec 99.0}}}
-                   {:player-id "b" :nflverse/season-to-date {:games 1 :stats {:rush_yd 50.0}}}
+                   {:player-id "b" :realized/line {:season-to-date {:games 1 :stats {:rush_yd 50.0}}}}
                    {:player-id "c"}]
                   ppr)]
-    (is (< (Math/abs (- 20.0 (:season-points a))) 1e-9) "Sleeper's line where it arrived")
+    (is (< (Math/abs (- 20.0 (:season-points a))) 1e-9) "the line, not the raw columns")
     (is (< (Math/abs (- 10.0 (:season-ppg a))) 1e-9))
-    (is (< (Math/abs (- 5.0 (:season-points b))) 1e-9) "else nflverse's")
+    (is (< (Math/abs (- 5.0 (:season-points b))) 1e-9))
     (is (not (contains? c :season-points)) "no games is not zero points")))
