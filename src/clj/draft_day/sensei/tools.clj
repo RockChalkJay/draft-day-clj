@@ -149,8 +149,9 @@
 (def max-targets 25)
 
 (defn waiver-targets
-  "The free agents in the Waivers tab's order (`db/waiver-rank-key`), at one
-  position or all."
+  "The free agents ranked as the Waivers tab's # column ranks them
+  (`db/waiver-rank-key`), at one position or all. The tab opens sorted by Adds
+  instead, which is a sort and not a claim order."
   [deps {:keys [position limit]}]
   (let [reply (need deps :reply)
         pos   (some-> position str str/upper-case)

@@ -916,8 +916,8 @@ Protocol server: JSON-RPC over the Streamable HTTP transport, JSON responses
 only. Its three tools (`my_team`, `waiver_targets`, `player_news`) read
 `/api/waivers`' own board for the league that `DRAFTDAY_SENSEI_PROVIDER`,
 `DRAFTDAY_SENSEI_LEAGUE_ID` and `DRAFTDAY_SENSEI_ROSTER_ID` name. A request
-from anywhere but loopback, or with a browser `Origin` other than localhost, is
-a `403`. How to connect Claude Code, why it is built this way, and what it
+from anywhere but loopback, with a browser `Origin` or a `Host` other than
+localhost, or relayed by a proxy or tunnel, is a `403`. How to connect Claude Code, why it is built this way, and what it
 measured are in [docs/sensei.md](docs/sensei.md).
 
 ## Development

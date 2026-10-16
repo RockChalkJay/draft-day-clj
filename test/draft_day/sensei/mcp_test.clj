@@ -4,7 +4,8 @@
             [jsonista.core :as json]
             [draft-day.sensei.context :as context]
             [draft-day.sensei.fixtures :as fx]
-            [draft-day.sensei.mcp :as mcp]))
+            [draft-day.sensei.mcp :as mcp]
+            [draft-day.sensei.tools :as tools]))
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 
@@ -96,6 +97,37 @@
   (testing "this machine, by either address family, from a page or from a CLI"
     (is (= 200 (:status (post (request 1 "ping") {:remote-addr "0:0:0:0:0:0:0:1"}))))
     (is (= 200 (:status (post (request 1 "ping") {:headers {"origin" "http://localhost:8280"}}))))))
+
+(deftest a-tunnel-from-this-machine-is-not-this-machine
+  (testing "it relays the public name, with no Origin to give it away"
+    (is (= 403 (:status (post (request 1 "ping") {:headers {"host" "sensei.example.ngrok.app"}}))))
+    (is (= 403 (:status (post (request 1 "ping") {:headers {"host" "localhost.evil.example:8080"}})))))
+  (testing "it says it is relaying"
+    (doseq [h ["x-forwarded-for" "forwarded" "x-real-ip"]]
+      (is (= 403 (:status (post (request 1 "ping") {:headers {"host" "127.0.0.1:8080" h "203.0.113.9"}})))
+          h)))
+  (testing "a client on this machine names it however it likes"
+    (doseq [host ["localhost" "localhost:8080" "127.0.0.1:8080" "[::1]:8080"]]
+      (is (= 200 (:status (post (request 1 "ping") {:headers {"host" host}}))) host))))
+
+(deftest nothing-leaves-a-tool-call-unmasked
+  (with-redefs [context/secrets (constantly ["S2SECRET" "{SW-ID}"])]
+    (testing "a failure the tool reports"
+      (let [{:keys [json]} (rpc (request 1 "tools/call" {:name "my_team"}) {} {:error "sync failed: S2SECRET"})]
+        (is (= "sync failed: ••••" (get-in json [:result :content 0 :text])))))
+    (testing "a bug, which no one thought to mask"
+      (with-redefs [tools/run (fn [& _] (throw (ex-info "boom {SW-ID} S2SECRET" {})))]
+        (let [{:keys [json]} (rpc (request 2 "tools/call" {:name "my_team"}))
+              text (get-in json [:result :content 0 :text])]
+          (is (true? (get-in json [:result :isError])))
+          (is (= "internal error: boom •••• ••••" text)))))
+    (testing "a result: here a news note stands in for a secret a feed echoed"
+      (with-redefs [context/secrets (constantly ["note 101"])]
+        (let [{:keys [json]} (rpc (request 3 "tools/call" {:name "player_news" :arguments {:player "p1"}}))
+              text (get-in json [:result :content 0 :text])]
+          (is (false? (get-in json [:result :isError])))
+          (is (str/includes? text "••••"))
+          (is (not (str/includes? text "note 101"))))))))
 
 (deftest a-body-that-is-not-json-is-told-so
   (let [{:keys [status json]} (rpc (request 1 "ping")

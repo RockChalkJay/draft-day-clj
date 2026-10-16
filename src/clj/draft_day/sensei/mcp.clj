@@ -13,7 +13,9 @@
   one through the manager's own cookies, and http-kit listens on every
   interface; so a request from anywhere but loopback is refused, and so is one
   carrying a browser `Origin` other than localhost, which is how a web page
-  would reach a loopback server by DNS rebinding."
+  would reach a loopback server by DNS rebinding. A tunnel (ngrok, cloudflared)
+  connects from loopback too, so a `Host` that is not this machine's, or any
+  header a proxy adds to say it is relaying, is refused as well."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -63,18 +65,25 @@
 (defn call-tool
   "A `tools/call` reply. A failure the model can act on comes back as an
   `isError` result, as the spec asks, so the model reads it; only a tool that
-  does not exist is a protocol error."
+  does not exist is a protocol error.
+
+  Every word of the reply passes `context/mask` on its way out, whatever made
+  it: a tool result is read by a third party, and a credential must not reach
+  one by a path nobody thought to mask."
   [deps id {tool-name :name arguments :arguments}]
   (if-let [tool (tools/by-name tool-name)]
-    (let [{:keys [result error]}
+    (let [mask (partial context/mask (context/secrets))
+          {:keys [result error]}
           (try (tools/run tool @deps arguments)
                (catch Exception e
-                 (log/warn e "sensei tool failed:" tool-name)
+                 ;; The message and the frame it came from, not the throwable: a
+                 ;; stack trace prints every cause's message, unmasked.
+                 (log/warn "sensei tool failed:" tool-name (mask (str e))
+                           (some-> e .getStackTrace first str))
                  {:error (str "internal error: " (ex-message e))}))]
-      (rpc-result id (if error
-                       {:content [{:type "text" :text error}] :isError true}
-                       {:content [{:type "text" :text (json/write-value-as-string result)}]
-                        :isError false})))
+      (rpc-result id {:content [{:type "text"
+                                 :text (mask (or error (json/write-value-as-string result)))}]
+                      :isError (boolean error)}))
     (rpc-error id -32602 (str "unknown tool: " tool-name))))
 
 (defn get-prompt [id {prompt-name :name}]
@@ -106,13 +115,35 @@
   (boolean (try (some-> addr not-empty InetAddress/getByName .isLoopbackAddress)
                 (catch Exception _ false))))
 
+(def local-names
+  "How a URL names this machine."
+  #{"localhost" "127.0.0.1" "[::1]"})
+
 (defn local-origin?
   "No `Origin` at all (Claude Code sends none), or a page served from this
   machine."
   [origin]
   (or (nil? origin)
-      (contains? #{"localhost" "127.0.0.1" "[::1]"}
-                 (try (.getHost (URI. origin)) (catch Exception _ nil)))))
+      (contains? local-names (try (.getHost (URI. origin)) (catch Exception _ nil)))))
+
+(defn local-host?
+  "No `Host` at all (HTTP/1.0), or one that names this machine. A rebound name
+  and a tunnel's public name both fail it, with or without an `Origin`."
+  [host]
+  (or (nil? host)
+      (contains? local-names (try (.getHost (URI. (str "//" host))) (catch Exception _ nil)))))
+
+(def forwarding-headers
+  "What a proxy or tunnel adds when it relays a request from somewhere else."
+  ["x-forwarded-for" "forwarded" "x-real-ip"])
+
+(defn local-request?
+  "Does this request come from, and only through, this machine?"
+  [{:keys [remote-addr headers]}]
+  (and (loopback? remote-addr)
+       (local-host? (get headers "host"))
+       (local-origin? (get headers "origin"))
+       (not-any? #(contains? headers %) forwarding-headers)))
 
 (defn json-response [status body]
   {:status  status
@@ -126,8 +157,7 @@
   [server]
   (fn [req]
     (cond
-      (not (and (loopback? (:remote-addr req))
-                (local-origin? (get-in req [:headers "origin"]))))
+      (not (local-request? req))
       (json-response 403 (rpc-error nil -32600 "Sensei answers requests from this machine only"))
 
       ;; Said rather than left to the parse: the router's form middleware has

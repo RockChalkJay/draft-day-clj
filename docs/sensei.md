@@ -115,7 +115,9 @@ result.
 **This machine only.** http-kit listens on every interface, so the endpoint
 refuses anything but loopback. It also refuses a browser `Origin` other than
 localhost, which is how a web page would reach a loopback server by DNS
-rebinding.
+rebinding. A tunnel (ngrok, cloudflared) connects from loopback too, so a `Host`
+that is not this machine's, or an `X-Forwarded-For`, `Forwarded` or `X-Real-IP`
+header, is refused as well.
 
 **Hand-rolled protocol.** The official MCP Java SDK's server transport is a
 Servlet, which does not mount on http-kit. A tools-only server speaks a

@@ -46,6 +46,14 @@
       (is (re-find #"^sync failed" error))
       (is (not (re-find #"S2SECRET|SW-ID" error)) "a tool result is read by a third party"))))
 
+(deftest a-secret-is-masked-in-each-spelling-an-error-echoes
+  (let [swid "ABCDEF12-0000-0000-0000-000000000000"
+        ss   (context/secrets-in :espn {:swid swid :espn-s2 "S2SECRET"})]
+    (is (= "a •••• b •••• c ••••"
+           (context/mask ss (str "a " swid " b {" swid "} c S2SECRET"))))
+    (is (empty? (context/secrets-in :sleeper {:username "someone"})) "a username is public")
+    (is (empty? (context/secrets-in :espn nil)))))
+
 (deftest no-league-says-which-env-vars-to-set
   (is (re-find #"DRAFTDAY_SENSEI_PROVIDER.*DRAFTDAY_SENSEI_LEAGUE_ID.*DRAFTDAY_SENSEI_ROSTER_ID"
                (:error (context/league-context nil)))))

@@ -36,7 +36,7 @@
     (is (= {:bid 7 :typical 5 :rivals 3}
            (select-keys (tools/row (first fx/free-agents)) [:bid :typical :rivals])))))
 
-(deftest waiver-targets-follow-the-waivers-tab-order
+(deftest waiver-targets-follow-the-waivers-tab-rank
   (let [{:keys [result]} (call "waiver_targets" {} (fx/deps))]
     (is (= ["f3" "f2" "f1"] (map :player-id (:players result)))
         "lineup first, then upgrade")

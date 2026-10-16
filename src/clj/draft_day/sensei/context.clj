@@ -17,7 +17,7 @@
   (:require [clojure.string :as str]
             [draft-day.db :as db]
             [draft-day.ingestion.league-import :as league-import]
-            [draft-day.ingestion.league-import.espn]
+            [draft-day.ingestion.league-import.espn :as import-espn]
             [draft-day.ingestion.league-import.sleeper]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-sync.espn]
@@ -44,6 +44,26 @@
     (let [swid (System/getenv "DRAFTDAY_ESPN_SWID")
           s2   (System/getenv "DRAFTDAY_ESPN_S2")]
       (when (and swid s2) {:swid swid :espn-s2 s2}))))
+
+(defn secrets-in
+  "Every secret value in one provider's `credentials`, in each spelling an error
+  might echo: ESPN's SWID is kept as pasted and read back with its braces."
+  [provider credentials]
+  (let [raw (map #(get credentials %) (providers/secret-keys provider))]
+    (into [] (filter (every-pred string? seq))
+          (cons (import-espn/normalize-swid (:swid credentials)) raw))))
+
+(defn secrets
+  "Every credential value this server holds."
+  []
+  (secrets-in :espn (env-credentials :espn)))
+
+(defn mask
+  "`text` with each of `secrets` replaced by what a secret reads as once it is
+  somewhere it could be read back. The longest goes first, so a SWID with its
+  braces is not left as `{••••}` by the same SWID without them."
+  [secrets text]
+  (reduce #(str/replace %1 %2 providers/redacted) text (sort-by (comp - count) secrets)))
 
 (defn waivers-body
   "The /api/waivers body for an imported `config`, a synced `league` and the
@@ -83,9 +103,7 @@
   echoes masked: a tool result is read by a third party, and an `espn_s2` is a
   live session."
   [step provider credentials error]
-  (let [secrets (filter seq (map #(get credentials %) (providers/secret-keys provider)))]
-    (str step " failed: "
-         (reduce #(str/replace %1 %2 providers/redacted) (str error) secrets))))
+  (str step " failed: " (mask (secrets-in provider credentials) (str error))))
 
 (defn league-context
   "The /api/waivers body for `league` (`{:provider :league-id :roster-id
