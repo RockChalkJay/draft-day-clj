@@ -5,7 +5,13 @@
   takes no prior; a missing realized line therefore preserves the projection.
 
   A player with a serious designation (`db/serious-injury?`) has no games
-  remaining in season, until Sleeper clears the tag."
+  remaining in season, until Sleeper clears the tag.
+
+  The rate is the whole season's, with no weight on the last few games.
+  `benchmark/ros_recent.clj` replayed 2022-25: blending recent points, gating
+  that on a jump in targets plus carries, and blending opportunity alone all
+  predicted the rest of the season worse than the season rate did. A promotion
+  caused by a teammate's injury is not identified there, so it is untested."
   (:require [draft-day.db :as db]
             [draft-day.scoring :as scoring]))
 

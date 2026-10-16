@@ -165,3 +165,11 @@
       (is (= (:ros-points (ros-of nil 8)) (:ros-points (ros-of "Out" 8)))))
     (testing "preseason, a PUP tag is not a season-long absence"
       (is (= (:ros-points (ros-of nil 0)) (:ros-points (ros-of "PUP" 0)))))))
+
+(deftest recent-games-do-not-move-the-rate
+  (let [pts (fn [p] (:ros-points (first (ros/with-ros [p] ppr (ctx 9)))))
+        bench (player :pre {:rec 30.0} :played 9 :realized {:rec 18.0})]
+    (is (= (pts bench)
+           (pts (assoc bench :nflverse/recent {:games 3 :stats {:rec 18.0}}))
+           (pts (assoc bench :realized/recent {:games 3 :stats {:rec 18.0}})))
+        "a hot window predicted the rest of the season worse than the season rate did")))
