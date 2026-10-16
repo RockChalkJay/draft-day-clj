@@ -53,11 +53,36 @@
 (defn opportunities
   "Targets plus carries per game over a line, or nil with no games."
   [{:keys [games usage]}]
-  (when (pos? (or games 0))
-    (/ (+ (double (get usage :targets 0.0)) (double (get usage :carries 0.0))) games)))
+  (let [targets (double (get usage :targets 0.0))
+        carries (double (get usage :carries 0.0))]
+    (when (pos? (or games 0))
+      (/ (+ targets carries) games))))
+
+(defn ask-player
+  "Build this player's ask at `as-of`, or nil when he does not meet the sample
+  criteria."
+  [cfg positions after-by-id as-of [gsis line]]
+  (let [season (:nflverse/season-to-date line)
+        recent (:nflverse/recent line)
+        after  (get after-by-id gsis)
+        s-ppg  (per-game cfg season)
+        r-ppg  (per-game cfg recent)
+        s-opp  (opportunities season)
+        r-opp  (opportunities recent)]
+    (when (and s-ppg r-ppg s-opp r-opp (pos? s-opp) after
+               (db/receiving-position? (get positions gsis))
+               (>= (:games season) min-games)
+               (>= s-ppg min-ppg))
+      {:id gsis :as-of as-of :games (count after)
+       :season s-ppg :recent r-ppg
+       :ppo (/ s-ppg s-opp) :s-opp s-opp :r-opp r-opp
+       :trend (/ r-opp s-opp)
+       :actual (/ (reduce + (map #(scoring/resolved-points {:stats (:stats %)} cfg)
+                                 (weekly/game-log after)))
+                  (count after))})))
 
 (defn asks
-  "One map per receiving-position player asked about at `as-of`: his season and
+  "One map per RB/WR/TE player asked about at `as-of`: his season and
   recent rates as of then, and the points per game he went on to score."
   [cfg positions rows as-of]
   (let [known       (weekly/accumulate (weekly/season-rows rows as-of))
@@ -65,28 +90,20 @@
                          (filter (fn [[_ w _]] (> w as-of)))
                          (reduce (fn [acc [g w row]] (update acc g (fnil conj []) [w row])) {}))]
     (into []
-          (keep (fn [[gsis line]]
-                  (let [season (:nflverse/season-to-date line)
-                        recent (:nflverse/recent line)
-                        after  (get after-by-id gsis)
-                        s-ppg  (per-game cfg season)
-                        r-ppg  (per-game cfg recent)
-                        s-opp  (opportunities season)
-                        r-opp  (opportunities recent)]
-                    (when (and s-ppg r-ppg s-opp r-opp (pos? s-opp) after
-                               (db/receiving-position? (get positions gsis))
-                               (>= (:games season) min-games)
-                               (>= s-ppg min-ppg))
-                      {:id gsis :as-of as-of :games (count after)
-                       :season s-ppg :recent r-ppg
-                       :ppo (/ s-ppg s-opp) :s-opp s-opp :r-opp r-opp
-                       :trend (/ r-opp s-opp)
-                       :actual (/ (reduce + (map #(scoring/resolved-points {:stats (:stats %)} cfg)
-                                                 (weekly/game-log after)))
-                                  (count after))}))))
+          (keep #(ask-player cfg positions after-by-id as-of %))
           known)))
 
-(defn points-arm [w] (fn [{:keys [season recent]}] (+ (* (- 1.0 w) season) (* w recent))))
+(defn season-asks
+  "The asks for each configured as-of week in one season's weekly rows."
+  [cfg rows]
+  (let [positions (into {} (keep (fn [r]
+                                   (when-let [g (nflverse/gsis-id r)]
+                                     [g (get r "position")])))
+                        rows)]
+    (into [] (mapcat #(asks cfg positions rows %)) as-of-weeks)))
+
+(defn points-arm [w] (fn [{:keys [season recent]}]
+                       (+ (* (- 1.0 w) season) (* w recent))))
 
 (defn gate-arm [w t]
   (let [blend (points-arm w)]
@@ -96,6 +113,7 @@
   (fn [{:keys [ppo s-opp r-opp]}] (* ppo (+ (* (- 1.0 w) s-opp) (* w r-opp)))))
 
 (def arms
+  "The candidate predictors that the benchmark compares."
   (concat
    (for [w [0.25 0.5 1.0]] [(str "points " w) (points-arm w)])
    (for [t [1.25 1.5 2.0] w [0.25 0.5]] [(str "gate T=" t " w=" w) (gate-arm w t) t])
@@ -143,11 +161,7 @@
         asked   (into []
                       (mapcat (fn [season]
                                 (if-let [rows (weekly/fetch-rows season)]
-                                  (let [positions (into {} (keep (fn [r]
-                                                                   (when-let [g (nflverse/gsis-id r)]
-                                                                     [g (get r "position")])))
-                                                        rows)]
-                                    (mapcat #(asks cfg positions rows %) as-of-weeks))
+                                  (season-asks cfg rows)
                                   (do (println "no weekly file for" season) []))))
                       seasons)]
     (report "all receiving players" asked)
