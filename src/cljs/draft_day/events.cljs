@@ -28,8 +28,10 @@
   The in-season half runs on the same statelessness as the draft board: the
   browser owns the synced league and re-POSTs it, and the server holds nothing
   between requests."
-  (:require [re-frame.core :as rf]
+  (:require [clojure.string :as str]
+            [re-frame.core :as rf]
             [draft-day.db :as db]
+            [draft-day.sensei :as sensei]
             [draft-day.providers :as providers]
             [draft-day.scoring :as scoring]
             [draft-day.fx :as fx]))
@@ -69,7 +71,8 @@
          ;; which half this is; otherwise the week does, when the universe lands.
          place (place-view db)]
      {:db db
-      :fx (cond-> [[:dispatch [:fetch-players]]]
+      :fx (cond-> [[:dispatch [:fetch-players]]
+                   [:dispatch [:fetch-sensei-status]]]
             place (conj place))})))
 
 ;; The archive is written by an effect; this is the one place it is read back
@@ -645,7 +648,12 @@
                    :matchup-seq (inc (:matchup-seq db 0))
                    ;; Goes with the board it was asked about: a free agent in
                    ;; one league is rostered in another.
-                   :compare [])
+                   :compare []
+                   ;; Answers about the league you left are false under this one's
+                   ;; name; the bump drops what is still streaming.
+                   :sensei-messages []
+                   :sensei-busy? false
+                   :sensei-seq (inc (:sensei-seq db 0)))
       ;; `:teams` is built from `:num-teams`, `:starting-bankroll` and the
       ;; roster template, all of which just moved. Picks keep theirs — TODO.md.
       (empty? (:picks db))
@@ -662,7 +670,8 @@
       (let [db'  (activate db k)
             view (db/view-for db' (:view db'))]
         {:db (assoc db' :view view)
-         :fx (cond-> [[:dispatch [:recompute]]
+         :fx (cond-> [[:http-stream-abort :sensei]
+                      [:dispatch [:recompute]]
                       [:dispatch [:fetch-waivers]]]
                ;; A league added by pasted id has rosters nobody has fetched, and
                ;; a waiver board built on no league says everyone is free.
@@ -1030,3 +1039,92 @@
  :cache-reset-done
  (fn [_ _]
    {:fx [[:dispatch [:fetch-players true]]]}))
+
+;; ---- Sensei's chat ----
+
+(rf/reg-event-fx :fetch-sensei-status
+  (fn [_ _]
+    {:http {:method :get :url "/api/sensei/status"
+            :on-success [:sensei-status-loaded]
+            :on-failure [:sensei-status-failed]}}))
+
+(rf/reg-event-db :sensei-status-loaded
+  (fn [db [_ {:keys [enabled]}]] (assoc db :sensei-enabled? (boolean enabled))))
+
+;; A server that cannot be asked has no chat to offer.
+(rf/reg-event-db :sensei-status-failed
+  (fn [db _] (assoc db :sensei-enabled? false)))
+
+(rf/reg-event-db :sensei-toggle [persist]
+  (fn [db _] (update db :sensei-open? not)))
+
+;; Not persisted: a drag fires this on every pointer move, and the write waits for
+;; `:sensei-resize-end`.
+(rf/reg-event-db :sensei-resize
+  (fn [db [_ w]] (assoc db :sensei-width (sensei/clamp-width w))))
+
+(rf/reg-event-db :sensei-resize-end [persist] (fn [db _] db))
+
+(defn sensei-ask
+  "The effects of putting `text` to Sensei with `db`'s conversation behind it, or
+  none when it is blank or an answer is already on its way."
+  [db text]
+  (let [text (str/trim (str text))]
+    (if (or (str/blank? text) (:sensei-busy? db))
+      {}
+      (let [n (inc (:sensei-seq db 0))]
+        {:db (-> db
+                 (assoc :sensei-seq n :sensei-busy? true)
+                 (update :sensei-messages sensei/add-turn text))
+         :http-stream {:id :sensei
+                       :url "/api/sensei/chat"
+                       :body (sensei/request-body (:sensei-messages db) text
+                                                  (:active-league db))
+                       :on-event [:sensei-event n]
+                       :on-failure [:sensei-failed n]}}))))
+
+(rf/reg-event-fx :sensei-send
+  (fn [{:keys [db]} [_ text]] (sensei-ask db text)))
+
+;; A stream that was stopped or outlived a league switch can still have an event
+;; in flight; the sequence is what keeps it off the next answer.
+(rf/reg-event-db :sensei-event
+  (fn [db [_ n event]]
+    (if (= n (:sensei-seq db))
+      (cond-> (update db :sensei-messages sensei/apply-event event)
+        (sensei/terminal? event) (assoc :sensei-busy? false))
+      db)))
+
+;; 403 and 404 mean the server will not chat with this browser, which the status
+;; probe may not have known: the panel withdraws rather than offering it again.
+(rf/reg-event-db :sensei-failed
+  (fn [db [_ n message status]]
+    (if (= n (:sensei-seq db))
+      (cond-> (-> db
+                  (update :sensei-messages sensei/fail :error message)
+                  (assoc :sensei-busy? false))
+        (contains? #{403 404} status) (assoc :sensei-enabled? false))
+      db)))
+
+(rf/reg-event-fx :sensei-stop
+  (fn [{:keys [db]} _]
+    {:db (-> db
+             (update :sensei-messages sensei/fail :stopped nil)
+             (assoc :sensei-busy? false)
+             (update :sensei-seq inc))
+     :http-stream-abort :sensei}))
+
+(rf/reg-event-fx :sensei-clear
+  (fn [{:keys [db]} _]
+    {:db (assoc db :sensei-messages [] :sensei-busy? false
+                :sensei-seq (inc (:sensei-seq db 0)))
+     :http-stream-abort :sensei}))
+
+;; Asks the newest question again, in place of the answer that failed.
+(rf/reg-event-fx :sensei-retry
+  (fn [{:keys [db]} _]
+    (let [ms (:sensei-messages db)]
+      (if (and (not (:sensei-busy? db)) (sensei/retryable? ms))
+        (sensei-ask (assoc db :sensei-messages (vec (drop-last 2 ms)))
+                    (sensei/last-question ms))
+        {}))))
