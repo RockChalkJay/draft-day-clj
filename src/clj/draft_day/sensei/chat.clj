@@ -161,44 +161,54 @@
      :stderr (io/reader (.getErrorStream p))
      :stop   #(.destroyForcibly p)}))
 
+(defn ended-early
+  "What to tell the manager when the process ended without an answer: why, when
+  the CLI said so on stderr."
+  [timed-out? stderr]
+  (if timed-out?
+    "Sensei took too long to answer"
+    (str "Sensei stopped before answering"
+         (when-let [e (not-empty (str/trim stderr))]
+           (str ": " (subs e (max 0 (- (count e) 300))))))))
+
 (defn stream-events
   "Feed `emit` the events of one run, in order, until the answer ends. `emit`
   answers whether the reader is still there; a false stops the run and kills the
-  process. Always ends with exactly one `{:done}` or `{:error}` unless the
-  reader left first."
-  [{:keys [command prompt mask emit timeout spawn] :or {spawn spawn!}}]
+  process, as does delivering `cancel`, which is how a reader who left in a
+  silent stretch is noticed. Always ends with exactly one `{:done}` or `{:error}`
+  unless the reader left first."
+  [{:keys [command prompt mask emit timeout spawn cancel]
+    :or   {spawn spawn! cancel (promise)}}]
   (let [emit* (comp emit (partial mask-event mask))]
     (if-let [p (try (spawn command)
                     (catch Exception e
                       (log/warn "sensei chat could not start claude:" (mask (str e)))
                       nil))]
       (let [timed-out? (atom false)
-            watchdog   (future (Thread/sleep (long timeout))
-                               (reset! timed-out? true)
+            _          (future (when (= ::timeout (deref cancel (long timeout) ::timeout))
+                                 (reset! timed-out? true))
                                ((:stop p)))
-            stderr     (future (slurp (:stderr p)))]
-        (try
-          (with-open [w (io/writer (:stdin p))] (.write w ^String prompt))
-          (let [outcome (with-open [r (:stdout p)]
-                          (reduce (fn [_ line]
-                                    (let [events (parse-line line)]
-                                      (cond
-                                        (not (every? emit* events)) (reduced :left)
-                                        (some terminal? events)     (reduced :finished)
-                                        :else                       nil)))
-                                  nil (line-seq r)))]
-            (when-not outcome
-              (emit* {:error (if @timed-out?
-                               "Sensei took too long to answer"
-                               (str "Sensei stopped before answering"
-                                    (when-let [e (not-empty (str/trim @stderr))]
-                                      (str ": " (subs e (max 0 (- (count e) 300)))))))})))
-          (catch Exception e
-            (log/warn "sensei chat failed:" (mask (str e)))
-            (emit* {:error "Sensei could not answer"}))
-          (finally
-            (future-cancel watchdog)
-            ((:stop p)))))
+            stderr     (future (slurp (:stderr p)))
+            ;; A process that died at once breaks the pipe before it reads the
+            ;; prompt, so a write that throws is the same outcome as no answer.
+            outcome    (try
+                         (with-open [w (io/writer (:stdin p))] (.write w ^String prompt))
+                         (with-open [r (:stdout p)]
+                           (reduce (fn [_ line]
+                                     (let [events (parse-line line)]
+                                       (cond
+                                         (not (every? emit* events)) (reduced :left)
+                                         (some terminal? events)     (reduced :finished)
+                                         :else                       nil)))
+                                   nil (line-seq r)))
+                         (catch Exception e
+                           (log/warn "sensei chat failed:" (mask (str e)))
+                           nil)
+                         (finally
+                           (deliver cancel true)
+                           ((:stop p))))]
+        (when-not outcome
+          (emit* {:error (ended-early @timed-out? (deref stderr 1000 ""))})))
       (emit* {:error "Sensei could not start the claude CLI"}))))
 
 ;; One question at a time: a second would share the plan's limits, and no one
@@ -242,11 +252,13 @@
 
             :else
             (try
-              (let [mask    (partial context/mask (context/secrets (context/accounts env)))
+              (let [cancel  (promise)
+                    mask    (partial context/mask (context/secrets (context/accounts env)))
                     command (command {:port (:server-port req) :session-id (:session-id q)})]
                 (http/as-channel
                  req
-                 {:on-open
+                 {:on-close (fn [_ _] (deliver cancel true))
+                  :on-open
                   (fn [ch]
                     (http/send! ch {:status 200 :headers (stream-headers)} false)
                     (future
@@ -255,6 +267,7 @@
                                         :prompt  (history->prompt q)
                                         :mask    mask
                                         :timeout timeout-ms
+                                        :cancel  cancel
                                         :emit    #(http/send! ch (json-line %) false)})
                         (finally
                           (reset! busy? false)

@@ -23,14 +23,17 @@
 (defn- fake-spawn
   "A `spawn` whose process prints `lines`, then `stderr`, and records what was
   written to it and whether it was stopped."
-  [lines & [{:keys [stderr hang?]}]]
+  [lines & [{:keys [stderr hang? broken-pipe?]}]]
   (let [written (promise)
         stopped (atom false)]
     {:written written
      :stopped stopped
      :spawn   (fn [_]
-                {:stdin  (proxy [java.io.ByteArrayOutputStream] []
-                           (close [] (deliver written (str this))))
+                {:stdin  (if broken-pipe?
+                           (proxy [java.io.OutputStream] []
+                             (write [& _] (throw (java.io.IOException. "Broken pipe"))))
+                           (proxy [java.io.ByteArrayOutputStream] []
+                             (close [] (deliver written (str this)))))
                  :stdout (java.io.BufferedReader.
                           (if hang?
                             (proxy [java.io.Reader] []
@@ -143,6 +146,23 @@
   (let [{:keys [events stopped]} (run [] {:hang? true} {:timeout 50})]
     (is (= [{:error "Sensei took too long to answer"}] events))
     (is @stopped)))
+
+(deftest a-reader-who-leaves-in-silence-stops-the-run
+  (let [cancel (promise)
+        fake   (fake-spawn [] {:hang? true})
+        events (atom [])
+        t0     (System/currentTimeMillis)]
+    (future (Thread/sleep 50) (deliver cancel true))
+    (chat/stream-events {:command ["claude"] :prompt "Q" :mask identity :timeout 60000
+                         :cancel cancel :spawn (:spawn fake)
+                         :emit   #(do (swap! events conj %) false)})
+    (is @(:stopped fake) "the process is killed without waiting for the timeout")
+    (is (< (- (System/currentTimeMillis) t0) 5000))
+    (is (not-any? #(= "Sensei took too long to answer" (:error %)) @events))))
+
+(deftest a-process-that-dies-at-once-says-why
+  (let [{:keys [events]} (run [] {:broken-pipe? true :stderr "claude: not logged in"})]
+    (is (= [{:error "Sensei stopped before answering: claude: not logged in"}] events))))
 
 (deftest a-process-that-will-not-start-is-an-error
   (let [events (atom [])]
