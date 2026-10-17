@@ -21,6 +21,10 @@
    "Compare my team to the team I play this week"
    "Is anyone on my bench worth starting?"])
 
+;; Set by the header button, read once by the composer as it mounts: focus follows
+;; the manager opening the panel, not a page load that finds it already open.
+(defonce focus-composer? (atom false))
+
 (defn toggle
   "The header's button for the panel, drawn only where the server offers one."
   []
@@ -28,7 +32,9 @@
     (let [open? @(rf/subscribe [:sensei-open?])]
       [:button#sensei-toggle.col-toggle
        {:aria-expanded (boolean open?) :aria-controls "sensei-panel"
-        :on-click #(rf/dispatch [:sensei-toggle])}
+        :on-click (fn []
+                    (reset! focus-composer? (not open?))
+                    (rf/dispatch [:sensei-toggle]))}
        "Ask Sensei"])))
 
 (defn signed-class
@@ -102,7 +108,8 @@
      (when (and streaming? (str/blank? text) (empty? tools))
        [:p.muted "Thinking…"])
      (when (and streaming? (seq text)) [:span.cursor {:aria-hidden true}])
-     (when (= :stopped status) [:p.muted "Stopped."])
+     (when (= :stopped status)
+       [:p.muted "Stopped. " [:button.link-btn {:on-click #(rf/dispatch [:sensei-retry])} "Retry"]])
      (when (= :error status)
        [:div.sn-err {:role "alert"}
         [:strong "Sensei couldn't answer."]
@@ -120,19 +127,30 @@
    (map (fn [q] ^{:key q} [:button {:on-click #(rf/dispatch [:sensei-send q])} q])
         starters)])
 
+(defn near-bottom?
+  "Is the log scrolled to within a line or two of its end?"
+  [^js el]
+  (< (- (.-scrollHeight el) (.-scrollTop el) (.-clientHeight el)) 48))
+
 (defn log
-  "The transcript, kept scrolled to the newest line while an answer arrives."
+  "The transcript. It follows an answer as it arrives only while the manager is
+  already at the bottom: scrolling up to reread must not be undone by the next
+  chunk."
   [_messages]
-  (let [el (atom nil)]
+  (let [el    (atom nil)
+        stick (atom true)]
     (r/create-class
      {:component-did-update
-      (fn [] (when-let [e @el] (set! (.-scrollTop e) (.-scrollHeight e))))
+      (fn [] (when-let [e @el] (when @stick (set! (.-scrollTop e) (.-scrollHeight e)))))
       :reagent-render
       (fn [messages]
-        ;; A live region so a screen reader hears the answer; `polite` so it waits
-        ;; for the manager rather than talking over them.
+        ;; A live region so a screen reader hears the answer, `polite` so it waits
+        ;; for the manager, and busy while it streams so it is read once whole
+        ;; instead of again at every chunk.
         [:div.sn-log {:ref #(reset! el %)
-                      :role "log" :aria-live "polite" :aria-label "Conversation with Sensei"}
+                      :on-scroll #(reset! stick (near-bottom? (.-target %)))
+                      :role "log" :aria-live "polite" :aria-busy @(rf/subscribe [:sensei-busy?])
+                      :aria-label "Conversation with Sensei"}
          (if (empty? messages)
            [empty-state]
            (map-indexed (fn [i m] ^{:key i} [message m]) messages))])})))
@@ -156,7 +174,9 @@
           [:label.sr-only {:for "sensei-input"} "Ask Sensei"]
           [:textarea#sensei-input
            {:placeholder "Ask about your team, waivers, a rival…"
-            :auto-focus true
+            :ref (fn [el] (when (and el @focus-composer?)
+                            (reset! focus-composer? false)
+                            (.focus el)))
             :value @draft
             :on-change #(reset! draft (.. % -target -value))
             :on-key-down (fn [e] (when (send-key? e) (.preventDefault e) (when-not busy? (send!))))}]

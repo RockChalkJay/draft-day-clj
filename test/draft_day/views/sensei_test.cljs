@@ -46,10 +46,22 @@
     (is (re-find #"claude: not logged in" (render sensei/answer m)))
     (is (= [[:sensei-retry]] (press! sensei/answer "Retry" m)))))
 
-(deftest a-stopped-answer-keeps-its-text
-  (let [html (render sensei/answer {:text "Half an answer" :tools [] :status :stopped})]
+(deftest a-stopped-answer-keeps-its-text-and-can-be-retried
+  (let [m {:text "Half an answer" :tools [] :status :stopped}
+        html (render sensei/answer m)]
     (is (re-find #"Half an answer" html))
-    (is (re-find #"Stopped" html))))
+    (is (re-find #"Stopped" html))
+    (is (= [[:sensei-retry]] (press! sensei/answer "Retry" m)))))
+
+(deftest focus-follows-opening-the-panel-not-loading-the-page
+  (swap! rdb/app-db assoc :sensei-enabled? true :sensei-open? false)
+  (reset! sensei/focus-composer? false)
+  (press! sensei/toggle "Ask Sensei")
+  (is (true? @sensei/focus-composer?) "opening asks the composer for focus")
+  (swap! rdb/app-db assoc :sensei-open? true)
+  (rf/clear-subscription-cache!)
+  (press! sensei/toggle "Ask Sensei")
+  (is (false? @sensei/focus-composer?) "closing does not"))
 
 (deftest a-table-lines-numbers-up-and-colours-only-signed-ones
   (let [html (render sensei/markdown-view

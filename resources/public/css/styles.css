@@ -1124,10 +1124,13 @@ header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflo
 aside.sensei { position: sticky; top: var(--header-h, 49px); flex: none; width: var(--sensei-w, 380px);
   height: calc(100vh - var(--header-h, 49px)); display: flex; flex-direction: column;
   background: var(--panel); border-left: 1px solid var(--border); z-index: 30; }
-/* The board and My Roster stay side by side while the panel is open, and the
-   board scrolls sideways in its own box rather than the roster dropping below. */
-.app.sensei-open .waiver-body { flex-wrap: nowrap; }
-.app.sensei-open .waiver-roster-col { flex: 0 0 280px; }
+/* The board and My Roster stay side by side beside the open panel, the board
+   scrolling in its own box. Under 1180px the board would be a sliver, so the
+   roster wraps below it as it does on a narrow window. */
+@media (min-width: 641px) and (max-width: 1179px) {
+  .app.sensei-open .waiver-body { flex-wrap: wrap; }
+  .app.sensei-open .waiver-roster-col { flex: 1 1 100%; }
+}
 .grip { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; }
 .grip:hover, .grip:focus-visible { background: var(--accent); opacity: .5; outline: none; }
 .sn-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
