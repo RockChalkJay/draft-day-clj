@@ -150,11 +150,24 @@
     (:text event)  (update :text mask)
     (:error event) (update :error mask)))
 
+(defn child-env
+  "What the `claude` child needs that `env` lacks. The CLI finds a subscription
+  login in the macOS keychain under the user's name, and without `USER` it says
+  \"Not logged in\" however good the login is; a server started from an IDE or a
+  service manager often has none. Only what is missing is added."
+  [env]
+  (let [user (System/getProperty "user.name")]
+    (cond-> {}
+      (nil? (get env "USER"))    (assoc "USER" user)
+      (nil? (get env "LOGNAME")) (assoc "LOGNAME" user)
+      (nil? (get env "HOME"))    (assoc "HOME" (System/getProperty "user.home")))))
+
 (defn spawn!
   "Start `command` in `work-dir`: `{:stdin :stdout :stderr :stop}`."
   [command]
   (let [pb (ProcessBuilder. ^java.util.List command)
         _  (.directory pb (work-dir))
+        _  (.putAll (.environment pb) (child-env (System/getenv)))
         p  (.start pb)]
     {:stdin  (.getOutputStream p)
      :stdout (io/reader (.getInputStream p))
