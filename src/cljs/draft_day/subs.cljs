@@ -644,3 +644,20 @@
             ids   (:roster-ids game)
             ids   (if (= mine (second ids)) (reverse ids) ids)]
         [(get by-id (first ids)) (get by-id (second ids))]))))
+
+;; ---- Sensei's chat ----
+
+;; Whether the server will chat with this browser: nil until it has said.
+(rf/reg-sub :sensei-enabled? (fn [db _] (:sensei-enabled? db)))
+
+(rf/reg-sub :sensei-open? (fn [db _] (:sensei-open? db)))
+
+;; On screen only when the server offers it and the manager has it open.
+(rf/reg-sub :sensei-visible? :<- [:sensei-enabled?] :<- [:sensei-open?]
+  (fn [[enabled? open?] _] (boolean (and enabled? open?))))
+
+(rf/reg-sub :sensei-width (fn [db _] (:sensei-width db)))
+
+(rf/reg-sub :sensei-messages (fn [db _] (:sensei-messages db)))
+
+(rf/reg-sub :sensei-busy? (fn [db _] (:sensei-busy? db)))

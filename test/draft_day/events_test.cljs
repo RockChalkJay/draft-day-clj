@@ -324,7 +324,8 @@
       "including its nested roster, which a new bench slot would change")
 
   (is (= [:config :teams :drafted :picks :columns :my-team-id :watchlist
-          :accounts :leagues :active-league :waiver-columns :phase]
+          :accounts :leagues :active-league :waiver-columns :phase
+          :sensei-open? :sensei-width]
          db/persist-keys)
       "and this is everything that gets stored at all")
 

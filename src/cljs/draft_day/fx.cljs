@@ -1,6 +1,12 @@
 (ns draft-day.fx
-  "re-frame side effects for fetches and localStorage persistence."
-  (:require [re-frame.core :as rf]
+  "re-frame side effects for fetches and localStorage persistence.
+
+  `:http` waits for a whole reply. `:http-stream` is for one that arrives as it is
+  written, a JSON event per line: it ends in a failure when no terminal event
+  went by, since a dropped connection and a finished answer otherwise look the
+  same, and an abort is the manager's own Stop and reports nothing."
+  (:require [clojure.string :as str]
+            [re-frame.core :as rf]
             [cljs.reader :as reader]))
 
 (def store-key "draft-day-state")
@@ -67,6 +73,76 @@
                   (and (not ok?) on-failure) (rf/dispatch (failure-event on-failure body status)))))
        (.catch (fn [err] (when on-failure
                            (rf/dispatch (failure-event on-failure {:error (str err)} nil))))))))
+
+(defn ndjson-split
+  "`[complete-lines unfinished]` once `chunk` joins what was left of the last one.
+  A network chunk ends wherever it likes, so a line is only whole after its
+  newline."
+  [unfinished chunk]
+  (let [parts (str/split (str unfinished chunk) #"\n" -1)]
+    [(filterv seq (butlast parts)) (last parts)]))
+
+(defn parse-event
+  "One NDJSON line as a keyword map, or nil when it is not JSON."
+  [line]
+  (try (js->clj (js/JSON.parse line) :keywordize-keys true)
+       (catch :default _ nil)))
+
+(defonce ^:private streams (atom {}))
+
+(defn- pump
+  "Read `reader` to its end, dispatching each whole line as `on-event` plus the
+  event. Answers whether a terminal event (`done` or `error`) went by."
+  [reader decoder on-event unfinished terminal?]
+  (-> (.read reader)
+      (.then (fn [r]
+               (if (.-done r)
+                 terminal?
+                 (let [[lines rest] (ndjson-split unfinished
+                                                  (.decode decoder (.-value r)
+                                                           #js {:stream true}))
+                       events       (keep parse-event lines)]
+                   (run! #(rf/dispatch (conj on-event %)) events)
+                   (pump reader decoder on-event rest
+                         (or terminal?
+                             (some #(or (:done %) (contains? % :error)) events)))))))))
+
+;; Not `:http`, which would hold a chat answer back for its whole 20 seconds.
+(rf/reg-fx
+ :http-stream
+ (fn [{:keys [id url body on-event on-failure]}]
+   (let [ctl (js/AbortController.)]
+     (swap! streams assoc id ctl)
+     (-> (js/fetch url
+                   (clj->js {:method  "POST"
+                             :headers {"Content-Type" "application/json"}
+                             :body    (js/JSON.stringify (clj->js body))
+                             :signal  (.-signal ctl)}))
+         (.then (fn [resp]
+                  (if (.-ok resp)
+                    (-> (pump (.getReader (.-body resp)) (js/TextDecoder.) on-event "" false)
+                        (.then (fn [terminal?]
+                                 (when-not terminal?
+                                   (rf/dispatch (failure-event on-failure
+                                                               {:error "The connection to Sensei ended before it answered"}
+                                                               nil))))))
+                    (-> (.json resp)
+                        (.then (fn [j]
+                                 (rf/dispatch (failure-event on-failure
+                                                             (js->clj j :keywordize-keys true)
+                                                             (.-status resp)))))))))
+         (.catch (fn [err]
+                   (when-not (= "AbortError" (.-name err))
+                     (rf/dispatch (failure-event on-failure {:error (str err)} nil)))))
+         (.finally (fn [] (when (identical? ctl (get @streams id))
+                            (swap! streams dissoc id))))))))
+
+(rf/reg-fx
+ :http-stream-abort
+ (fn [id]
+   (when-let [ctl (get @streams id)]
+     (.abort ctl)
+     (swap! streams dissoc id))))
 
 ;; Coalesce a burst of dispatches of the same event into one. Every keystroke in
 ;; the custom scoring editor changes a weight, and each change re-ranks the whole

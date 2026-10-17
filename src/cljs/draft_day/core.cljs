@@ -19,7 +19,8 @@
             [draft-day.views.matchup :as matchup]
             [draft-day.views.compare :as compare]
             [draft-day.views.modal :as modal]
-            [draft-day.views.player-detail :as player-detail]))
+            [draft-day.views.player-detail :as player-detail]
+            [draft-day.views.sensei :as sensei]))
 
 (defn- board-view []
   [:div.board-view
@@ -44,19 +45,22 @@
     (let [view  @(rf/subscribe [:view])
           modal @(rf/subscribe [:modal])
           kind  (db/modal-kind modal)]
-      [:div.app
+      [:div.app {:class (when @(rf/subscribe [:sensei-visible?]) "sensei-open")}
        [header/header]
-       [:main
-        (case view
-          :league   [roster/league-view]
-          :settings [settings/settings]
-          :waivers  [waivers/waivers-view]
-          :team     [team/team-view]
-          :rosters  [league/season-view]
-          :matchup  [matchup/matchup-view]
-          ;; Not placed until the phase is known — `events/place-view`.
-          nil       [:p.muted "Loading…"]
-          [board-view])]
+       ;; The panel sits beside the tab rather than over it.
+       [:div.app-body
+        [:main
+         (case view
+           :league   [roster/league-view]
+           :settings [settings/settings]
+           :waivers  [waivers/waivers-view]
+           :team     [team/team-view]
+           :rosters  [league/season-view]
+           :matchup  [matchup/matchup-view]
+           ;; Not placed until the phase is known — `events/place-view`.
+           nil       [:p.muted "Loading…"]
+           [board-view])]
+        [sensei/drawer]]
        ;; Mounted here rather than inside the waivers view because it is
        ;; `position: fixed` and needs no place in that DOM — and because putting
        ;; it there would make `views.waivers` and `views.compare` require each

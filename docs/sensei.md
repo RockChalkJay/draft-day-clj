@@ -197,6 +197,12 @@ the run draws on the plan's limits.
   `{error}` at the end; every word is masked against the accounts' secrets.
   Three minutes without an answer kills the process.
 
+  In the app, `Ask Sensei` appears in the header once the server reports the
+  chat is on and opens a panel docked on the right of every tab: tool chips while
+  it reads, then the answer as it streams, with Stop and Retry. Resize it by
+  dragging its left edge, or with the arrow keys on that edge. Clearing it, or
+  switching league, drops the conversation, since it was about the other league.
+
   Each question is a fresh process, so the browser keeps the transcript and
   sends it with every question (`history->prompt`). That is the seam for
   sessions later: the request already accepts a `session-id` that is ignored

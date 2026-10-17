@@ -7,6 +7,7 @@
   it: `core` mounts a React root when it loads."
   (:require [re-frame.core :as rf]
             [draft-day.providers :as providers]
+            [draft-day.views.sensei :as sensei]
             [draft-day.views.util :as util]))
 
 (defn- fmt-mult [x] (str "×" (.toFixed (or x 1) 2)))
@@ -129,6 +130,7 @@
        :season [season-stats]
        :draft  [draft-stats]
        nil)
+     [sensei/toggle]
      [:button.gear {:class    (when (= view :settings) "on")
                     :title    "Settings"
                     :on-click #(rf/dispatch [:set-view :settings])}
