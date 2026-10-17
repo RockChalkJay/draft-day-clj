@@ -58,6 +58,15 @@
   (is (not (chat/enabled? {})))
   (is (not (chat/enabled? {"DRAFTDAY_SENSEI" "1"}))))
 
+(deftest the-child-gets-the-user-name-the-cli-needs-to-find-its-login
+  (let [user (System/getProperty "user.name")]
+    (is (= {"USER" user "LOGNAME" user "HOME" (System/getProperty "user.home")}
+           (chat/child-env {}))
+        "a server started without them is the \"Not logged in\" case")
+    (is (= {} (chat/child-env {"USER" "jay" "LOGNAME" "jay" "HOME" "/h"}))
+        "what the server already has is left alone")
+    (is (= {"LOGNAME" user} (chat/child-env {"USER" "jay" "HOME" "/h"})))))
+
 (deftest command-is-isolated
   (let [argv (chat/command {:port 9090})]
     (is (= ["claude" "-p"] (take 2 argv)))
