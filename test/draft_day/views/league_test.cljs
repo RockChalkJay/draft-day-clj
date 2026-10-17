@@ -52,7 +52,7 @@
   (let [row (fn [p bench? openable?] (render (fn [] (league/player-row p bench? openable?))))]
     (is (re-find #"name-btn" (row {:player-id "a" :player-name "Mine"} false true)))
     (is (not (re-find #"name-btn" (row {:player-id "b" :player-name "Theirs"} false false)))
-        "another team's player is not on the waiver board the modal reads")))
+        "a player the universe does not know has no card to open")))
 
 (deftest a-starter-with-no-known-seat-shows-a-dash-not-his-position
   (let [slot (fn [p bench?] (last (nth (league/player-row p bench? false) 2)))]

@@ -14,9 +14,8 @@
 
 (defn player-row
   "One held player. `openable?` says whether the detail modal has a row for
-  him: it reads the waiver board, which carries free agents and the manager's
-  own roster but not another team's, and a name that looks clickable and does
-  nothing is worse than plain text.
+  him: it reads the universe, so any player the list knows opens, and a name
+  that looks clickable and does nothing is worse than plain text.
 
   The first cell is a seat for a starter and a position below the bench line.
   A starter whose seat is unknown gets a dash — his position there would read
@@ -73,7 +72,7 @@
         rosters  @(rf/subscribe [:league-rosters])
         failed   @(rf/subscribe [:universe-error])
         ls       @(rf/subscribe [:league-sync])
-        openable @(rf/subscribe [:comparable-by-id])
+        openable @(rf/subscribe [:universe-by-id])
         profiles @(rf/subscribe [:league-bid-profiles])
         week     (:week @(rf/subscribe [:season-header]))
         faab?   (= "faab" (some-> ls :waiver :type name))]

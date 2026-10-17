@@ -8,20 +8,20 @@
   drawn twice side by side is unreadable.
 
   WHAT IT READS, AND WHY THAT IS TWO DOCUMENTS. The metric readout comes from
-  the *waiver board* row (`:comparable-by-id`, which already unions the free
-  agents with the manager's own roster — the right index for all three places a
-  name can be clicked). The face and the season history come from the
-  *universe* (`:universe-by-id`), because `routes/without-history` strips
-  `:nflverse/history` off every board response and a waiver row carries no
-  `[:ids :sleeper]` to build a headshot from. `views.compare` already reaches
+  the *waiver board* row (`:comparable-by-id`, which unions the free agents
+  with the manager's own roster) where there is one; a player on another team
+  has none and the card draws from the universe alone. The face and the season
+  history come from the *universe* (`:universe-by-id`), because
+  `routes/without-history` strips `:nflverse/history` off every board response
+  and a waiver row carries no `[:ids :sleeper]` to build a headshot from. `views.compare` already reaches
   for the universe for exactly the second reason.
 
   They are held apart rather than merged. A merge would make \"which document is
   this fact from\" unanswerable at a glance, and the two carry different
   freshness — the board is re-POSTed on every refresh, the universe is fetched
-  once and cached for a day. The board half is always present, since it is how
-  the id was obtained; the universe half can be missing while `/api/players` is
-  still in flight, and the sections that depend on it simply do not render.
+  once and cached for a day. The universe half can be missing while
+  `/api/players` is still in flight, and the sections that depend on it simply
+  do not render.
 
   ORDER: the head (in his team's colours), three numbers, one line of the latest
   news or designation, then tabs — the game log, the news, the season table.
@@ -322,15 +322,16 @@
    (band :evidence p #{"Points / game" "Sleeper adds" "Games played"})])
 
 (defn player-detail-modal
-  "The modal for `id`, or nothing when the board has no row for him.
+  "The modal for `id`, or nothing when neither the board nor the universe has
+  him.
 
-  Nothing rather than an empty shell: the only way to open this is to click a
-  name the board rendered, so a missing row means the board was replaced while
-  the modal was open — a league switch drops `:waivers` entirely. An empty
-  modal over a board that has moved on is worse than no modal."
+  The board row leads for its week numbers, but it prices only free agents and
+  the manager's own players; anyone else (a Matchup opponent, a League tab
+  rival) opens on the universe entry. Nothing rather than an empty shell when
+  neither has him."
   [id]
-  (let [p        (get @(rf/subscribe [:comparable-by-id]) id)
-        universe (get @(rf/subscribe [:universe-by-id]) id)
+  (let [universe (get @(rf/subscribe [:universe-by-id]) id)
+        p        (or (get @(rf/subscribe [:comparable-by-id]) id) universe)
         week     (:week @(rf/subscribe [:waiver-meta]))
         {:keys [season through-week]} @(rf/subscribe [:universe])
         scoring  @(rf/subscribe [:scoring-weights])

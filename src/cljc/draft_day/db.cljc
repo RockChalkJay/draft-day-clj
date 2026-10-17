@@ -681,8 +681,8 @@
 
 (def waiver-views
   "The tabs drawn from the `/api/waivers` reply: My Team's rows, the board
-  itself, and on the League tab which of the manager's own players open the
-  detail modal. Opening one loads the board if it has not loaded."
+  itself, and on the League tab the manager's own roster rows. Opening one
+  loads the board if it has not loaded."
   #{:team :waivers :rosters})
 
 (defn matchup-view?
