@@ -196,6 +196,7 @@ shadow-cljs also serves `resources/public` on :8280, but nothing answers
 | `DRAFTDAY_CACHE_TTL_HOURS` | `24` | how long the on-disk player cache stays fresh |
 | `DRAFTDAY_WEEKLY_TTL_HOURS` | `1` | the same window for the weekly line, which moves far faster |
 | `DRAFTDAY_AS_OF_WEEK` | unset | dev only: truncate the in-season data at a week, so a finished season replays as one in progress |
+| `DRAFTDAY_SENSEI` | unset | `claude-cli` turns on the in-app chat, which runs `claude -p` on your own plan. See [docs/sensei.md](docs/sensei.md) |
 | `DRAFTDAY_SENSEI_SLEEPER_USER` | unset | your Sleeper username. [Sensei](#connect-sensei) lists your Sleeper leagues from it |
 | `DRAFTDAY_ESPN_SWID` / `_S2` | unset | your ESPN session cookies. [Sensei](#connect-sensei) lists your ESPN leagues with them; both are needed, and `lein test :integration` reads them too |
 | `DRAFTDAY_ESPN_LEAGUE` | unset | `lein test :integration` only: check ESPN's stat ids, slot table and team abbreviations against a live league. Without it those tests skip out loud |
@@ -870,6 +871,8 @@ camelCase conversion.
 | `POST` | `/api/league/sync` | who is rostered right now, and what is left to bid |
 | `POST` | `/api/cache/reset` | drop the on-disk universe cache |
 | `POST` | `/api/sensei/mcp` | Sensei's tools for a Claude app, over MCP; this machine only |
+| `POST` | `/api/sensei/chat` | one question to Sensei, answered as a stream; this machine only, off unless `DRAFTDAY_SENSEI=claude-cli` |
+| `GET` | `/api/sensei/status` | whether the chat is on for this browser |
 
 ### `POST /api/rankings`
 
@@ -1000,6 +1003,14 @@ and `DRAFTDAY_ESPN_S2`. A request from anywhere but loopback, with a browser
 `403`. How to connect Claude Code, why it is built this way, and what it
 measured are in [docs/sensei.md](docs/sensei.md). Setting the variables is covered
 in [Connect Sensei](#connect-sensei).
+
+### `POST /api/sensei/chat`
+
+One question to Sensei: `{message, history: [{role, text}], league?}`, answered as
+newline-delimited JSON events (`tool-start`, `text`, then `done` or `error`). It
+runs `claude -p` against the endpoint above, so it is a feature of the owner's
+own machine and plan: `404` unless `DRAFTDAY_SENSEI=claude-cli`, `403` from
+anywhere but loopback, `429` while another question is being answered.
 
 ## Development
 

@@ -34,6 +34,7 @@
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]
+            [draft-day.sensei.chat :as sensei-chat]
             [draft-day.sensei.mcp :as sensei-mcp]
             [draft-day.rankings.market :as market]
             [draft-day.rankings.vendor :as vendor]
@@ -598,7 +599,9 @@
      ["/api/league/import"   {:post league-import-handler}]
      ["/api/league/sync"     {:post league-sync-handler}]
      ["/api/account/connect" {:post account-connect-handler}]
-     ["/api/sensei/mcp"      {:post (sensei-mcp/handler sensei-server)}]]
+     ["/api/sensei/mcp"      {:post (sensei-mcp/handler sensei-server)}]
+     ["/api/sensei/chat"     {:post (sensei-chat/handler sensei-server)}]
+     ["/api/sensei/status"   {:get  (sensei-chat/status-handler sensei-server)}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})
