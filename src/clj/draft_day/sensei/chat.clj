@@ -2,12 +2,17 @@
   "The in-app chat: one question put to `claude -p`, answered as a stream.
 
   The process is isolated by hand, since `--bare` will not read a subscription
-  login: no built-in tools, only Sensei's own MCP server, no session kept, none
-  of the app's secrets in its environment, and a fixed working directory outside
-  the repo so no CLAUDE.md is read and no new auto-memory folder appears per
-  run. It runs on the owner's own plan, so it is off unless
-  `DRAFTDAY_SENSEI=claude-cli`, answers this machine only and takes one question
-  at a time. See docs/sensei.md for the terms."
+  login: no built-in tools, only Sensei's own MCP server, no settings file (and
+  so no hook or plugin) and no CLAUDE.md, no session kept, none of the app's
+  secrets in its environment, and one owner-only working directory outside the
+  repo so no new auto-memory folder appears per run. It runs on the owner's own
+  plan, so it is off unless `DRAFTDAY_SENSEI=claude-cli`, answers this machine
+  only and takes one question at a time. See docs/sensei.md for the terms.
+
+  The answer is the model's, and the tools hand it text other people write:
+  league-mates' team names, news. A client renders it as text plus a safe
+  markdown subset, never an image or raw HTML, or an instruction planted in a
+  team name can make the browser fetch a URL of the planter's choosing."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -15,10 +20,13 @@
             [org.httpkit.server :as http]
             [draft-day.json :refer [mapper]]
             [draft-day.sensei.context :as context]
-            [draft-day.sensei.mcp :as mcp]))
+            [draft-day.sensei.mcp :as mcp])
+  (:import (java.nio.file FileAlreadyExistsException FileSystems Files LinkOption)
+           (java.nio.file.attribute FileAttribute PosixFilePermissions)))
 
 (def timeout-ms
-  "Measured questions took 17-26 s. Three minutes is a stuck process."
+  "How long a run may take, answered or not, before it is stopped. Measured
+  questions took 17-26 s, and every other question waits on the lock."
   180000)
 
 (def max-message 4000)
@@ -30,11 +38,34 @@
   [env]
   (= "claude-cli" (get env "DRAFTDAY_SENSEI")))
 
+(defn private-dir
+  "`dir`, made if missing, as a directory only this user can enter. A link, or
+  a directory someone else made, is refused: `claude -p` trusts its working
+  directory without asking, and in a shared temp dir another user could make
+  this one first and leave a settings file in it. Windows keeps a temp dir per
+  user, and has no POSIX permissions to set."
+  [^java.io.File dir]
+  (if-not (contains? (.supportedFileAttributeViews (FileSystems/getDefault)) "posix")
+    (doto dir (.mkdirs))
+    (let [path       (.toPath dir)
+          nofollow   (into-array LinkOption [LinkOption/NOFOLLOW_LINKS])
+          owner-only (PosixFilePermissions/fromString "rwx------")]
+      (try (Files/createDirectory
+            path (into-array FileAttribute [(PosixFilePermissions/asFileAttribute owner-only)]))
+           (catch FileAlreadyExistsException _))
+      (when-not (and (Files/isDirectory path nofollow)
+                     (= (System/getProperty "user.name")
+                        (.getName (Files/getOwner path nofollow))))
+        (throw (ex-info (str "Sensei's working directory " dir " is not this user's own."
+                             " Remove it and ask again.")
+                        {:dir (str dir)})))
+      (Files/setPosixFilePermissions path owner-only)
+      dir)))
+
 (defn work-dir
   "The one directory every run starts in."
   []
-  (doto (io/file (System/getProperty "java.io.tmpdir") "draft-day-sensei")
-    (.mkdirs)))
+  (private-dir (io/file (System/getProperty "java.io.tmpdir") "draft-day-sensei")))
 
 (defn chat-note
   "What the panel adds to the persona the MCP server already serves."
@@ -60,6 +91,7 @@
   (into ["claude" "-p"
          "--output-format" "stream-json" "--verbose" "--include-partial-messages"
          "--tools" ""
+         "--setting-sources" ""
          "--strict-mcp-config" "--mcp-config" (mcp-config port)
          "--allowedTools" "mcp__sensei"
          "--append-system-prompt" (chat-note)]
@@ -158,32 +190,38 @@
 (defn unfinished-secret
   "How many of the last characters of `text` could be the start of one of
   `secrets` that a later delta finishes."
-  [secrets text]
-  (apply max 0 (for [s secrets
-                     k (range 1 (count s))
-                     :when (str/ends-with? text (subs s 0 k))]
-                 k)))
+  [secrets ^String text]
+  (transduce (map (fn [^String s]
+                    (or (some #(when (.regionMatches text (- (count text) %) s 0 %) %)
+                              (range (min (dec (count s)) (count text)) 0 -1))
+                        0)))
+             max 0 secrets))
 
 (defn text-emitter
   "`emit` for one answer's events, its text masked against `secrets` as it
   builds up: masking each delta alone misses a secret the CLI splits across
   two. Text that could be the start of a secret waits for the next delta, and
   any other event sends what waited ahead of itself. Each text block after the
-  first opens a paragraph, since the CLI streams the text either side of a tool
-  call as two blocks with nothing between them."
+  first opens a paragraph with its first text, since the CLI streams the text
+  either side of a tool call as two blocks with nothing between them."
   [secrets emit]
-  (let [mask  (partial context/mask secrets)
-        held  (volatile! "")
-        said? (volatile! false)]
+  (let [mask   (partial context/mask secrets)
+        held   (volatile! "")
+        said?  (volatile! false)
+        break? (volatile! false)]
     (fn [event]
       (cond
         (:text-start event)
-        (do (when @said? (vswap! held str "\n\n")) true)
+        (do (vreset! break? @said?) true)
+
+        (= "" (:text event))
+        true
 
         (:text event)
-        (let [text (mask (str @held (:text event)))
+        (let [text (mask (str @held (when @break? "\n\n") (:text event)))
               n    (- (count text) (unfinished-secret secrets text))]
           (vreset! said? true)
+          (vreset! break? false)
           (vreset! held (subs text n))
           (or (zero? n) (emit {:text (subs text 0 n)})))
 
@@ -193,32 +231,45 @@
           (and (or (= "" text) (emit {:text text}))
                (emit (mask-event mask event))))))))
 
+(def withheld-prefixes
+  "What the child never gets from the server's environment: the app's own
+  settings, which hold the accounts' secrets, and anything that would answer on
+  an account other than the plan, since an API key wins over the login under
+  `-p` and bills at API prices without a word."
+  ["DRAFTDAY_" "ANTHROPIC_" "CLAUDE_CODE_USE_"])
+
 (defn child-env
-  "The `claude` child process's environment, from the server's `env`.
-  None of the app's own `DRAFTDAY_` settings go along: they hold the accounts'
-  secrets, and the CLI and anything it starts, such as the user's hooks, have no
-  use for them. What the CLI needs that `env` may lack is added: it finds a
-  subscription login in the macOS keychain under the user's name, and without
-  `USER` it says \"Not logged in\" however good the login is; a server started
-  from an IDE or a service manager often has none."
+  "The `claude` child process's environment: the server's `env` less
+  `withheld-prefixes`, with no CLAUDE.md read from anywhere, and with what the
+  CLI needs that `env` may lack. It finds a subscription login in the macOS
+  keychain under the user's name, and without `USER` it says \"Not logged in\"
+  however good the login is; a server started from an IDE or a service manager
+  often has none."
   [env]
   (let [user (System/getProperty "user.name")]
-    (cond-> (into {} (remove #(str/starts-with? (key %) "DRAFTDAY_")) env)
+    (cond-> (into {"CLAUDE_CODE_DISABLE_CLAUDE_MDS" "1"}
+                  (remove (fn [[k]] (some #(str/starts-with? k %) withheld-prefixes)))
+                  env)
       (nil? (get env "USER"))    (assoc "USER" user)
       (nil? (get env "LOGNAME")) (assoc "LOGNAME" user)
       (nil? (get env "HOME"))    (assoc "HOME" (System/getProperty "user.home")))))
 
 (defn spawn!
-  "Start `command` in `work-dir`: `{:stdin :stdout :stderr :stop}`."
-  [command]
+  "Start `command` in `work-dir` under `(child-env env)`:
+  `{:stdin :stdout :stderr :stop}`. Stopping kills what the process started
+  first, since a `claude` on the PATH may be a wrapper that forks the real CLI,
+  which would outlive it."
+  [command env]
   (let [pb (ProcessBuilder. ^java.util.List command)
         _  (.directory pb (work-dir))
-        _  (doto (.environment pb) (.clear) (.putAll (child-env (System/getenv))))
+        _  (doto (.environment pb) (.clear) (.putAll (child-env env)))
         p  (.start pb)]
     {:stdin  (.getOutputStream p)
      :stdout (io/reader (.getInputStream p))
      :stderr (io/reader (.getErrorStream p))
-     :stop   #(.destroyForcibly p)}))
+     :stop   #(do (run! (fn [^java.lang.ProcessHandle h] (.destroyForcibly h))
+                        (iterator-seq (.iterator (.descendants p))))
+                  (.destroyForcibly p))}))
 
 (defn ended-early
   "What to tell the manager when the process ended without an answer: why, when
@@ -236,15 +287,18 @@
   there; a false stops the run and kills the process, as does delivering
   `cancel`, which is how a reader who left in a silent stretch is noticed.
   Always ends with exactly one `{:done}` or `{:error}` unless the reader left
-  first."
-  [{:keys [command prompt secrets emit timeout spawn cancel]
+  first. `env` is the server's, which `spawn` makes the child's."
+  [{:keys [command env prompt secrets emit timeout spawn cancel]
     :or   {spawn spawn! cancel (promise)}}]
   (let [mask  (partial context/mask secrets)
-        emit* (text-emitter secrets emit)]
-    (if-let [p (try (spawn command)
-                    (catch Exception e
-                      (log/warn "sensei chat could not start claude:" (mask (str e)))
-                      nil))]
+        emit* (text-emitter secrets emit)
+        p     (try (spawn command env) (catch Exception e e))]
+    (if (instance? Exception p)
+      (do (log/warn "sensei chat could not start claude:" (mask (str p)))
+          ;; Only a refused working directory says why in an ex-info.
+          (emit* {:error (if (ex-data p)
+                           (ex-message p)
+                           "Sensei could not start the claude CLI. Is it on the server's PATH?")}))
       (let [timed-out? (atom false)
             _          (future (when (= ::timeout (deref cancel (long timeout) ::timeout))
                                  (reset! timed-out? true))
@@ -273,8 +327,7 @@
                            (deliver cancel true)
                            ((:stop p))))]
         (when-not outcome
-          (emit* {:error (ended-early @timed-out? (deref stderr 1000 ""))})))
-      (emit* {:error "Sensei could not start the claude CLI. Is it on the server's PATH?"}))))
+          (emit* {:error (ended-early @timed-out? (deref stderr 1000 ""))}))))))
 
 ;; One question at a time: a second would share the plan's limits, and no one
 ;; panel needs two.
@@ -296,20 +349,14 @@
   [server]
   (fn [req]
     (let [env (when-let [f (:env server)] (f))]
-      (cond
-        (not (mcp/local-request? req))
-        (mcp/json-response 403 {:error "Sensei answers requests from this machine only"})
-
-        (not (enabled? env))
-        (mcp/json-response 404 {:error "Sensei chat is off"})
-
-        (not (some-> (get-in req [:headers "content-type"]) (str/starts-with? "application/json")))
-        (mcp/json-response 415 {:error "Content-Type must be application/json"})
-
-        :else
-        (let [parsed (try (json/read-value (:body req) mapper) (catch Exception _ nil))
+      (if-let [[status message] (mcp/refusal req)]
+        (mcp/json-response status {:error message})
+        (let [parsed (mcp/read-body req)
               q      (if (map? parsed) (parse-request parsed) {:error "invalid request body"})]
           (cond
+            (not (enabled? env))
+            (mcp/json-response 404 {:error "Sensei chat is off"})
+
             (:error q)
             (mcp/json-response 400 q)
 
@@ -330,6 +377,7 @@
                         (future
                           (try
                             (stream-events {:command command
+                                            :env     env
                                             :prompt  (history->prompt q)
                                             :secrets secrets
                                             :timeout timeout-ms

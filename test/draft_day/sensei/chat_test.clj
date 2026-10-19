@@ -1,10 +1,13 @@
 (ns draft-day.sensei.chat-test
-  (:require [clojure.string :as str]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [jsonista.core :as json]
             [org.httpkit.server :as http]
             [draft-day.providers :as providers]
-            [draft-day.sensei.chat :as chat]))
+            [draft-day.sensei.chat :as chat])
+  (:import (java.nio.file Files LinkOption)
+           (java.nio.file.attribute FileAttribute PosixFilePermissions)))
 
 (use-fixtures :each (fn [t] (reset! chat/busy? false) (t) (reset! chat/busy? false)))
 
@@ -25,16 +28,20 @@
 
 (defn- fake-spawn
   "A `spawn` whose process prints `lines`, then `stderr`, and records the command
-  it was started with, what was written to it and whether it was stopped."
+  and environment it was started with, what was written to it and whether it
+  was stopped."
   [lines & [{:keys [stderr stderr-closed? hang? broken-pipe?]}]]
   (let [command (promise)
+        env     (promise)
         written (promise)
         stopped (atom false)]
     {:command command
+     :env     env
      :written written
      :stopped stopped
-     :spawn   (fn [cmd]
+     :spawn   (fn [cmd e]
                 (deliver command cmd)
+                (deliver env e)
                 {:stdin  (if broken-pipe?
                            (proxy [java.io.OutputStream] []
                              (write [& _] (throw (java.io.IOException. "Broken pipe"))))
@@ -71,10 +78,11 @@
 (deftest the-child-gets-the-user-name-the-cli-needs-to-find-its-login
   (let [user (System/getProperty "user.name")]
     (is (= {"USER" user "LOGNAME" user "HOME" (System/getProperty "user.home")}
-           (chat/child-env {}))
+           (select-keys (chat/child-env {}) ["USER" "LOGNAME" "HOME"]))
         "a server started without them is the \"Not logged in\" case")
     (is (= {"USER" "jay" "LOGNAME" "jay" "HOME" "/h"}
-           (chat/child-env {"USER" "jay" "LOGNAME" "jay" "HOME" "/h"}))
+           (select-keys (chat/child-env {"USER" "jay" "LOGNAME" "jay" "HOME" "/h"})
+                        ["USER" "LOGNAME" "HOME"]))
         "what the server already has is left alone")
     (is (= user (get (chat/child-env {"USER" "jay" "HOME" "/h"}) "LOGNAME")))))
 
@@ -88,6 +96,39 @@
     (is (not-any? #(str/starts-with? % "DRAFTDAY_") (keys env))
         "the accounts' secrets stay with the server")))
 
+(deftest the-child-answers-on-the-plan-and-nothing-else
+  (let [env (chat/child-env {"ANTHROPIC_API_KEY"       "sk-ant"
+                             "ANTHROPIC_AUTH_TOKEN"    "tok"
+                             "ANTHROPIC_BASE_URL"      "https://proxy.example"
+                             "CLAUDE_CODE_USE_BEDROCK" "1"
+                             "CLAUDE_CODE_OAUTH_TOKEN" "plan-token"})]
+    (is (not-any? #(or (str/starts-with? % "ANTHROPIC_") (str/starts-with? % "CLAUDE_CODE_USE_"))
+                  (keys env))
+        "an API key wins over the login under -p and bills at API prices")
+    (is (= "plan-token" (get env "CLAUDE_CODE_OAUTH_TOKEN")) "the plan's own token is a login")
+    (is (= "1" (get env "CLAUDE_CODE_DISABLE_CLAUDE_MDS"))
+        "no CLAUDE.md from the working directory up, nor the user's own")))
+
+(deftest the-working-directory-is-the-owners-alone
+  (let [base  (.toFile (Files/createTempDirectory "sensei-test" (make-array FileAttribute 0)))
+        dir   (io/file base "work")
+        perms #(PosixFilePermissions/toString
+                (Files/getPosixFilePermissions (.toPath ^java.io.File %) (make-array LinkOption 0)))]
+    (try
+      (is (= dir (chat/private-dir dir)))
+      (is (= "rwx------" (perms dir)))
+      (testing "one already there is closed to everyone else"
+        (Files/setPosixFilePermissions (.toPath dir) (PosixFilePermissions/fromString "rwxr-xr-x"))
+        (chat/private-dir dir)
+        (is (= "rwx------" (perms dir))))
+      (testing "a link is refused, wherever it points"
+        (let [link (io/file base "link")]
+          (Files/createSymbolicLink (.toPath link) (.toPath dir) (make-array FileAttribute 0))
+          (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not this user's own"
+                                (chat/private-dir link)))))
+      (finally
+        (run! io/delete-file (reverse (file-seq base)))))))
+
 (deftest command-is-isolated
   (let [argv (chat/command {:port 9090})]
     (is (= ["claude" "-p"] (take 2 argv)))
@@ -95,6 +136,8 @@
       (is (some #{"--strict-mcp-config"} argv))
       (is (some #{"--no-session-persistence"} argv))
       (is (= "" (second (drop-while #(not= "--tools" %) argv))))
+      (is (= "" (second (drop-while #(not= "--setting-sources" %) argv)))
+          "no settings file, so no hook or plugin")
       (is (= "mcp__sensei" (second (drop-while #(not= "--allowedTools" %) argv)))))
     (testing "the MCP config points at this server's port"
       (is (str/includes? (second (drop-while #(not= "--mcp-config" %) argv))
@@ -163,6 +206,10 @@
          (:events (run [text-start (text "Let me look.") tool
                         text-start (text "Pick Mason.") result])))))
 
+(deftest a-block-with-no-text-adds-no-paragraph
+  (is (= [{:text "Let me look."} {:tool-start "my_team"} {:done true}]
+         (:events (run [text-start (text "Let me look.") tool text-start (text "") result])))))
+
 (deftest a-failed-result-is-an-error
   (is (= [{:error "boom"}]
          (:events (run [(line {:type "result" :is_error true :result "boom"})])))))
@@ -207,10 +254,28 @@
 (deftest a-process-that-will-not-start-is-an-error
   (let [events (atom [])]
     (chat/stream-events {:command ["claude"] :prompt "Q" :timeout 100
-                         :spawn (fn [_] (throw (java.io.IOException. "no such file")))
+                         :spawn (fn [_ _] (throw (java.io.IOException. "no such file")))
                          :emit  #(swap! events conj %)})
     (is (= 1 (count @events)))
-    (is (str/includes? (:error (first @events)) "PATH") "it names the likely cause")))
+    (is (str/includes? (:error (first @events)) "PATH") "it names the likely cause"))
+  (testing "a refused working directory says so"
+    (let [events (atom [])]
+      (chat/stream-events {:command ["claude"] :prompt "Q" :timeout 100
+                           :spawn (fn [_ _] (throw (ex-info "the directory is not this user's own" {})))
+                           :emit  #(swap! events conj %)})
+      (is (= [{:error "the directory is not this user's own"}] @events)))))
+
+(deftest stopping-a-run-stops-what-it-started
+  (let [p     (chat/spawn! ["sh" "-c" "sleep 30 & echo $!; wait"] {"PATH" (System/getenv "PATH")})
+        pid   (Long/parseLong (str/trim (.readLine ^java.io.BufferedReader (:stdout p))))
+        alive #(.orElse (.map (java.lang.ProcessHandle/of pid)
+                              (reify java.util.function.Function
+                                (apply [_ h] (.isAlive ^java.lang.ProcessHandle h))))
+                        false)]
+    (is (alive))
+    ((:stop p))
+    (is (some (fn [_] (Thread/sleep 50) (not (alive))) (range 60))
+        "a wrapper that forks the real CLI does not leave it running")))
 
 (deftest every-word-is-masked
   (let [events (:events (run [(text "the key is s3cret ok")
@@ -290,4 +355,6 @@
         (is (every? #(str/ends-with? % "\n") (rest @sent)))
         (is (false? @chat/busy?))
         (is (some #(str/includes? % "http://127.0.0.1:9191/api/sensei/mcp") @(:command fake))
-            "the child is pointed at the port this server bound, not the one the request named")))))
+            "the child is pointed at the port this server bound, not the one the request named")
+        (is (= {"DRAFTDAY_SENSEI" "claude-cli"} @(:env fake))
+            "the child's environment comes from the server's, as the gate and the masking do")))))

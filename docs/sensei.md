@@ -189,18 +189,25 @@ the run draws on the plan's limits.
   question and streams its answer as NDJSON (`POST /api/sensei/chat`). It is
   off unless `DRAFTDAY_SENSEI=claude-cli`, answers this machine only (`GET
   /api/sensei/status` says `false`, not `403`, from anywhere else) and takes one
-  question at a time (`429` for a second). The process runs from one fixed
-  directory under the system temp dir, with `--tools ""`,
-  `--strict-mcp-config` pointing at the port this server bound (not the one a
-  request's `Host` names) and `--no-session-persistence`, and with none of the
-  app's `DRAFTDAY_` variables in its environment; the prompt goes in on stdin,
-  never on the command line. Events are `{session-id}`, `{tool-start}`,
+  question at a time (`429` for a second). The process runs from one
+  owner-only directory under the system temp dir, refused if it is a link or
+  another user's, since `-p` trusts its working directory without asking. Its
+  flags are `--tools ""`, `--setting-sources ""` (no settings file, so no hook
+  or plugin), `--strict-mcp-config` pointing at the port this server bound (not
+  the one a request's `Host` names) and `--no-session-persistence`. Its
+  environment sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and carries no
+  `DRAFTDAY_`, `ANTHROPIC_` or `CLAUDE_CODE_USE_` variable: an API key wins
+  over the login under `-p` and would bill at API prices. The prompt goes in on
+  stdin, never on the command line. Events are `{session-id}`, `{tool-start}`,
   `{text}`, and one `{done}` or `{error}` at the end. A client only appends
-  `text`: the text after a tool call arrives opening its own paragraph. Every
-  word is masked against the accounts' secrets, including one the CLI splits
-  across two deltas: text that could be the start of a secret waits for the
-  next.
-  Three minutes without an answer kills the process.
+  `text`: the text after a tool call arrives opening its own paragraph. It
+  renders that text as a safe markdown subset, with no image, no raw HTML and no
+  link fetched on its own, because the tools hand the model words league-mates
+  write and an instruction planted in a team name could otherwise make the
+  browser fetch a URL. Every word is masked against the accounts' secrets,
+  including one the CLI splits across two deltas: text that could be the start
+  of a secret waits for the next. A run is stopped three minutes after it
+  starts, answered or not, and stopping it kills whatever the process started.
 
   Each question is a fresh process, so the browser keeps the transcript and
   sends it with every question (`history->prompt`). That is the seam for
