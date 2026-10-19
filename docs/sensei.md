@@ -191,10 +191,15 @@ the run draws on the plan's limits.
   /api/sensei/status` says `false`, not `403`, from anywhere else) and takes one
   question at a time (`429` for a second). The process runs from one fixed
   directory under the system temp dir, with `--tools ""`,
-  `--strict-mcp-config` pointing at this server's own MCP endpoint and
-  `--no-session-persistence`; the prompt goes in on stdin, never on the command
-  line. Events are `{session-id}`, `{tool-start}`, `{text}`, and one `{done}` or
-  `{error}` at the end; every word is masked against the accounts' secrets.
+  `--strict-mcp-config` pointing at the port this server bound (not the one a
+  request's `Host` names) and `--no-session-persistence`, and with none of the
+  app's `DRAFTDAY_` variables in its environment; the prompt goes in on stdin,
+  never on the command line. Events are `{session-id}`, `{tool-start}`,
+  `{text}`, and one `{done}` or `{error}` at the end. A client only appends
+  `text`: the text after a tool call arrives opening its own paragraph. Every
+  word is masked against the accounts' secrets, including one the CLI splits
+  across two deltas: text that could be the start of a secret waits for the
+  next.
   Three minutes without an answer kills the process.
 
   Each question is a fresh process, so the browser keeps the transcript and

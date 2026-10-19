@@ -2,11 +2,12 @@
   "The in-app chat: one question put to `claude -p`, answered as a stream.
 
   The process is isolated by hand, since `--bare` will not read a subscription
-  login: no built-in tools, only Sensei's own MCP server, no session kept, and a
-  fixed working directory outside the repo so no CLAUDE.md is read and no new
-  auto-memory folder appears per run. It runs on the owner's own plan, so it is
-  off unless `DRAFTDAY_SENSEI=claude-cli`, answers this machine only and takes
-  one question at a time. See docs/sensei.md for the terms."
+  login: no built-in tools, only Sensei's own MCP server, no session kept, none
+  of the app's secrets in its environment, and a fixed working directory outside
+  the repo so no CLAUDE.md is read and no new auto-memory folder appears per
+  run. It runs on the owner's own plan, so it is off unless
+  `DRAFTDAY_SENSEI=claude-cli`, answers this machine only and takes one question
+  at a time. See docs/sensei.md for the terms."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -112,7 +113,8 @@
 
 (defn parse-event
   "The chat events one `stream-json` message carries: `{:session-id}`,
-  `{:tool-start name}`, `{:text delta}`, `{:done}` or `{:error message}`."
+  `{:tool-start name}`, `{:text-start true}`, `{:text delta}`, `{:done}` or
+  `{:error message}`."
   [{:keys [type subtype session_id event is_error result]}]
   (case type
     "system" (if (= "init" subtype) [{:session-id session_id}] [])
@@ -121,6 +123,9 @@
       (cond
         (and (= "content_block_start" (:type event)) (= "tool_use" (:type block)))
         [{:tool-start (tool-name (:name block))}]
+
+        (and (= "content_block_start" (:type event)) (= "text" (:type block)))
+        [{:text-start true}]
 
         (and (= "content_block_delta" (:type event)) (= "text_delta" (:type delta)))
         [{:text (:text delta)}]
@@ -150,14 +155,55 @@
     (:text event)  (update :text mask)
     (:error event) (update :error mask)))
 
+(defn unfinished-secret
+  "How many of the last characters of `text` could be the start of one of
+  `secrets` that a later delta finishes."
+  [secrets text]
+  (apply max 0 (for [s secrets
+                     k (range 1 (count s))
+                     :when (str/ends-with? text (subs s 0 k))]
+                 k)))
+
+(defn text-emitter
+  "`emit` for one answer's events, its text masked against `secrets` as it
+  builds up: masking each delta alone misses a secret the CLI splits across
+  two. Text that could be the start of a secret waits for the next delta, and
+  any other event sends what waited ahead of itself. Each text block after the
+  first opens a paragraph, since the CLI streams the text either side of a tool
+  call as two blocks with nothing between them."
+  [secrets emit]
+  (let [mask  (partial context/mask secrets)
+        held  (volatile! "")
+        said? (volatile! false)]
+    (fn [event]
+      (cond
+        (:text-start event)
+        (do (when @said? (vswap! held str "\n\n")) true)
+
+        (:text event)
+        (let [text (mask (str @held (:text event)))
+              n    (- (count text) (unfinished-secret secrets text))]
+          (vreset! said? true)
+          (vreset! held (subs text n))
+          (or (zero? n) (emit {:text (subs text 0 n)})))
+
+        :else
+        (let [text @held]
+          (vreset! held "")
+          (and (or (= "" text) (emit {:text text}))
+               (emit (mask-event mask event))))))))
+
 (defn child-env
-  "What the `claude` child needs that `env` lacks. The CLI finds a subscription
-  login in the macOS keychain under the user's name, and without `USER` it says
-  \"Not logged in\" however good the login is; a server started from an IDE or a
-  service manager often has none. Only what is missing is added."
+  "The `claude` child process's environment, from the server's `env`.
+  None of the app's own `DRAFTDAY_` settings go along: they hold the accounts'
+  secrets, and the CLI and anything it starts, such as the user's hooks, have no
+  use for them. What the CLI needs that `env` may lack is added: it finds a
+  subscription login in the macOS keychain under the user's name, and without
+  `USER` it says \"Not logged in\" however good the login is; a server started
+  from an IDE or a service manager often has none."
   [env]
   (let [user (System/getProperty "user.name")]
-    (cond-> {}
+    (cond-> (into {} (remove #(str/starts-with? (key %) "DRAFTDAY_")) env)
       (nil? (get env "USER"))    (assoc "USER" user)
       (nil? (get env "LOGNAME")) (assoc "LOGNAME" user)
       (nil? (get env "HOME"))    (assoc "HOME" (System/getProperty "user.home")))))
@@ -167,7 +213,7 @@
   [command]
   (let [pb (ProcessBuilder. ^java.util.List command)
         _  (.directory pb (work-dir))
-        _  (.putAll (.environment pb) (child-env (System/getenv)))
+        _  (doto (.environment pb) (.clear) (.putAll (child-env (System/getenv))))
         p  (.start pb)]
     {:stdin  (.getOutputStream p)
      :stdout (io/reader (.getInputStream p))
@@ -185,14 +231,16 @@
            (str ": " (subs e (max 0 (- (count e) 300))))))))
 
 (defn stream-events
-  "Feed `emit` the events of one run, in order, until the answer ends. `emit`
-  answers whether the reader is still there; a false stops the run and kills the
-  process, as does delivering `cancel`, which is how a reader who left in a
-  silent stretch is noticed. Always ends with exactly one `{:done}` or `{:error}`
-  unless the reader left first."
-  [{:keys [command prompt mask emit timeout spawn cancel]
+  "Feed `emit` the events of one run, in order, until the answer ends, every
+  word masked against `secrets`. `emit` answers whether the reader is still
+  there; a false stops the run and kills the process, as does delivering
+  `cancel`, which is how a reader who left in a silent stretch is noticed.
+  Always ends with exactly one `{:done}` or `{:error}` unless the reader left
+  first."
+  [{:keys [command prompt secrets emit timeout spawn cancel]
     :or   {spawn spawn! cancel (promise)}}]
-  (let [emit* (comp emit (partial mask-event mask))]
+  (let [mask  (partial context/mask secrets)
+        emit* (text-emitter secrets emit)]
     (if-let [p (try (spawn command)
                     (catch Exception e
                       (log/warn "sensei chat could not start claude:" (mask (str e)))
@@ -201,7 +249,11 @@
             _          (future (when (= ::timeout (deref cancel (long timeout) ::timeout))
                                  (reset! timed-out? true))
                                ((:stop p)))
-            stderr     (future (slurp (:stderr p)))
+            ;; Killing the process closes its stderr, perhaps under this read.
+            stderr     (future (let [w (java.io.StringWriter.)]
+                                 (try (io/copy (:stderr p) w)
+                                      (catch java.io.IOException _))
+                                 (str w)))
             ;; A process that died at once breaks the pipe before it reads the
             ;; prompt, so a write that throws is the same outcome as no answer.
             outcome    (try
@@ -222,7 +274,7 @@
                            ((:stop p))))]
         (when-not outcome
           (emit* {:error (ended-early @timed-out? (deref stderr 1000 ""))})))
-      (emit* {:error "Sensei could not start the claude CLI"}))))
+      (emit* {:error "Sensei could not start the claude CLI. Is it on the server's PATH?"}))))
 
 ;; One question at a time: a second would share the plan's limits, and no one
 ;; panel needs two.
@@ -239,7 +291,8 @@
 (defn handler
   "The Ring handler for POST /api/sensei/chat. `server` is the map the MCP
   endpoint reads (`routes/sensei-server`), whose `:env` holds the gate and the
-  accounts whose secrets every word is masked against."
+  accounts whose secrets every word is masked against, and whose `:port` is
+  where the child finds that endpoint."
   [server]
   (fn [req]
     (let [env (when-let [f (:env server)] (f))]
@@ -266,25 +319,28 @@
             :else
             (try
               (let [cancel  (promise)
-                    mask    (partial context/mask (context/secrets (context/accounts env)))
-                    command (command {:port (:server-port req) :session-id (:session-id q)})]
-                (http/as-channel
-                 req
-                 {:on-close (fn [_ _] (deliver cancel true))
-                  :on-open
-                  (fn [ch]
-                    (http/send! ch {:status 200 :headers (stream-headers)} false)
-                    (future
-                      (try
-                        (stream-events {:command command
-                                        :prompt  (history->prompt q)
-                                        :mask    mask
-                                        :timeout timeout-ms
-                                        :cancel  cancel
-                                        :emit    #(http/send! ch (json-line %) false)})
-                        (finally
-                          (reset! busy? false)
-                          (http/close ch)))))}))
+                    secrets (context/secrets (context/accounts env))
+                    command (command {:port ((:port server)) :session-id (:session-id q)})]
+                (or (http/as-channel
+                     req
+                     {:on-close (fn [_ _] (deliver cancel true))
+                      :on-open
+                      (fn [ch]
+                        (http/send! ch {:status 200 :headers (stream-headers)} false)
+                        (future
+                          (try
+                            (stream-events {:command command
+                                            :prompt  (history->prompt q)
+                                            :secrets secrets
+                                            :timeout timeout-ms
+                                            :cancel  cancel
+                                            :emit    #(http/send! ch (json-line %) false)})
+                            (finally
+                              (reset! busy? false)
+                              (http/close ch)))))})
+                    ;; Only http-kit hands a request the channel `on-open` needs.
+                    (do (reset! busy? false)
+                        (mcp/json-response 500 {:error "Sensei chat needs http-kit's async channel"}))))
               (catch Throwable t
                 (reset! busy? false)
                 (throw t)))))))))

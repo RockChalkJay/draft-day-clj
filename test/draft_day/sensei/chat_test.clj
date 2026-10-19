@@ -3,8 +3,8 @@
             [clojure.test :refer [deftest is testing use-fixtures]]
             [jsonista.core :as json]
             [org.httpkit.server :as http]
-            [draft-day.sensei.chat :as chat]
-            [draft-day.sensei.context :as context]))
+            [draft-day.providers :as providers]
+            [draft-day.sensei.chat :as chat]))
 
 (use-fixtures :each (fn [t] (reset! chat/busy? false) (t) (reset! chat/busy? false)))
 
@@ -15,20 +15,26 @@
 (def ^:private tool   (line {:type "stream_event"
                              :event {:type "content_block_start" :index 0
                                      :content_block {:type "tool_use" :name "mcp__sensei__my_team"}}}))
+(def ^:private text-start (line {:type "stream_event"
+                                 :event {:type "content_block_start" :index 0
+                                         :content_block {:type "text" :text ""}}}))
 (defn- text [s] (line {:type "stream_event"
                        :event {:type "content_block_delta" :index 1
                                :delta {:type "text_delta" :text s}}}))
 (def ^:private result (line {:type "result" :subtype "success" :is_error false :result "ok"}))
 
 (defn- fake-spawn
-  "A `spawn` whose process prints `lines`, then `stderr`, and records what was
-  written to it and whether it was stopped."
-  [lines & [{:keys [stderr hang? broken-pipe?]}]]
-  (let [written (promise)
+  "A `spawn` whose process prints `lines`, then `stderr`, and records the command
+  it was started with, what was written to it and whether it was stopped."
+  [lines & [{:keys [stderr stderr-closed? hang? broken-pipe?]}]]
+  (let [command (promise)
+        written (promise)
         stopped (atom false)]
-    {:written written
+    {:command command
+     :written written
      :stopped stopped
-     :spawn   (fn [_]
+     :spawn   (fn [cmd]
+                (deliver command cmd)
                 {:stdin  (if broken-pipe?
                            (proxy [java.io.OutputStream] []
                              (write [& _] (throw (java.io.IOException. "Broken pipe"))))
@@ -40,15 +46,19 @@
                               (read [& _] (Thread/sleep 300) -1)
                               (close []))
                             (java.io.StringReader. (str/join "\n" lines))))
-                 :stderr (java.io.StringReader. (or stderr ""))
+                 :stderr (if stderr-closed?
+                           (proxy [java.io.Reader] []
+                             (read [& _] (throw (java.io.IOException. "Stream closed")))
+                             (close []))
+                           (java.io.StringReader. (or stderr "")))
                  :stop   #(reset! stopped true)})}))
 
 (defn- run
   "Every event one fake run emits, and the fake."
-  [lines & [opts {:keys [mask timeout emit-ok?] :or {mask identity timeout 5000 emit-ok? true}}]]
+  [lines & [opts {:keys [secrets timeout emit-ok?] :or {timeout 5000 emit-ok? true}}]]
   (let [fake   (fake-spawn lines opts)
         events (atom [])]
-    (chat/stream-events {:command ["claude"] :prompt "Q" :mask mask :timeout timeout
+    (chat/stream-events {:command ["claude"] :prompt "Q" :secrets secrets :timeout timeout
                          :spawn (:spawn fake)
                          :emit  (fn [e] (swap! events conj e) emit-ok?)})
     (assoc fake :events @events)))
@@ -63,9 +73,20 @@
     (is (= {"USER" user "LOGNAME" user "HOME" (System/getProperty "user.home")}
            (chat/child-env {}))
         "a server started without them is the \"Not logged in\" case")
-    (is (= {} (chat/child-env {"USER" "jay" "LOGNAME" "jay" "HOME" "/h"}))
+    (is (= {"USER" "jay" "LOGNAME" "jay" "HOME" "/h"}
+           (chat/child-env {"USER" "jay" "LOGNAME" "jay" "HOME" "/h"}))
         "what the server already has is left alone")
-    (is (= {"LOGNAME" user} (chat/child-env {"USER" "jay" "HOME" "/h"})))))
+    (is (= user (get (chat/child-env {"USER" "jay" "HOME" "/h"}) "LOGNAME")))))
+
+(deftest the-child-gets-none-of-the-apps-settings
+  (let [env (chat/child-env {"PATH"                         "/bin"
+                             "DRAFTDAY_ESPN_S2"             "AEB"
+                             "DRAFTDAY_ESPN_SWID"           "{X}"
+                             "DRAFTDAY_SENSEI_SLEEPER_USER" "jay"
+                             "DRAFTDAY_SENSEI"              "claude-cli"})]
+    (is (= "/bin" (get env "PATH")))
+    (is (not-any? #(str/starts-with? % "DRAFTDAY_") (keys env))
+        "the accounts' secrets stay with the server")))
 
 (deftest command-is-isolated
   (let [argv (chat/command {:port 9090})]
@@ -117,6 +138,7 @@
   (is (= [{:session-id "abc"}] (chat/parse-line init)))
   (is (= [] (chat/parse-line status)))
   (is (= [{:tool-start "my_team"}] (chat/parse-line tool)))
+  (is (= [{:text-start true}] (chat/parse-line text-start)))
   (is (= [{:text "Hi"}] (chat/parse-line (text "Hi"))))
   (is (= [{:done true}] (chat/parse-line result)))
   (is (= [{:error "rate limited"}]
@@ -135,6 +157,11 @@
            events))
     (is (= "Q" @written) "the prompt goes in on stdin")
     (is @stopped "the process is stopped when the run ends")))
+
+(deftest text-either-side-of-a-tool-call-is-two-paragraphs
+  (is (= [{:text "Let me look."} {:tool-start "my_team"} {:text "\n\nPick Mason."} {:done true}]
+         (:events (run [text-start (text "Let me look.") tool
+                        text-start (text "Pick Mason.") result])))))
 
 (deftest a-failed-result-is-an-error
   (is (= [{:error "boom"}]
@@ -162,12 +189,16 @@
         events (atom [])
         t0     (System/currentTimeMillis)]
     (future (Thread/sleep 50) (deliver cancel true))
-    (chat/stream-events {:command ["claude"] :prompt "Q" :mask identity :timeout 60000
+    (chat/stream-events {:command ["claude"] :prompt "Q" :timeout 60000
                          :cancel cancel :spawn (:spawn fake)
                          :emit   #(do (swap! events conj %) false)})
     (is @(:stopped fake) "the process is killed without waiting for the timeout")
     (is (< (- (System/currentTimeMillis) t0) 5000))
     (is (not-any? #(= "Sensei took too long to answer" (:error %)) @events))))
+
+(deftest a-stderr-closed-under-the-read-still-ends-the-answer
+  (is (= [{:error "Sensei stopped before answering"}]
+         (:events (run [] {:stderr-closed? true})))))
 
 (deftest a-process-that-dies-at-once-says-why
   (let [{:keys [events]} (run [] {:broken-pipe? true :stderr "claude: not logged in"})]
@@ -175,18 +206,31 @@
 
 (deftest a-process-that-will-not-start-is-an-error
   (let [events (atom [])]
-    (chat/stream-events {:command ["claude"] :prompt "Q" :mask identity :timeout 100
+    (chat/stream-events {:command ["claude"] :prompt "Q" :timeout 100
                          :spawn (fn [_] (throw (java.io.IOException. "no such file")))
                          :emit  #(swap! events conj %)})
-    (is (= [{:error "Sensei could not start the claude CLI"}] @events))))
+    (is (= 1 (count @events)))
+    (is (str/includes? (:error (first @events)) "PATH") "it names the likely cause")))
 
 (deftest every-word-is-masked
-  (let [mask   (partial context/mask ["s3cret"])
-        events (:events (run [(text "the key is s3cret ok")
+  (let [events (:events (run [(text "the key is s3cret ok")
                               (line {:type "result" :is_error true :result "bad s3cret"})]
-                             nil {:mask mask}))]
+                             nil {:secrets ["s3cret"]}))]
     (is (= 2 (count events)))
     (is (not (str/includes? (pr-str events) "s3cret")) "neither a chunk nor an error keeps it")))
+
+(deftest a-secret-split-across-deltas-is-still-masked
+  (let [events (:events (run [(text "the key is s3") (text "cr") (text "et, ok") result]
+                             nil {:secrets ["s3cret"]}))]
+    (is (= (str "the key is " providers/redacted ", ok") (apply str (keep :text events))))
+    (is (not-any? #(str/includes? (str (:text %)) "s3") events) "no chunk carries a piece of it")
+    (is (= {:done true} (last events))))
+  (testing "a tail that only looked like the start of one goes out with the next delta"
+    (is (= [{:text "the "} {:text "s3x"} {:done true}]
+           (:events (run [(text "the s3") (text "x") result] nil {:secrets ["s3cret"]})))))
+  (testing "what is held goes out before the answer ends"
+    (is (= [{:text "the "} {:text "s3"} {:done true}]
+           (:events (run [(text "the s3") result] nil {:secrets ["s3cret"]}))))))
 
 (defn- req [& {:keys [addr headers body]
                :or   {addr "127.0.0.1" headers {"content-type" "application/json"}
@@ -197,7 +241,7 @@
    :body        (java.io.ByteArrayInputStream.
                  (.getBytes (if (string? body) body (json/write-value-as-string body)) "UTF-8"))})
 
-(def ^:private on {:env (constantly {"DRAFTDAY_SENSEI" "claude-cli"})})
+(def ^:private on {:env (constantly {"DRAFTDAY_SENSEI" "claude-cli"}) :port (constantly 9191)})
 (def ^:private off {:env (constantly {})})
 
 (deftest status-says-whether-to-offer-the-chat
@@ -219,6 +263,11 @@
     (is (= 400 (:status (h on :body {:message ""}))))
     (is (false? @chat/busy?) "a refusal never takes the lock")))
 
+(deftest a-request-without-a-channel-frees-the-lock
+  (let [resp ((chat/handler on) (req))]
+    (is (= 500 (:status resp)) "only http-kit hands a request its channel")
+    (is (false? @chat/busy?))))
+
 (deftest a-second-question-waits
   (reset! chat/busy? true)
   (is (= 429 (:status ((chat/handler on) (req))))))
@@ -239,4 +288,6 @@
                (map #(json/read-value % (json/object-mapper {:decode-key-fn keyword}))
                     (rest @sent))))
         (is (every? #(str/ends-with? % "\n") (rest @sent)))
-        (is (false? @chat/busy?))))))
+        (is (false? @chat/busy?))
+        (is (some #(str/includes? % "http://127.0.0.1:9191/api/sensei/mcp") @(:command fake))
+            "the child is pointed at the port this server bound, not the one the request named")))))
