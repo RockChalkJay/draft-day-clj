@@ -288,3 +288,26 @@
         "a fantasy primary position wins")
     (is (nil? (sleeper/normalize-entry (entry "CB" ["CB"])))
         "a pure defender stays out")))
+
+(deftest the-outlook-sums-the-weeks-a-player-is-projected-in
+  (let [wk (fn [& lines] (into {} (map (fn [[id rec]] [id {:stats {:rec rec}}])) lines))
+        out (sleeper/outlook-by-id [(wk ["a" 4.0] ["b" 2.0])
+                                    (wk ["a" 5.0])            ; b: bye, not a game
+                                    (wk ["a" 3.0] ["b" 1.0])])]
+    (is (= {:games 3 :stats {:rec 12.0}} (get out "a")))
+    (is (= {:games 2 :stats {:rec 3.0}} (get out "b"))
+        "a week with no line for him is not a game")))
+
+(deftest an-outlook-week-that-fails-fails-the-outlook
+  (with-redefs [sleeper/fetch-weekly-entries
+                (fn [_ w] (if (= 8 w) (throw (ex-info "boom" {})) []))]
+    (is (thrown? Exception (sleeper/fetch-outlook 2026 7 9))
+        "a missing week would shorten every player's outlook without saying so")))
+
+(deftest the-outlook-asks-each-week-from-first-to-last-inclusive
+  (let [asked (atom #{})]
+    (with-redefs [sleeper/fetch-weekly-entries
+                  (fn [_ w] (swap! asked conj w)
+                    [{:player_id "a" :team "X" :stats {:pts_ppr 10.0 :rec 4.0}}])]
+      (is (= {:games 3 :stats {:rec 12.0}} (get (sleeper/fetch-outlook 2026 7 9) "a")))
+      (is (= #{7 8 9} @asked)))))

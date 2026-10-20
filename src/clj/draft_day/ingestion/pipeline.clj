@@ -541,6 +541,40 @@
        (reset! weekly-memo {:memo-path path :env env})
        (when (seq (:lines env)) env)))))
 
+(def outlook-schema-version
+  "Version of the outlook cache envelope."
+  1)
+
+(defn outlook-cache-path
+  "One file per season and first week: the outlook is a sum over the weeks left,
+  so the one fetched last Tuesday answers a different question."
+  [season from-week]
+  (format "data/outlook.v%d.%d-w%02d.transit" outlook-schema-version season from-week))
+
+(defn outlook-ttl-hours []
+  (Double/parseDouble (or (System/getenv "DRAFTDAY_OUTLOOK_TTL_HOURS") "6")))
+
+(defn load-outlook
+  "Sleeper's projected lines for weeks `from-week` through `to-week`, summed per
+  player (`sleeper/fetch-outlook`), off a cache of its own: Sleeper regenerates
+  every future week together, about daily. Nil offline, when replaying a week
+  (today's lines would leak the future into a past board), and when nothing is
+  cached and Sleeper does not answer."
+  [season from-week to-week]
+  (when-not (or (offline?) (nflverse-weekly/as-of-week))
+    (load-ttl-cache
+     {:path           (outlook-cache-path season from-week)
+      :ttl-hours      (outlook-ttl-hours)
+      :schema-version outlook-schema-version
+      :label          "outlook"
+      :fetch          (fn []
+                        (let [lines (sleeper/fetch-outlook season from-week to-week)]
+                          (when (empty? lines) (throw (ex-info "outlook empty" {})))
+                          {:season     season
+                           :from-week  from-week
+                           :fetched-at (now-iso)
+                           :lines      lines}))})))
+
 (defn assoc-kickoffs
   "Join kickoff metadata onto players by team, leaving unknown teams unchanged."
   [players kickoffs]
@@ -576,6 +610,18 @@
     (mapv (fn [p]
             (if-let [n (get adds (sleeper-id p))]
               (assoc p :trending/adds n)
+              p))
+          players)))
+
+(defn assoc-outlook
+  "Join an outlook onto players by Sleeper id as `:outlook/games` and
+  `:outlook/stats`, leaving a player Sleeper projects no remaining week unannotated."
+  [players lines]
+  (if (empty? lines)
+    players
+    (mapv (fn [p]
+            (if-let [{:keys [games stats]} (get lines (sleeper-id p))]
+              (assoc p :outlook/games games :outlook/stats stats)
               p))
           players)))
 

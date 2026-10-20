@@ -598,3 +598,42 @@
   (let [blocked (java.io.File/createTempFile "not-a-dir" "")]
     (.deleteOnExit blocked)
     (is (= 1 (:v (ttl-cache (str blocked "/cache.transit") (constantly {:v 1})))))))
+
+(def ^:private outlook-lines
+  {"12495" {:games 12 :stats {:rush_yd 650.0 :rec 28.0}}})
+
+(deftest outlook-join-crosses-by-sleeper-id
+  (let [[a b] (pipeline/assoc-outlook [{:player-id "00-0040198" :ids {:sleeper "12495"}}
+                                       {:player-id "00-0031234" :ids {:sleeper "4034"}}]
+                                      outlook-lines)]
+    (is (= 12 (:outlook/games a)))
+    (is (= {:rush_yd 650.0 :rec 28.0} (:outlook/stats a)))
+    (is (not (contains? b :outlook/games)) "no remaining week projected: no key")
+    (is (= [{:player-id "x"}] (pipeline/assoc-outlook [{:player-id "x"}] nil)))))
+
+(deftest outlook-is-not-loaded-offline-or-while-replaying-a-week
+  (let [calls (atom 0)]
+    (with-redefs [sleeper/fetch-outlook (fn [& _] (swap! calls inc) outlook-lines)
+                  pipeline/outlook-cache-path (fn [& _] (tmp "outlook-gate"))]
+      (with-redefs [pipeline/offline? (constantly true)]
+        (is (nil? (pipeline/load-outlook 2026 7 18))))
+      (with-redefs [pipeline/offline? (constantly false)
+                    nflverse-weekly/as-of-week (constantly 8)]
+        (is (nil? (pipeline/load-outlook 2026 7 18))
+            "today's lines would leak the future into a replayed week"))
+      (is (zero? @calls)))))
+
+(deftest outlook-is-cached-and-served-stale-when-sleeper-fails
+  (let [path (tmp "outlook")]
+    (pipeline/delete-cache! path)
+    (with-redefs [pipeline/offline? (constantly false)
+                  nflverse-weekly/as-of-week (constantly nil)
+                  pipeline/outlook-cache-path (fn [& _] path)]
+      (let [calls (atom 0)]
+        (with-redefs [sleeper/fetch-outlook (fn [& _] (swap! calls inc) outlook-lines)]
+          (is (= outlook-lines (:lines (pipeline/load-outlook 2026 7 18))))
+          (pipeline/load-outlook 2026 7 18)
+          (is (= 1 @calls) "second read is the fresh cache")))
+      (with-redefs [sleeper/fetch-outlook (fn [& _] (throw (ex-info "down" {})))
+                    pipeline/outlook-ttl-hours (constantly 0.0)]
+        (is (= outlook-lines (:lines (pipeline/load-outlook 2026 7 18))))))))

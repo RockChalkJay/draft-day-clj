@@ -12,7 +12,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 **Frontend** (shadow-cljs with `:lein true`):
 - `npm run watch` (port 8280), `npm run release`, `npm test` (cljs-only: `events`, `subs`, `waivers`, six `views/*`)
 
-**Env vars**: `DRAFTDAY_OFFLINE=1`, `DRAFTDAY_CACHE_TTL_HOURS` (24), `DRAFTDAY_WEEKLY_TTL_HOURS` (1), `DRAFTDAY_REALIZED_TTL_HOURS` (1), `DRAFTDAY_TRENDING_TTL_HOURS` (1), `DRAFTDAY_NEWS_TTL_MINUTES` (15), `DRAFTDAY_INJURY_TTL_HOURS` (3), `DRAFTDAY_AS_OF_WEEK=N` (replay week N), `DRAFTDAY_ESPN_SWID/S2/LEAGUE/SEASON` (integration tests, and an ESPN account's cookies for Sensei), `DRAFTDAY_SENSEI_SLEEPER_USER` (Sensei's Sleeper account; Sensei finds the leagues itself), `DRAFTDAY_SENSEI=claude-cli` (turns on the in-app chat)
+**Env vars**: `DRAFTDAY_OFFLINE=1`, `DRAFTDAY_CACHE_TTL_HOURS` (24), `DRAFTDAY_WEEKLY_TTL_HOURS` (1), `DRAFTDAY_REALIZED_TTL_HOURS` (1), `DRAFTDAY_TRENDING_TTL_HOURS` (1), `DRAFTDAY_NEWS_TTL_MINUTES` (15), `DRAFTDAY_INJURY_TTL_HOURS` (3), `DRAFTDAY_OUTLOOK_TTL_HOURS` (6), `DRAFTDAY_AS_OF_WEEK=N` (replay week N), `DRAFTDAY_ESPN_SWID/S2/LEAGUE/SEASON` (integration tests, and an ESPN account's cookies for Sensei), `DRAFTDAY_SENSEI_SLEEPER_USER` (Sensei's Sleeper account; Sensei finds the leagues itself), `DRAFTDAY_SENSEI=claude-cli` (turns on the in-app chat)
 
 **Research harnesses** (`dev/`, `:dev` profile, active by default):
 - `benchmark.report`: score model vs historical outcomes
@@ -22,7 +22,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 - `faab.sweep`: score FAAB constants one at a time
 - `faab.report`: what Sleeper leagues actually pay
 - `tools.trends`: fetch Sleeper's trending adds/drops and save them as JSON under `data/trends/<season>/week-NN/` (one run, one file)
-- `tools.projections`: save the week's raw Sleeper projection entries, ESPN kickoffs and the injury list as JSON under `data/projections/<season>/week-NN/` (NN = the week the line is for; one run, one file). Sleeper revises past weeks' lines after the games, so a vintage line cannot be refetched. `--report [--dir data/trends]` lists snapshots per week and flags gaps, short and missing weeks, and a stale newest snapshot
+- `tools.projections`: save the week's raw Sleeper projection entries, ESPN kickoffs and the injury list as JSON under `data/projections/<season>/week-NN/` (NN = the week the line is for; one run, one file). Also an `outlook` (Sleeper's lines for the weeks left, summed per player). Sleeper revises past weeks' lines after the games, so a vintage line cannot be refetched. `--report [--dir data/trends]` lists snapshots per week and flags gaps, short and missing weeks, and a stale newest snapshot
 
 ## Architecture
 
@@ -98,6 +98,8 @@ The AI feature is called **Sensei** everywhere: namespaces, routes, env vars, do
 Draft dollars stop at draft; waiver claims are measured in ROS points only (value/inflation/tcm/worth/bargain hidden). Reuses football half (replacement/VORP) via `:ros-points`.
 
 `rankings/ros.clj`: blends preseason + realized per-stat on per-game basis, prorates games remaining. Realized as *total* (not games × per-game) so the expression collapses to preseason at zero games (right for rookies, DST, August board). **Sleeper's realized where available, nflverse otherwise** (one source per player, never mixed). Why Sleeper: (1) nflverse has no DST rows at all; (2) first-downs count differs ~1/4 of player-weeks; (3) no TD length. Sleeper's score reproduces league totals exactly (player detail week-by-week agrees to cent). **`:through-week` stays nflverse only** (ros leans on realized columns being unable to disagree; two sources = Nov league on Aug projection).
+
+**The prior is Sleeper's outlook** (`sleeper/fetch-outlook`, `pipeline/load-outlook`, `:outlook/games` + `:outlook/stats`): the sum of its weekly lines for the weeks left, which are regenerated daily against the current depth chart, while its season line stays August's. A player it projects for some remaining week blends toward that rate over those games (a bye is simply a week with no line); one it omits, and every board with no outlook (offline, a replayed week, Sleeper down with nothing cached), keeps the preseason line. Cached per season and first week on `DRAFTDAY_OUTLOOK_TTL_HOURS`; a failed week fails the fetch, since a missing week would shorten every outlook silently.
 
 A player with a `db/serious-injury?` designation has zero games remaining once `:through-week` is positive, so his `:ros-points` is 0 until Sleeper clears the tag.
 

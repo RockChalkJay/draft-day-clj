@@ -173,3 +173,40 @@
            (pts (assoc bench :nflverse/recent {:games 3 :stats {:rec 18.0}}))
            (pts (assoc bench :realized/recent {:games 3 :stats {:rec 18.0}})))
         "a hot window predicted the rest of the season worse than the season rate did")))
+
+(defn- with-outlook
+  "`p` as a player Sleeper projects `games` more games at `rec` receptions each."
+  [p games rec]
+  (assoc p :outlook/games games :outlook/stats {:rec (* games rec)}))
+
+(deftest a-promoted-backup-is-priced-off-the-outlook-not-augusts-line
+  (let [august   (player :pre {:rec 24.0} :played 5 :realized {:rec 40.0})
+        promoted (with-outlook august 12 5.0)
+        rate     (fn [p] (let [r (first (ros/with-ros (alongside-a-projected-peer p) ppr (ctx 5)))]
+                           (/ (get-in r [:ros/stats :rec]) (:ros/games-remaining r))))]
+    (is (< (rate august) 5.0) "August's line drags an 8-a-game receiver toward 1.4")
+    (is (< 5.5 (rate promoted) 6.5)
+        "6 prior games at 5 and 5 played at 8 blend to 6.36")))
+
+(deftest the-outlooks-games-are-the-games-remaining
+  (let [p (first (ros/with-ros (alongside-a-projected-peer
+                                (with-outlook (player :pre {:rec 85.0} :bye 7) 9 4.0))
+                               ppr (ctx 8)))]
+    (is (= 9.0 (:ros/games-remaining p))
+        "the bye is already out of the outlook: Sleeper projects no line for it")))
+
+(deftest no-outlook-leaves-the-preseason-line-in-charge
+  (let [base (player :pre {:rec 85.0} :played 8 :realized {:rec 40.0})
+        pts  (fn [p] (:ros-points (first (ros/with-ros [p] ppr (ctx 8)))))]
+    (is (= (pts base) (pts (assoc base :outlook/games 0 :outlook/stats {}))))
+    (is (= (pts base) (pts (assoc base :outlook/games nil))))))
+
+(deftest a-serious-designation-still-zeroes-a-player-with-an-outlook
+  (let [p (-> (player :pre {:rec 85.0}) (with-outlook 9 5.0) (assoc :sleeper/injury-status "IR"))]
+    (is (zero? (:ros-points (first (ros/with-ros (alongside-a-projected-peer p) ppr (ctx 8))))))))
+
+(deftest a-stat-only-the-outlook-projects-counts-as-projected
+  (let [kicker (-> (player) (assoc :position "K") (assoc :outlook/games 5 :outlook/stats {:fgm 10.0}))
+        p      (first (ros/with-ros [kicker] ppr (ctx 8)))]
+    (is (< 1.9 (/ (get-in p [:ros/stats :fgm]) 5.0) 2.1)
+        "no realized line: the outlook's rate stands")))

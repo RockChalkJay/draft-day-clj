@@ -18,8 +18,10 @@
   season and week come from one Sleeper state reply, so a January playoff week
   keeps the season it belongs to. `lines` holds Sleeper's own entries, with
   every stat and its point totals, for the players it projects; `injuries` is
-  the complete designation list as of the run. If the line comes back empty
-  nothing is written; a failed injury or kickoff fetch is reported on stderr and
+  the complete designation list as of the run and `outlook` Sleeper's lines for
+  every week from the target to the season's end, summed per player as
+  `{games, stats}`. If the line comes back empty
+  nothing is written; a failed injury, kickoff or outlook fetch is reported on stderr and
   leaves its key null or empty while the line still lands. `through_week` is
   read through the realized cache, as `tools.trends` reads it, and is null when
   that is out of reach.
@@ -42,6 +44,7 @@
             [clojure.tools.cli :as cli]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.matchups.sleeper :as sleeper-state]
+            [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.sleeper-players :as sleeper-players]
@@ -49,7 +52,7 @@
             [jsonista.core :as json])
   (:import (java.time Duration Instant)))
 
-(def schema-version 1)
+(def schema-version 2)
 
 (def default-dir "data/projections")
 
@@ -114,7 +117,7 @@
 
 (defn snapshot
   "The document a snapshot file holds."
-  [fetched-at season target through lines kickoffs injuries]
+  [fetched-at season target through lines kickoffs injuries outlook]
   {:schema_version schema-version
    :fetched_at     fetched-at
    :season         season
@@ -122,7 +125,8 @@
    :through_week   through
    :lines          lines
    :kickoffs       kickoffs
-   :injuries       injuries})
+   :injuries       injuries
+   :outlook        outlook})
 
 (defn warn!
   "`msg` on stderr."
@@ -152,6 +156,17 @@
       (throw (ex-info (str "week " week " line empty") {}))
       lines)))
 
+(defn fetch-outlook
+  "Sleeper's lines for the weeks from `week` to the season's end, summed per
+  player (`sleeper/fetch-outlook`), or nil with the reason on stderr. The
+  prior the rest-of-season blend rests on is revised daily, so it is worth
+  saving with the week's line."
+  [season week]
+  (try (sleeper/fetch-outlook season week (inc (nflverse/games-in-season season)))
+       (catch Exception e
+         (warn! (str "outlook failed: " (ex-message e)))
+         nil)))
+
 (defn take-snapshot
   "Fetch the week's line, kickoffs and injuries into a snapshot document. Throws
   when no week is known or the line is empty."
@@ -164,7 +179,8 @@
               (pipeline/best-effort (some-> season pipeline/load-realized :weekly :through-week))
               lines
               (fetch-kickoffs season target)
-              (fetch-injuries))))
+              (fetch-injuries)
+              (fetch-outlook season target))))
 
 (defn describe
   "`week 5: 437 players, 30 teams with kickoffs, 876 injuries`"

@@ -337,7 +337,7 @@
   (mapv #(dissoc % :ros/stats :ros/games-remaining :ros/games-played :week/stats
                  :nflverse/recent :realized/recent :realized/season-to-date
                  :realized/last-game :last-points :last-week :dropped?
-                 :kickoff/started?)
+                 :outlook/games :outlook/stats :kickoff/started?)
         players))
 
 (defn without-preseason
@@ -426,6 +426,7 @@
             ;; universe: see `pipeline/load-weekly`.
             {:keys [week through-week]} (waiver-weeks through-week (current-nfl-week))
             weekly       (pipeline/load-weekly season* week)
+            outlook      (pipeline/load-outlook season* week (inc season-games))
             adds         (trending/load-adds)
             ctx      {:league             league
                       :my-roster-id       my-roster-id
@@ -455,6 +456,7 @@
                          (waiver/with-last-game through-week)
                          without-history
                          (waiver-board-inputs scoring*)
+                         (pipeline/assoc-outlook (:lines outlook))
                          (ros/with-ros scoring* ctx)
                          (pipeline/assoc-weekly (:lines weekly))
                          (pipeline/assoc-trending (:adds adds))
@@ -487,6 +489,8 @@
                ;; nil with no weekly line; the board then reads rest-of-season only.
                :week         (:week weekly)
                :week-fetched-at (:fetched-at weekly)
+               ;; nil offline or replaying; rest-of-season then rests on the preseason line.
+               :outlook-fetched-at (:fetched-at outlook)
                ;; nil offline or when Sleeper never answered; rivals bid on need alone.
                :trending     (some-> adds (select-keys [:fetched-at :lookback-hours])))))))
 
