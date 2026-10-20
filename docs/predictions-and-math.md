@@ -117,10 +117,16 @@ rate_k = (6 × preseason_k / season_games + realized_k) / (6 + played)
 ros_k  = rate_k × games_remaining
 ```
 
-`ros.clj`. A credibility weighting: the weight on realized per-game production
+`ros.clj`. The preseason term is Sleeper's *outlook* where it has one: its weekly
+lines for the weeks left, summed (`pre_k` becomes the outlook's total and
+`season_games` its game count), because Sleeper's season line is frozen at August
+and cannot see a promotion. A back who took over in week 3 read 1.5 a game on the
+season line and 13 on the outlook. The formula below is unchanged; a player the
+outlook omits, and any board without one, uses the preseason line as written.
+A credibility weighting: the weight on realized per-game production
 is `played / (played + 6)` — half after six games, 54% after seven — and at
 zero games it is the prorated preseason line (rookies, defenses, August). A
-player with no preseason line is discounted on purpose, since production is
+player with neither a preseason line nor an outlook is discounted on purpose, since production is
 spread over `6 + played`. The 6 (`PRIOR-GAMES`) is chosen, not measured.
 *Example:* a back projected for 1,020 rushing yards (60 a game) who has 560 in
 7 games (80 a game) through week 8 has a rate of (6 × 60 + 560) / 13 = 70.8,

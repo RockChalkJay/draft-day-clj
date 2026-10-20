@@ -45,6 +45,7 @@
    {:player_id "2" :team "DAL" :stats {:gp 1.0}}])
 (def kickoffs {"SEA" {:kickoff "2026-10-11T17:00Z"}})
 (def injuries {"1" {:status "Questionable" :body-part "Knee"}})
+(def outlook {"1" {:games 13 :stats {:pts_ppr 160.0}}})
 (def state {:season "2026" :week 5 :display_week 5 :season_type "regular"})
 
 (defmacro with-stubs
@@ -54,6 +55,7 @@
                  sleeper-state/nfl-state         (fn [] state)
                  pipeline/load-realized          (fn [& _#] {:weekly {:through-week 4}})
                  sleeper/fetch-weekly-entries    (fn [& _#] entries)
+                 sleeper/fetch-outlook           (fn [& _#] outlook)
                  espn-schedule/fetch             (fn [& _#] kickoffs)
                  sleeper-players/live            (fn [] {:injuries injuries})]
      (with-redefs ~overrides ~@body)))
@@ -84,7 +86,7 @@
         (is (= 1 (count paths)))
         (is (re-matches #".*/2026/week-05/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json" path))
         (let [doc (read-json path)]
-          (is (= 1 (get doc "schema_version")))
+          (is (= 2 (get doc "schema_version")))
           (is (= 5 (get doc "target_week")))
           (is (= 4 (get doc "through_week")))
           (is (= ["1"] (keys (get doc "lines")))
@@ -95,7 +97,16 @@
           (is (not (contains? (get-in doc ["lines" "1"]) "player"))
               "the player record, with its stale injury fields, is dropped")
           (is (= "2026-10-11T17:00Z" (get-in doc ["kickoffs" "SEA" "kickoff"])))
-          (is (= "Questionable" (get-in doc ["injuries" "1" "status"]))))))))
+          (is (= "Questionable" (get-in doc ["injuries" "1" "status"])))
+          (is (= 13 (get-in doc ["outlook" "1" "games"]))))))))
+
+(deftest a-failed-outlook-still-lands-the-line
+  (with-dir [dir]
+    (with-stubs [sleeper/fetch-outlook (fn [& _] (throw (ex-info "boom" {})))]
+      (is (zero? (quietly #(projections/run {:dir dir}))))
+      (let [doc (read-json (first (files-under dir)))]
+        (is (= ["1"] (keys (get doc "lines"))))
+        (is (nil? (get doc "outlook")))))))
 
 (deftest the-season-is-the-one-sleeper-names
   (with-dir [dir]

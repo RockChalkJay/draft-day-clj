@@ -1,8 +1,16 @@
 (ns draft-day.rankings.ros
-  "Blend preseason and realized production into rest-of-season totals. The
-  realized rate is shrunk toward the preseason rate using a fixed prior, then
+  "Blend projected and realized production into rest-of-season totals. The
+  realized rate is shrunk toward the projected rate using a fixed prior, then
   prorated over the player's remaining games. A stat projected for no player
   takes no prior; a missing realized line therefore preserves the projection.
+
+  The projection is Sleeper's outlook where it has one: the sum of its weekly
+  lines for the weeks left (`sleeper/fetch-outlook`), regenerated against the
+  current depth chart. August's season line is the fallback, for a player the
+  outlook omits and for every board with no outlook (offline, a replayed week).
+  The August line cannot see a promotion: a back who took over in week 3 is
+  still projected at 1.5 a game by it and 13 a game by the outlook, and six
+  prior games on the wrong rate priced him at a third of his production.
 
   A player with a serious designation (`db/serious-injury?`) has no games
   remaining in season, until Sleeper clears the tag.
@@ -33,11 +41,12 @@
 
 (defn blend
   "Blend projected and realized totals by stat key. `played` is the player's
-  game count, and keys outside `projected` are treated as having no prior."
-  [{:keys [pre realized played games-remaining season-games prior-games projected]}]
+  game count, and keys outside `projected` are treated as having no prior.
+  `pre` is a total over `pre-games` games, the season's unless given."
+  [{:keys [pre realized played games-remaining season-games pre-games prior-games projected]}]
   (let [played      (double (or played 0))
         prior       (double (or prior-games PRIOR-GAMES))
-        season-games (double season-games)]
+        season-games (double (or pre-games season-games))]
     (when (and (pos? (+ prior played)) (pos? games-remaining))
       (into {}
             (keep (fn [k]
@@ -60,21 +69,46 @@
   ;; Preseason tags (PUP, NFI) clear before the season, so week 0 ignores them.
   (let [out?   (and (pos? (long (or through-week 0)))
                     (db/serious-injury? (:sleeper/injury-status player)))
-        left   (if out?
-                 0.0
-                 (games-remaining (assoc player :through-week through-week
-                                         :season-games season-games)))
+        ahead  (:outlook/games player)
+        outlook? (and (number? ahead) (pos? ahead))
+        left   (cond
+                 out?      0.0
+                 outlook?  (double ahead)
+                 :else     (games-remaining
+                            (merge player
+                                   {:through-week through-week
+                                    :season-games season-games})))
         realized (or (:realized/season-to-date player)
                      (:nflverse/season-to-date player))
         played (get realized :games 0)
         real   (get realized :stats {})
-        line   (blend {:pre stats :realized real :played played
+        line   (blend {:pre (if outlook? (:outlook/stats player) stats)
+                       :pre-games (when outlook? ahead)
+                       :realized real :played played
                        :games-remaining left :season-games season-games
                        :prior-games prior-games :projected projected})]
     (when line
       {:ros/stats           line
        :ros/games-remaining left
        :ros/games-played    played})))
+
+(defn- projected-keys
+  "Return all stat keys that have a preseason or outlook projection on the board."
+  [board]
+  (into #{}
+        (mapcat (fn [player]
+                  (concat (keys (:stats player))
+                          (keys (:outlook/stats player)))))
+        board))
+
+(defn- enrich-player-with-ros
+  "Add rest-of-season columns and ROS points for one player."
+  [player ctx scoring]
+  (let [cols        (ros-for player ctx)
+        ros-points (if cols
+                     (scoring/resolved-points {:stats (:ros/stats cols)} scoring)
+                     0.0)]
+    (assoc (merge player cols) :ros-points ros-points)))
 
 (defn with-ros
   "Add rest-of-season columns and a sortable `:ros-points` score to every player.
@@ -84,12 +118,5 @@
     (throw (ex-info "rest-of-season projection needs :season-games"
                     {:season-games season-games})))
   (let [scoring (scoring/resolve-buckets scoring)
-        ctx     (assoc ctx :projected
-                       (into #{} (mapcat (comp keys :stats)) board))]
-    (mapv (fn [p]
-            (let [cols (ros-for p ctx)]
-              (assoc (merge p cols)
-                     :ros-points (if cols
-                                   (scoring/resolved-points {:stats (:ros/stats cols)} scoring)
-                                   0.0))))
-          board)))
+        ctx     (assoc ctx :projected (projected-keys board))]
+    (mapv #(enrich-player-with-ros % ctx scoring) board)))

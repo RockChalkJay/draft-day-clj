@@ -195,6 +195,7 @@ shadow-cljs also serves `resources/public` on :8280, but nothing answers
 | `DRAFTDAY_OFFLINE` | unset | `1` forces the bundled sample universe — no network calls |
 | `DRAFTDAY_CACHE_TTL_HOURS` | `24` | how long the on-disk player cache stays fresh |
 | `DRAFTDAY_WEEKLY_TTL_HOURS` | `1` | the same window for the weekly line, which moves far faster |
+| `DRAFTDAY_OUTLOOK_TTL_HOURS` | `6` | the window for Sleeper's remaining-weeks outlook, which the rest-of-season forecast starts from |
 | `DRAFTDAY_AS_OF_WEEK` | unset | dev only: truncate the in-season data at a week, so a finished season replays as one in progress |
 | `DRAFTDAY_SENSEI` | unset | `claude-cli` turns on the in-app chat, which runs `claude -p` on your own plan. See [docs/sensei.md](docs/sensei.md) |
 | `DRAFTDAY_SENSEI_SLEEPER_USER` | unset | your Sleeper username. [Sensei](#connect-sensei) lists your Sleeper leagues from it |
@@ -613,9 +614,13 @@ keeps one loud week from reordering the board while still letting a September
 role change win by December. It is *chosen, not measured*; `dev/` is where it
 would earn a number.
 
-A player with **no preseason line at all** — the undrafted rookie who is now the
-lead back, the player this whole tab exists for — falls out of the same
-expression with a prior of zero: his production is spread over `PRIOR-GAMES +
+The projection term is Sleeper's **outlook** where it has one: its weekly lines
+for every week left, summed, since the season line is frozen at August and cannot
+see a role change. `pre-pg` is then the outlook's total over the games it
+projects; a player it omits, and a board with no outlook, use the preseason line.
+
+A player with **no preseason line and no outlook** — a rookie Sleeper does not
+project — falls out of the same expression with a prior of zero: his production is spread over `PRIOR-GAMES +
 played` rather than over `played`, so he is deliberately discounted early and
 climbs as the games accumulate. One 140-yard game does not make him a starter;
 five of them do.

@@ -4,6 +4,7 @@
   and map Sleeper's `DEF` position to `DST`."
   (:require [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
             [jsonista.core :as json]
             [draft-day.ingestion.season :as season]
@@ -303,3 +304,30 @@
                      (log/warn e "weekly schedule fetch failed; side unknown")
                      nil))]
     (weekly-by-id (fetch-weekly-entries season week) homes)))
+
+(defn outlook-by-id
+  "Fold per-week `{sleeper-id line}` maps (`weekly-by-id`) into `{sleeper-id
+  {:games n :stats {stat-key total}}}`. `:games` counts only the weeks Sleeper
+  projects the player in, so a bye, or a week the vendor rules him out of,
+  is not a game."
+  [weeks]
+  (reduce (fn [acc lines]
+            (reduce-kv (fn [acc id {:keys [stats]}]
+                         (-> acc
+                             (update-in [id :games] (fnil inc 0))
+                             (update-in [id :stats] #(merge-with + % stats))))
+                       acc lines))
+          {}
+          weeks))
+
+(defn fetch-outlook
+  "Network: `outlook-by-id` over weeks `from` through `to` inclusive, fetched
+  together (`sleeper-http` holds them to the host's limit). Future weeks are
+  regenerated daily against the current depth chart while the season line stays
+  August's, which is why `rankings.ros` starts from their sum. Throws when any
+  week fails: a missing week would silently shorten every player's outlook."
+  [season from to]
+  (let [weeks   (range from (inc to))
+        fetch-w (fn [w] #(weekly-by-id (fetch-weekly-entries season w) nil))
+        results (parallel/all (zipmap weeks (map fetch-w weeks)))]
+    (outlook-by-id (map results weeks))))
