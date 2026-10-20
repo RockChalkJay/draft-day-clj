@@ -210,3 +210,24 @@
         p      (first (ros/with-ros [kicker] ppr (ctx 8)))]
     (is (< 1.9 (/ (get-in p [:ros/stats :fgm]) 5.0) 2.1)
         "no realized line: the outlook's rate stands")))
+
+(deftest projected-keys-includes-preseason-and-outlook-stats
+  (let [board [{:stats {:rec 10.0 :rush_yd 100.0}
+                :outlook/stats {:rush_td 5.0}}
+               {:stats {:fgm 3.0}
+                :outlook/stats {:xpm 4.0}}
+               {:stats {:rec 5.0}}]]
+    (is (= #{:rec :rush_yd :rush_td :fgm :xpm}
+           (#'ros/projected-keys board)))))
+
+(deftest enrich-player-with-ros-merges-columns-and-score
+  (let [player {:player-id "p"
+                :position "WR"
+                :stats {:rec 17.0}
+                :nflverse/season-to-date {:games 8 :stats {:rec 40.0}}}
+        ctx    {:through-week 8 :season-games 17 :projected #{:rec}}]
+    (let [p (#'ros/enrich-player-with-ros player ctx ppr)]
+      (is (= 8 (:ros/games-played p)))
+      (is (contains? (:ros/stats p) :rec))
+      (is (number? (:ros-points p)))
+      (is (pos? (:ros-points p))))))

@@ -74,8 +74,10 @@
         left   (cond
                  out?      0.0
                  outlook?  (double ahead)
-                 :else     (games-remaining (assoc player :through-week through-week
-                                                   :season-games season-games)))
+                 :else     (games-remaining
+                            (merge player
+                                   {:through-week through-week
+                                    :season-games season-games})))
         realized (or (:realized/season-to-date player)
                      (:nflverse/season-to-date player))
         played (get realized :games 0)
@@ -90,6 +92,24 @@
        :ros/games-remaining left
        :ros/games-played    played})))
 
+(defn- projected-keys
+  "Return all stat keys that have a preseason or outlook projection on the board."
+  [board]
+  (into #{}
+        (mapcat (fn [player]
+                  (concat (keys (:stats player))
+                          (keys (:outlook/stats player)))))
+        board))
+
+(defn- enrich-player-with-ros
+  "Add rest-of-season columns and ROS points for one player."
+  [player ctx scoring]
+  (let [cols        (ros-for player ctx)
+        ros-points (if cols
+                     (scoring/resolved-points {:stats (:ros/stats cols)} scoring)
+                     0.0)]
+    (assoc (merge player cols) :ros-points ros-points)))
+
 (defn with-ros
   "Add rest-of-season columns and a sortable `:ros-points` score to every player.
   The full board is required so projected stat keys are inferred across players."
@@ -98,12 +118,5 @@
     (throw (ex-info "rest-of-season projection needs :season-games"
                     {:season-games season-games})))
   (let [scoring (scoring/resolve-buckets scoring)
-        ctx     (assoc ctx :projected
-                       (into #{} (mapcat #(concat (keys (:stats %)) (keys (:outlook/stats %)))) board))]
-    (mapv (fn [p]
-            (let [cols (ros-for p ctx)]
-              (assoc (merge p cols)
-                     :ros-points (if cols
-                                   (scoring/resolved-points {:stats (:ros/stats cols)} scoring)
-                                   0.0))))
-          board)))
+        ctx     (assoc ctx :projected (projected-keys board))]
+    (mapv #(enrich-player-with-ros % ctx scoring) board)))

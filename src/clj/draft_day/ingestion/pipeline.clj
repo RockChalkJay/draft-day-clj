@@ -546,7 +546,7 @@
   1)
 
 (defn outlook-cache-path
-  "One file per season and first week: the outlook is a sum over the weeks left,
+  "One file per season/week: the outlook is a sum over the weeks left,
   so the one fetched last Tuesday answers a different question."
   [season from-week]
   (format "data/outlook.v%d.%d-w%02d.transit" outlook-schema-version season from-week))

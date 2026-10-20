@@ -1,6 +1,6 @@
 (ns draft-day.api.routes-test
   (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [jsonista.core :as json]
             [draft-day.api.routes :as routes]
             [draft-day.ingestion.pipeline :as pipeline]
@@ -16,6 +16,11 @@
 
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 (defn- parse [resp] (json/read-value (:body resp) mapper))
+
+;; `load-outlook` reaches Sleeper and writes `data/outlook.*` otherwise, for
+;; whichever week a test asks about.
+(use-fixtures :each
+  (fn [run] (with-redefs [pipeline/load-outlook (constantly nil)] (run))))
 (defn- input-stream [s] (java.io.ByteArrayInputStream. (.getBytes ^String s "UTF-8")))
 
 (def ^:private fixture
@@ -453,6 +458,21 @@
     (is (not-any? #(contains? % :fantasypros/ecr) rows) "no vendor column is flattened")
     (is (not-any? #(contains? % :vendor/by-format) rows) "nor the bundle shipped whole")
     (is (every? #(number? (:ros-points %)) (:players b)) "the preseason line reaches the board only through the blend")))
+
+(deftest waivers-endpoint-prices-rest-of-season-off-the-outlook
+  (let [body    {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}
+        outlook {:fetched-at "2026-10-19T00:00:00Z"
+                 :lines {"rb0" {:games 12 :stats {:rec 240.0}}}}
+        ros-of  (fn [b] (:ros-points (first (filter #(= "rb0" (:player-id %)) (:players b)))))
+        plain   (parse (waivers body))
+        b       (with-redefs [pipeline/load-outlook (constantly outlook)]
+                  (parse (waivers body)))]
+    (is (> (ros-of b) (ros-of plain)) "twenty receptions a game outweighs August's line")
+    (is (= "2026-10-19T00:00:00Z" (:outlook-fetched-at b)))
+    (is (nil? (:outlook-fetched-at plain)) "nothing to report without an outlook")
+    (is (not-any? #(or (contains? % :outlook/games) (contains? % :outlook/stats))
+                  (concat (:players b) (:my-roster-players b)))
+        "the working state is stripped like the rest-of-season one")))
 
 (deftest waivers-endpoint-ranks-a-position-on-points-so-far
   (let [b  (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))
