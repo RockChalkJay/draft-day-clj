@@ -619,9 +619,8 @@ for every week left, summed, since the season line is frozen at August and canno
 see a role change. `pre-pg` is then the outlook's total over the games it
 projects; a player it omits, and a board with no outlook, use the preseason line.
 
-A player with **no preseason line at all** — the undrafted rookie who is now the
-lead back, the player this whole tab exists for — falls out of the same
-expression with a prior of zero: his production is spread over `PRIOR-GAMES +
+A player with **no preseason line and no outlook** — a rookie Sleeper does not
+project — falls out of the same expression with a prior of zero: his production is spread over `PRIOR-GAMES +
 played` rather than over `played`, so he is deliberately discounted early and
 climbs as the games accumulate. One 140-yard game does not make him a starter;
 five of them do.
