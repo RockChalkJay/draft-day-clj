@@ -96,7 +96,8 @@ the owner uses it.
   sensei.context   accounts -> leagues -> the /api/waivers body of each
   sensei.tools     leagues, my_team, waiver_targets, player_news
   sensei.mcp       POST /api/sensei/mcp
-       ^ Claude Code (now)      ^ claude -p (next)      ^ API adapter (later)
+  sensei.chat      POST /api/sensei/chat, GET /api/sensei/status
+       ^ Claude Code      ^ claude -p, the in-app panel      ^ API adapter (later)
 ```
 
 **The leagues without a browser.** The browser owns a league's state, but a
@@ -162,7 +163,7 @@ working directory outside the repo:
 \* Claude Code's client-side estimate at API prices. On Pro, nothing is billed;
 the run draws on the plan's limits.
 
-- Isolation held: the session listed only Sensei's three tools, loaded no
+- Isolation held: the session listed only Sensei's four tools, loaded no
   CLAUDE.md or skills, and authenticated through the plan (`apiKeySource:
   none`).
 - `my_team` takes about 1.1 s (import, sync, board) and `waiver_targets` about
@@ -184,11 +185,40 @@ the run draws on the plan's limits.
 - **"What if I drop someone else?"** `lineup` and `upgrade` are measured
   against the board's drop, and the model said it could not price another one.
   A tool that takes the drop as an argument would answer it.
-- **The in-app panel (`claude -p`).** Each new working directory leaves an
-  empty auto-memory folder under `~/.claude/projects`, even with
-  `--no-session-persistence`, so the panel should run from one fixed
-  directory. Gate it behind `DRAFTDAY_SENSEI=claude-cli`, run one question at a
-  time, and mock the UI before building it.
+- **The in-app panel (`claude -p`).** `sensei.chat` runs one `claude -p` per
+  question and streams its answer as NDJSON (`POST /api/sensei/chat`). It is
+  off unless `DRAFTDAY_SENSEI=claude-cli`, answers this machine only (`GET
+  /api/sensei/status` says `false`, not `403`, from anywhere else) and takes one
+  question at a time (`429` for a second). The process runs from one
+  owner-only directory under the system temp dir, refused if it is a link or
+  another user's, since `-p` trusts its working directory without asking. Its
+  flags are `--tools ""`, `--setting-sources ""` (no settings file, so no hook
+  or plugin), `--strict-mcp-config` pointing at the port this server bound (not
+  the one a request's `Host` names) and `--no-session-persistence`. Its
+  environment sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and carries no
+  `DRAFTDAY_`, `ANTHROPIC_` or `CLAUDE_CODE_USE_` variable: an API key wins
+  over the login under `-p` and would bill at API prices. The prompt goes in on
+  stdin, never on the command line. Events are `{session-id}`, `{tool-start}`,
+  `{text}`, and one `{done}` or `{error}` at the end. A client only appends
+  `text`: the text after a tool call arrives opening its own paragraph. It
+  renders that text as a safe markdown subset, with no image, no raw HTML and no
+  link fetched on its own, because the tools hand the model words league-mates
+  write and an instruction planted in a team name could otherwise make the
+  browser fetch a URL. Every word is masked against the accounts' secrets,
+  including one the CLI splits across two deltas: text that could be the start
+  of a secret waits for the next. A run is stopped three minutes after it
+  starts, answered or not, and stopping it kills whatever the process started.
+
+  Each question is a fresh process, so the browser keeps the transcript and
+  sends it with every question (`history->prompt`). That is the seam for
+  sessions later: the request already accepts a `session-id` that is ignored
+  today, the stream already reports the CLI's, and the session flags are one
+  function (`session-flags`). Moving over means `--resume <id>` in place of
+  `--no-session-persistence`, a fallback that replays the transcript when a
+  resume fails, and pruning the session files. The cost of staying stateless is
+  tokens and seconds that grow with the conversation; the cost of sessions is
+  server-side state, files to prune, and a stale session answering after a
+  league switch.
 
 [plan]: https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan
 [legal]: https://code.claude.com/docs/en/legal-and-compliance

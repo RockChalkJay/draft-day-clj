@@ -21,7 +21,9 @@
 
 (defn start! [port]
   (stop!)
-  (reset! server (http/run-server #'routes/app {:port port})))
+  (let [s (http/run-server #'routes/app {:port port})]
+    (reset! routes/bound-port (:local-port (meta s)))
+    (reset! server s)))
 
 (defn start-nrepl!
   "Start the nREPL and publish its port in `.nrepl-port`, removed again when the

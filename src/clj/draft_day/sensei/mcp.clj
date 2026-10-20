@@ -164,23 +164,34 @@
    :headers {"Content-Type" "application/json"}
    :body    (json/write-value-as-string body)})
 
+(defn refusal
+  "Why a Sensei endpoint turns `req` away unread, as `[status message]`, or
+  nil. The MCP server and the chat both ask it, so a gate added here guards
+  both."
+  [req]
+  (cond
+    (not (local-request? req))
+    [403 "Sensei answers requests from this machine only"]
+
+    ;; Said rather than left to the parse: the router's form middleware has
+    ;; already read a form-encoded body, which then looks empty here.
+    (not (some-> (get-in req [:headers "content-type"]) (str/starts-with? "application/json")))
+    [415 "Content-Type must be application/json"]))
+
+(defn read-body
+  "The request's JSON body, or `::unreadable`."
+  [req]
+  (try (json/read-value (:body req) mapper) (catch Exception _ ::unreadable)))
+
 (defn handler
   "The Ring handler for POST /api/sensei/mcp. `server` is what the tools read
   off it — see `tools/deps`. A batch (the 2025-03-26 transport's) is answered
   as one, its calls sharing one read of the board."
   [server]
   (fn [req]
-    (cond
-      (not (local-request? req))
-      (json-response 403 (rpc-error nil -32600 "Sensei answers requests from this machine only"))
-
-      ;; Said rather than left to the parse: the router's form middleware has
-      ;; already read a form-encoded body, which then looks empty here.
-      (not (some-> (get-in req [:headers "content-type"]) (str/starts-with? "application/json")))
-      (json-response 415 (rpc-error nil -32700 "Content-Type must be application/json"))
-
-      :else
-      (let [msg (try (json/read-value (:body req) mapper) (catch Exception _ ::unreadable))]
+    (if-let [[status message] (refusal req)]
+      (json-response status (rpc-error nil (if (= 403 status) -32600 -32700) message))
+      (let [msg (read-body req)]
         (if (= ::unreadable msg)
           (json-response 400 (rpc-error nil -32700 "parse error"))
           (let [deps    (delay (tools/deps server))

@@ -34,6 +34,7 @@
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]
+            [draft-day.sensei.chat :as sensei-chat]
             [draft-day.sensei.mcp :as sensei-mcp]
             [draft-day.rankings.market :as market]
             [draft-day.rankings.vendor :as vendor]
@@ -576,14 +577,19 @@
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
+;; Where this server listens, recorded by `server/start!`. A request's
+;; `:server-port` is only what its `Host` header claims.
+(defonce bound-port (atom nil))
+
 (def sensei-server
   "What Sensei's tools read off this server: the waiver board, the universe, a
-  player's news and the environment, where the accounts are. Through vars, so a
-  REPL redefinition reaches the tools."
+  player's news, the environment, where the accounts are, and the port it
+  listens on. Through vars, so a REPL redefinition reaches the tools."
   {:waivers-reply #'waivers-reply
    :players       #(:players (universe false))
    :news          #'espn-news/player-news
-   :env           #(System/getenv)})
+   :env           #(System/getenv)
+   :port          #(deref bound-port)})
 
 (def app
   (ring/ring-handler
@@ -598,7 +604,9 @@
      ["/api/league/import"   {:post league-import-handler}]
      ["/api/league/sync"     {:post league-sync-handler}]
      ["/api/account/connect" {:post account-connect-handler}]
-     ["/api/sensei/mcp"      {:post (sensei-mcp/handler sensei-server)}]]
+     ["/api/sensei/mcp"      {:post (sensei-mcp/handler sensei-server)}]
+     ["/api/sensei/chat"     {:post (sensei-chat/handler sensei-server)}]
+     ["/api/sensei/status"   {:get  (sensei-chat/status-handler sensei-server)}]]
     {:data {:middleware [parameters/parameters-middleware]}})
    (ring/routes
     (ring/create-resource-handler {:path "/" :root "public"})
