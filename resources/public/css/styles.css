@@ -174,7 +174,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 16px; }
    this strip. */
 .nt-val .amt.pts { color: var(--text); }
 /* Barg and Edge are differences, so they are a verdict rather than an amount and
-   take their colour from their sign — the same rule the board's own Barg and
+   take their color from their sign — the same rule the board's own Barg and
    Edge columns use, shared through `util/sign-class`. A difference of zero has
    no verdict in it and reads as the dash it renders. */
 .nt-val .amt.signed.good { color: var(--good); }
@@ -327,7 +327,7 @@ td.name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .roster td.slot-bye { color: var(--muted); text-align: right; font-size: 12px; }
 
 /* Injury risk. The board's Risk cell is a five-segment bar with no number in it:
-   filled segments carry the level, and their colour (set inline from
+   filled segments carry the level, and their color (set inline from
    `board/risk-color`) carries it a second time, so the scale still reads without
    hue. The track keeps the column a constant width, which is what makes the
    ragged fill edge scannable down a long board.
@@ -723,12 +723,12 @@ td.bid { cursor: help; }
 .cmp-v { font-variant-numeric: tabular-nums; color: var(--muted); }
 .cmp-v.l { text-align: right; }
 .cmp-v.r { text-align: left; }
-/* The leader is said with weight and colour; the trailing side recedes rather
+/* The leader is said with weight and color; the trailing side recedes rather
    than the winner shouting. No second hue — direction already carries who. */
 .cmp-v.win { color: var(--text); font-weight: 700; }
 /* The slot the abandoned vendor spread was going to take. Rank goes here so the
    row needs no new geometry — and it is what carries the comparison on exactly
-   the rows where the bar deliberately says nothing. Weight and colour are reset
+   the rows where the bar deliberately says nothing. Weight and color are reset
    so it recedes under a winning value rather than inheriting its emphasis. */
 .cmp-sub { display: block; margin-top: 1px; font-size: 10px; font-weight: 400;
   letter-spacing: .02em; color: var(--muted); }
@@ -848,7 +848,7 @@ table.roster tbody tr.pickable:hover { background: var(--panel2); }
   font-weight: 600; font-size: 13px; }
 .pd-sub { color: var(--muted); font-weight: 400; font-size: 10px; margin-left: 5px; }
 
-/* The strip of numbers under the head. One-pixel gaps over the border colour
+/* The strip of numbers under the head. One-pixel gaps over the border color
    draw the dividers, so a missing tile leaves no stray rule. */
 .pd-tiles { display: grid; gap: 1px; background: var(--border); flex: none;
   border-bottom: 1px solid var(--border); }

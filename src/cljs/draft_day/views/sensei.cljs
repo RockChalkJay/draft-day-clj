@@ -39,7 +39,7 @@
 
 (defn signed-class
   "How a table cell that is a signed number reads: the sign stays in the text, so
-  the colour is a second signal rather than the only one."
+  the color is a second signal rather than the only one."
   [s]
   (cond
     (re-matches #"\+\d.*" s)   "good"

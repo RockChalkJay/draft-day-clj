@@ -3,9 +3,9 @@
   them.
 
   Keyed by the app's own abbreviations (`ingestion.teams/app-teams`), so a
-  player's `:team` is the lookup. The darker colour leads the gradient: the name
-  is white text on the left, and a team whose lead colour is pale (Pittsburgh's
-  gold, New Orleans' old gold) would otherwise put it on a colour it cannot be
+  player's `:team` is the lookup. The darker color leads the gradient: the name
+  is white text on the left, and a team whose lead color is pale (Pittsburgh's
+  gold, New Orleans' old gold) would otherwise put it on a color it cannot be
   read against.")
 
 (def colors
@@ -27,7 +27,7 @@
    "TEN" ["#0C2340" "#4B92DB"] "WAS" ["#5A1414" "#FFB612"]})
 
 (defn luminance
-  "Relative luminance of a `#RRGGBB` colour, 0 (black) to 1 (white)."
+  "Relative luminance of a `#RRGGBB` color, 0 (black) to 1 (white)."
   [hex]
   (let [parse  #?(:clj #(Integer/parseInt % 16) :cljs #(js/parseInt % 16))
         linear (fn [c]

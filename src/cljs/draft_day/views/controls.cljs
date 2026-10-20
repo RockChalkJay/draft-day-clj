@@ -29,7 +29,7 @@
 (defn val-cell
   "One cell of the value strip: a label over a number, in one of three tones.
 
-  `:money` — an already-formatted dollar string, green, the app's colour for
+  `:money` — an already-formatted dollar string, green, the app's color for
              dollars.
   `:pts`   — an already-formatted points string, plain text. Green means dollars
              in every other cell of this strip, so rendering VORP in it would
@@ -38,7 +38,7 @@
              the two cells that are a verdict rather than an amount, and green-up
              / red-down is the same rule the board's own Barg and Edge use.
 
-  `:signed` takes the number rather than a string on purpose: the colour and the
+  `:signed` takes the number rather than a string on purpose: the color and the
   digits have to come from the same value, and a cell handed both separately can
   be given one player's number and another's sign with nothing to catch it.
 
