@@ -209,6 +209,12 @@ the run draws on the plan's limits.
   of a secret waits for the next. A run is stopped three minutes after it
   starts, answered or not, and stopping it kills whatever the process started.
 
+  In the app, `Ask Sensei` appears in the header once the server reports the
+  chat is on and opens a panel docked on the right of every tab: tool chips while
+  it reads, then the answer as it streams, with Stop and Retry. Resize it by
+  dragging its left edge, or with the arrow keys on that edge. Clearing it, or
+  switching league, drops the conversation, since it was about the other league.
+
   Each question is a fresh process, so the browser keeps the transcript and
   sends it with every question (`history->prompt`). That is the seam for
   sessions later: the request already accepts a `session-id` that is ignored

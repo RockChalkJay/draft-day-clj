@@ -83,7 +83,7 @@
 (def ^:private risk-chroma 0.14)
 
 (defn risk-color
-  "Fill colour for risk `level` — green at 1, red at `risk-levels`."
+  "Fill color for risk `level` — green at 1, red at `risk-levels`."
   [level]
   (str "oklch(" risk-lightness " " risk-chroma " "
        (.toFixed (tier-hue level risk-levels) 1) ")"))
@@ -96,7 +96,7 @@
 
 (defn risk-bar
   "The five-segment bar for `level`. Every filled segment takes the *level's*
-  colour rather than its own position's, so a risk-4 bar is four orange segments
+  color rather than its own position's, so a risk-4 bar is four orange segments
   and not a gradient — length and hue then say one thing, twice."
   [level]
   [:span.risk-bar
@@ -365,7 +365,7 @@
         ;; only under a position filter, because :tier was per-position and a
         ;; tier 2 RB beside a tier 2 WR meant nothing; the board now carries an
         ;; overall scale too and `:board-players` picks the one that matches the
-        ;; current filter, so both views have a coherent number to colour by.
+        ;; current filter, so both views have a coherent number to color by.
         n-tiers     (reduce max 1 (keep :tier players))]
     [:div.board-wrap
      [rules-banner]

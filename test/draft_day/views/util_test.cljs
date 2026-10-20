@@ -28,7 +28,7 @@
 ;; ---- signed differences ----
 ;; Barg and Edge share `sign-class` with the board's own columns, so the rule is
 ;; pinned here rather than in two places that could drift apart silently: a
-;; wrong colour is not a crash and nothing else would catch it.
+;; wrong color is not a crash and nothing else would catch it.
 
 (deftest signed-carries-the-sign
   (is (= "+4" (util/signed 4)))
@@ -40,14 +40,14 @@
 (deftest signed-dashes-what-is-not-a-verdict
   (doseq [f [util/signed util/signed-money]]
     (is (= "–" (f 0))
-        "a difference of exactly nothing is not a verdict, and has no colour to take")
+        "a difference of exactly nothing is not a verdict, and has no color to take")
     (is (= "–" (f nil)))
     (is (= "–" (f "4")) "a string is not a number, however numeric it looks")))
 
 (deftest sign-class-matches-the-boards-rule
   (is (= "good" (util/sign-class 4)))
   (is (= "warn" (util/sign-class -4)))
-  (is (nil? (util/sign-class 0)) "zero takes neither colour")
+  (is (nil? (util/sign-class 0)) "zero takes neither color")
   (is (nil? (util/sign-class nil))))
 
 ;; ---- a week's points ----

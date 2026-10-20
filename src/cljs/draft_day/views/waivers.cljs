@@ -189,10 +189,10 @@
     ;; drop is not an add — and flattening that to zero would make the whole
     ;; tail of the pool look equally plausible.
     ;;
-    ;; Rounded ONCE, and both the colour and the digits read from that. Colouring
+    ;; Rounded ONCE, and both the color and the digits read from that. Colouring
     ;; the raw value and printing the rounded one put a green dash on the board
     ;; for an upgrade of 0.4 — `sign-class` saw a positive number while `signed`
-    ;; dashed out the zero. Same rule `controls/val-cell` states: the colour and
+    ;; dashed out the zero. Same rule `controls/val-cell` states: the color and
     ;; the digits have to come from the same value.
     :upgrade   (let [n (js/Math.round (or (:upgrade p) 0))]
                  [:td.num {:class (util/sign-class n)} (util/signed n)])

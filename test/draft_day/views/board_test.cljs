@@ -106,7 +106,7 @@
   ;; Striping used to be switched off unless the board was filtered to one
   ;; position, because :tier was per-position and a tier 2 RB beside a tier 2 WR
   ;; meant nothing. The sub now hands down whichever scale the filter implies, so
-  ;; there is always a coherent number to colour by.
+  ;; there is always a coherent number to color by.
   (let [[_ attrs] (board/player-row {:player-id "p1" :tier 3} [] nil 6 true true)]
     (is (contains? (classes attrs) "tier-row"))
     (is (contains? (classes attrs) "tier-start"))
@@ -118,7 +118,7 @@
       (is (contains? (classes attrs) "tier-row"))
       (is (not (contains? (classes attrs) "tier-start")))))
 
-  (testing "bands off: no tier classes and no custom properties to colour from"
+  (testing "bands off: no tier classes and no custom properties to color from"
     (let [[_ attrs] (board/player-row {:player-id "p3" :tier 3} [] nil 6 true false)]
       (is (not (contains? (classes attrs) "tier-row")))
       (is (not (contains? (classes attrs) "tier-start")))
@@ -138,7 +138,7 @@
 
 ;; ---- injury-risk bar ----
 ;; The Risk cell carries no number, so what has to hold is that the *glyph* is
-;; faithful: the right number of segments lit, and a colour that agrees with them.
+;; faithful: the right number of segments lit, and a color that agrees with them.
 
 (deftest risk-bar-fills-one-segment-per-level
   (let [lit (fn [level]
@@ -151,15 +151,15 @@
       (is (every? #(= board/risk-levels (count (nth (board/risk-bar %) 1)))
                   [1 3 5])))))
 
-(deftest a-filled-bar-is-one-colour-not-a-gradient
-  ;; Every lit segment takes the *level's* colour, so length and hue say the same
+(deftest a-filled-bar-is-one-color-not-a-gradient
+  ;; Every lit segment takes the *level's* color, so length and hue say the same
   ;; thing twice. Per-segment colours would make a risk-4 bar start green.
   (let [segs (filter (fn [[_ attrs]] (= "on" (:class attrs)))
                      (nth (board/risk-bar 4) 1))
         bgs  (set (map (fn [[_ attrs]] (get-in attrs [:style :background])) segs))]
     (is (= 1 (count bgs)))
     (is (= #{(board/risk-color 4)} bgs)))
-  (testing "an unlit segment carries no inline colour at all"
+  (testing "an unlit segment carries no inline color at all"
     (is (every? (fn [[_ attrs]] (nil? (:style attrs)))
                 (remove (fn [[_ attrs]] (= "on" (:class attrs)))
                         (nth (board/risk-bar 2) 1))))))

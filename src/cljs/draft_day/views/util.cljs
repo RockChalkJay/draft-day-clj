@@ -73,14 +73,14 @@
 ;; are narrow numeric columns under their own headers, where a repeated "$" down
 ;; two hundred rows is noise; the tile shows them once, in a strip where every
 ;; neighbour carries a unit. So both go through `difference`, and both take their
-;; colour from `sign-class`. Nothing here is stated twice.
+;; color from `sign-class`. Nothing here is stated twice.
 
 (defn- difference
   "A signed difference with `unit` in front of the digits, or a dash.
 
   Zero dashes out along with nil and with anything that is not a number: a
   difference of exactly nothing is not a verdict, and it would sit in a place
-  where colour carries meaning while having no colour to take.
+  where color carries meaning while having no color to take.
 
   The sign is an ASCII \"-\" rather than a typographic minus. The board has
   always rendered these with one, and two surfaces spelling the same difference

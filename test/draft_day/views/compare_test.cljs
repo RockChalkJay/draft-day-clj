@@ -254,7 +254,7 @@
     (is (= "true" (:aria-hidden (second (nth chip 2))))
         "and the abbreviation is hidden from it, so the word is not said twice")))
 
-(deftest only-a-serious-designation-takes-the-warn-colour
+(deftest only-a-serious-designation-takes-the-warn-color
   (let [class-of #(:class (second (cmp/status-chip {:sleeper/injury-status %})))]
     (is (= "cmp-status serious" (class-of "IR")))
     (is (= "cmp-status" (class-of "Questionable"))

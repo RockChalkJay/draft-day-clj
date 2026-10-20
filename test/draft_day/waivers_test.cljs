@@ -291,7 +291,7 @@
 
 ;; ---- cells ----
 
-(deftest the-trend-column-does-not-colour-noise
+(deftest the-trend-column-does-not-color-noise
   ;; A receiver at 1.04 has not earned an arrow, and a column that colours noise
   ;; stops being read at all.
   (is (nil? (waivers/trend-class 1.04)))

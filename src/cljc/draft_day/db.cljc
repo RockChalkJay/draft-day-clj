@@ -104,9 +104,12 @@
   what it costs. The nested shapes are in scope — a key under `:config`, a slot
   in `default-roster`, a field on a team, a pick, or a synced league. The column
   layouts are the exception: they survive a bump, and `reconcile-columns` brings
-  them up to their catalogs, so adding or dropping a column needs no bump."
+  them up to their catalogs, so adding or dropping a column needs no bump. Nor
+  does adding a key whose absence reads as its default: `:boot` merges the blob
+  into `default-db`, so an older one simply lacks it."
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
-   :accounts :leagues :active-league :waiver-columns :phase])
+   :accounts :leagues :active-league :waiver-columns :phase
+   :sensei-open? :sensei-width])
 
 ;; ---- accounts and leagues ----
 
@@ -1386,6 +1389,15 @@
      ;; At most two player-ids, in pick order. Transient: a comparison is a
      ;; question being asked right now, not a layout worth restoring.
      :compare      []
+     ;; Sensei's chat. The panel's side and width are a layout the manager chose,
+     ;; so they persist; the conversation is a question being asked now, so it
+     ;; does not, and `:sensei-enabled?` is the server's answer to this browser.
+     :sensei-enabled? nil
+     :sensei-open?  false
+     :sensei-width  380
+     :sensei-messages []
+     :sensei-busy?  false
+     :sensei-seq    0           ; newest question; older streams' events are dropped
      :modal        nil
      :sort        {:key :worth :dir -1}
      :pos-filter  nil

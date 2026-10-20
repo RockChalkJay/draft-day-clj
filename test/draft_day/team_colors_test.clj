@@ -6,10 +6,10 @@
 (deftest every-team-the-app-knows-has-colours
   (is (= teams/app-teams (set (keys tc/colors)))))
 
-(deftest every-colour-is-a-six-digit-hex
+(deftest every-color-is-a-six-digit-hex
   (is (every? #(re-matches #"#[0-9A-F]{6}" %) (mapcat val tc/colors))))
 
-(deftest the-darker-colour-leads
+(deftest the-darker-color-leads
   (is (= ["#101820" "#FFB612"] (tc/pair "PIT")) "a pale lead would sink the white name")
   (is (= ["#003594" "#FFA300"] (tc/pair "LAR")))
   (is (< (tc/luminance "#000000") (tc/luminance "#FFFFFF"))))
