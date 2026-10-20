@@ -577,14 +577,19 @@
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
+;; Where this server listens, recorded by `server/start!`. A request's
+;; `:server-port` is only what its `Host` header claims.
+(defonce bound-port (atom nil))
+
 (def sensei-server
   "What Sensei's tools read off this server: the waiver board, the universe, a
-  player's news and the environment, where the accounts are. Through vars, so a
-  REPL redefinition reaches the tools."
+  player's news, the environment, where the accounts are, and the port it
+  listens on. Through vars, so a REPL redefinition reaches the tools."
   {:waivers-reply #'waivers-reply
    :players       #(:players (universe false))
    :news          #'espn-news/player-news
-   :env           #(System/getenv)})
+   :env           #(System/getenv)
+   :port          #(deref bound-port)})
 
 (def app
   (ring/ring-handler
