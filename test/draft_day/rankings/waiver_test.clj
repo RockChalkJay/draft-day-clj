@@ -485,6 +485,13 @@
                                                             :through-week 8
                                                             :season-games 17})))))
 
+(deftest league-roster-players-are-the-other-teams-by-roster-id
+  (let [{:keys [league-roster-players]} (run)]
+    (is (= [2] (keys league-roster-players)) "mine is my-roster-players, not here")
+    (is (= ["bad"] (map :player-id (get league-roster-players 2))))
+    (is (contains? (first (get league-roster-players 2)) :ros-vorp)
+        "full board rows, as my own are")))
+
 (deftest no-team-picked-means-no-lineup-delta
   ;; The default state until the manager sets :my-roster-id. Without the guard
   ;; the empty lineup makes every free agent's delta his whole line — both
