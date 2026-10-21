@@ -613,6 +613,49 @@
               p))
           players)))
 
+(def ros-ecr-schema-version
+  "Version of the rest-of-season expert-rank cache envelope."
+  1)
+
+(defn ros-ecr-cache-path
+  "One file per season: the pages rank the season in progress, and last year's
+  copy answers nothing."
+  [season]
+  (format "data/ros_ecr.v%d.%d.transit" ros-ecr-schema-version season))
+
+(defn ros-ecr-ttl-hours []
+  (Double/parseDouble (or (System/getenv "DRAFTDAY_ROS_ECR_TTL_HOURS") "12")))
+
+(defn load-ros-ecr
+  "FantasyPros' rest-of-season expert ranks, `{:fetched-at :by-format {format
+  {key entry}}}`, off a cache of its own. Nil offline, when replaying a week
+  (today's ranks would leak the future), and with nothing cached when
+  FantasyPros does not answer."
+  [season]
+  (when-not (or (offline?) (nflverse-weekly/as-of-week))
+    (load-ttl-cache
+     {:path           (ros-ecr-cache-path season)
+      :ttl-hours      (ros-ecr-ttl-hours)
+      :schema-version ros-ecr-schema-version
+      :label          "rest-of-season expert ranks"
+      :fetch          (fn [] {:season     season
+                              :fetched-at (now-iso)
+                              :by-format  (fantasypros/fetch-ros-ecr)})})))
+
+(defn assoc-ros-ecr
+  "Join one format's `{key entry}` of expert ranks onto players by name and
+  position, leaving a player the experts do not rank unannotated. The format is
+  the caller's choice and has no default: a standard league must not read PPR
+  ranks."
+  [players ranks]
+  (if (empty? ranks)
+    players
+    (mapv (fn [p]
+            (if-let [entry (get ranks (match/key-for (:player-name p) (:position p)))]
+              (merge p entry)
+              p))
+          players)))
+
 (defn assoc-outlook
   "Join an outlook onto players by Sleeper id as `:outlook/games` and
   `:outlook/stats`, leaving a player Sleeper projects no remaining week unannotated."

@@ -20,8 +20,9 @@
   every stat and its point totals, for the players it projects; `injuries` is
   the complete designation list as of the run and `outlook` Sleeper's lines for
   every week from the target to the season's end, summed per player as
-  `{games, stats}`. If the line comes back empty
-  nothing is written; a failed injury, kickoff or outlook fetch is reported on stderr and
+  `{games, stats}`, and `ros_ecr` FantasyPros' rest-of-season expert ranks, by
+  scoring format then by `name_position` key. If the line comes back empty
+  nothing is written; a failed injury, kickoff, outlook or rank fetch is reported on stderr and
   leaves its key null or empty while the line still lands. `through_week` is
   read through the realized cache, as `tools.trends` reads it, and is null when
   that is out of reach.
@@ -44,6 +45,7 @@
             [clojure.tools.cli :as cli]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
             [draft-day.ingestion.matchups.sleeper :as sleeper-state]
+            [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper :as sleeper]
@@ -52,7 +54,7 @@
             [jsonista.core :as json])
   (:import (java.time Duration Instant)))
 
-(def schema-version 2)
+(def schema-version 3)
 
 (def default-dir "data/projections")
 
@@ -117,7 +119,7 @@
 
 (defn snapshot
   "The document a snapshot file holds."
-  [fetched-at season target through lines kickoffs injuries outlook]
+  [fetched-at season target through lines kickoffs injuries outlook ros-ecr]
   {:schema_version schema-version
    :fetched_at     fetched-at
    :season         season
@@ -126,7 +128,8 @@
    :lines          lines
    :kickoffs       kickoffs
    :injuries       injuries
-   :outlook        outlook})
+   :outlook        outlook
+   :ros_ecr        ros-ecr})
 
 (defn warn!
   "`msg` on stderr."
@@ -167,6 +170,15 @@
          (warn! (str "outlook failed: " (ex-message e)))
          nil)))
 
+(defn fetch-ros-ecr
+  "FantasyPros' rest-of-season expert ranks for all three formats, or nil with
+  the reason on stderr. A page that fails fails them all."
+  []
+  (try (fantasypros/fetch-ros-ecr)
+       (catch Exception e
+         (warn! (str "rest-of-season ranks failed: " (ex-message e)))
+         nil)))
+
 (defn take-snapshot
   "Fetch the week's line, kickoffs and injuries into a snapshot document. Throws
   when no week is known or the line is empty."
@@ -180,7 +192,8 @@
               lines
               (fetch-kickoffs season target)
               (fetch-injuries)
-              (fetch-outlook season target))))
+              (fetch-outlook season target)
+              (fetch-ros-ecr))))
 
 (defn describe
   "`week 5: 437 players, 30 teams with kickoffs, 876 injuries`"

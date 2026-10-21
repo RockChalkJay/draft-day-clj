@@ -427,6 +427,7 @@
             {:keys [week through-week]} (waiver-weeks through-week (current-nfl-week))
             weekly       (pipeline/load-weekly season* week)
             outlook      (pipeline/load-outlook season* week (inc season-games))
+            ros-ecr      (pipeline/load-ros-ecr season*)
             adds         (trending/load-adds)
             ctx      {:league             league
                       :my-roster-id       my-roster-id
@@ -457,6 +458,7 @@
                          without-history
                          (waiver-board-inputs scoring*)
                          (pipeline/assoc-outlook (:lines outlook))
+                         (pipeline/assoc-ros-ecr (get-in ros-ecr [:by-format (scoring/format-of scoring*)]))
                          (ros/with-ros scoring* ctx)
                          (pipeline/assoc-weekly (:lines weekly))
                          (pipeline/assoc-trending (:adds adds))
@@ -492,16 +494,30 @@
                :week-fetched-at (:fetched-at weekly)
                ;; nil offline or replaying; rest-of-season then rests on the preseason line.
                :outlook-fetched-at (:fetched-at outlook)
+               :ros-ecr-fetched-at (:fetched-at ros-ecr)
                ;; nil offline or when Sleeper never answered; rivals bid on need alone.
                :trending     (some-> adds (select-keys [:fetched-at :lookback-hours])))))))
 
+(def sensei-only-keys
+  "Row keys the browser never draws, for Sensei's tools to read."
+  [:fantasypros/ros-pos-rank :fantasypros/ros-rank-min :fantasypros/ros-rank-max])
+
+(defn without-sensei-only
+  "`reply` less what only Sensei reads: `:drop-costs` and `sensei-only-keys`."
+  [reply]
+  (let [strip (fn [ps] (some->> ps (mapv #(apply dissoc % sensei-only-keys))))]
+    (reduce (fn [r k] (cond-> r (contains? r k) (update k strip)))
+            (dissoc reply :drop-costs)
+            [:players :my-roster-players])))
+
 (defn waivers-handler
   "POST /api/waivers: `waivers-reply` as JSON, and a 400 for a body it cannot
-  price. `:drop-costs` is Sensei's and the browser reads none of it."
+  price. `:drop-costs` and the experts' rest-of-season ranks are Sensei's and
+  the browser reads none of them."
   [req]
   (try
     (let [reply (waivers-reply (read-json-body req))]
-      (json-response (if (:error reply) 400 200) (dissoc reply :drop-costs)))
+      (json-response (if (:error reply) 400 200) (without-sensei-only reply)))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 

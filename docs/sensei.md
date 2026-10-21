@@ -135,6 +135,14 @@ default list is quarterbacks, backs, receivers and tight ends: a kicker or a
 defense is a weekly stream, and on the first real run the two led the board and
 buried the position the manager asked about.
 
+**A second opinion.** Rows carry `ros-ecr`, FantasyPros' experts' rest-of-season
+rank at the player's position in the league's scoring format, with the range of
+their individual ranks (`RB24 (17-34)`). It is Sensei's alone, and it feeds
+nothing in the engine: experts react to news the numbers have not seen yet, which
+makes a large disagreement worth a look, but whether averaging the two predicts
+better is unmeasured. The weekly snapshots save the ranks (`ros_ecr`) so that it
+can be.
+
 **What the screen holds back, Sensei holds back.** No bid predictions while
 `db/bid-predictions?` is off, and the instructions tell the model not to put a
 FAAB figure on a claim. No raw rest-of-season points, which no surface shows.

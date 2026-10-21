@@ -122,6 +122,14 @@
     (cond-> status
       (:sleeper/injury-body-part p) (str " (" (:sleeper/injury-body-part p) ")"))))
 
+(defn ros-ecr
+  "The experts' rest-of-season rank at his position, with the spread of their
+  individual ranks: `RB24 (24-29)`. Nil for a player they do not rank."
+  [{:fantasypros/keys [ros-pos-rank ros-rank-min ros-rank-max]}]
+  (when ros-pos-rank
+    (cond-> ros-pos-rank
+      (and ros-rank-min ros-rank-max) (str " (" ros-rank-min "-" ros-rank-max ")"))))
+
 (defn row
   "One player as the tools state him: a few keys in a fixed order, nothing nil,
   numbers rounded, and no column the board would hide at his position (a
@@ -137,6 +145,7 @@
               [:opp (opponent p)]
               [:inj (injury p)]
               [:outlook (:outlook-ppg p)]
+              [:ros-ecr (ros-ecr p)]
               [:drop-candidate (when (:drop? p) true)]
               [:drop-cost (:drop-cost p)]
               [:unvalued (when (:unvalued? p) true)]]
@@ -155,6 +164,7 @@
               "- opp: this week's opponent"
               "- inj: Sleeper's injury designation"
               "- outlook: Sleeper's projected points a game over the weeks he has left, under this league's scoring"
+              "- ros-ecr: FantasyPros' experts' rest-of-season rank at his position in this league's scoring format, with the range of their ranks; absent when they do not rank him"
               "- drop-cost: rest-of-season points the starting lineup loses if he is dropped; 0 on a bench that never plays"])
        (str/join "\n")))
 

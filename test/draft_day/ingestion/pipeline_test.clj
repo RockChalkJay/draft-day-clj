@@ -3,11 +3,11 @@
             [clojure.java.io :as io]
             [draft-day.ingestion.espn :as espn]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
-            [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.pipeline :as pipeline :refer [apply-enrichment]]
             [draft-day.ingestion.player-ids :as player-ids]
+            [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.sleeper-actual :as sleeper-actual]
             [draft-day.ingestion.sleeper-defense :as sleeper-defense]
@@ -637,3 +637,45 @@
       (with-redefs [sleeper/fetch-outlook (fn [& _] (throw (ex-info "down" {})))
                     pipeline/outlook-ttl-hours (constantly 0.0)]
         (is (= outlook-lines (:lines (pipeline/load-outlook 2026 7 18))))))))
+
+(def ^:private ros-ranks
+  {"ollie gordon_rb" {:fantasypros/ros-pos-rank "RB24" :fantasypros/ros-rank-min 24 :fantasypros/ros-rank-max 29}})
+
+(deftest ros-ecr-joins-by-name-and-position
+  (let [ranks {(draft-day.ingestion.match/key-for "Ollie Gordon" "RB") (val (first ros-ranks))}
+        [a b c] (pipeline/assoc-ros-ecr [{:player-name "Ollie Gordon" :position "RB"}
+                                         {:player-name "Ollie Gordon" :position "WR"}
+                                         {:player-name "Someone Else" :position "RB"}]
+                                        ranks)]
+    (is (= "RB24" (:fantasypros/ros-pos-rank a)))
+    (is (not (contains? b :fantasypros/ros-pos-rank)) "another position is another player")
+    (is (not (contains? c :fantasypros/ros-pos-rank)) "unranked: no key")
+    (is (= [{:player-name "x" :position "RB"}]
+           (pipeline/assoc-ros-ecr [{:player-name "x" :position "RB"}] nil)))))
+
+(deftest ros-ecr-is-not-loaded-offline-or-while-replaying-a-week
+  (let [calls (atom 0)]
+    (with-redefs [fantasypros/fetch-ros-ecr (fn [] (swap! calls inc) {})
+                  pipeline/ros-ecr-cache-path (fn [_] (tmp "ros-ecr-gate"))]
+      (with-redefs [pipeline/offline? (constantly true)]
+        (is (nil? (pipeline/load-ros-ecr 2026))))
+      (with-redefs [pipeline/offline? (constantly false)
+                    nflverse-weekly/as-of-week (constantly 8)]
+        (is (nil? (pipeline/load-ros-ecr 2026))))
+      (is (zero? @calls)))))
+
+(deftest ros-ecr-is-cached-and-served-stale-when-the-pages-fail
+  (let [path (tmp "ros-ecr")
+        by   {:ppr ros-ranks}]
+    (pipeline/delete-cache! path)
+    (with-redefs [pipeline/offline? (constantly false)
+                  nflverse-weekly/as-of-week (constantly nil)
+                  pipeline/ros-ecr-cache-path (fn [_] path)]
+      (let [calls (atom 0)]
+        (with-redefs [fantasypros/fetch-ros-ecr (fn [] (swap! calls inc) by)]
+          (is (= by (:by-format (pipeline/load-ros-ecr 2026))))
+          (pipeline/load-ros-ecr 2026)
+          (is (= 1 @calls) "the second read is the fresh cache")))
+      (with-redefs [fantasypros/fetch-ros-ecr (fn [] (throw (ex-info "down" {})))
+                    pipeline/ros-ecr-ttl-hours (constantly 0.0)]
+        (is (= by (:by-format (pipeline/load-ros-ecr 2026))))))))

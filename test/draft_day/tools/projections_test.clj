@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [draft-day.ingestion.espn-schedule :as espn-schedule]
+            [draft-day.ingestion.fantasypros :as fantasypros]
             [draft-day.ingestion.matchups.sleeper :as sleeper-state]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper :as sleeper]
@@ -45,6 +46,7 @@
    {:player_id "2" :team "DAL" :stats {:gp 1.0}}])
 (def kickoffs {"SEA" {:kickoff "2026-10-11T17:00Z"}})
 (def injuries {"1" {:status "Questionable" :body-part "Knee"}})
+(def ros-ecr {:ppr {"ollie gordon_rb" {:fantasypros/ros-pos-rank "RB24"}}})
 (def outlook {"1" {:games 13 :stats {:pts_ppr 160.0}}})
 (def state {:season "2026" :week 5 :display_week 5 :season_type "regular"})
 
@@ -56,6 +58,7 @@
                  pipeline/load-realized          (fn [& _#] {:weekly {:through-week 4}})
                  sleeper/fetch-weekly-entries    (fn [& _#] entries)
                  sleeper/fetch-outlook           (fn [& _#] outlook)
+                 fantasypros/fetch-ros-ecr       (fn [] ros-ecr)
                  espn-schedule/fetch             (fn [& _#] kickoffs)
                  sleeper-players/live            (fn [] {:injuries injuries})]
      (with-redefs ~overrides ~@body)))
@@ -86,7 +89,7 @@
         (is (= 1 (count paths)))
         (is (re-matches #".*/2026/week-05/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json" path))
         (let [doc (read-json path)]
-          (is (= 2 (get doc "schema_version")))
+          (is (= 3 (get doc "schema_version")))
           (is (= 5 (get doc "target_week")))
           (is (= 4 (get doc "through_week")))
           (is (= ["1"] (keys (get doc "lines")))
@@ -98,7 +101,16 @@
               "the player record, with its stale injury fields, is dropped")
           (is (= "2026-10-11T17:00Z" (get-in doc ["kickoffs" "SEA" "kickoff"])))
           (is (= "Questionable" (get-in doc ["injuries" "1" "status"])))
-          (is (= 13 (get-in doc ["outlook" "1" "games"]))))))))
+          (is (= 13 (get-in doc ["outlook" "1" "games"])))
+          (is (= "RB24" (get-in doc ["ros_ecr" "ppr" "ollie gordon_rb" "fantasypros/ros-pos-rank"]))))))))
+
+(deftest failed-ranks-still-land-the-line
+  (with-dir [dir]
+    (with-stubs [fantasypros/fetch-ros-ecr (fn [] (throw (ex-info "boom" {})))]
+      (is (zero? (quietly #(projections/run {:dir dir}))))
+      (let [doc (read-json (first (files-under dir)))]
+        (is (= ["1"] (keys (get doc "lines"))))
+        (is (nil? (get doc "ros_ecr")))))))
 
 (deftest a-failed-outlook-still-lands-the-line
   (with-dir [dir]

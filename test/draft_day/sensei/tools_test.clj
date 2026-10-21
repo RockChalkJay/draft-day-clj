@@ -261,3 +261,10 @@
 (deftest waiver-targets-say-which-positions-they-cover
   (is (= ["QB" "RB" "WR" "TE"] (:positions (:result (call "waiver_targets" {} (fx/deps))))))
   (is (= ["K"] (:positions (:result (call "waiver_targets" {:position "K"} (fx/deps)))))))
+
+(deftest a-row-states-the-experts-rest-of-season-rank
+  (let [p (assoc (first fx/free-agents) :fantasypros/ros-pos-rank "WR31"
+                 :fantasypros/ros-rank-min 28 :fantasypros/ros-rank-max 40)]
+    (is (= "WR31 (28-40)" (:ros-ecr (tools/row p)))))
+  (is (= "WR31" (:ros-ecr (tools/row (assoc (first fx/free-agents) :fantasypros/ros-pos-rank "WR31")))))
+  (is (not (contains? (tools/row (first fx/free-agents)) :ros-ecr)) "unranked: no key"))
