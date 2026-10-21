@@ -17,6 +17,7 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 **Research harnesses** (`dev/`, `:dev` profile, active by default):
 - `benchmark.report`: score model vs historical outcomes
 - `replay.report`: compare Worth vs actual picks
+- `benchmark.ros-backtest`: score the rest-of-season blend in season (2021-25, Sleeper stats): prior strength per position, and the role arm. Measured: six games for every position but defenses, which take sixty (`ros/PRIOR-GAMES-BY-POSITION`); the role regime did not win and stays display-only
 - `faab.replay`: score FAAB model on real auctions
 - `faab.interest`: fit weights to real claims (11 leagues)
 - `faab.sweep`: score FAAB constants one at a time
@@ -102,6 +103,8 @@ The AI feature is called **Sensei** everywhere: namespaces, routes, env vars, do
 Draft dollars stop at draft; waiver claims are measured in ROS points only (value/inflation/tcm/worth/bargain hidden). Reuses football half (replacement/VORP) via `:ros-points`.
 
 `rankings/ros.clj`: blends preseason + realized per-stat on per-game basis, prorates games remaining. Realized as *total* (not games × per-game) so the expression collapses to preseason at zero games (right for rookies, DST, August board). **Sleeper's realized where available, nflverse otherwise** (one source per player, never mixed). Why Sleeper: (1) nflverse has no DST rows at all; (2) first-downs count differs ~1/4 of player-weeks; (3) no TD length. Sleeper's score reproduces league totals exactly (player detail week-by-week agrees to cent). **`:through-week` stays nflverse only** (ros leans on realized columns being unable to disagree; two sources = Nov league on Aug projection).
+
+**Prior strength** is `ros/prior-games-for`: six games, sixty for a defense, as `benchmark.ros-backtest` measured on the August prior (the outlook prior cannot be replayed, so those are a floor for it).
 
 **The prior is Sleeper's outlook** (`sleeper/fetch-outlook`, `pipeline/load-outlook`, `:outlook/games` + `:outlook/stats`): the sum of its weekly lines for the weeks left, which are regenerated daily against the current depth chart, while its season line stays August's. A player it projects for some remaining week blends toward that rate over those games (a bye is simply a week with no line); one it omits, and every board with no outlook (offline, a replayed week, Sleeper down with nothing cached), keeps the preseason line. Cached per season and first week on `DRAFTDAY_OUTLOOK_TTL_HOURS`; a failed week fails the fetch, since a missing week would shorten every outlook silently.
 

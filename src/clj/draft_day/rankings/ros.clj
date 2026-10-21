@@ -15,6 +15,15 @@
   A player with a serious designation (`db/serious-injury?`) has no games
   remaining in season, until Sleeper clears the tag.
 
+  How strongly the preseason line is trusted was measured on 2021-25
+  (`benchmark/ros_backtest.clj`): six games for every position but defenses,
+  which take sixty. The same harness tested a player who has taken over a role a
+  teammate vacated, predicted from his games since the change, and it did not
+  beat the whole-season rate where it fires (backs -0.9 +- 0.7 squared points a
+  game, receivers +0.2 +- 0.3), so the role is display-only (`rankings.role`).
+  It scores the August prior; the outlook prior cannot be replayed, so a
+  strength measured there is a floor for it.
+
   The rate is the whole season's, with no weight on the last few games.
   `benchmark/ros_recent.clj` replayed 2022-25: blending recent points, gating
   that on a jump in targets plus carries, and blending opportunity alone all
@@ -24,8 +33,24 @@
             [draft-day.scoring :as scoring]))
 
 (def PRIOR-GAMES
-  "Number of prior games represented by the preseason projection."
+  "Number of prior games represented by the preseason projection. Six holds for
+  quarterbacks, backs, receivers, tight ends and kickers: `benchmark/ros_backtest.clj`
+  over 2021-25 finds their error flat from about four to twelve, with no strength
+  distinguishable from six, and the best one varying by season."
   6.0)
+
+(def PRIOR-GAMES-BY-POSITION
+  "Where six is measurably wrong. A defense's weekly points are mostly noise, and
+  the backtest's error falls as the preseason line gets more weight: sixty is 0.6
+  squared points a game better than six, 4.6 standard errors, better in four of
+  five seasons. Its harness prior is sparser than production's, so the effect is
+  if anything understated; preseason alone was no better than sixty."
+  {"DST" 60.0})
+
+(defn prior-games-for
+  "The prior strength for a player at `position`."
+  [position]
+  (get PRIOR-GAMES-BY-POSITION position PRIOR-GAMES))
 
 (defn games-remaining
   "Return games remaining after `through-week`, subtracting a future bye.
@@ -86,7 +111,8 @@
                        :pre-games (when outlook? ahead)
                        :realized real :played played
                        :games-remaining left :season-games season-games
-                       :prior-games prior-games :projected projected})]
+                       :prior-games (or prior-games (prior-games-for (:position player)))
+                       :projected projected})]
     (when line
       {:ros/stats           line
        :ros/games-remaining left

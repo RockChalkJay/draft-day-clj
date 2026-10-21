@@ -127,7 +127,7 @@ A credibility weighting: the weight on realized per-game production
 is `played / (played + 6)` — half after six games, 54% after seven — and at
 zero games it is the prorated preseason line (rookies, defenses, August). A
 player with neither a preseason line nor an outlook is discounted on purpose, since production is
-spread over `6 + played`. The 6 (`PRIOR-GAMES`) is chosen, not measured.
+spread over `6 + played`. The 6 (`PRIOR-GAMES`) was chosen and has since been measured (`benchmark/ros_backtest.clj`, 2021-25): quarterbacks, backs, receivers, tight ends and kickers are flat from about 4 to 12 with no strength distinguishable from 6, and a defense is 0.6 squared points a game better at 60 (4.6 standard errors; `PRIOR-GAMES-BY-POSITION`). That scores the August prior; the outlook prior cannot be replayed, so those strengths are a floor for it.
 *Example:* a back projected for 1,020 rushing yards (60 a game) who has 560 in
 7 games (80 a game) through week 8 has a rate of (6 × 60 + 560) / 13 = 70.8,
 so 10 games left is 707.7.
@@ -334,8 +334,10 @@ leagues, which correlate 0.37 to 0.56 (`docs/TODO.md`).
 2. ~~Start archiving weekly projections, and run `tools.trends` on a schedule
    all season~~ — done. Sleeper keeps no past trending lists and revises past
    weeks' projections, so neither can be recovered later.
-3. Build the in-season backtest (item 2). It unlocks `PRIOR-GAMES`,
-   `stash-share`, per-stat priors and the weekly-confidence alternative.
+3. ~~Build the in-season backtest (item 2)~~ — built for the August prior
+   (`benchmark/ros_backtest.clj`). It measured `PRIOR-GAMES` per position. The
+   outlook prior, `stash-share`, per-stat priors and the weekly-confidence
+   alternative wait on a season of archived outlooks.
 
 The market-multiplier line (item 5) can go in any time. Everything else only if
 a harness says so.

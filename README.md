@@ -612,8 +612,12 @@ is the right answer for a rookie who has not debuted, for every team defense
 
 `PRIOR-GAMES` is how many games of evidence the projection is worth — six, which
 keeps one loud week from reordering the board while still letting a September
-role change win by December. It is *chosen, not measured*; `dev/` is where it
-would earn a number.
+role change win by December. It was chosen and has since been measured
+(`dev/draft_day/benchmark/ros_backtest.clj`, 2021-25): quarterbacks, backs,
+receivers, tight ends and kickers are flat from about four to twelve, so six
+stands, and a defense's weekly points are mostly noise, so it takes sixty
+(`PRIOR-GAMES-BY-POSITION`). Those are measured against the August prior, which
+is a floor for the outlook's.
 
 The projection term is Sleeper's **outlook** where it has one: its weekly lines
 for every week left, summed, since the season line is frozen at August and cannot
