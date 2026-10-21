@@ -500,14 +500,14 @@ button.undo:hover { color: var(--warn); }
    the viewport: Sensei's panel takes its width off the tab and is not always
    open, so a viewport breakpoint is wrong for one of the two. The manager's own
    choice (`:waiver-roster`, shown or hidden) beats the width either way. */
-.waivers-view { container-type: inline-size; }
+.waivers-view { container-type: inline-size; --board-h: calc(100vh - 175px); }
 .waiver-body { display: flex; gap: 12px; align-items: flex-start; }
 .waiver-body .table-scroll { flex: 1 1 auto; min-width: 0; }
 .waiver-roster-col { flex: 0 0 auto; display: flex; gap: 6px; }
 .waiver-roster-col .roster-panel { width: 268px; }
 /* The strip is the whole control: as tall as the board, tinted so it reads as
    something to press, and named by what pressing it does. */
-.roster-edge { flex: 0 0 14px; width: 14px; height: calc(100vh - 175px); padding: 0;
+.roster-edge { flex: 0 0 14px; width: 14px; height: var(--board-h); padding: 0;
   background: color-mix(in srgb, var(--accent) 16%, var(--panel));
   border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--panel)); border-radius: 7px;
   color: var(--accent); font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
@@ -526,7 +526,7 @@ button.undo:hover { color: var(--warn); }
    and the Player column stays in view while a wide board scrolls sideways.
    Wrapped, the roster sits below it and the page scrolls instead, so a wheel
    over the board never traps the pointer above the roster. */
-.waiver-body .table-scroll { max-height: calc(100vh - 175px); overflow: auto; }
+.waiver-body .table-scroll { max-height: var(--board-h); overflow: auto; }
 @container (max-width: 640px) {
   .waiver-body { flex-wrap: wrap; }
   .waiver-roster-col { flex: 1 1 100%; }
