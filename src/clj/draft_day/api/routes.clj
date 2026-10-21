@@ -506,10 +506,9 @@
   "`reply` less what only Sensei reads: `:drop-costs` and `sensei-only-keys`."
   [reply]
   (let [strip (fn [ps] (some->> ps (mapv #(apply dissoc % sensei-only-keys))))]
-    (-> reply
-        (dissoc :drop-costs)
-        (update :players strip)
-        (update :my-roster-players strip))))
+    (reduce (fn [r k] (cond-> r (contains? r k) (update k strip)))
+            (dissoc reply :drop-costs)
+            [:players :my-roster-players])))
 
 (defn waivers-handler
   "POST /api/waivers: `waivers-reply` as JSON, and a 400 for a body it cannot

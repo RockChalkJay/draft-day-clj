@@ -489,6 +489,11 @@
     (is (= ["RB9" "2026-10-20T00:00:00Z"] (ros-of "standard"))
         "a standard league reads the standard ranks, never PPR's")))
 
+(deftest a-refused-body-gains-no-keys-from-the-strip
+  (is (= {:error "x"} (routes/without-sensei-only {:error "x"})))
+  (is (nil? (:my-roster-players (routes/without-sensei-only {:players [] :my-roster-players nil})))
+      "no team picked stays nil"))
+
 (deftest the-browser-is-not-sent-the-experts-ranks
   (let [env {:fetched-at "x" :by-format {:ppr {"rb0_rb" {:fantasypros/ros-pos-rank "RB3"}}}}
         b   (with-redefs [pipeline/load-ros-ecr (constantly env)]
