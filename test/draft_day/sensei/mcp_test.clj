@@ -55,7 +55,7 @@
 
 (deftest tools-list-states-every-tool-read-only
   (let [tools (get-in (rpc (request 2 "tools/list")) [:json :result :tools])]
-    (is (= ["leagues" "my_team" "waiver_targets" "evaluate_claim" "player_news"] (map :name tools)))
+    (is (= ["leagues" "my_team" "league_teams" "team_roster" "matchup" "waiver_targets" "evaluate_claim" "player_news"] (map :name tools)))
     (is (every? #(= "object" (get-in % [:inputSchema :type])) tools))
     (is (every? #(true? (get-in % [:annotations :readOnlyHint])) tools))))
 

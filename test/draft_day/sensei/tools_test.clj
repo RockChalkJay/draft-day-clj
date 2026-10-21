@@ -59,6 +59,35 @@
     (is (= {:wins 3 :losses 2} (:record result)))
     (is (= "Mine" (:team result)))))
 
+(deftest team-roster-reads-a-rival-and-never-the-owner
+  (let [{:keys [result]} (call "team_roster" {:team "rival"} (fx/deps))]
+    (is (= "Rival" (:team result)))
+    (is (= ["r1"] (map :player-id (:starters result))))
+    (is (nil? (:mine result)))
+    (is (not (re-find #"u-rival" (pr-str result)))))
+  (is (= "Mine" (:team (:result (call "team_roster" {:team "1"} (fx/deps))))) "by roster id")
+  (is (true? (:mine (:result (call "team_roster" {} (fx/deps))))) "no team is mine")
+  (is (re-find #"No team matches .*Choices: 1 Mine; 2 Rival"
+               (:error (call "team_roster" {:team "nobody"} (fx/deps))))))
+
+(deftest league-teams-is-standings-with-mine-marked
+  (let [{:keys [result]} (call "league_teams" {} (fx/deps))]
+    (is (= ["Rival" "Mine"] (map :team (:teams result))))
+    (is (= [nil true] (map :mine (:teams result))))
+    (is (not (re-find #"u-rival" (pr-str result))))))
+
+(deftest matchup-pairs-me-with-my-opponent
+  (let [{:keys [result]} (call "matchup" {} (fx/deps))]
+    (is (= 7 (:week result)))
+    (is (= "Mine" (get-in result [:mine :team])))
+    (is (= "Rival" (get-in result [:opponent :team])))
+    (is (= 16.1 (get-in result [:opponent :projected])))
+    (is (= 14.2 (get-in result [:mine :starters 0 :proj]))))
+  (testing "a bye"
+    (let [bye (assoc fx/matchup :matchups [])
+          {:keys [result]} (call "matchup" {} (fx/deps {:matchup (constantly bye)}))]
+      (is (re-find #"bye" (:note result))))))
+
 (deftest player-news-finds-a-player-by-name-or-id
   (let [{:keys [result]} (call "player_news" {:player "alpha back"} (fx/deps))]
     (is (= "p1" (get-in result [:player :player-id])))

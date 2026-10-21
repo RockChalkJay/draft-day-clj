@@ -491,6 +491,8 @@
 
 (deftest a-refused-body-gains-no-keys-from-the-strip
   (is (= {:error "x"} (routes/without-sensei-only {:error "x"})))
+  (is (not (contains? (routes/without-sensei-only {:players [] :league-roster-players {2 []}})
+                      :league-roster-players)))
   (is (nil? (:my-roster-players (routes/without-sensei-only {:players [] :my-roster-players nil})))
       "no team picked stays nil"))
 

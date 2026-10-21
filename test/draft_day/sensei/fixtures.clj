@@ -11,6 +11,8 @@
    {:player-id "p3" :player-name "Charlie End" :position "TE" :team "DET"
     :ids {:sleeper "p3"}
     :sleeper/injury-status "IR" :sleeper/injury-notes "Placed on IR Tuesday"}
+   {:player-id "r1" :player-name "Rival Back" :position "RB" :team "SF"
+    :ids {:sleeper "r1"}}
    {:player-id "f1" :player-name "Free One" :position "WR" :team "NE"
     :ids {:sleeper "f1" :espn 201}}
    {:player-id "f2" :player-name "Free Two" :position "RB" :team "NYJ"
@@ -26,8 +28,8 @@
    :teams            [{:roster-id 1 :name "Mine" :wins 3 :losses 2
                        :player-ids ["p1" "p2" "p3"] :active-ids ["p1" "p2"]
                        :starter-ids ["p1" "0"]}
-                      {:roster-id 2 :name "Rival" :player-ids [] :active-ids []
-                       :starter-ids []}]})
+                      {:roster-id 2 :name "Rival" :wins 4 :losses 1 :owner-id "u-rival"
+                       :player-ids ["r1"] :active-ids ["r1"] :starter-ids ["r1"]}]})
 
 (def body
   {:scoring "ppr" :num-teams 2 :league league :my-roster-id 1
@@ -54,6 +56,8 @@
                         :ros-points 60.0}
                        {:player-id "p3" :player-name "Charlie End" :position "TE"
                         :sleeper/injury-status "IR"}]
+   :league-roster-players {2 [{:player-id "r1" :player-name "Rival Back" :position "RB"
+                               :ros-points 140.0 :week-points 16.1}]}
    :drop-candidate    {:player-id "p2" :player-name "Bravo Wide" :position "WR"
                        :ros-points 60.0}
    :drop-costs        {"p1" 150.0 "p2" 0.0}
@@ -61,6 +65,19 @@
    :claims-left       nil
    :week              7
    :through-week      6})
+
+(def matchup
+  "A matchup reply in which roster 1 plays roster 2."
+  {:week 7 :my-roster-id 1
+   :matchups [{:matchup-id 1 :roster-ids [1 2]}]
+   :teams [{:roster-id 1 :name "Mine" :wins 3 :losses 2 :projected 14.2
+            :starters [{:slot "RB" :player-id "p1" :player-name "Alpha Back" :position "RB"
+                        :team "KC" :week-points 14.2}]
+            :bench [] :optimal {:projected {:gain 0.0}}}
+           {:roster-id 2 :name "Rival" :wins 4 :losses 1 :projected 16.1
+            :starters [{:slot "RB" :player-id "r1" :player-name "Rival Back" :position "RB"
+                        :team "SF" :week-points 16.1}]
+            :bench [] :optimal {:projected {:gain 1.5}}}]})
 
 (defn news [espn-id] {:news [{:headline (str "note " espn-id)}] :errors []})
 
@@ -88,11 +105,13 @@
    (let [m (merge {:found {:leagues [entry] :errors []}
                    :body  (constantly body)
                    :reply (constantly reply)
+                   :matchup (constantly matchup)
                    :news  news}
                   overrides)]
      {:accounts []
       :found    (delay (:found m))
       :body     (:body m)
       :reply    (:reply m)
+      :matchup  (:matchup m)
       :players  (delay players)
       :news     (:news m)})))

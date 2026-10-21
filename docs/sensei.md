@@ -94,7 +94,8 @@ the owner uses it.
 
 ```
   sensei.context   accounts -> leagues -> the /api/waivers body of each
-  sensei.tools     leagues, my_team, waiver_targets, evaluate_claim, player_news
+  sensei.tools     leagues, my_team, league_teams, team_roster, matchup,
+                   waiver_targets, evaluate_claim, player_news
   sensei.mcp       POST /api/sensei/mcp
   sensei.chat      POST /api/sensei/chat, GET /api/sensei/status
        ^ Claude Code      ^ claude -p, the in-app panel      ^ API adapter (later)
@@ -179,6 +180,17 @@ Servlet, which does not mount on http-kit. A tools-only server speaks a
 handful of methods: `initialize`, `ping`, `tools/list`, `tools/call`, and
 `prompts/list` and `prompts/get` for the weekly review. If the protocol churns, `latacora/mcp-sdk` (Ring, over the
 Java SDK) is the fallback. Claude Code 2.1.286 connected on the first try.
+
+### Other teams
+
+`team_roster` and `league_teams` read every synced team, and `matchup` pairs
+the manager with this week's opponent. Rival rows come from the waiver
+reply's `league-roster-players` (the same priced rows as `my-roster-players`,
+by roster id), which `without-sensei-only` strips from the browser's reply.
+They carry no `lineup`, `upgrade` or `drop-cost`, which are priced against the
+manager's own seats. `matchup` is fetched live per call through
+`routes/matchup-reply`, the function behind `POST /api/matchup`. An owner id
+is never stated.
 
 ## Measured
 

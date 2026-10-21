@@ -498,6 +498,17 @@
   (when my-team
     (with-trend (keep #(get by-id %) (held-ids my-team xwalk :player-ids)))))
 
+(defn league-roster-players
+  "Every other team's roster as full board rows, `{roster-id [row]}`, for
+  Sensei to compare the manager's team against a rival's or the league's. A
+  team's rows are `my-roster-players`' for it."
+  [teams my-roster-id xwalk by-id]
+  (into {}
+        (keep (fn [team]
+                (when (not= (:roster-id team) my-roster-id)
+                  [(:roster-id team) (my-roster-players team xwalk by-id)])))
+        teams))
+
 (defn market-inputs
   "Everything `waiver-board` prices from, and the one road to it: the backtest in
   `dev/` walks it too, so what it scores is what the board ships. `:fas` are
@@ -580,7 +591,8 @@
      :drop-candidate     (when drop (select-keys drop [:player-id :player-name
                                                        :position :ros-points]))
      :my-roster-players  (my-roster-players my-team xwalk by-id)
-     :drop-costs         drop-costs
+     :league-roster-players (league-roster-players teams my-roster-id xwalk by-id)
+     :drop-costs        drop-costs
      :rostered           rostered
      :replacement-levels levels
      :claims-left        claims-left
