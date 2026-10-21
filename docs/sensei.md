@@ -143,6 +143,13 @@ makes a large disagreement worth a look, but whether averaging the two predicts
 better is unmeasured. The weekly snapshots save the ranks (`ros_ecr`) so that it
 can be.
 
+**Who took over.** Rows carry `snap` (his share of his team's offensive snaps
+over his last three weeks played), `snap-season`, and `role` when a teammate at
+his position who held the role went to injured reserve and he has taken it
+(`since wk 3, De'Von Achane IR`). It is the evidence behind a `trend` or `form`
+that the rest-of-season total has not caught up with, and display only: whether
+a promotion predicts better than the season's rate is for a backtest to say.
+
 **What the screen holds back, Sensei holds back.** No bid predictions while
 `db/bid-predictions?` is off, and the instructions tell the model not to put a
 FAAB figure on a claim. No raw rest-of-season points, which no surface shows.

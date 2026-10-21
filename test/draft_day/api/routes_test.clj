@@ -989,3 +989,9 @@
     (is (= 405 (:status (routes/app {:request-method :get :uri "/api/sensei/mcp"
                                      :remote-addr "127.0.0.1" :headers {}})))
         "no event stream to open")))
+
+(deftest the-browser-is-not-sent-the-snap-and-role-facts
+  (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))]
+    (is (seq (:players b)))
+    (is (not-any? #(or (contains? % :snap-share) (contains? % :role/since))
+                  (concat (:players b) (:my-roster-players b))))))
