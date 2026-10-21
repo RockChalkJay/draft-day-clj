@@ -487,6 +487,7 @@
   ;; path: `:ros/stats` is a whole stat map per player and no client reads it.
   (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))]
     (is (every? #(number? (:ros-points %)) (:players b)) "the score survives")
+    (is (not (contains? b :drop-costs)) "Sensei's, not the browser's")
     (is (not-any? #(contains? % :ros/stats) (:players b)))
     (is (not-any? #(contains? % :ros/games-remaining) (:players b)))
     (is (not-any? #(contains? % :ros/games-played) (:players b)))

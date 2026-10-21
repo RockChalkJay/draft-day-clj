@@ -497,11 +497,11 @@
 
 (defn waivers-handler
   "POST /api/waivers: `waivers-reply` as JSON, and a 400 for a body it cannot
-  price."
+  price. `:drop-costs` is Sensei's and the browser reads none of it."
   [req]
   (try
     (let [reply (waivers-reply (read-json-body req))]
-      (json-response (if (:error reply) 400 200) reply))
+      (json-response (if (:error reply) 400 200) (dissoc reply :drop-costs)))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 

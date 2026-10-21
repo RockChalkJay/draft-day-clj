@@ -238,3 +238,15 @@
   (is (re-find #"no player on the active roster matches"
                (:error (call "evaluate_claim" {:add "f1" :drop "Charlie End"} (fx/deps))))
       "a player on IR holds no active seat"))
+
+(deftest a-blank-drop-is-no-drop-named
+  (let [{:keys [result]} (call "evaluate_claim" {:add "f3" :drop "  "} (fx/deps))]
+    (is (= "Bravo Wide" (get-in result [:drop :name])) "the board's drop candidate")))
+
+(deftest a-blank-name-matches-nobody
+  (is (empty? (tools/find-players [{:player-id "x" :player-name nil}] ""))
+      "an unvalued row has no name to equal an empty query"))
+
+(deftest waiver-targets-say-which-positions-they-cover
+  (is (= ["QB" "RB" "WR" "TE"] (:positions (:result (call "waiver_targets" {} (fx/deps))))))
+  (is (= ["K"] (:positions (:result (call "waiver_targets" {:position "K"} (fx/deps)))))))

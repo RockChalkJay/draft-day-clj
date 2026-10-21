@@ -185,22 +185,24 @@
 (defn drop-candidate
   "The player a claim would cost me, or nil when a seat is open; absent
   `roster-size` the roster is full. `held` is board-spaced and IR/taxi-free — see
-  `held-ids`, `league-sync.sleeper/normalize-roster`, and the ns docstring."
-  [held by-id roster-size slots]
-  (when-not (and roster-size (< (count held) roster-size))
-    (let [players (vec (keep #(get by-id %) held))
-          points  #(double (or (:ros-points %) 0.0))]
-      (if-not (seq slots)
-        (first (sort-by points players))
-        ;; Keyed once per player and sorted on the pairs. `sort-by` calls its
-        ;; keyfn inside the comparator, so keying in the sort would run a full
-        ;; lineup fill O(n log n) times for a value that is fixed per player.
-        (let [costs (drop-costs players slots)]
-          (->> players
-               (map (fn [p] [[(get costs (:player-id p)) (points p)] p]))
-               (sort-by first)
-               first
-               second))))))
+  `held-ids`, `league-sync.sleeper/normalize-roster`, and the ns docstring.
+  `costs` is `drop-costs` over `held`'s rows when the caller already has it."
+  ([held by-id roster-size slots] (drop-candidate held by-id roster-size slots nil))
+  ([held by-id roster-size slots costs]
+   (when-not (and roster-size (< (count held) roster-size))
+     (let [players (vec (keep #(get by-id %) held))
+           points  #(double (or (:ros-points %) 0.0))]
+       (if-not (seq slots)
+         (first (sort-by points players))
+         ;; Keyed once per player and sorted on the pairs. `sort-by` calls its
+         ;; keyfn inside the comparator, so keying in the sort would run a full
+         ;; lineup fill O(n log n) times for a value that is fixed per player.
+         (let [costs (or costs (drop-costs players slots))]
+           (->> players
+                (map (fn [p] [[(get costs (:player-id p)) (points p)] p]))
+                (sort-by first)
+                first
+                second)))))))
 
 (defn with-upgrade
   "Assoc `:upgrade` — rest-of-season points gained by the claim — plus
@@ -526,16 +528,16 @@
         ;; docstring is about what happened the one time two readers of a roster
         ;; disagreed, and two call sites that must stay in step is that shape.
         active   (held-ids my-team xwalk :active-ids)
-        drop     (when my-team (drop-candidate active by-id seats starting-slots))
+        roster   (vec (keep #(get by-id %) active))
+        costs    (drop-costs roster starting-slots)
+        drop     (when my-team (drop-candidate active by-id seats starting-slots costs))
         n        (claims-left ctx)
         bidding? (faab? (:type waiver))
         week     (inc (or through-week 0))
         fas      (-> (free-agents players rostered)
                      (with-dropped (recently-dropped bid-history xwalk week))
                      (with-upgrade drop)
-                     (with-lineup-upgrade
-                       (vec (keep #(get by-id %) active))
-                       drop starting-slots)
+                     (with-lineup-upgrade roster drop starting-slots)
                      (with-bids waiver (:faab-left my-team) n
                                 #(faab/market-cap (:position %) (:budget waiver) week)))
         habits   (when bidding?
@@ -548,7 +550,7 @@
      :seats    seats
      :my-team  my-team
      :drop     drop
-     :drop-costs (drop-costs (vec (keep #(get by-id %) active)) starting-slots)
+     :drop-costs costs
      :claims-left n
      :bidding? bidding?
      :habits   habits

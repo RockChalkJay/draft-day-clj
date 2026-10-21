@@ -20,6 +20,7 @@
             [draft-day.ingestion.match :as match]
             [draft-day.providers :as providers]
             [draft-day.rankings.lineup :as lineup]
+            [draft-day.rankings.waiver :as waiver]
             [draft-day.sensei.context :as context]))
 
 (defn per-league
@@ -154,7 +155,7 @@
 (defn roster-of
   "The manager's team in one league as the tools read it: the league's entry,
   waiver reply and request body, and the roster split by `db/team-roster`
-  (`:starters`, `:bench`, `:parked`)."
+  (`:starters`, `:bench`, `:parked`) and the board-spaced `:active-ids`."
   [deps args]
   (let [entry   (the-league deps args)
         {:keys [league my-roster-id] :as body} (checked ((:body deps) entry))
@@ -168,7 +169,8 @@
                       (map (juxt :player-id identity))
                       (:my-roster-players reply))]
     (assoc (db/team-roster team league xwalk by-id)
-           :entry entry :body body :reply reply :team team)))
+           :entry entry :body body :reply reply :team team
+           :active-ids (set (db/held-ids team xwalk :active-ids)))))
 
 (defn my-team
   "The manager's roster split as My Team draws it, through `db/team-roster`,
@@ -224,6 +226,7 @@
     {:league         (named entry)
      :week           (:week reply)
      :through-week   (:through-week reply)
+     :positions      (if pos [pos] claim-positions)
      :drop-candidate (get-in reply [:drop-candidate :player-name])
      :players        (->> (:players reply)
                           (filter #(if pos (= pos (:position %)) (some #{(:position %)} claim-positions)))
@@ -236,9 +239,10 @@
   `match/normalize-name`, the same key every join uses."
   [players q]
   (let [q (str/trim (str q))]
-    (or (seq (filter #(= q (:player-id %)) players))
-        (let [k (match/normalize-name q)]
-          (filter #(= k (match/normalize-name (:player-name %))) players)))))
+    (when-not (str/blank? q)
+      (or (seq (filter #(= q (:player-id %)) players))
+          (let [k (match/normalize-name q)]
+            (filter #(= k (match/normalize-name (:player-name %))) players))))))
 
 (defn this-week-seat
   "Where `cand` plays this week once `drop-p` has left `roster`, and whom he
@@ -268,11 +272,13 @@
   whom he would push out. `drop` defaults to the board's drop candidate, and
   with no seat to give up there is none."
   [deps {:keys [add drop] :as args}]
-  (let [{:keys [entry body reply team starters bench]} (roster-of deps args)
+  (let [{:keys [entry body reply team starters bench active-ids]} (roster-of deps args)
         slots  (when-let [cfg (:roster body)] (db/starting-slots cfg))
         _      (when-not team (throw (tool-error "the manager's team is not in this league's sync, so a claim cannot be priced")))
         _      (when-not (seq slots) (throw (tool-error "this league's lineup seats are unknown, so a claim cannot be priced")))
-        roster (vec (concat starters bench))
+        ;; The board prices from the active ids, so a starter id the host lists
+        ;; but does not hold actively cannot make this tool disagree with it.
+        roster (filterv #(contains? active-ids (:player-id %)) (concat starters bench))
         one    (fn [rows q what]
                  (let [[p & more :as hits] (find-players rows q)]
                    (cond
@@ -281,19 +287,18 @@
                                                            (str/join "; " (map #(str (:player-id %) " " (:player-name %)) hits)))))
                      :else         p)))
         cand   (one (:players reply) add "free agent")
-        drop-p (if drop
+        drop-p (if-not (str/blank? drop)
                  (one roster drop "player on the active roster")
                  (let [id (get-in reply [:drop-candidate :player-id])]
                    (some #(when (= id (:player-id %)) %) roster)))
         gain   (fn [k] (lineup/upgrade (lineup/lineup-points roster slots k) roster cand drop-p slots k))
-        points #(double (or (:ros-points %) 0.0))
         seat   (this-week-seat roster cand drop-p slots)]
     (->> [[:league  (named entry)]
           [:week    (:week reply)]
           [:add     (select-keys (row cand) [:name :player-id :position :team :opp :inj :week])]
           [:drop    (some-> drop-p row (select-keys [:name :player-id :position :slot :inj]))]
           [:lineup  (rounded :lineup (gain :ros-points))]
-          [:upgrade (rounded :upgrade (- (points cand) (if drop-p (points drop-p) 0.0)))]
+          [:upgrade (rounded :upgrade (:upgrade (first (waiver/with-upgrade [cand] drop-p))))]
           [:lineup-this-week (rounded :lineup-this-week (gain :week-points))]
           [:starts-this-week (:seat seat)]
           [:displaces        (some-> (:displaces seat) row (select-keys [:name :player-id :position :week]))]]

@@ -720,3 +720,13 @@
     (is (= 10.0 (:outlook-ppg a)) "(50 + 50) / 10")
     (is (not (contains? b :outlook-ppg)) "no remaining game, no rate")
     (is (not (contains? c :outlook-ppg)))))
+
+(deftest a-drop-candidate-reads-the-costs-it-is-given
+  (let [rows [["wr1" "WR" 170.0] ["wr2" "WR" 120.0] ["rb1" "RB" 180.0]]
+        ps   (mapv (fn [[id pos pts]] (p id pos pts)) rows)
+        by-id (into {} (map (juxt :player-id identity)) ps)]
+    (is (= "wr2" (:player-id (waiver/drop-candidate (mapv first rows) by-id 3 lineup-slots
+                                                    {"wr1" 5.0 "wr2" 0.0 "rb1" 9.0}))))
+    (is (= "rb1" (:player-id (waiver/drop-candidate (mapv first rows) by-id 3 lineup-slots
+                                                    {"wr1" 5.0 "wr2" 7.0 "rb1" 0.0})))
+        "the given costs decide, not a recount")))
