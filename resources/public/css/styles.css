@@ -503,6 +503,11 @@ button.undo:hover { color: var(--warn); }
 .waiver-body { display: flex; gap: 12px; align-items: flex-start; }
 .waiver-body .table-scroll { flex: 1 1 auto; min-width: 0; }
 .waiver-roster-col { flex: 0 0 280px; }
+/* Beside the roster the board scrolls in its own box, so its header holds still
+   and the Player column stays in view while a wide board scrolls sideways.
+   Wrapped, the roster sits below it and the page scrolls instead, so a wheel
+   over the board never traps the pointer above the roster. */
+.waiver-body .table-scroll { max-height: calc(100vh - 175px); overflow: auto; }
 @container (max-width: 900px) {
   .waiver-body { flex-wrap: wrap; }
   .waiver-roster-col { flex: 1 1 100%; }
@@ -512,11 +517,6 @@ button.undo:hover { color: var(--warn); }
   table.board td { padding: 4px 6px; }
   table.board th { padding: 6px; }
 }
-/* Beside the roster the board scrolls in its own box, so its header holds still
-   and the Player column stays in view while a wide board scrolls sideways.
-   Wrapped, the roster sits below it and the page scrolls instead, so a wheel
-   over the board never traps the pointer above the roster. */
-.waiver-body .table-scroll { max-height: calc(100vh - 175px); overflow: auto; }
 table.board th.num { text-align: right; }
 table.board th.player, table.board td.player { position: sticky; left: 0; z-index: 1;
   background: var(--panel); }
