@@ -40,13 +40,21 @@
   `:players`, the universe; `:news`, a fn of an ESPN id; and `:accounts`, whose
   secrets the reply is masked against. The server's half is
   `routes/sensei-server`."
-  [{:keys [waivers-reply players news env]}]
+  [{:keys [waivers-reply matchup-reply players news env]}]
   (let [accounts (context/accounts (env))
         body     (per-league context/league-context)]
     {:accounts accounts
      :found    (delay (context/leagues accounts))
      :body     body
      :reply    (per-league (fn [entry] (let [b (body entry)] (if (:error b) b (waivers-reply b)))))
+     ;; Credentials go to the host with the request, never to the model.
+     :matchup  (per-league (fn [entry]
+                             (let [b (body entry)]
+                               (if (:error b)
+                                 b
+                                 (matchup-reply
+                                  (merge (select-keys entry [:provider :league-id :season :credentials])
+                                         (select-keys b [:scoring :league :roster :my-roster-id])))))))
      :players  (delay (players))
      :news     news}))
 
@@ -193,24 +201,44 @@
               "- drop-cost: rest-of-season points the starting lineup loses if he is dropped; 0 on a bench that never plays"])
        (str/join "\n")))
 
+(defn find-team
+  "The team of `teams` that `q` names, by roster id or case-folded name, or a
+  tool error listing the choices."
+  [teams q]
+  (let [q    (str/lower-case (str/trim (str q)))
+        hits (filter #(or (= q (str/lower-case (str (:roster-id %))))
+                          (= q (str/lower-case (str (:name %)))))
+                     teams)]
+    (if (= 1 (count hits))
+      (first hits)
+      (throw (tool-error (str (if (seq hits) "More than one team matches " "No team matches ")
+                              (pr-str q) ". Choices: "
+                              (str/join "; " (map #(str (:roster-id %) " " (:name %)) teams))))))))
+
 (defn roster-of
-  "The manager's team in one league as the tools read it: the league's entry,
-  waiver reply and lineup `:slots`, and the roster split by `db/team-roster`
-  (`:starters`, `:bench`, `:parked`) and the board-spaced `:active-ids`."
-  [deps args]
+  "A team in one league as the tools read it: the league's entry, waiver reply
+  and lineup `:slots`, and the roster split by `db/team-roster` (`:starters`,
+  `:bench`, `:parked`) and the board-spaced `:active-ids`. The manager's own
+  unless `args` names a `team`, whose rows are the reply's
+  `:league-roster-players`."
+  [deps {:keys [team] :as args}]
   (let [entry   (the-league deps args)
         {:keys [league my-roster-id roster]} (checked ((:body deps) entry))
         reply   (checked ((:reply deps) entry))
         players (need deps :players)
-        team    (some #(when (= my-roster-id (:roster-id %)) %) (:teams league))
+        mine    (some #(when (= my-roster-id (:roster-id %)) %) (:teams league))
+        team    (if (str/blank? team) mine (find-team (:teams league) team))
         xwalk   (db/provider->player-id players (:provider league) (:provider-players league))
+        priced  (if (= team mine)
+                  (:my-roster-players reply)
+                  (get (:league-roster-players reply) (:roster-id team)))
         ;; As the `:league-rosters` sub builds it: the waiver reply's rows over
         ;; the universe's, so a player the board did not value still shows.
         by-id   (into (into {} (map (juxt :player-id identity)) players)
                       (map (juxt :player-id identity))
-                      (:my-roster-players reply))]
+                      priced)]
     (assoc (db/team-roster team league xwalk by-id)
-           :entry entry :reply reply :team team
+           :entry entry :reply reply :team team :mine? (= team mine)
            ;; As `routes/waivers-reply` seats the board.
            :slots (some-> roster db/starting-slots)
            :active-ids (set (db/held-ids team xwalk :active-ids)))))
@@ -238,6 +266,89 @@
      :starters        (rows starters)
      :bench           (rows bench)
      :injured-reserve (rows parked)}))
+
+(defn team-roster
+  "Any team in the league, split as My Team draws it. Its rows lack the
+  columns about the manager's own lineup (`lineup`, `upgrade`, `drop-cost`),
+  since those are priced against his seats."
+  [deps args]
+  (let [{:keys [entry reply team starters bench parked mine?]} (roster-of deps args)]
+    (compact [[:league          (named entry)]
+              [:team            (:name team)]
+              [:roster-id       (:roster-id team)]
+              [:mine            (when mine? true)]
+              [:record          (select-keys team [:wins :losses :ties])]
+              [:points-for      (:points-for team)]
+              [:week            (:week reply)]
+              [:through-week    (:through-week reply)]
+              [:starters        (mapv row starters)]
+              [:bench           (mapv row bench)]
+              [:injured-reserve (mapv row parked)]])))
+
+(defn league-teams
+  "Every team in the league in standings order, mine marked."
+  [deps args]
+  (let [entry (the-league deps args)
+        {:keys [league my-roster-id]} (checked ((:body deps) entry))
+        reply (checked ((:reply deps) entry))]
+    {:league       (named entry)
+     :week         (:week reply)
+     :through-week (:through-week reply)
+     :teams        (mapv (fn [t]
+                           (compact [[:team       (:name t)]
+                                     [:roster-id  (:roster-id t)]
+                                     [:mine       (when (= my-roster-id (:roster-id t)) true)]
+                                     [:wins       (:wins t)]
+                                     [:losses     (:losses t)]
+                                     [:ties       (:ties t)]
+                                     [:points-for (:points-for t)]
+                                     [:faab-left  (:faab-left t)]]))
+                         (db/record-order (:teams league)))}))
+
+(defn seat-row
+  "One lineup seat of a matchup: the slot, the player and this week's
+  projection, with the score once he has played."
+  [{:keys [slot player-name position team week-points actual empty? unvalued?] :as p}]
+  (compact [[:slot slot]
+            [:name (when-not empty? player-name)]
+            [:position position]
+            [:team team]
+            [:opp (opponent p)]
+            [:inj (injury p)]
+            [:proj week-points]
+            [:actual actual]
+            [:empty (when empty? true)]
+            [:unvalued (when unvalued? true)]]))
+
+(defn side
+  "One team's side of a matchup: projected total, lineup and best lineup."
+  [t]
+  (let [best (get-in t [:optimal :projected])]
+    (compact [[:team      (:name t)]
+              [:roster-id (:roster-id t)]
+              [:record    (select-keys t [:wins :losses :ties])]
+              [:projected (:projected t)]
+              [:actual    (:actual t)]
+              [:best-lineup-gain (:gain best)]
+              [:starters  (mapv seat-row (:starters t))]
+              [:bench     (mapv seat-row (:bench t))]])))
+
+(defn matchup
+  "The manager's game this week: both lineups with the week's projections."
+  [deps args]
+  (let [entry (the-league deps args)
+        reply (checked ((:matchup deps) entry))
+        mine  (str (:my-roster-id reply))
+        pair  (some #(when (some #{mine} (map str (:roster-ids %))) %) (:matchups reply))
+        opp   (some->> pair :roster-ids (map str) (remove #{mine}) first)
+        team  (fn [id] (some #(when (= id (str (:roster-id %))) %) (:teams reply)))]
+    (if-not opp
+      {:league (named entry) :week (:week reply) :opponent nil
+       :note   "no opponent this week (a bye); the lineups are not compared"}
+      {:league   (named entry)
+       :week     (:week reply)
+       :mine     (side (team mine))
+       :opponent (side (team opp))})))
 
 (def max-targets 25)
 
@@ -404,7 +515,7 @@
   [{:name         "leagues"
     :title        "Leagues"
     :description  (str "The leagues the manager plays in, each with the key that the league argument of "
-                       "my_team and waiver_targets takes. Call this first when the question does not "
+                       "my_team, team_roster, matchup and waiver_targets takes. Call this first when the question does not "
                        "name a league.")
     :input-schema {:type "object" :properties {} :additionalProperties false}
     :handler      leagues}
@@ -417,8 +528,36 @@
                    :properties           {:league league-property}
                    :additionalProperties false}
     :handler      my-team}
+   {:name         "league_teams"
+    :title        "League teams"
+    :description  "Every team in one league in standings order: record, points for and FAAB left, the manager's marked mine. Use for the league as a whole, then team_roster for any one team."
+    :input-schema {:type                 "object"
+                   :properties           {:league league-property}
+                   :additionalProperties false}
+    :handler      league-teams}
+   {:name         "team_roster"
+    :title        "Team roster"
+    :description  (str "Any team's roster in one league: starters (with seats), bench and injured reserve, "
+                       "to compare the manager's team with a rival's. Omit team for the manager's own. "
+                       "Rows carry no lineup, upgrade or drop-cost, which are priced against the "
+                       "manager's seats.\n\nRow keys:\n" (legend))
+    :input-schema {:type                 "object"
+                   :properties           {:league league-property
+                                          :team   {:type        "string"
+                                                   :description "A team name or roster id from league_teams"}}
+                   :additionalProperties false}
+    :handler      team-roster}
+   {:name         "matchup"
+    :title        "This week's matchup"
+    :description  (str "The manager's game this week: both teams' lineups seat by seat with this week's "
+                       "projection (proj) and score once played (actual), each side's projected total "
+                       "and what its best lineup would gain. Live from the host.")
+    :input-schema {:type                 "object"
+                   :properties           {:league league-property}
+                   :additionalProperties false}
+    :handler      matchup}
    {:name         "waiver_targets"
-    :title        "Waiver targets"
+    :title       "Waiver targets"
     :description  (str "Free agents in one league, best claim first: ordered by lineup, then upgrade, "
                        "both measured against the drop-candidate. Quarterbacks, backs, receivers and "
                        "tight ends unless a position is named, which is how to ask for a kicker or "

@@ -489,6 +489,12 @@
                (some-> (:my-roster-players out)
                        without-projection-internals
                        (without-preseason through-week))
+               :league-roster-players
+               (some->> (:league-roster-players out)
+                        (into {} (map (fn [[id ps]]
+                                        [id (some-> ps
+                                                    without-projection-internals
+                                                    (without-preseason through-week))]))))
                :through-week through-week
                :season-games season-games
                ;; nil with no weekly line; the board then reads rest-of-season only.
@@ -506,11 +512,12 @@
    :snap-share :snap-share-season :rz-rush :rz-tgt :rz-pass :role/since :role/vacated-by :role/vacated-status])
 
 (defn without-sensei-only
-  "`reply` less what only Sensei reads: `:drop-costs` and `sensei-only-keys`."
+  "`reply` less what only Sensei reads: `:drop-costs`, `:league-roster-players`
+  and `sensei-only-keys`."
   [reply]
   (let [strip (fn [ps] (some->> ps (mapv #(apply dissoc % sensei-only-keys))))]
     (reduce (fn [r k] (cond-> r (contains? r k) (update k strip)))
-            (dissoc reply :drop-costs)
+            (dissoc reply :drop-costs :league-roster-players)
             [:players :my-roster-players])))
 
 (defn waivers-handler
@@ -548,56 +555,68 @@
   (or (when-not (pipeline/offline?) (espn-schedule/fetch season week))
       (:kickoffs weekly)))
 
-(defn matchup-handler
-  "This week's head-to-head, every roster in the league valued.
+(defn matchup-week-board
+  "The universe valued for one week's lineups.
 
-  A live fetch every request, unlike the other two boards: a scoreboard changes
+  Leaner than the waiver board's pipeline — no VBD, no rest-of-season blend, no
+  vendor columns: one week's question does not need them."
+  [scoring season week weekly]
+  (-> (:players (universe false))
+      without-history
+      (pipeline/assoc-weekly (:lines weekly))
+      (waiver/with-week-points scoring)
+      (pipeline/assoc-kickoffs (live-kickoffs season week weekly))))
+
+(defn matchup-board-reply
+  "The valued head-to-head for a week the provider has answered."
+  [{:keys [provider scoring season league roster my-roster-id]}
+   {:keys [week matchups scores provider-players] provider-slots :slots}]
+  (let [weekly (pipeline/load-weekly season week
+                                     {:path pipeline/matchup-weekly-cache-path})
+        out    (matchup/matchup-board
+                (matchup-week-board scoring season week weekly)
+                {:league   league
+                 :matchups matchups
+                 :scores   scores
+                 :provider provider
+                 ;; The sync's too: a team this week's document skipped is
+                 ;; drawn off its synced roster.
+                 :provider-players (concat (:provider-players league)
+                                           provider-players)
+                 :slots    (matchup-slots provider-slots league roster)})]
+    (assoc out
+           :week            week
+           :week-fetched-at (:fetched-at weekly)
+           :my-roster-id    my-roster-id)))
+
+(defn matchup-reply
+  "This week's head-to-head, every roster in the league valued: the board, or
+  `{:error msg :status n}`.
+
+  A live fetch every call, unlike the other two boards: a scoreboard changes
   while you look at it. The week is the provider's, never `(inc through-week)`;
   the season is the request's, never the universe's, which dates an ingestion."
+  [{:keys [provider league-id season credentials scoring] :as req}]
+  (let [scoring* (resolve-scoring scoring)
+        season*  (season/resolve-season season)]
+    (if-not (scoring/scores-anything? scoring*)
+      ;; The other two boards' guard: an all-zero config projects every
+      ;; player 0.0, and that is a lie rather than a matchup.
+      {:status 400 :error "scoring config has no non-zero weight on a projected stat"}
+      (let [fetched (matchups/fetch-matchups {:provider    provider
+                                              :league-id   league-id
+                                              :season      season*
+                                              :credentials credentials})]
+        (if (:ok fetched)
+          (matchup-board-reply (assoc req :scoring scoring* :season season*) fetched)
+          {:status (or (:status fetched) 502) :error (:error fetched)})))))
+
+(defn matchup-handler
+  "POST /api/matchup: `matchup-reply` as JSON."
   [req]
   (try
-    (let [{:keys [provider league-id season credentials scoring league roster my-roster-id]}
-          (read-json-body req)
-          scoring* (resolve-scoring scoring)
-          season*  (season/resolve-season season)]
-      (if-not (scoring/scores-anything? scoring*)
-        ;; The other two boards' guard: an all-zero config projects every
-        ;; player 0.0, and that is a lie rather than a matchup.
-        (json-response 400 {:error "scoring config has no non-zero weight on a projected stat"})
-        (let [{:keys [ok week matchups scores status error provider-players]
-               provider-slots :slots}
-              (matchups/fetch-matchups {:provider    provider
-                                        :league-id   league-id
-                                        :season      season*
-                                        :credentials credentials})]
-          (if-not ok
-            (json-response (or status 502) {:error error})
-            (let [{:keys [players]} (universe false)
-                  weekly  (pipeline/load-weekly season* week
-                                                {:path pipeline/matchup-weekly-cache-path})
-                  ;; Leaner than the waiver board's pipeline — no VBD, no
-                  ;; rest-of-season blend, no vendor columns: one week's
-                  ;; question does not need them.
-                  board   (-> players
-                              without-history
-                              (pipeline/assoc-weekly (:lines weekly))
-                              (waiver/with-week-points scoring*)
-                              (pipeline/assoc-kickoffs (live-kickoffs season* week weekly)))
-                  out     (matchup/matchup-board
-                           board
-                           {:league   league
-                            :matchups matchups
-                            :scores   scores
-                            :provider provider
-                            ;; The sync's too: a team this week's document
-                            ;; skipped is drawn off its synced roster.
-                            :provider-players (concat (:provider-players league)
-                                                      provider-players)
-                            :slots    (matchup-slots provider-slots league roster)})]
-              (json-response 200 (assoc out
-                                        :week            week
-                                        :week-fetched-at (:fetched-at weekly)
-                                        :my-roster-id    my-roster-id)))))))
+    (let [{:keys [status] :as reply} (matchup-reply (read-json-body req))]
+      (json-response (if (:error reply) status 200) (dissoc reply :status)))
     (catch Exception e
       (json-response 400 {:error (str "invalid request: " (ex-message e))}))))
 
@@ -610,7 +629,8 @@
   player's news, the environment, where the accounts are, and the port it
   listens on. Through vars, so a REPL redefinition reaches the tools."
   {:waivers-reply #'waivers-reply
-   :players       #(:players (universe false))
+   :matchup-reply #'matchup-reply
+   :players      #(:players (universe false))
    :news          #'espn-news/player-news
    :env           #(System/getenv)
    :port          #(deref bound-port)})
