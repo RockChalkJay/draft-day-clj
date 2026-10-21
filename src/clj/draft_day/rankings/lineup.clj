@@ -64,11 +64,15 @@
              [[] #{}]
              ordered))))
 
+(defn seated-points
+  "What a `best-lineup` scores."
+  [seated score-key]
+  (reduce (fn [t [_ p]] (+ t (double (score-key p)))) 0.0 seated))
+
 (defn lineup-points
   "What the best legal lineup scores. 0.0 for an empty roster or no slots."
   [players slots score-key]
-  (reduce (fn [t [_ p]] (+ t (double (score-key p)))) 0.0
-          (best-lineup players slots score-key)))
+  (seated-points (best-lineup players slots score-key) score-key))
 
 (defn upgrade
   "Points a claim adds to the *starting lineup*, after the drop.
@@ -117,7 +121,7 @@
   (let [before (lineup-points roster slots score-key)
         kept   (vec (if drop (remove #(= (:player-id %) (:player-id drop)) roster) roster))
         seated (best-lineup kept slots score-key)
-        base   (- (reduce (fn [t [_ p]] (+ t (double (score-key p)))) 0.0 seated) before)
+        base   (- (seated-points seated score-key) before)
         floor  (memoize #(seat-floor slots seated score-key %))]
     (mapv (fn [c]
             (let [s (score-key c)

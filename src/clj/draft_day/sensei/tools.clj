@@ -98,6 +98,15 @@
       (/ (Math/round (* scale (double v))) scale))
     v))
 
+(defn compact
+  "`[k v]` pairs as a map in their order, nil values dropped and numbers
+  `rounded`."
+  [pairs]
+  (->> pairs
+       (keep (fn [[k v]] (when (some? v) [k (rounded k v)])))
+       (apply concat)
+       (apply array-map)))
+
 (defn opponent
   "`vs SEA` or `@ SEA`, off either source `util/week-matchup` reads; nil on a
   bye or before a schedule."
@@ -134,10 +143,7 @@
         cols (keep (fn [k] (when (db/applies? (db/waiver-columns-by-key k) pos)
                              [k ((db/waiver-sort-accessors k) p)]))
                    (columns))]
-    (->> (concat lead cols)
-         (keep (fn [[k v]] (when (some? v) [k (rounded k v)])))
-         (apply concat)
-         (apply array-map))))
+    (compact (concat lead cols))))
 
 (defn legend
   "What each row key means, off the column catalog's tooltips."
@@ -154,11 +160,11 @@
 
 (defn roster-of
   "The manager's team in one league as the tools read it: the league's entry,
-  waiver reply and request body, and the roster split by `db/team-roster`
+  waiver reply and lineup `:slots`, and the roster split by `db/team-roster`
   (`:starters`, `:bench`, `:parked`) and the board-spaced `:active-ids`."
   [deps args]
   (let [entry   (the-league deps args)
-        {:keys [league my-roster-id] :as body} (checked ((:body deps) entry))
+        {:keys [league my-roster-id roster]} (checked ((:body deps) entry))
         reply   (checked ((:reply deps) entry))
         players (need deps :players)
         team    (some #(when (= my-roster-id (:roster-id %)) %) (:teams league))
@@ -169,7 +175,9 @@
                       (map (juxt :player-id identity))
                       (:my-roster-players reply))]
     (assoc (db/team-roster team league xwalk by-id)
-           :entry entry :body body :reply reply :team team
+           :entry entry :reply reply :team team
+           ;; As `routes/waivers-reply` seats the board.
+           :slots (some-> roster db/starting-slots)
            :active-ids (set (db/held-ids team xwalk :active-ids)))))
 
 (defn my-team
@@ -181,9 +189,8 @@
         costs   (:drop-costs reply)
         ;; Flagged before `row`, as the `:my-roster` sub flags it, so the row
         ;; keeps its key order.
-        rows    (fn [ps] (mapv #(row (cond-> %
-                                       (= drop-id (:player-id %)) (assoc :drop? true)
-                                       (get costs (:player-id %))  (assoc :drop-cost (get costs (:player-id %)))))
+        rows    (fn [ps] (mapv #(row (assoc % :drop?     (= drop-id (:player-id %))
+                                                :drop-cost (get costs (:player-id %))))
                                ps))]
     {:league          (named entry)
      :team            (:name team)
@@ -203,7 +210,7 @@
   "What a waiver claim is about. A kicker or a defense is streamed for a week,
   and a list that led with one buried the quarterback, back and receiver a
   manager came to ask about; they come back when named."
-  ["QB" "RB" "WR" "TE"])
+  (filterv (complement #{"K" "DST"}) db/positions))
 
 (defn position-arg
   "The `position` argument as the board spells it, or nil for none. Checked
@@ -219,35 +226,51 @@
   (`db/waiver-rank-key`), at one position or all. The tab opens sorted by Adds
   instead, which is a sort and not a claim order."
   [deps {:keys [position limit] :as args}]
-  (let [pos   (position-arg position)
-        n     (-> (if (number? limit) (long limit) 10) (max 1) (min max-targets))
-        entry (the-league deps args)
-        reply (checked ((:reply deps) entry))]
+  (let [pos       (position-arg position)
+        positions (if pos [pos] claim-positions)
+        n         (-> (if (number? limit) (long limit) 10) (max 1) (min max-targets))
+        entry     (the-league deps args)
+        reply     (checked ((:reply deps) entry))]
     {:league         (named entry)
      :week           (:week reply)
      :through-week   (:through-week reply)
-     :positions      (if pos [pos] claim-positions)
+     :positions      positions
      :drop-candidate (get-in reply [:drop-candidate :player-name])
      :players        (->> (:players reply)
-                          (filter #(if pos (= pos (:position %)) (some #{(:position %)} claim-positions)))
+                          (filter (comp (set positions) :position))
                           (sort-by db/waiver-rank-key)
                           (take n)
                           (mapv row))}))
 
 (defn find-players
   "Universe players matching `q`: by player id exactly, else by name through
-  `match/normalize-name`, the same key every join uses."
+  `match/normalize-name`, the same key every join uses. A query that normalizes
+  to nothing, such as `Jr.`, names nobody, since a row with no name shares that
+  key."
   [players q]
-  (let [q (str/trim (str q))]
-    (when-not (str/blank? q)
-      (or (seq (filter #(= q (:player-id %)) players))
-          (let [k (match/normalize-name q)]
-            (filter #(= k (match/normalize-name (:player-name %))) players))))))
+  (let [q (str/trim (str q))
+        k (match/normalize-name q)]
+    (or (when-not (str/blank? q) (seq (filter #(= q (:player-id %)) players)))
+        (when-not (str/blank? k) (filter #(= k (match/normalize-name (:player-name %))) players)))))
+
+(defn the-player
+  "The one row of `players` that `q` names (`find-players`), or a tool error
+  saying there is none, or listing the ids to ask again by. `what` names the
+  pool, as in `no free agent matches`."
+  [players q what]
+  (let [[p & more :as hits] (find-players players q)]
+    (cond
+      (empty? hits) (throw (tool-error (str "no " what " matches " (pr-str q))))
+      more          (throw (tool-error (str (pr-str q) " matches more than one " what "; ask again by id: "
+                                            (str/join "; " (map #(str (:player-id %) " " (:player-name %) " "
+                                                                      (:position %) " " (:team %))
+                                                                hits)))))
+      :else         p)))
 
 (defn this-week-seat
-  "Where `cand` plays this week once `drop-p` has left `roster`, and whom he
-  displaces: `{:seat slot :displaces player}`, or nil when he is not in the best
-  lineup by this week's projection. Players with no projection (a bye) are not
+  "What claiming `cand` for `drop-p` does to `roster`'s best lineup by this
+  week's projection: `:gain` in points, plus the `:seat` he takes and whom he
+  `:displaces` when he starts. Players with no projection (a bye) are not
   seated, as `lineup/best-lineup` skips them."
   [roster cand drop-p slots]
   (let [kept   (remove #(= (:player-id %) (:player-id drop-p)) roster)
@@ -255,13 +278,14 @@
         after  (lineup/best-lineup (conj (vec kept) cand) slots :week-points)
         seated (into #{} (map (comp :player-id second)) after)
         seat   (some (fn [[slot p]] (when (= (:player-id cand) (:player-id p)) slot)) after)]
-    (when seat
-      {:seat      seat
-       :displaces (some (fn [[_ p]]
-                          (when (and (not (contains? seated (:player-id p)))
-                                     (not= (:player-id drop-p) (:player-id p)))
-                            p))
-                        before)})))
+    (cond-> {:gain (- (lineup/seated-points after :week-points)
+                      (lineup/seated-points before :week-points))}
+      seat (assoc :seat      seat
+                  :displaces (some (fn [[_ p]]
+                                     (when (and (not (contains? seated (:player-id p)))
+                                                (not= (:player-id drop-p) (:player-id p)))
+                                       p))
+                                   before)))))
 
 (defn evaluate-claim
   "What claiming `add` and dropping `drop` does to the manager's lineup, off the
@@ -272,39 +296,28 @@
   whom he would push out. `drop` defaults to the board's drop candidate, and
   with no seat to give up there is none."
   [deps {:keys [add drop] :as args}]
-  (let [{:keys [entry body reply team starters bench active-ids]} (roster-of deps args)
-        slots  (when-let [cfg (:roster body)] (db/starting-slots cfg))
-        _      (when-not team (throw (tool-error "the manager's team is not in this league's sync, so a claim cannot be priced")))
-        _      (when-not (seq slots) (throw (tool-error "this league's lineup seats are unknown, so a claim cannot be priced")))
+  (let [{:keys [entry reply team slots starters bench active-ids]} (roster-of deps args)
+        _      (cond
+                 (nil? team)    (throw (tool-error "the manager's team is not in this league's sync, so a claim cannot be priced"))
+                 (empty? slots) (throw (tool-error "this league's lineup seats are unknown, so a claim cannot be priced")))
         ;; The board prices from the active ids, so a starter id the host lists
         ;; but does not hold actively cannot make this tool disagree with it.
         roster (filterv #(contains? active-ids (:player-id %)) (concat starters bench))
-        one    (fn [rows q what]
-                 (let [[p & more :as hits] (find-players rows q)]
-                   (cond
-                     (empty? hits) (throw (tool-error (str "no " what " matches " (pr-str q))))
-                     more          (throw (tool-error (str (pr-str q) " matches more than one " what "; ask again by id: "
-                                                           (str/join "; " (map #(str (:player-id %) " " (:player-name %)) hits)))))
-                     :else         p)))
-        cand   (one (:players reply) add "free agent")
+        cand   (the-player (:players reply) add "free agent")
         drop-p (if-not (str/blank? drop)
-                 (one roster drop "player on the active roster")
+                 (the-player roster drop "player on the active roster")
                  (let [id (get-in reply [:drop-candidate :player-id])]
                    (some #(when (= id (:player-id %)) %) roster)))
-        gain   (fn [k] (lineup/upgrade (lineup/lineup-points roster slots k) roster cand drop-p slots k))
-        seat   (this-week-seat roster cand drop-p slots)]
-    (->> [[:league  (named entry)]
-          [:week    (:week reply)]
-          [:add     (select-keys (row cand) [:name :player-id :position :team :opp :inj :week])]
-          [:drop    (some-> drop-p row (select-keys [:name :player-id :position :slot :inj]))]
-          [:lineup  (rounded :lineup (gain :ros-points))]
-          [:upgrade (rounded :upgrade (:upgrade (first (waiver/with-upgrade [cand] drop-p))))]
-          [:lineup-this-week (rounded :lineup-this-week (gain :week-points))]
-          [:starts-this-week (:seat seat)]
-          [:displaces        (some-> (:displaces seat) row (select-keys [:name :player-id :position :week]))]]
-         (keep (fn [[k v]] (when (some? v) [k v])))
-         (apply concat)
-         (apply array-map))))
+        week   (this-week-seat roster cand drop-p slots)]
+    (compact [[:league  (named entry)]
+              [:week    (:week reply)]
+              [:add     (select-keys (row cand) [:name :player-id :position :team :opp :inj :week])]
+              [:drop    (some-> drop-p row (select-keys [:name :player-id :position :slot :inj]))]
+              [:lineup  (first (lineup/upgrades roster [cand] drop-p slots :ros-points))]
+              [:upgrade (:upgrade (first (waiver/with-upgrade [cand] drop-p)))]
+              [:lineup-this-week (:gain week)]
+              [:starts-this-week (:seat week)]
+              [:displaces        (some-> (:displaces week) row (select-keys [:name :player-id :position :week]))]])))
 
 (def default-news-items
   "Five, not the feed's ten: a note runs to a paragraph, and the older half
@@ -315,40 +328,26 @@
   "A player's latest Rotowire notes off ESPN, newest first, and Sleeper's
   designation."
   [deps {:keys [player limit]}]
-  (let [[p & more :as hits] (find-players (need deps :players) player)
-        n (-> (if (number? limit) (long limit) default-news-items) (max 1) (min 10))]
-    (cond
-      (empty? hits)
-      (throw (tool-error (str "no player matches " (pr-str player))))
-
-      more
-      (throw (tool-error (str (pr-str player) " matches more than one player; ask again by id: "
-                              (str/join "; " (map #(str (:player-id %) " " (:player-name %) " "
-                                                        (:position %) " " (:team %))
-                                                  hits)))))
-
-      :else
-      (let [espn  (get-in p [:ids :espn])
-            reply (when espn ((:news deps) (str espn)))]
-        (cond-> {:player (select-keys (row p) [:player-id :name :position :team :inj])
-                 :news   (vec (take n (:news reply)))}
-          (:sleeper/injury-notes p) (assoc :injury-notes (:sleeper/injury-notes p))
-          (seq (:errors reply))     (assoc :errors (mapv :message (:errors reply)))
-          (nil? espn)               (assoc :reason "no ESPN id for this player, so no news feed"))))))
+  (let [p     (the-player (need deps :players) player "player")
+        n     (-> (if (number? limit) (long limit) default-news-items) (max 1) (min 10))
+        espn  (get-in p [:ids :espn])
+        reply (when espn ((:news deps) (str espn)))]
+    (cond-> {:player (select-keys (row p) [:player-id :name :position :team :inj])
+             :news   (vec (take n (:news reply)))}
+      (:sleeper/injury-notes p) (assoc :injury-notes (:sleeper/injury-notes p))
+      (seq (:errors reply))     (assoc :errors (mapv :message (:errors reply)))
+      (nil? espn)               (assoc :reason "no ESPN id for this player, so no news feed"))))
 
 (defn league-row
   "One league as `leagues` states it. The entry also holds the account's user id
   and credentials; neither is copied, since an ESPN user id is the SWID and so
   half the cookie pair."
   [l]
-  (->> [[:league (:key l)]
-        [:name (:name l)]
-        [:provider (providers/label (:provider l))]
-        [:season (:season l)]
-        [:teams (:num-teams l)]]
-       (keep (fn [[k v]] (when (some? v) [k v])))
-       (apply concat)
-       (apply array-map)))
+  (compact [[:league (:key l)]
+            [:name (:name l)]
+            [:provider (providers/label (:provider l))]
+            [:season (:season l)]
+            [:teams (:num-teams l)]]))
 
 (defn leagues
   "The leagues the manager plays in, by the key every league tool takes, and

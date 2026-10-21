@@ -190,19 +190,12 @@
   ([held by-id roster-size slots] (drop-candidate held by-id roster-size slots nil))
   ([held by-id roster-size slots costs]
    (when-not (and roster-size (< (count held) roster-size))
-     (let [players (vec (keep #(get by-id %) held))
-           points  #(double (or (:ros-points %) 0.0))]
-       (if-not (seq slots)
-         (first (sort-by points players))
-         ;; Keyed once per player and sorted on the pairs. `sort-by` calls its
-         ;; keyfn inside the comparator, so keying in the sort would run a full
-         ;; lineup fill O(n log n) times for a value that is fixed per player.
-         (let [costs (or costs (drop-costs players slots))]
-           (->> players
-                (map (fn [p] [[(get costs (:player-id p)) (points p)] p]))
-                (sort-by first)
-                first
-                second)))))))
+     (let [players (keep #(get by-id %) held)
+           ;; nil with no seats, so every cost reads 0 and the worst points decide.
+           costs   (or costs (drop-costs players slots))]
+       (first (sort-by (juxt #(get costs (:player-id %) 0.0)
+                             #(double (or (:ros-points %) 0.0)))
+                       players))))))
 
 (defn with-upgrade
   "Assoc `:upgrade` — rest-of-season points gained by the claim — plus

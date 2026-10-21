@@ -245,7 +245,18 @@
 
 (deftest a-blank-name-matches-nobody
   (is (empty? (tools/find-players [{:player-id "x" :player-name nil}] ""))
-      "an unvalued row has no name to equal an empty query"))
+      "an unvalued row has no name to equal an empty query")
+  (is (empty? (tools/find-players [{:player-id "x" :player-name nil}] "Jr."))
+      "nor a query that normalizes to nothing"))
+
+(deftest a-drop-named-by-a-suffix-alone-is-refused
+  (let [body (-> fx/body
+                 (update-in [:league :teams 0 :player-ids] conj "ghost")
+                 (update-in [:league :teams 0 :active-ids] conj "ghost"))]
+    (is (re-find #"no player on the active roster matches"
+                 (:error (call "evaluate_claim" {:add "f1" :drop "Jr."}
+                               (fx/deps {:body (constantly body)}))))
+        "an unvalued player on the roster is not the drop")))
 
 (deftest waiver-targets-say-which-positions-they-cover
   (is (= ["QB" "RB" "WR" "TE"] (:positions (:result (call "waiver_targets" {} (fx/deps))))))
