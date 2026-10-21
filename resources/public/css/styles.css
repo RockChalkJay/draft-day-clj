@@ -495,15 +495,32 @@ button.undo:hover { color: var(--warn); }
 .week-banner.stale-rules { border-color: var(--warn); color: var(--text); }
 
 /* Board left, my roster right. The claim and what it would cost are one
-   decision, so they belong on one screen — wrapping below the board on a narrow
-   viewport rather than squeezing the table. */
+   decision, so they belong on one screen — wrapping below the board when the
+   tab itself is narrow rather than squeezing the table. The tab, not the
+   viewport: Sensei's panel takes its width off the tab and is not always open,
+   so a viewport breakpoint is wrong for one of the two. */
+.waivers-view { container-type: inline-size; }
 .waiver-body { display: flex; gap: 12px; align-items: flex-start; }
 .waiver-body .table-scroll { flex: 1 1 auto; min-width: 0; }
 .waiver-roster-col { flex: 0 0 280px; }
-@media (max-width: 1100px) {
+@container (max-width: 900px) {
   .waiver-body { flex-wrap: wrap; }
   .waiver-roster-col { flex: 1 1 100%; }
 }
+@container (max-width: 780px) {
+  table.board td { padding: 4px 6px; }
+  table.board th { padding: 6px; }
+}
+/* The board scrolls in its own box, so its header holds still and the Player
+   column stays in view while a wide board scrolls sideways. */
+.waiver-body .table-scroll { max-height: calc(100vh - 175px); overflow: auto; }
+table.board th.num { text-align: right; }
+table.board th.player, table.board td.player { position: sticky; left: 0; z-index: 1;
+  background: var(--panel); }
+table.board th.player { background: var(--panel2); z-index: 2; }
+table.board tbody tr:hover td.player { background: var(--panel2); }
+table.board tbody tr.selected td.player { background: #1d2a44; }
+table.board td.player .p-ident > .name-btn { max-width: 150px; }
 
 /* Reuses .roster-panel / table.roster wholesale — the draft board's My Roster
    box is the same object answering the same question, and a second roster style
@@ -1124,13 +1141,9 @@ header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflo
 aside.sensei { position: sticky; top: var(--header-h, 49px); flex: none; width: var(--sensei-w, 380px);
   height: calc(100vh - var(--header-h, 49px)); display: flex; flex-direction: column;
   background: var(--panel); border-left: 1px solid var(--border); z-index: 30; }
-/* The board and My Roster stay side by side beside the open panel, the board
-   scrolling in its own box. Under 1180px the board would be a sliver, so the
-   roster wraps below it as it does on a narrow window. */
-@media (min-width: 641px) and (max-width: 1179px) {
-  .app.sensei-open .waiver-body { flex-wrap: wrap; }
-  .app.sensei-open .waiver-roster-col { flex: 1 1 100%; }
-}
+/* Beside the panel the tab is no longer centred in a 1400px column: the board
+   starts at the left edge and takes what the panel leaves. */
+.app.sensei-open main { max-width: none; padding: 12px 10px 12px 12px; }
 .grip { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; }
 .grip:hover, .grip:focus-visible { background: var(--accent); opacity: .5; outline: none; }
 .sn-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px;

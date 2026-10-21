@@ -253,7 +253,8 @@
 
 (def waiver-columns
   "`board/header-cell`'s options for this board: click sorts, drag reorders."
-  {:labels db/waiver-columns-by-key :sort :set-waiver-sort :move :move-waiver-column-onto})
+  {:labels db/waiver-columns-by-key :sort :set-waiver-sort :move :move-waiver-column-onto
+   :th-class (assoc (zipmap db/waiver-numeric-keys (repeat "num")) :name "player")})
 
 ;; ---- panels ----
 

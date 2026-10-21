@@ -1334,3 +1334,14 @@
       ((:on-click (second (cell :bye)))))
     (is (= [[:move-waiver-column-onto :bye :name] [:set-waiver-sort :bye]] @sent)
         "the waiver board's own events, not the draft board's")))
+
+(deftest a-numeric-waiver-header-sits-over-its-numbers
+  (let [cols (filterv :visible? (db/default-waiver-columns))
+        ks   (mapv :key cols)
+        drag (reagent.core/atom {})
+        cls  (fn [k] (:class (second (board/header-cell waivers/waiver-columns
+                                                        (first (filter #(= k (:key %)) cols))
+                                                        {:key :rank :dir -1} drag ks))))]
+    (is (re-find #"\bnum\b" (cls :pts)) "right-aligned like its cells")
+    (is (re-find #"\bplayer\b" (cls :name)) "the sticky Player column")
+    (is (not (re-find #"\bnum\b" (or (cls :position) ""))) "a text column stays left")))
