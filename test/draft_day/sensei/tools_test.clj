@@ -212,6 +212,11 @@
     (is (= -70.0 (:upgrade result)))
     (is (= -4.3 (:this-week result)) "his 14.2 this week goes, and the claim's 9.9 fills the WR seat")))
 
+(deftest evaluate-claim-needs-the-managers-team
+  (let [gone (assoc-in fx/body [:league :teams] [(get-in fx/body [:league :teams 1])])]
+    (is (re-find #"team is not in this league's sync"
+                 (:error (call "evaluate_claim" {:add "f1"} (fx/deps {:body (constantly gone)})))))))
+
 (deftest evaluate-claim-asks-again-rather-than-guessing
   (is (re-find #"no free agent matches" (:error (call "evaluate_claim" {:add "Nobody"} (fx/deps)))))
   (is (re-find #"no player on the active roster matches"

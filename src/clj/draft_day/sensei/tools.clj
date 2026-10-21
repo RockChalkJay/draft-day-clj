@@ -247,8 +247,9 @@
   defaults to the board's drop candidate, and with no seat to give up there is
   none."
   [deps {:keys [add drop] :as args}]
-  (let [{:keys [entry body reply starters bench]} (roster-of deps args)
+  (let [{:keys [entry body reply team starters bench]} (roster-of deps args)
         slots  (when-let [cfg (:roster body)] (db/starting-slots cfg))
+        _      (when-not team (throw (tool-error "the manager's team is not in this league's sync, so a claim cannot be priced")))
         _      (when-not (seq slots) (throw (tool-error "this league's lineup seats are unknown, so a claim cannot be priced")))
         roster (vec (concat starters bench))
         one    (fn [rows q what]
