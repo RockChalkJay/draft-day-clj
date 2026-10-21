@@ -19,6 +19,7 @@
             [draft-day.db :as db]
             [draft-day.ingestion.match :as match]
             [draft-day.providers :as providers]
+            [draft-day.rankings.lineup :as lineup]
             [draft-day.sensei.context :as context]))
 
 (defn per-league
@@ -125,7 +126,9 @@
               [:slot (:slot p)]
               [:opp (opponent p)]
               [:inj (injury p)]
+              [:outlook (:outlook-ppg p)]
               [:drop-candidate (when (:drop? p) true)]
+              [:drop-cost (:drop-cost p)]
               [:unvalued (when (:unvalued? p) true)]]
         cols (keep (fn [k] (when (db/applies? (db/waiver-columns-by-key k) pos)
                              [k ((db/waiver-sort-accessors k) p)]))
@@ -143,15 +146,18 @@
                        (str "- " (name k) ": " tip))))
        (into ["- pos-rank: his rank at his position on fantasy points so far (preseason rank before week 1)"
               "- opp: this week's opponent"
-              "- inj: Sleeper's injury designation"])
+              "- inj: Sleeper's injury designation"
+              "- outlook: Sleeper's projected points a game over the weeks he has left, under this league's scoring"
+              "- drop-cost: rest-of-season points the starting lineup loses if he is dropped; 0 on a bench that never plays"])
        (str/join "\n")))
 
-(defn my-team
-  "The manager's roster split as My Team draws it, through `db/team-roster`,
-  with the seat a claim would cost marked."
+(defn roster-of
+  "The manager's team in one league as the tools read it: the league's entry,
+  waiver reply and request body, and the roster split by `db/team-roster`
+  (`:starters`, `:bench`, `:parked`)."
   [deps args]
   (let [entry   (the-league deps args)
-        {:keys [league my-roster-id]} (checked ((:body deps) entry))
+        {:keys [league my-roster-id] :as body} (checked ((:body deps) entry))
         reply   (checked ((:reply deps) entry))
         players (need deps :players)
         team    (some #(when (= my-roster-id (:roster-id %)) %) (:teams league))
@@ -160,13 +166,23 @@
         ;; the universe's, so a player the board did not value still shows.
         by-id   (into (into {} (map (juxt :player-id identity)) players)
                       (map (juxt :player-id identity))
-                      (:my-roster-players reply))
+                      (:my-roster-players reply))]
+    (assoc (db/team-roster team league xwalk by-id)
+           :entry entry :body body :reply reply :team team)))
+
+(defn my-team
+  "The manager's roster split as My Team draws it, through `db/team-roster`,
+  with the seat a claim would cost marked."
+  [deps args]
+  (let [{:keys [entry reply team starters bench parked]} (roster-of deps args)
         drop-id (get-in reply [:drop-candidate :player-id])
+        costs   (:drop-costs reply)
         ;; Flagged before `row`, as the `:my-roster` sub flags it, so the row
         ;; keeps its key order.
-        rows    (fn [ps] (mapv #(row (cond-> % (= drop-id (:player-id %)) (assoc :drop? true)))
-                               ps))
-        {:keys [starters bench parked]} (db/team-roster team league xwalk by-id)]
+        rows    (fn [ps] (mapv #(row (cond-> %
+                                       (= drop-id (:player-id %)) (assoc :drop? true)
+                                       (get costs (:player-id %))  (assoc :drop-cost (get costs (:player-id %)))))
+                               ps))]
     {:league          (named entry)
      :team            (:name team)
      :record          (select-keys team [:wins :losses])
@@ -180,6 +196,12 @@
      :injured-reserve (rows parked)}))
 
 (def max-targets 25)
+
+(def claim-positions
+  "What a waiver claim is about. A kicker or a defense is streamed for a week,
+  and a list that led with one buried the quarterback, back and receiver a
+  manager came to ask about; they come back when named."
+  ["QB" "RB" "WR" "TE"])
 
 (defn position-arg
   "The `position` argument as the board spells it, or nil for none. Checked
@@ -204,7 +226,7 @@
      :through-week   (:through-week reply)
      :drop-candidate (get-in reply [:drop-candidate :player-name])
      :players        (->> (:players reply)
-                          (filter #(or (nil? pos) (= pos (:position %))))
+                          (filter #(if pos (= pos (:position %)) (some #{(:position %)} claim-positions)))
                           (sort-by db/waiver-rank-key)
                           (take n)
                           (mapv row))}))
@@ -217,6 +239,39 @@
     (or (seq (filter #(= q (:player-id %)) players))
         (let [k (match/normalize-name q)]
           (filter #(= k (match/normalize-name (:player-name %))) players)))))
+
+(defn evaluate-claim
+  "What claiming `add` and dropping `drop` does to the manager's lineup, off the
+  waiver reply's own rows: `lineup` and `upgrade` over the rest of the season
+  as the board states them, and `week` on this week's projections. `drop`
+  defaults to the board's drop candidate, and with no seat to give up there is
+  none."
+  [deps {:keys [add drop] :as args}]
+  (let [{:keys [entry body reply starters bench]} (roster-of deps args)
+        slots  (when-let [cfg (:roster body)] (db/starting-slots cfg))
+        _      (when-not (seq slots) (throw (tool-error "this league's lineup seats are unknown, so a claim cannot be priced")))
+        roster (vec (concat starters bench))
+        one    (fn [rows q what]
+                 (let [[p & more :as hits] (find-players rows q)]
+                   (cond
+                     (empty? hits) (throw (tool-error (str "no " what " matches " (pr-str q))))
+                     more          (throw (tool-error (str (pr-str q) " matches more than one " what "; ask again by id: "
+                                                           (str/join "; " (map #(str (:player-id %) " " (:player-name %)) hits)))))
+                     :else         p)))
+        cand   (one (:players reply) add "free agent")
+        drop-p (if drop
+                 (one roster drop "player on the active roster")
+                 (let [id (get-in reply [:drop-candidate :player-id])]
+                   (some #(when (= id (:player-id %)) %) roster)))
+        gain   (fn [k] (lineup/upgrade (lineup/lineup-points roster slots k) roster cand drop-p slots k))
+        points #(double (or (:ros-points %) 0.0))]
+    {:league  (named entry)
+     :week    (:week reply)
+     :add     (select-keys (row cand) [:name :player-id :position :team :opp :inj])
+     :drop    (some-> drop-p row (select-keys [:name :player-id :position :slot :inj]))
+     :lineup  (rounded :lineup (gain :ros-points))
+     :upgrade (rounded :upgrade (- (points cand) (if drop-p (points drop-p) 0.0)))
+     :this-week (rounded :this-week (gain :week-points))}))
 
 (def default-news-items
   "Five, not the feed's ten: a note runs to a paragraph, and the older half
@@ -298,8 +353,9 @@
    {:name         "waiver_targets"
     :title        "Waiver targets"
     :description  (str "Free agents in one league, best claim first: ordered by lineup, then upgrade, "
-                       "both measured against the drop-candidate. Filter by position to answer a "
-                       "question about one.\n\nRow keys:\n" (legend))
+                       "both measured against the drop-candidate. Quarterbacks, backs, receivers and "
+                       "tight ends unless a position is named, which is how to ask for a kicker or "
+                       "a defense.\n\nRow keys:\n" (legend))
     :input-schema {:type                 "object"
                    :properties           {:league   league-property
                                           :position {:type "string" :enum db/positions
@@ -308,6 +364,21 @@
                                                      :description "How many players (default 10)"}}
                    :additionalProperties false}
     :handler      waiver-targets}
+   {:name         "evaluate_claim"
+    :title        "Evaluate a claim"
+    :description  (str "What claiming one free agent and dropping one player does to the manager's "
+                       "starting lineup: lineup (rest of season) and upgrade as waiver_targets states "
+                       "them, and this-week on this week's projections, so a bye shows. drop defaults "
+                       "to the drop candidate; name another to compare drops.")
+    :input-schema {:type                 "object"
+                   :properties           {:league league-property
+                                          :add    {:type "string"
+                                                   :description "The free agent: full name, or the player-id a row carries"}
+                                          :drop   {:type "string"
+                                                   :description "The player to drop, from the active roster (default: the drop candidate)"}}
+                   :required             ["add"]
+                   :additionalProperties false}
+    :handler      evaluate-claim}
    {:name         "player_news"
     :title        "Player news"
     :description  (str "A player's latest news notes (Rotowire, via ESPN), newest first, and his "

@@ -467,6 +467,7 @@
                          ;; line is joined, so there would be nothing to rank.
                          (pos-rank/with-pos-rank :week-points :week-pos-rank)
                          (waiver/with-form-points scoring*)
+                         (waiver/with-outlook-points scoring*)
                          ;; The Pos cell's rank in season: on points scored,
                          ;; not the preseason projection ranked above.
                          (pos-rank/with-pos-rank :season-points :season-pos-rank)

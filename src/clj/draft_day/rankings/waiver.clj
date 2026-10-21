@@ -167,6 +167,21 @@
 
 ;; ---- what a claim actually costs ----
 
+(defn drop-costs
+  "`{player-id points}`: what the starting lineup loses, on `:ros-points`, if
+  each of `players` leaves. 0 for anyone on a deep bench. nil with no `slots`,
+  there being no lineup to cost anything against."
+  [players slots]
+  (when (seq slots)
+    (let [full (lineup/lineup-points players slots :ros-points)]
+      (into {}
+            (map (fn [p]
+                   [(:player-id p)
+                    (- full (lineup/lineup-points
+                             (remove #(= (:player-id %) (:player-id p)) players)
+                             slots :ros-points))]))
+            players))))
+
 (defn drop-candidate
   "The player a claim would cost me, or nil when a seat is open; absent
   `roster-size` the roster is full. `held` is board-spaced and IR/taxi-free — see
@@ -177,16 +192,12 @@
           points  #(double (or (:ros-points %) 0.0))]
       (if-not (seq slots)
         (first (sort-by points players))
-        (let [full (lineup/lineup-points players slots :ros-points)
-              cost (fn [p]
-                     (- full (lineup/lineup-points
-                              (remove #(= (:player-id %) (:player-id p)) players)
-                              slots :ros-points)))]
-          ;; Keyed once per player and sorted on the pairs. `sort-by` calls its
-          ;; keyfn inside the comparator, so keying in the sort would run a full
-          ;; lineup fill O(n log n) times for a value that is fixed per player.
+        ;; Keyed once per player and sorted on the pairs. `sort-by` calls its
+        ;; keyfn inside the comparator, so keying in the sort would run a full
+        ;; lineup fill O(n log n) times for a value that is fixed per player.
+        (let [costs (drop-costs players slots)]
           (->> players
-               (map (fn [p] [[(cost p) (points p)] p]))
+               (map (fn [p] [[(get costs (:player-id p)) (points p)] p]))
                (sort-by first)
                first
                second))))))
@@ -438,6 +449,19 @@
                 pts  (assoc :season-points pts :season-gp (:games (season-line p))))))
           players)))
 
+(defn with-outlook-points
+  "Assoc `:outlook-ppg`, Sleeper's projection for the weeks he has left, per
+  game under the league's own weights. A player it projects for none gets no key."
+  [players scoring]
+  (let [scoring (scoring/resolve-buckets scoring)]
+    (mapv (fn [p]
+            (if-let [ppg (per-game-points {:games (:outlook/games p)
+                                           :stats (:outlook/stats p)}
+                                          scoring)]
+              (assoc p :outlook-ppg ppg)
+              p))
+          players)))
+
 ;; ---- this week ----
 ;; The other half of the question `:ros-points` answers. Rest-of-season says who
 ;; helps you from here; this says who helps you on Sunday, and the two routinely
@@ -524,6 +548,7 @@
      :seats    seats
      :my-team  my-team
      :drop     drop
+     :drop-costs (drop-costs (vec (keep #(get by-id %) active)) starting-slots)
      :claims-left n
      :bidding? bidding?
      :habits   habits
@@ -550,7 +575,7 @@
   which prices its rivals' bids; without one they bid like Sleeper at large."
   [board {:keys [league my-roster-id] :as ctx}]
   (let [{:keys [teams waiver]} league
-        {:keys [fas market my-team drop xwalk by-id rostered levels claims-left
+        {:keys [fas market my-team drop drop-costs xwalk by-id rostered levels claims-left
                 bidding? habits]} (market-inputs board ctx)]
     {:players            (-> fas (faab/with-market market) with-trend)
      ;; The seat a claim would cost, for the browser to mark on the manager's
@@ -560,6 +585,7 @@
      :drop-candidate     (when drop (select-keys drop [:player-id :player-name
                                                        :position :ros-points]))
      :my-roster-players  (my-roster-players my-team xwalk by-id)
+     :drop-costs         drop-costs
      :rostered           rostered
      :replacement-levels levels
      :claims-left        claims-left

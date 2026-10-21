@@ -42,7 +42,9 @@
    {:player-id "f2" :player-name "Free Two" :position "RB" :team "NYJ"
     :lineup-upgrade 15.0 :upgrade 20.0 :ros-points 90.0 :trend 1.2345}
    {:player-id "f3" :player-name "Free Three" :position "WR" :team "MIA"
-    :lineup-upgrade 15.0 :upgrade 30.0 :ros-points 70.0}])
+    :lineup-upgrade 15.0 :upgrade 30.0 :ros-points 70.0 :outlook-ppg 11.234}
+   {:player-id "f4" :player-name "Free Kicker" :position "K" :team "MIN"
+    :lineup-upgrade 40.0 :upgrade 40.0 :ros-points 120.0}])
 
 (def reply
   {:players           free-agents
@@ -54,6 +56,7 @@
                         :sleeper/injury-status "IR"}]
    :drop-candidate    {:player-id "p2" :player-name "Bravo Wide" :position "WR"
                        :ros-points 60.0}
+   :drop-costs        {"p1" 150.0 "p2" 0.0}
    :faab              {:type "faab" :budget 100 :left 60 :rival-max 95}
    :claims-left       nil
    :week              7

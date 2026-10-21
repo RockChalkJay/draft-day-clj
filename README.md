@@ -1000,7 +1000,7 @@ back a board on which its whole roster is available.
 
 Sensei, the AI assistant for waiver and lineup calls, as a Model Context
 Protocol server: JSON-RPC over the Streamable HTTP transport, JSON responses
-only. Its tools (`leagues`, `my_team`, `waiver_targets`, `player_news`) read
+only. Its tools (`leagues`, `my_team`, `waiver_targets`, `evaluate_claim`, `player_news`) read
 `/api/waivers`' own board for every league that the accounts in the server's env
 play in: `DRAFTDAY_SENSEI_SLEEPER_USER`, and the ESPN cookies `DRAFTDAY_ESPN_SWID`
 and `DRAFTDAY_ESPN_S2`. A request from anywhere but loopback, with a browser
