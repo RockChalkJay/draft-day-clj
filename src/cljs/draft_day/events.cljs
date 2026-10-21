@@ -1055,6 +1055,10 @@
 (rf/reg-event-db :sensei-status-failed
   (fn [db _] (assoc db :sensei-enabled? false)))
 
+;; Layout the manager chose, like the panel's width, so it persists.
+(rf/reg-event-db :set-waiver-roster [persist]
+  (fn [db [_ shown-or-hidden]] (assoc db :waiver-roster shown-or-hidden)))
+
 (rf/reg-event-db :sensei-toggle [persist]
   (fn [db _] (update db :sensei-open? not)))
 

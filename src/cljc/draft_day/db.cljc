@@ -109,7 +109,7 @@
   into `default-db`, so an older one simply lacks it."
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
    :accounts :leagues :active-league :waiver-columns :phase
-   :sensei-open? :sensei-width])
+   :sensei-open? :sensei-width :waiver-roster])
 
 ;; ---- accounts and leagues ----
 
@@ -1399,6 +1399,9 @@
      ;; so they persist; the conversation is a question being asked now, so it
      ;; does not, and `:sensei-enabled?` is the server's answer to this browser.
      :sensei-enabled? nil
+     ;; The manager's choice for My Roster on the waiver tab: :shown, :hidden, or
+     ;; nil to let the tab's width decide.
+     :waiver-roster nil
      :sensei-open?  false
      :sensei-width  380
      :sensei-messages []

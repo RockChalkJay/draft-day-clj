@@ -1345,3 +1345,19 @@
     (is (re-find #"\bnum\b" (cls :pts)) "right-aligned like its cells")
     (is (re-find #"\bplayer\b" (cls :name)) "the sticky Player column")
     (is (not (re-find #"\bnum\b" (or (cls :position) ""))) "a text column stays left")))
+
+(deftest the-roster-strip-choice-survives-a-reload
+  (with-league!)
+  (rf/dispatch-sync [:set-waiver-roster :hidden])
+  (is (= :hidden (:waiver-roster @rdb/app-db)))
+  (is (= :hidden (:waiver-roster (last (:persist @captured))))
+      "a layout the manager chose is stored, like the panel's width")
+  (rf/dispatch-sync [:set-waiver-roster :shown])
+  (rf/clear-subscription-cache!)
+  (is (= :shown (sub [:waiver-roster]))))
+
+(deftest the-roster-strip-names-what-pressing-it-does
+  (let [html (render waivers/roster-strip)]
+    (is (re-find #"Hide My Roster" html))
+    (is (re-find #"Show My Roster" html) "the other state is hidden by CSS, not absent")
+    (is (re-find #"aria-hidden" html) "the chevron is decoration")))

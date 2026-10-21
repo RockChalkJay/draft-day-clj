@@ -652,6 +652,9 @@
 
 (rf/reg-sub :sensei-open? (fn [db _] (:sensei-open? db)))
 
+;; My Roster on the waiver tab: :shown, :hidden, or nil for the tab's width to decide.
+(rf/reg-sub :waiver-roster (fn [db _] (:waiver-roster db)))
+
 ;; On screen only when the server offers it and the manager has it open.
 (rf/reg-sub :sensei-visible? :<- [:sensei-enabled?] :<- [:sensei-open?]
   (fn [[enabled? open?] _] (boolean (and enabled? open?))))
