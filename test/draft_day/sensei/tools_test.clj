@@ -203,14 +203,30 @@
     (is (= "Bravo Wide" (get-in result [:drop :name])) "the board's drop candidate by default")
     (is (= 10.0 (:lineup result)) "a 70 WR for a 60 WR in the WR seat")
     (is (= 10.0 (:upgrade result)))
-    (is (= 0.0 (:this-week result)) "neither has a projection this week")))
+    (is (= 0.0 (:lineup-this-week result)) "neither has a projection this week")
+    (is (not-any? #(contains? result %) [:starts-this-week :displaces])
+        "a free agent with no projection does not play")))
 
 (deftest evaluate-claim-can-compare-a-different-drop
   (let [{:keys [result]} (call "evaluate_claim" {:add "f1" :drop "Alpha Back"} (fx/deps))]
     (is (= "Alpha Back" (get-in result [:drop :name])))
     (is (= -130.0 (:lineup result)) "a starter leaves and no one fills the RB seat")
     (is (= -70.0 (:upgrade result)))
-    (is (= -4.3 (:this-week result)) "his 14.2 this week goes, and the claim's 9.9 fills the WR seat")))
+    (is (= -4.3 (:lineup-this-week result)) "his 14.2 this week goes, and the claim's 9.9 fills the WR seat")
+    (is (= 9.9 (get-in result [:add :week])) "the add's own projection is its own field")
+    (is (= "WR" (:starts-this-week result)))
+    (is (not (contains? result :displaces)) "the starter he replaces is the drop, not a displacement")))
+
+(deftest evaluate-claim-names-whom-the-add-pushes-out-this-week
+  (let [reply (-> fx/reply
+                  (assoc :drop-candidate nil)
+                  (update :my-roster-players
+                          (fn [ps] (mapv #(cond-> % (= "p2" (:player-id %)) (assoc :week-points 5.0)) ps))))
+        {:keys [result]} (call "evaluate_claim" {:add "f1"} (fx/deps {:reply (constantly reply)}))]
+    (is (not (contains? result :drop)) "an open seat gives nobody up")
+    (is (= 4.9 (:lineup-this-week result)) "9.87 in the WR seat over his 5.0")
+    (is (= "WR" (:starts-this-week result)))
+    (is (= "Bravo Wide" (get-in result [:displaces :name])))))
 
 (deftest evaluate-claim-needs-the-managers-team
   (let [gone (assoc-in fx/body [:league :teams] [(get-in fx/body [:league :teams 1])])]

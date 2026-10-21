@@ -240,12 +240,33 @@
         (let [k (match/normalize-name q)]
           (filter #(= k (match/normalize-name (:player-name %))) players)))))
 
+(defn this-week-seat
+  "Where `cand` plays this week once `drop-p` has left `roster`, and whom he
+  displaces: `{:seat slot :displaces player}`, or nil when he is not in the best
+  lineup by this week's projection. Players with no projection (a bye) are not
+  seated, as `lineup/best-lineup` skips them."
+  [roster cand drop-p slots]
+  (let [kept   (remove #(= (:player-id %) (:player-id drop-p)) roster)
+        before (lineup/best-lineup roster slots :week-points)
+        after  (lineup/best-lineup (conj (vec kept) cand) slots :week-points)
+        seated (into #{} (map (comp :player-id second)) after)
+        seat   (some (fn [[slot p]] (when (= (:player-id cand) (:player-id p)) slot)) after)]
+    (when seat
+      {:seat      seat
+       :displaces (some (fn [[_ p]]
+                          (when (and (not (contains? seated (:player-id p)))
+                                     (not= (:player-id drop-p) (:player-id p)))
+                            p))
+                        before)})))
+
 (defn evaluate-claim
   "What claiming `add` and dropping `drop` does to the manager's lineup, off the
-  waiver reply's own rows: `lineup` and `upgrade` over the rest of the season
-  as the board states them, and `week` on this week's projections. `drop`
-  defaults to the board's drop candidate, and with no seat to give up there is
-  none."
+  waiver reply's own rows. `lineup` and `upgrade` are over the rest of the
+  season, as the board states them. `lineup-this-week` is the change in the best
+  lineup by this week's projections, which is not the add's own projection (his
+  is `add.week`); `starts-this-week` and `displaces` say where he would play and
+  whom he would push out. `drop` defaults to the board's drop candidate, and
+  with no seat to give up there is none."
   [deps {:keys [add drop] :as args}]
   (let [{:keys [entry body reply team starters bench]} (roster-of deps args)
         slots  (when-let [cfg (:roster body)] (db/starting-slots cfg))
@@ -265,14 +286,20 @@
                  (let [id (get-in reply [:drop-candidate :player-id])]
                    (some #(when (= id (:player-id %)) %) roster)))
         gain   (fn [k] (lineup/upgrade (lineup/lineup-points roster slots k) roster cand drop-p slots k))
-        points #(double (or (:ros-points %) 0.0))]
-    {:league  (named entry)
-     :week    (:week reply)
-     :add     (select-keys (row cand) [:name :player-id :position :team :opp :inj])
-     :drop    (some-> drop-p row (select-keys [:name :player-id :position :slot :inj]))
-     :lineup  (rounded :lineup (gain :ros-points))
-     :upgrade (rounded :upgrade (- (points cand) (if drop-p (points drop-p) 0.0)))
-     :this-week (rounded :this-week (gain :week-points))}))
+        points #(double (or (:ros-points %) 0.0))
+        seat   (this-week-seat roster cand drop-p slots)]
+    (->> [[:league  (named entry)]
+          [:week    (:week reply)]
+          [:add     (select-keys (row cand) [:name :player-id :position :team :opp :inj :week])]
+          [:drop    (some-> drop-p row (select-keys [:name :player-id :position :slot :inj]))]
+          [:lineup  (rounded :lineup (gain :ros-points))]
+          [:upgrade (rounded :upgrade (- (points cand) (if drop-p (points drop-p) 0.0)))]
+          [:lineup-this-week (rounded :lineup-this-week (gain :week-points))]
+          [:starts-this-week (:seat seat)]
+          [:displaces        (some-> (:displaces seat) row (select-keys [:name :player-id :position :week]))]]
+         (keep (fn [[k v]] (when (some? v) [k v])))
+         (apply concat)
+         (apply array-map))))
 
 (def default-news-items
   "Five, not the feed's ten: a note runs to a paragraph, and the older half
@@ -369,8 +396,11 @@
     :title        "Evaluate a claim"
     :description  (str "What claiming one free agent and dropping one player does to the manager's "
                        "starting lineup: lineup (rest of season) and upgrade as waiver_targets states "
-                       "them, and this-week on this week's projections, so a bye shows. drop defaults "
-                       "to the drop candidate; name another to compare drops.")
+                       "them, and lineup-this-week: how much the best lineup by this week's projections "
+                       "changes, not the add's own projection (add.week is that). starts-this-week "
+                       "names his seat and displaces the player he pushes out; both are absent when he "
+                       "would not play this week. drop defaults to the drop candidate; name another "
+                       "to compare drops.")
     :input-schema {:type                 "object"
                    :properties           {:league league-property
                                           :add    {:type "string"
