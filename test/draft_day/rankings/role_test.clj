@@ -17,8 +17,8 @@
 (def wright (player "w" "Jaylen Wright" "RB" "MIA" {1 4 2 3 4 12 5 9}))
 
 (deftest a-starter-who-left-is-a-vacancy-from-the-week-after-his-last-hold
-  (is (= 3 (role/change-point achane 5)) "50 and 45 of 60, then 4")
-  (is (nil? (role/change-point (assoc achane :realized/game-log (log {1 50 2 45 3 40})) 3))
+  (is (= 3 (role/change-point achane #{1 2 3 4 5} 5)) "50 and 45 of 60, then 4")
+  (is (nil? (role/change-point (assoc achane :realized/game-log (log {1 50 2 45 3 40})) #{1 2 3} 3))
       "still playing"))
 
 (deftest the-teammate-who-gained-snaps-took-the-role
@@ -49,3 +49,13 @@
   (let [bare {:player-id "x" :position "RB" :team "MIA" :realized/game-log [{:week 1 :stats {}}]}]
     (is (= [bare] (role/with-role [bare] 5)))
     (is (= [bare] (role/with-role [bare] 0)) "preseason: nothing to read")))
+
+(deftest a-teams-bye-is-not-a-zero
+  (let [byed (fn [p weeks] (assoc p :realized/game-log (log weeks)))
+        ;; MIA plays weeks 1-3 and 5-6; week 4 is its bye, and no one has an entry for it.
+        a (byed achane {1 50 2 45 3 4 5 2 6 1})
+        g (byed gordon {1 4 2 11 3 30 5 12 6 8})
+        [_ out] (role/with-role [a g] 6)]
+    (is (= 3 (:role/since out)))
+    (is (some? (:role/since out))
+        "(30 + 12 + 8) / 3 weeks played over 60 is 28%; counting the bye as a zero it would be 21%")))
