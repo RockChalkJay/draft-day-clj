@@ -95,3 +95,18 @@
   (let [row (actual/entry->row {:player_id "a" :week 3 :stats {:gp 1.0 :rec 2.0}})
         e   (first (:realized/game-log (get (actual/accumulate [row]) "a")))]
     (is (not-any? #(contains? e %) [:snaps :team-snaps]))))
+
+(deftest red-zone-counts-ride-beside-the-stats-and-onto-the-log
+  (let [row (actual/entry->row {:player_id "a" :week 5
+                                :stats {:gp 1.0 :rush_att 18.0 :rush_rz_att 9.0 :rec_rz_tgt 2.0 :pass_rz_att 0.0}})
+        e   (first (:realized/game-log (get (actual/accumulate [row]) "a")))]
+    (is (= 9.0 (:rz-rush row)))
+    (is (= 2.0 (:rz-tgt row)))
+    (is (not (contains? row :rz-pass)) "a zero is none recorded, as an absent key is")
+    (is (not-any? #(contains? (:stats row) %) [:rush_rz_att :rec_rz_tgt :pass_rz_att]))
+    (is (= {:rz-rush 9.0 :rz-tgt 2.0} (select-keys e [:rz-rush :rz-tgt :rz-pass])))))
+
+(deftest a-game-with-no-red-zone-usage-states-none
+  (let [e (first (:realized/game-log
+                  (get (actual/accumulate [(actual/entry->row {:player_id "a" :week 5 :stats {:gp 1.0 :rec 3.0}})]) "a")))]
+    (is (not-any? #(contains? e %) [:rz-rush :rz-tgt :rz-pass]))))

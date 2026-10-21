@@ -993,5 +993,5 @@
 (deftest the-browser-is-not-sent-the-snap-and-role-facts
   (let [b (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))]
     (is (seq (:players b)))
-    (is (not-any? #(or (contains? % :snap-share) (contains? % :role/since))
+    (is (not-any? #(or (contains? % :snap-share) (contains? % :role/since) (contains? % :rz-rush))
                   (concat (:players b) (:my-roster-players b))))))

@@ -503,7 +503,7 @@
 (def sensei-only-keys
   "Row keys the browser never draws, for Sensei's tools to read."
   [:fantasypros/ros-pos-rank :fantasypros/ros-rank-min :fantasypros/ros-rank-max
-   :snap-share :snap-share-season :role/since :role/vacated-by :role/vacated-status])
+   :snap-share :snap-share-season :rz-rush :rz-tgt :rz-pass :role/since :role/vacated-by :role/vacated-status])
 
 (defn without-sensei-only
   "`reply` less what only Sensei reads: `:drop-costs` and `sensei-only-keys`."

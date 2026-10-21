@@ -1,5 +1,6 @@
 (ns draft-day.rankings.role
-  "Who has taken over a role, and from whom. Display only: nothing here feeds a
+  "Who has taken over a role, and from whom, and how much of the scoring
+  opportunity he gets: the red-zone carries, targets and passes Sleeper counted. Display only: nothing here feeds a
   projection or a score, for the reason `rankings.ros` gives about recent games,
   and whether a promotion caused by a teammate's injury predicts better is a
   question for a backtest.
@@ -115,8 +116,20 @@
   [player]
   (mean (vals (shares-by-week player))))
 
+(defn red-zone-totals
+  "`{:rz-rush n :rz-tgt n :rz-pass n}` summed off his game log: the carries,
+  targets and passes Sleeper counted inside the 20, for the keys he has any of.
+  Raw counts: Sleeper publishes no team total to make a share of."
+  [player]
+  (reduce (fn [acc e]
+            (reduce (fn [acc k] (cond-> acc (pos? (get e k 0)) (update k (fnil + 0.0) (get e k))))
+                    acc
+                    [:rz-rush :rz-tgt :rz-pass]))
+          {}
+          (:realized/game-log player)))
+
 (defn with-role
-  "Assoc `:snap-share` (recent), `:snap-share-season`, and for a player who took
+  "Assoc `red-zone-totals`, `:snap-share` (recent), `:snap-share-season`, and for a player who took
   over a vacated role `:role/since` (the change point), `:role/vacated-by` (the
   player's name) and `:role/vacated-status` (his designation). Run before the
   game log is stripped. A board with no snap counts gains nothing."
@@ -132,7 +145,7 @@
                     took?  (and since
                                 (not= (:player-id p) (:player-id by))
                                 (took-over? p (set (get played (:team p))) since through-week))]
-                (cond-> p
+                (cond-> (merge p (red-zone-totals p))
                   recent (assoc :snap-share recent)
                   season (assoc :snap-share-season season)
                   took?  (assoc :role/since since

@@ -150,6 +150,12 @@ his position who held the role went to injured reserve and he has taken it
 that the rest-of-season total has not caught up with, and display only: whether
 a promotion predicts better than the season's rate is for a backtest to say.
 
+Rows also carry `rz-rush`, `rz-tgt` and `rz-pass`: his carries, targets and
+passes inside the 20 this season, as Sleeper counts them. They are raw counts and
+not shares, because Sleeper publishes no team total and one summed from players
+would be an estimate. Touchdowns are the volatile part of a line, so snaps with
+no red-zone usage reads as a yardage role. A key is absent when none was recorded.
+
 **What the screen holds back, Sensei holds back.** No bid predictions while
 `db/bid-predictions?` is off, and the instructions tell the model not to put a
 FAAB figure on a claim. No raw rest-of-season points, which no surface shows.

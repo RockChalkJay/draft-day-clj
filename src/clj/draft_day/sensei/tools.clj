@@ -135,6 +135,11 @@
   [share]
   (when (number? share) (Math/round (* 100.0 (double share)))))
 
+(defn whole
+  "A count as a whole number, or nil."
+  [n]
+  (when (number? n) (Math/round (double n))))
+
 (defn role
   "`since wk 3, De'Von Achane IR` for a player who took over a vacated role."
   [{:role/keys [since vacated-by vacated-status]}]
@@ -160,6 +165,9 @@
               [:snap (percent (:snap-share p))]
               [:snap-season (percent (:snap-share-season p))]
               [:role (role p)]
+              [:rz-rush (whole (:rz-rush p))]
+              [:rz-tgt (whole (:rz-tgt p))]
+              [:rz-pass (whole (:rz-pass p))]
               [:drop-candidate (when (:drop? p) true)]
               [:drop-cost (:drop-cost p)]
               [:unvalued (when (:unvalued? p) true)]]
@@ -180,6 +188,7 @@
               "- outlook: Sleeper's projected points a game over the weeks he has left, under this league's scoring"
               "- ros-ecr: FantasyPros' experts' rest-of-season rank at his position in this league's scoring format, with the range of their ranks; absent when they do not rank him"
               "- snap: percent of his team's offensive snaps over his last three weeks played; snap-season is the season's"
+              "- rz-rush, rz-tgt, rz-pass: his carries, targets and passes inside the 20 this season through the last week played, as Sleeper counts them; absent means none recorded"
               "- role: set when a teammate at his position who held the role went on injured reserve and he has taken it over, with the week it changed"
               "- drop-cost: rest-of-season points the starting lineup loses if he is dropped; 0 on a bench that never plays"])
        (str/join "\n")))

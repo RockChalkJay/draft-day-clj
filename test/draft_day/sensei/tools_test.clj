@@ -276,3 +276,9 @@
     (is (= 31 (:snap-season r)))
     (is (= "since wk 3, De'Von Achane IR" (:role r))))
   (is (not-any? #(contains? (tools/row (first fx/free-agents)) %) [:snap :snap-season :role])))
+
+(deftest a-row-states-red-zone-counts-as-whole-numbers
+  (let [r (tools/row (assoc (first fx/free-agents) :rz-rush 14.0 :rz-tgt 1.0))]
+    (is (= 14 (:rz-rush r)))
+    (is (= 1 (:rz-tgt r)))
+    (is (not (contains? r :rz-pass)) "none recorded: no key")))

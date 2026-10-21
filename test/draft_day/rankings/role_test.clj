@@ -59,3 +59,16 @@
     (is (= 3 (:role/since out)))
     (is (some? (:role/since out))
         "(30 + 12 + 8) / 3 weeks played over 60 is 28%; counting the bye as a zero it would be 21%")))
+
+(deftest red-zone-usage-is-summed-off-the-log-as-raw-counts
+  (let [p (assoc gordon :realized/game-log
+                 [{:week 3 :stats {} :rz-rush 3.0}
+                  {:week 4 :stats {} :rz-rush 2.0 :rz-tgt 1.0}
+                  {:week 5 :stats {}}
+                  {:week 6 :stats {} :rz-rush 9.0 :rz-pass 0.0}])
+        out (first (role/with-role [p] 6))]
+    (is (= 14.0 (:rz-rush out)))
+    (is (= 1.0 (:rz-tgt out)))
+    (is (not (contains? out :rz-pass)) "a zero count is none"))
+  (let [out (first (role/with-role [(assoc wright :realized/game-log [{:week 4 :stats {}}])] 6))]
+    (is (not-any? #(contains? out %) [:rz-rush :rz-tgt :rz-pass]) "absent means none, not zero")))
