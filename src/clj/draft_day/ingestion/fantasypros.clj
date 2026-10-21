@@ -214,23 +214,23 @@
   when any page fails, since a format missing a position would read as experts
   who do not rank him."
   []
-  (let [pages (for [pos (keys pos-formats)
-                    fmt (if (pos-formats pos) (keys pos-format-prefixes) [:standard])]
-                [pos fmt])
-        rows  (parallel/all
-               (into {} (map (fn [[pos fmt :as page]]
-                               [page #(or (some-> (fetch-page (ros-url pos fmt)) (parse-ros-ecr pos))
-                                          (throw (ex-info "rest-of-season page failed"
-                                                          {:position pos :format fmt})))]))
-                     pages))]
+  (let [formats (keys pos-format-prefixes)
+        page    (fn [pos fmt] [pos (if (pos-formats pos) fmt :standard)])
+        pages   (distinct (for [pos (keys pos-formats), fmt formats] (page pos fmt)))
+        rows    (parallel/all
+                 (into {} (map (fn [[pos fmt :as p]]
+                                 [p #(or (some-> (fetch-page (ros-url pos fmt)) (parse-ros-ecr pos))
+                                         (throw (ex-info "rest-of-season page failed"
+                                                         {:position pos :format fmt})))]))
+                       pages))]
     (into {}
           (map (fn [fmt]
                  [fmt (into {}
-                            (comp (filter (fn [[[pos f]]] (or (= f fmt) (not (pos-formats pos)))))
-                                  (mapcat val)
+                            (comp (map #(rows (page % fmt)))
+                                  cat
                                   (map (juxt :key #(dissoc % :key))))
-                            rows)]))
-          (keys pos-format-prefixes))))
+                            (keys pos-formats))]))
+          formats)))
 
 ;; --- AAV (auction values) ---
 
