@@ -231,3 +231,13 @@
       (is (contains? (:ros/stats p) :rec))
       (is (number? (:ros-points p)))
       (is (pos? (:ros-points p))))))
+
+(deftest a-defense-trusts-its-preseason-line-more-than-a-skill-player-does
+  (let [rate (fn [pos]
+               (let [p (assoc (player :pre {:rec 85.0} :played 8 :realized {:rec 160.0}) :position pos)
+                     out (first (ros/with-ros (alongside-a-projected-peer p) ppr (ctx 8)))]
+                 (/ (get-in out [:ros/stats :rec]) (:ros/games-remaining out))))]
+    (is (< (rate "DST") (rate "WR")) "the same 20 a game realized moves a defense less")
+    (is (< 6.7 (rate "DST") 6.8) "(60 * 5 + 160) / 68: 5 a game projected, 20 realized over 8 games")
+    (is (= ros/PRIOR-GAMES (ros/prior-games-for "RB")))
+    (is (= 60.0 (ros/prior-games-for "DST")))))

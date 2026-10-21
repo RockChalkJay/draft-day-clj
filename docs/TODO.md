@@ -79,15 +79,17 @@ for the known gaps between a league's real rules and what the board can score.
   that matters most for a waiver board — where discrimination is *worst* — is
   recorded in prose rather than in the table the code reads.
 
-- **There is no in-season backtest.** The benchmark scores preseason draft
-  boards only, so `ros/PRIOR-GAMES`, `waiver/stash-share`, the rest-of-season
-  blend and the weekly projection have never been scored against what happened.
-  The data exists: nflverse and Sleeper actuals, plus the benchmark's vintage
-  preseason projections. For each season and week `w`, rank players on the
-  `ros-points` computable through `w`, score against points scored in weeks
-  `w + 1…` by position, against two baselines: the prorated preseason line and
-  realized points a game. It unlocks per-stat prior strengths and the
-  probabilistic weekly-gap alternative to `confidence`.
+- **The in-season backtest does not cover the outlook prior, `stash-share` or the
+  weekly projection.** `benchmark.ros-backtest` scores the rest-of-season blend on
+  2021-25 against Sleeper's actuals, and measured the prior strength per position
+  (`ros/PRIOR-GAMES-BY-POSITION`) and a role arm (display-only). It scores the
+  August prior, because Sleeper revises a past week's line after the games and no
+  vintage weekly line exists for past seasons. `tools.projections` now saves the
+  outlook with each week's line, so once a season of them has accumulated the
+  outlook prior's strength can be measured, and with it `waiver/stash-share`, the
+  weekly projection and the probabilistic weekly-gap alternative to `confidence`.
+  The role arm finds vacancies from snaps alone, with no injury data to tell a
+  benching from an injury.
 
 - **Regenerate `confidence/win-rates` from the archive.** `win-rates` came from
   a one-off 2025 pull, with no script in `dev/`. `tools.projections` now saves
