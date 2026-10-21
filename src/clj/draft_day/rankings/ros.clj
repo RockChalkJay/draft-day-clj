@@ -43,8 +43,10 @@
   "Where six is measurably wrong. A defense's weekly points are mostly noise, and
   the backtest's error falls as the preseason line gets more weight: sixty is 0.6
   squared points a game better than six, 4.6 standard errors, better in four of
-  five seasons. Its harness prior is sparser than production's, so the effect is
-  if anything understated; preseason alone was no better than sixty."
+  five seasons; preseason alone was no better than sixty. The harness's prior is
+  sparser than production's, which should favour the larger strength if
+  anything, but the live fill cannot be replayed for past seasons, so that is
+  expected and not shown."
   {"DST" 60.0})
 
 (defn prior-games-for

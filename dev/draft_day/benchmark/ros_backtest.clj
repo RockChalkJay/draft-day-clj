@@ -80,7 +80,9 @@
 (defn weekly-rows
   "Every played-game row of a regular season, weeks 1 through `last-week`, with
   the team and position Sleeper listed him under that week. Disk-cached; a week
-  that fails to fetch throws rather than shortening the season."
+  that fails to fetch throws rather than shortening the season. The rows are
+  `actual/entry->row`'s output, so the cache token below goes with that
+  function's shape: bump it when `entry->row` changes."
   [season]
   (fetch/cached
    (fetch/cache-path "sleeper" "weekly-rows" "v1" season)
