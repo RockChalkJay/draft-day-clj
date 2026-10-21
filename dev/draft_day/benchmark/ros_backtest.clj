@@ -48,6 +48,7 @@
             [draft-day.benchmark.fetch :as fetch]
             [draft-day.benchmark.sources.sleeper :as pre-src]
             [draft-day.ingestion.parallel :as parallel]
+            [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.sleeper-actual :as actual]
             [draft-day.db :as db]
             [draft-day.rankings.replacement :as replacement]
@@ -59,7 +60,7 @@
   "Prior strengths in games. 1000 is the preseason line alone."
   [1 2 4 6 9 12 18 30 60 1000])
 
-(def shipped 6)
+(def shipped (long ros/PRIOR-GAMES))
 
 (def role-arms
   "The prior strengths the role arm is compared at, among `prior-arms`."
@@ -86,8 +87,6 @@
    :half-ppr (scoring/resolve-buckets (:half-ppr scoring/presets))
    :standard (scoring/resolve-buckets (:standard scoring/presets))})
 
-(defn canon-position [p] (if (= "DEF" p) "DST" p))
-
 (defn weekly-rows
   "Every played-game row of a regular season, weeks 1 through `last-week`, with
   the team and position Sleeper listed him under that week. Disk-cached; a week
@@ -100,13 +99,12 @@
    (fn []
      (let [weeks (range 1 (inc last-week))
            got   (parallel/all (zipmap weeks (map (fn [w] #(actual/fetch-week season w)) weeks)))]
-       (vec (for [w weeks
-                  e (get got w)
-                  :let [row (actual/entry->row e)]
-                  :when row]
-              (assoc row
-                     :team (:team e)
-                     :position (canon-position (get-in e [:player :position])))))))))
+       (into [] (comp (mapcat got)
+                      (keep (fn [e]
+                              (some-> (actual/entry->row e)
+                                      (assoc :team (:team e)
+                                             :position (sleeper/canon-pos (get-in e [:player :position])))))))
+             weeks)))))
 
 (defn totals
   "`{:games :stats}` over a player's rows."
@@ -259,7 +257,7 @@
                                                           (:position (first g))])]
                          (when (and n (pos? n) (>= (count g) (* 2 n)))
                            (let [top (fn [f] (set (map :id (take n (sort-by f > g)))))
-                                 p   (top #(get-in (pred-at % k) [cfg]))
+                                 p   (top #(get (pred-at % k) cfg))
                                  a   (top #(get-in % [:actual cfg]))]
                              (/ (count (filter p a)) (double n))))))
                      groups)]
@@ -336,14 +334,13 @@
         teams   (Long/parseLong (or (:teams opts) (str default-teams)))
         asks    (into [] (mapcat season-asks) seasons)
         by-pos  (group-by :position asks)
-        order   positions
         ;; The hit rate is the one thing here that depends on the league: how
         ;; many of a position start. The errors are per player and do not.
         n-by-group (group-starters asks :ppr teams db/default-roster)]
     (println (format "%d asks, %d player-seasons, seasons %s" (count asks)
                      (count (distinct (map (juxt :season :id) asks))) (str/join "," seasons)))
     (doseq [cfg (keys configs)]
-      (let [reports (mapv #(prior-report % (get by-pos %) cfg n-by-group) (filter by-pos order))]
+      (let [reports (mapv #(prior-report % (get by-pos %) cfg n-by-group) (filter by-pos positions))]
         (print-priors reports cfg)
         (when (= :ppr cfg) (print-hits reports teams))))
-    (print-roles (keep #(when (get by-pos %) (role-report % (get by-pos %) :ppr)) order))))
+    (print-roles (keep #(when (get by-pos %) (role-report % (get by-pos %) :ppr)) positions))))

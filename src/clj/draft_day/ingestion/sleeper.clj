@@ -15,7 +15,7 @@
 (def fantasy-positions ["QB" "RB" "WR" "TE" "K" "DEF"])
 (def ^:private fantasy-position-set (set fantasy-positions))
 
-(defn- canon-pos [pos] (if (= pos "DEF") "DST" pos))
+(defn canon-pos[pos] (if (= pos "DEF") "DST" pos))
 
 (defn fantasy-position
   "The position a Sleeper player is scored at: his primary `:position` where it
