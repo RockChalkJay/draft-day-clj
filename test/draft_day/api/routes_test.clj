@@ -20,7 +20,9 @@
 ;; `load-outlook` reaches Sleeper and writes `data/outlook.*` otherwise, for
 ;; whichever week a test asks about.
 (use-fixtures :each
-  (fn [run] (with-redefs [pipeline/load-outlook (constantly nil)] (run))))
+  (fn [run] (with-redefs [pipeline/load-outlook (constantly nil)
+                          pipeline/load-ros-ecr (constantly nil)]
+              (run))))
 (defn- input-stream [s] (java.io.ByteArrayInputStream. (.getBytes ^String s "UTF-8")))
 
 (def ^:private fixture
@@ -473,6 +475,26 @@
     (is (not-any? #(or (contains? % :outlook/games) (contains? % :outlook/stats))
                   (concat (:players b) (:my-roster-players b)))
         "the working state is stripped like the rest-of-season one")))
+
+(deftest waivers-reads-the-experts-in-the-leagues-own-format
+  (let [ranks {:ppr      {"rb0_rb" {:fantasypros/ros-pos-rank "RB3"}}
+               :standard {"rb0_rb" {:fantasypros/ros-pos-rank "RB9"}}}
+        env   {:fetched-at "2026-10-20T00:00:00Z" :by-format ranks}
+        ros-of (fn [scoring]
+                 (with-redefs [pipeline/load-ros-ecr (constantly env)]
+                   (let [reply (routes/waivers-reply {:scoring scoring :num-teams 12 :league synced :my-roster-id 1})]
+                     [(some #(when (= "rb0" (:player-id %)) (:fantasypros/ros-pos-rank %)) (:players reply))
+                      (:ros-ecr-fetched-at reply)])))]
+    (is (= ["RB3" "2026-10-20T00:00:00Z"] (ros-of "ppr")))
+    (is (= ["RB9" "2026-10-20T00:00:00Z"] (ros-of "standard"))
+        "a standard league reads the standard ranks, never PPR's")))
+
+(deftest the-browser-is-not-sent-the-experts-ranks
+  (let [env {:fetched-at "x" :by-format {:ppr {"rb0_rb" {:fantasypros/ros-pos-rank "RB3"}}}}
+        b   (with-redefs [pipeline/load-ros-ecr (constantly env)]
+              (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1})))]
+    (is (seq (:players b)))
+    (is (not-any? #(contains? % :fantasypros/ros-pos-rank) (concat (:players b) (:my-roster-players b))))))
 
 (deftest waivers-endpoint-ranks-a-position-on-points-so-far
   (let [b  (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))

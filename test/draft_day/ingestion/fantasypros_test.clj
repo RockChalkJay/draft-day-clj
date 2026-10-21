@@ -1,5 +1,6 @@
 (ns draft-day.ingestion.fantasypros-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [draft-day.ingestion.fantasypros :as fp]
             [draft-day.ingestion.match :as match]
             [draft-day.scoring :as scoring]))
@@ -167,3 +168,51 @@
 
 (deftest parse-pos-ecr-returns-nil-without-blob
   (is (nil? (fp/parse-pos-ecr "<html>no ecr here</html>"))))
+
+(defn- ros-page [type pos & rows]
+  (str "<html><body><script>var ecrData = {\"ranking_type_name\":\"" type "\",\"players\":["
+       (clojure.string/join
+        "," (map (fn [[name rank lo hi]]
+                   (str "{\"player_name\":\"" name "\",\"player_position_id\":\"" pos "\","
+                        "\"pos_rank\":\"" pos rank "\",\"rank_min\":\"" lo "\",\"rank_max\":\"" hi "\"}"))
+                 rows))
+       "]};</script></body></html>"))
+
+(deftest ros-urls-follow-the-position-pages-rules
+  (is (= "https://www.fantasypros.com/nfl/rankings/ros-ppr-rb.php" (fp/ros-url "RB" :ppr)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/ros-half-point-ppr-wr.php" (fp/ros-url "WR" :half-ppr)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/ros-te.php" (fp/ros-url "TE" :standard)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/ros-qb.php" (fp/ros-url "QB" :ppr))
+      "the prefixed QB page is the preseason overall sheet")
+  (is (thrown? clojure.lang.ExceptionInfo (fp/ros-url "RB" :half))))
+
+(deftest parse-ros-takes-the-rank-and-its-spread
+  (let [idx (match/by-key (fp/parse-ros-ecr (ros-page "ros" "RB" ["Ollie Gordon II" 24 24 29]) "RB"))
+        gordon (get idx (match/key-for "Ollie Gordon II" "RB"))]
+    (is (= "RB24" (:fantasypros/ros-pos-rank gordon)))
+    (is (= 24 (:fantasypros/ros-rank-min gordon)))
+    (is (= 29 (:fantasypros/ros-rank-max gordon)))))
+
+(deftest parse-ros-refuses-a-page-that-is-not-the-ros-ranking-of-that-position
+  (is (nil? (fp/parse-ros-ecr (ros-page "draft" "RB" ["A" 1 1 1]) "RB")) "a redirect to the preseason sheet")
+  (is (nil? (fp/parse-ros-ecr (ros-page "ros" "WR" ["A" 1 1 1]) "RB")) "another position's page")
+  (is (nil? (fp/parse-ros-ecr "<html>nothing</html>" "RB"))))
+
+(deftest fetch-ros-reads-twelve-pages-and-scopes-them-by-format
+  (let [asked (atom [])
+        page  (fn [url]
+                (swap! asked conj url)
+                (let [pos (str/upper-case (second (re-find #"-([a-z]+)\.php$" url)))
+                      fmt (cond (str/includes? url "half-point") "H" (str/includes? url "ppr") "P" :else "S")]
+                  (ros-page "ros" pos [(str pos " " fmt) 1 1 1])))
+        out   (with-redefs [fp/fetch-page page] (fp/fetch-ros-ecr))
+        name-in (fn [fmt pos] (-> (get-in out [fmt (match/key-for (str pos " " ({:ppr "P" :half-ppr "H" :standard "S"} fmt)) pos)]) :fantasypros/ros-pos-rank))]
+    (is (= 12 (count @asked)) "nine format pages, three bare ones")
+    (is (= "RB1" (name-in :half-ppr "RB")))
+    (is (= "RB1" (name-in :standard "RB")))
+    (is (some? (get-in out [:ppr (match/key-for "QB S" "QB")])) "QB joins every format from his one page")
+    (is (some? (get-in out [:half-ppr (match/key-for "K S" "K")])))))
+
+(deftest fetch-ros-fails-whole-when-one-page-does
+  (with-redefs [fp/fetch-page (fn [url] (when-not (str/includes? url "ros-te") (ros-page "ros" "RB" ["A" 1 1 1])))]
+    (is (thrown? Exception (fp/fetch-ros-ecr)))))

@@ -12,6 +12,8 @@
      rank spread (rank_std) that powers the Floor/Ceiling model.
    - Per-position tier (`parse-pos-ecr`): the same blob off each position's own
      cheatsheet, for the finer tier that page cuts within the position.
+   - Rest-of-season rank (`parse-ros-ecr`): the same blob off the in-season
+     rankings pages, for the experts' view of a player from here on.
    - AAV (`parse-aav`): scrapes FantasyPros' auction-value calculator (the
      draftwizard `#OverallTable`) for a raw market price per player."
   (:require [clojure.string :as str]
@@ -87,24 +89,25 @@
      :fantasypros/rank-min (->int (:rank_min p))
      :fantasypros/rank-max (->int (:rank_max p))}))
 
-(defn parse-ecr
-  "Pure: cheatsheet HTML -> seq of enrichment maps (each with a :key)."
+(defn ecr-data
+  "Pure: the `var ecrData = {…}` blob of a rankings page as a map, or nil."
   [html]
   (try
-    (let [doc (Jsoup/parse html)
-          scripts (.select doc "script")
-          script (->> scripts
+    (let [script (->> (.select (Jsoup/parse html) "script")
                       (filter #(str/includes? (.html %) "var ecrData"))
                       first)]
       (when script
-        (let [content (.html script)
-              json-match (re-find #"var ecrData = (\{.*)" content)]
-          (when (second json-match)
-            (let [json-str (second json-match)]
-              (->> (:players (json/read-value json-str mapper))
-                   (map normalize-player)
-                   (filter :key)))))))
+        (when-let [json-str (second (re-find #"var ecrData = (\{.*)" (.html script)))]
+          (json/read-value json-str mapper))))
     (catch Exception _ nil)))
+
+(defn parse-ecr
+  "Pure: cheatsheet HTML -> seq of enrichment maps (each with a :key)."
+  [html]
+  (some->> (ecr-data html)
+           :players
+           (map normalize-player)
+           (filter :key)))
 
 (defn fetch-ecr
   "Network: fetch + parse the cheatsheet for a scoring format. nil on failure.
@@ -173,6 +176,61 @@
   "Network: fetch + parse one position's cheatsheet at one format. nil on failure."
   [pos fmt]
   (some-> (fetch-page (pos-cheatsheet-url pos fmt)) parse-pos-ecr))
+
+(defn ros-url
+  "The rest-of-season rankings page for `pos` at scoring format `fmt`, on the
+  per-position page's rules: QB, K and DST have only the bare page."
+  [pos fmt]
+  (-> (pos-cheatsheet-url pos fmt)
+      (str/replace "/rankings/" "/rankings/ros-")
+      (str/replace "-cheatsheets.php" ".php")))
+
+(defn parse-ros-ecr
+  "Pure: a rest-of-season page for `pos` -> seq of `{:key :fantasypros/ros-pos-rank
+  \"RB24\" :fantasypros/ros-rank-min :fantasypros/ros-rank-max}`, or nil.
+
+  Nil unless the page really is the rest-of-season ranking of `pos`. A URL the
+  vendor does not serve (`ros-ppr-qb`) answers 200 with the preseason overall
+  cheatsheet, so a parse that trusted the status would read a whole-board page
+  as one position."
+  [html pos]
+  (let [{:keys [ranking_type_name players]} (ecr-data html)]
+    (when (and (= "ros" ranking_type_name)
+               (seq players)
+               (every? #(= pos (:player_position_id %)) players))
+      (->> players
+           (keep (fn [p]
+                   (let [k (match/key-for (:player_name p) pos)]
+                     (when (and k (:pos_rank p))
+                       {:key                      k
+                        :fantasypros/ros-pos-rank (:pos_rank p)
+                        :fantasypros/ros-rank-min (->int (:rank_min p))
+                        :fantasypros/ros-rank-max (->int (:rank_max p))}))))
+           seq))))
+
+(defn fetch-ros-ecr
+  "Network: `{format {key entry}}` for all three formats off the twelve
+  rest-of-season pages: RB, WR and TE per format, QB, K and DST once. Throws
+  when any page fails, since a format missing a position would read as experts
+  who do not rank him."
+  []
+  (let [pages (for [pos (keys pos-formats)
+                    fmt (if (pos-formats pos) (keys pos-format-prefixes) [:standard])]
+                [pos fmt])
+        rows  (parallel/all
+               (into {} (map (fn [[pos fmt :as page]]
+                               [page #(or (some-> (fetch-page (ros-url pos fmt)) (parse-ros-ecr pos))
+                                          (throw (ex-info "rest-of-season page failed"
+                                                          {:position pos :format fmt})))]))
+                     pages))]
+    (into {}
+          (map (fn [fmt]
+                 [fmt (into {}
+                            (comp (filter (fn [[[pos f]]] (or (= f fmt) (not (pos-formats pos)))))
+                                  (mapcat val)
+                                  (map (juxt :key #(dissoc % :key))))
+                            rows)]))
+          (keys pos-format-prefixes))))
 
 ;; --- AAV (auction values) ---
 
