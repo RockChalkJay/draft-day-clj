@@ -38,12 +38,19 @@
   is a bootstrap over player-seasons, since one player asked about at ten as-of
   weeks is not ten independent observations.
 
-      lein run -m draft-day.benchmark.ros-backtest -- --seasons 2021,2022,2023,2024,2025"
+      lein run -m draft-day.benchmark.ros-backtest -- --seasons 2021,2022,2023,2024,2025
+      lein run -m draft-day.benchmark.ros-backtest -- --teams 10
+
+  `--teams` sets the league size the hit rate counts starters for (12 by
+  default, over `db/default-roster`); the errors, and so the prior strengths,
+  do not depend on it."
   (:require [clojure.string :as str]
             [draft-day.benchmark.fetch :as fetch]
             [draft-day.benchmark.sources.sleeper :as pre-src]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.ingestion.sleeper-actual :as actual]
+            [draft-day.db :as db]
+            [draft-day.rankings.replacement :as replacement]
             [draft-day.rankings.role :as role]
             [draft-day.rankings.ros :as ros]
             [draft-day.scoring :as scoring]))
@@ -66,9 +73,13 @@
 
 (def min-games-after 2)
 
-(def top-n
-  "How many of a position a lineup starts, for the hit rate."
-  {"QB" 12 "RB" 24 "WR" 36 "TE" 12 "K" 12 "DST" 12})
+(def positions ["QB" "RB" "WR" "TE" "K" "DST"])
+
+(def starter-keys
+  "The roster key holding each position's dedicated starters per team."
+  {"QB" :qb "RB" :rb "WR" :wr "TE" :te "K" :k "DST" :dst})
+
+(def default-teams 12)
 
 (def configs
   {:ppr      (scoring/resolve-buckets (:ppr scoring/presets))
@@ -164,7 +175,7 @@
                    pre    (:stats (get pre-by-id id))
                    real   (totals before)]
                (when (and (>= (count after) min-games-after)
-                          (contains? top-n pos)
+                          (contains? starter-keys pos)
                           (or (pos? (:games real)) (seq pre)))
                  (let [since    (get taker id)
                        since-r  (when since (totals (filterv #(>= (:week %) since) before)))
@@ -218,14 +229,35 @@
   (/ (reduce + 0.0 (map #(loss % (pred-at % k) cfg) asks))
      (reduce + 0.0 (map :games asks))))
 
+(defn starters
+  "`{position n}` a league of `num-teams` starts over one (season, as-of week)
+  group: the dedicated seats times the teams, plus the flex seats the position
+  wins when the best of what is left fills them on what players actually scored
+  (`replacement/flex-claims`), which is how the draft board allocates them."
+  [group cfg num-teams roster]
+  (let [board (map (fn [a] {:position (:position a) :score (get-in a [:actual cfg])}) group)
+        flex  (replacement/flex-claims board num-teams roster :score)]
+    (into {}
+          (map (fn [[pos k]]
+                 [pos (+ (* num-teams (long (or (get roster k) 0))) (get flex pos 0))]))
+          starter-keys)))
+
+(defn group-starters
+  "`{[season as-of] {position n}}` over all of `asks`, so a position's top N
+  follows the league size and lineup rather than a fixed count."
+  [asks cfg num-teams roster]
+  (update-vals (group-by (juxt :season :as-of) asks) #(starters % cfg num-teams roster)))
+
 (defn hit-rate
   "Of the top `n` at a position by predicted points a game, how many finished in
-  the top `n` by actual, averaged over every (season, as-of week) group."
-  [asks cfg k]
+  the top `n` by actual, averaged over every (season, as-of week) group. `n` is
+  the position's entry in `group-starters`' map for that group."
+  [asks cfg k starters-by-group]
   (let [groups (vals (group-by (juxt :season :as-of) asks))
         rates  (keep (fn [g]
-                       (let [n (get top-n (:position (first g)))]
-                         (when (>= (count g) (* 2 n))
+                       (let [n (get-in starters-by-group [[(:season (first g)) (:as-of (first g))]
+                                                          (:position (first g))])]
+                         (when (and n (pos? n) (>= (count g) (* 2 n)))
                            (let [top (fn [f] (set (map :id (take n (sort-by f > g)))))
                                  p   (top #(get-in (pred-at % k) [cfg]))
                                  a   (top #(get-in % [:actual cfg]))]
@@ -235,8 +267,8 @@
 
 (defn prior-report
   "One position's errors by prior strength under `cfg`, the best strength, and
-  its paired change against the shipped one."
-  [pos asks cfg]
+  its paired change against the shipped one. Hit rates take `starters-by-group`."
+  [pos asks cfg starters-by-group]
   (let [errs   (into {} (map (fn [k] [k (mse asks cfg k)])) prior-arms)
         best   (key (apply min-key val errs))
         total  (reduce + 0.0 (map :games asks))
@@ -244,7 +276,7 @@
                  (bootstrap asks #(- (loss % (pred-at % best) cfg) (loss % (pred-at % shipped) cfg)) total 500))]
     {:position pos :n (count asks) :players (count (distinct (map (juxt :season :id) asks)))
      :errors errs :best best :delta delta
-     :hits (when (= :ppr cfg) (into {} (map (fn [k] [k (hit-rate asks cfg k)])) prior-arms))}))
+     :hits (when (= :ppr cfg) (into {} (map (fn [k] [k (hit-rate asks cfg k starters-by-group)])) prior-arms))}))
 
 (defn role-report
   "The role arm against the whole-season rate at each prior strength, on the
@@ -279,8 +311,8 @@
                        (format "%+.3f ± %.3f (%.1f se)" (:delta delta) (:se delta) (/ (:delta delta) (:se delta)))
                        "shipped is best")))))
 
-(defn print-hits [reports]
-  (println "\nHit rate, ppr: of the top N predicted at a position, how many finished top N")
+(defn print-hits [reports num-teams]
+  (println (format "\nHit rate, ppr, %d teams: of the top N predicted at a position, how many finished top N" num-teams))
   (println (format "  %-4s %s" "pos" (str/join " " (map #(format "%6s" (if (= 1000 %) "pre" %)) prior-arms))))
   (doseq [{:keys [position hits]} reports]
     (println (format "  %-4s %s" position (str/join " " (map #(format "%6s" (fmt (some-> (get hits %) (* 100)))) prior-arms))))))
@@ -301,13 +333,17 @@
   (let [opts    (apply hash-map (map #(if (str/starts-with? % "--") (keyword (subs % 2)) %)
                                      (remove #{"--"} args)))
         seasons (map #(Long/parseLong %) (str/split (or (:seasons opts) "2021,2022,2023,2024,2025") #","))
+        teams   (Long/parseLong (or (:teams opts) (str default-teams)))
         asks    (into [] (mapcat season-asks) seasons)
         by-pos  (group-by :position asks)
-        order   ["QB" "RB" "WR" "TE" "K" "DST"]]
+        order   positions
+        ;; The hit rate is the one thing here that depends on the league: how
+        ;; many of a position start. The errors are per player and do not.
+        n-by-group (group-starters asks :ppr teams db/default-roster)]
     (println (format "%d asks, %d player-seasons, seasons %s" (count asks)
                      (count (distinct (map (juxt :season :id) asks))) (str/join "," seasons)))
     (doseq [cfg (keys configs)]
-      (let [reports (mapv #(prior-report % (get by-pos %) cfg) (filter by-pos order))]
+      (let [reports (mapv #(prior-report % (get by-pos %) cfg n-by-group) (filter by-pos order))]
         (print-priors reports cfg)
-        (when (= :ppr cfg) (print-hits reports))))
+        (when (= :ppr cfg) (print-hits reports teams))))
     (print-roles (keep #(when (get by-pos %) (role-report % (get by-pos %) :ppr)) order))))
