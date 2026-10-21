@@ -1,9 +1,9 @@
 (ns draft-day.rankings.role
   "Who has taken over a role, and from whom, and how much of the scoring
-  opportunity he gets: the red-zone carries, targets and passes Sleeper counted. Display only: nothing here feeds a
-  projection or a score, for the reason `rankings.ros` gives about recent games,
-  and whether a promotion caused by a teammate's injury predicts better is a
-  question for a backtest.
+  opportunity he gets: the red-zone carries, targets and passes Sleeper counted.
+  Display only: nothing here feeds a projection or a score, for the reason
+  `rankings.ros` gives about recent games, and whether a promotion caused by a
+  teammate's injury predicts better is a question for a backtest.
 
   A vacancy is a player at a position on a team who held at least half of its
   offensive snaps in some week, now carries a serious designation
@@ -129,10 +129,12 @@
           (:realized/game-log player)))
 
 (defn with-role
-  "Assoc `red-zone-totals`, `:snap-share` (recent), `:snap-share-season`, and for a player who took
-  over a vacated role `:role/since` (the change point), `:role/vacated-by` (the
-  player's name) and `:role/vacated-status` (his designation). Run before the
-  game log is stripped. A board with no snap counts gains nothing."
+  "Assoc `red-zone-totals`, the snap shares `:snap-share` (recent) and
+  `:snap-share-season`, and for a player who took over a vacated role
+  `:role/since` (the change point), `:role/vacated-by` (the player's name) and
+  `:role/vacated-status` (his designation). Run before the game log is stripped.
+  The shares and roles need the log's snap counts and gain nothing without them;
+  the red-zone totals need only its red-zone counts."
   [players through-week]
   (if-not (and (number? through-week) (pos? through-week))
     players
