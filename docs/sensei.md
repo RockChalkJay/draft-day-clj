@@ -94,7 +94,7 @@ the owner uses it.
 
 ```
   sensei.context   accounts -> leagues -> the /api/waivers body of each
-  sensei.tools     leagues, my_team, waiver_targets, player_news
+  sensei.tools     leagues, my_team, waiver_targets, evaluate_claim, player_news
   sensei.mcp       POST /api/sensei/mcp
   sensei.chat      POST /api/sensei/chat, GET /api/sensei/status
        ^ Claude Code      ^ claude -p, the in-app panel      ^ API adapter (later)
@@ -124,6 +124,16 @@ Every reply states its league.
 columns read through `db/waiver-sort-accessors`, and their legend is the column
 catalog's tooltips. `my_team` splits the roster through `db/team-roster`, as My
 Team does.
+
+**Comparing drops.** `waiver_targets` measures every claim against one drop, the
+board's `drop-candidate`, which is the cheapest seat by arithmetic and not a
+verdict on the player. `evaluate_claim` prices one add against any drop the
+manager names, off the same reply's rows and the league's seats, so the model
+quotes a number instead of guessing how another drop would score. `my_team`
+rows carry `drop-cost`, the points the starting lineup loses if he leaves. The
+default list is quarterbacks, backs, receivers and tight ends: a kicker or a
+defense is a weekly stream, and on the first real run the two led the board and
+buried the position the manager asked about.
 
 **What the screen holds back, Sensei holds back.** No bid predictions while
 `db/bid-predictions?` is off, and the instructions tell the model not to put a

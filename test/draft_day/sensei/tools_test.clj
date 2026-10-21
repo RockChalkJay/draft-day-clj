@@ -179,3 +179,85 @@
         news (fn [args] (get-in (call "player_news" args (fx/deps {:news feed})) [:result :news]))]
     (is (= 5 (count (news {:player "p1"}))))
     (is (= ["n0" "n1"] (map :headline (news {:player "p1" :limit 2}))) "newest first, as the feed sorts")))
+
+(deftest waiver-targets-are-claims-not-streams
+  (let [ids #(map :player-id (:players (:result (call "waiver_targets" %1 (fx/deps)))))]
+    (is (= ["f3" "f2" "f1"] (ids {}))
+        "the kicker leads the board on lineup 40 and still stays off the default list")
+    (is (= ["f4"] (ids {:position "K"})) "named, he comes back")))
+
+(deftest a-row-states-the-outlook-and-what-a-drop-costs
+  (let [r (tools/row (assoc (nth fx/free-agents 2) :drop-cost 0.0))]
+    (is (= 11.2 (:outlook r)))
+    (is (= 0.0 (:drop-cost r)) "a free drop is a fact, not a gap"))
+  (is (not (contains? (tools/row (first fx/free-agents)) :outlook))))
+
+(deftest my-team-states-what-each-player-costs-to-drop
+  (let [{:keys [result]} (call "my_team" {} (fx/deps))]
+    (is (= 150.0 (:drop-cost (first (:starters result)))))
+    (is (= 0.0 (:drop-cost (first (:bench result)))))))
+
+(deftest evaluate-claim-prices-an-add-against-the-drop-candidate
+  (let [{:keys [result]} (call "evaluate_claim" {:add "Free Three"} (fx/deps))]
+    (is (= "Free Three" (get-in result [:add :name])))
+    (is (= "Bravo Wide" (get-in result [:drop :name])) "the board's drop candidate by default")
+    (is (= 10.0 (:lineup result)) "a 70 WR for a 60 WR in the WR seat")
+    (is (= 10.0 (:upgrade result)))
+    (is (= 0.0 (:lineup-this-week result)) "neither has a projection this week")
+    (is (not-any? #(contains? result %) [:starts-this-week :displaces])
+        "a free agent with no projection does not play")))
+
+(deftest evaluate-claim-can-compare-a-different-drop
+  (let [{:keys [result]} (call "evaluate_claim" {:add "f1" :drop "Alpha Back"} (fx/deps))]
+    (is (= "Alpha Back" (get-in result [:drop :name])))
+    (is (= -130.0 (:lineup result)) "a starter leaves and no one fills the RB seat")
+    (is (= -70.0 (:upgrade result)))
+    (is (= -4.3 (:lineup-this-week result)) "his 14.2 this week goes, and the claim's 9.9 fills the WR seat")
+    (is (= 9.9 (get-in result [:add :week])) "the add's own projection is its own field")
+    (is (= "WR" (:starts-this-week result)))
+    (is (not (contains? result :displaces)) "the starter he replaces is the drop, not a displacement")))
+
+(deftest evaluate-claim-names-whom-the-add-pushes-out-this-week
+  (let [reply (-> fx/reply
+                  (assoc :drop-candidate nil)
+                  (update :my-roster-players
+                          (fn [ps] (mapv #(cond-> % (= "p2" (:player-id %)) (assoc :week-points 5.0)) ps))))
+        {:keys [result]} (call "evaluate_claim" {:add "f1"} (fx/deps {:reply (constantly reply)}))]
+    (is (not (contains? result :drop)) "an open seat gives nobody up")
+    (is (= 4.9 (:lineup-this-week result)) "9.87 in the WR seat over his 5.0")
+    (is (= "WR" (:starts-this-week result)))
+    (is (= "Bravo Wide" (get-in result [:displaces :name])))))
+
+(deftest evaluate-claim-needs-the-managers-team
+  (let [gone (assoc-in fx/body [:league :teams] [(get-in fx/body [:league :teams 1])])]
+    (is (re-find #"team is not in this league's sync"
+                 (:error (call "evaluate_claim" {:add "f1"} (fx/deps {:body (constantly gone)})))))))
+
+(deftest evaluate-claim-asks-again-rather-than-guessing
+  (is (re-find #"no free agent matches" (:error (call "evaluate_claim" {:add "Nobody"} (fx/deps)))))
+  (is (re-find #"no player on the active roster matches"
+               (:error (call "evaluate_claim" {:add "f1" :drop "Charlie End"} (fx/deps))))
+      "a player on IR holds no active seat"))
+
+(deftest a-blank-drop-is-no-drop-named
+  (let [{:keys [result]} (call "evaluate_claim" {:add "f3" :drop "  "} (fx/deps))]
+    (is (= "Bravo Wide" (get-in result [:drop :name])) "the board's drop candidate")))
+
+(deftest a-blank-name-matches-nobody
+  (is (empty? (tools/find-players [{:player-id "x" :player-name nil}] ""))
+      "an unvalued row has no name to equal an empty query")
+  (is (empty? (tools/find-players [{:player-id "x" :player-name nil}] "Jr."))
+      "nor a query that normalizes to nothing"))
+
+(deftest a-drop-named-by-a-suffix-alone-is-refused
+  (let [body (-> fx/body
+                 (update-in [:league :teams 0 :player-ids] conj "ghost")
+                 (update-in [:league :teams 0 :active-ids] conj "ghost"))]
+    (is (re-find #"no player on the active roster matches"
+                 (:error (call "evaluate_claim" {:add "f1" :drop "Jr."}
+                               (fx/deps {:body (constantly body)}))))
+        "an unvalued player on the roster is not the drop")))
+
+(deftest waiver-targets-say-which-positions-they-cover
+  (is (= ["QB" "RB" "WR" "TE"] (:positions (:result (call "waiver_targets" {} (fx/deps))))))
+  (is (= ["K"] (:positions (:result (call "waiver_targets" {:position "K"} (fx/deps)))))))

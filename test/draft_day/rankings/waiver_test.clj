@@ -695,3 +695,38 @@
     (is (< (Math/abs (- 10.0 (:season-ppg a))) 1e-9))
     (is (< (Math/abs (- 5.0 (:season-points b))) 1e-9) "else nflverse's")
     (is (not (contains? c :season-points)) "no games is not zero points")))
+
+(deftest drop-costs-state-what-the-lineup-loses-and-the-candidate-is-their-minimum
+  (let [rows [["qb1" "QB" 260.0] ["rb1" "RB" 180.0] ["rb2" "RB" 150.0]
+              ["wr1" "WR" 170.0] ["wr3" "WR" 140.0] ["rb3" "RB" 130.0]
+              ["wr2" "WR" 120.0] ["te1" "TE" 95.0]
+              ["k1" "K" 39.0] ["d1" "DST" 80.0]]
+        ps    (mapv (fn [[id pos pts]] (p id pos pts)) rows)
+        costs (waiver/drop-costs ps lineup-slots)]
+    (is (= 0.0 (get costs "wr2")) "the man who does not start costs nothing")
+    (is (pos? (get costs "k1")) "the only kicker takes his seat's whole line with him")
+    (is (= "wr2" (drop-for rows lineup-slots))
+        "drop-candidate reads the same costs")))
+
+(deftest drop-costs-need-seats
+  (is (nil? (waiver/drop-costs [(p "a" "WR" 10.0)] nil))))
+
+(deftest outlook-points-are-per-game-under-the-leagues-weights
+  (let [[a b c] (waiver/with-outlook-points
+                  [{:player-id "a" :outlook/games 10 :outlook/stats {:rec 50.0 :rec_yd 500.0}}
+                   {:player-id "b" :outlook/games 0 :outlook/stats {}}
+                   {:player-id "c"}]
+                  (:ppr scoring/presets))]
+    (is (= 10.0 (:outlook-ppg a)) "(50 + 50) / 10")
+    (is (not (contains? b :outlook-ppg)) "no remaining game, no rate")
+    (is (not (contains? c :outlook-ppg)))))
+
+(deftest a-drop-candidate-reads-the-costs-it-is-given
+  (let [rows [["wr1" "WR" 170.0] ["wr2" "WR" 120.0] ["rb1" "RB" 180.0]]
+        ps   (mapv (fn [[id pos pts]] (p id pos pts)) rows)
+        by-id (into {} (map (juxt :player-id identity)) ps)]
+    (is (= "wr2" (:player-id (waiver/drop-candidate (mapv first rows) by-id 3 lineup-slots
+                                                    {"wr1" 5.0 "wr2" 0.0 "rb1" 9.0}))))
+    (is (= "rb1" (:player-id (waiver/drop-candidate (mapv first rows) by-id 3 lineup-slots
+                                                    {"wr1" 5.0 "wr2" 7.0 "rb1" 0.0})))
+        "the given costs decide, not a recount")))

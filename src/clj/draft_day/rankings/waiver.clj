@@ -167,29 +167,35 @@
 
 ;; ---- what a claim actually costs ----
 
+(defn drop-costs
+  "`{player-id points}`: what the starting lineup loses, on `:ros-points`, if
+  each of `players` leaves. 0 for anyone on a deep bench. nil with no `slots`,
+  there being no lineup to cost anything against."
+  [players slots]
+  (when (seq slots)
+    (let [full (lineup/lineup-points players slots :ros-points)]
+      (into {}
+            (map (fn [p]
+                   [(:player-id p)
+                    (- full (lineup/lineup-points
+                             (remove #(= (:player-id %) (:player-id p)) players)
+                             slots :ros-points))]))
+            players))))
+
 (defn drop-candidate
   "The player a claim would cost me, or nil when a seat is open; absent
   `roster-size` the roster is full. `held` is board-spaced and IR/taxi-free — see
-  `held-ids`, `league-sync.sleeper/normalize-roster`, and the ns docstring."
-  [held by-id roster-size slots]
-  (when-not (and roster-size (< (count held) roster-size))
-    (let [players (vec (keep #(get by-id %) held))
-          points  #(double (or (:ros-points %) 0.0))]
-      (if-not (seq slots)
-        (first (sort-by points players))
-        (let [full (lineup/lineup-points players slots :ros-points)
-              cost (fn [p]
-                     (- full (lineup/lineup-points
-                              (remove #(= (:player-id %) (:player-id p)) players)
-                              slots :ros-points)))]
-          ;; Keyed once per player and sorted on the pairs. `sort-by` calls its
-          ;; keyfn inside the comparator, so keying in the sort would run a full
-          ;; lineup fill O(n log n) times for a value that is fixed per player.
-          (->> players
-               (map (fn [p] [[(cost p) (points p)] p]))
-               (sort-by first)
-               first
-               second))))))
+  `held-ids`, `league-sync.sleeper/normalize-roster`, and the ns docstring.
+  `costs` is `drop-costs` over `held`'s rows when the caller already has it."
+  ([held by-id roster-size slots] (drop-candidate held by-id roster-size slots nil))
+  ([held by-id roster-size slots costs]
+   (when-not (and roster-size (< (count held) roster-size))
+     (let [players (keep #(get by-id %) held)
+           ;; nil with no seats, so every cost reads 0 and the worst points decide.
+           costs   (or costs (drop-costs players slots))]
+       (first (sort-by (juxt #(get costs (:player-id %) 0.0)
+                             #(double (or (:ros-points %) 0.0)))
+                       players))))))
 
 (defn with-upgrade
   "Assoc `:upgrade` — rest-of-season points gained by the claim — plus
@@ -438,6 +444,19 @@
                 pts  (assoc :season-points pts :season-gp (:games (season-line p))))))
           players)))
 
+(defn with-outlook-points
+  "Assoc `:outlook-ppg`, Sleeper's projection for the weeks he has left, per
+  game under the league's own weights. A player it projects for none gets no key."
+  [players scoring]
+  (let [scoring (scoring/resolve-buckets scoring)]
+    (mapv (fn [p]
+            (if-let [ppg (per-game-points {:games (:outlook/games p)
+                                           :stats (:outlook/stats p)}
+                                          scoring)]
+              (assoc p :outlook-ppg ppg)
+              p))
+          players)))
+
 ;; ---- this week ----
 ;; The other half of the question `:ros-points` answers. Rest-of-season says who
 ;; helps you from here; this says who helps you on Sunday, and the two routinely
@@ -502,16 +521,16 @@
         ;; docstring is about what happened the one time two readers of a roster
         ;; disagreed, and two call sites that must stay in step is that shape.
         active   (held-ids my-team xwalk :active-ids)
-        drop     (when my-team (drop-candidate active by-id seats starting-slots))
+        roster   (vec (keep #(get by-id %) active))
+        costs    (drop-costs roster starting-slots)
+        drop     (when my-team (drop-candidate active by-id seats starting-slots costs))
         n        (claims-left ctx)
         bidding? (faab? (:type waiver))
         week     (inc (or through-week 0))
         fas      (-> (free-agents players rostered)
                      (with-dropped (recently-dropped bid-history xwalk week))
                      (with-upgrade drop)
-                     (with-lineup-upgrade
-                       (vec (keep #(get by-id %) active))
-                       drop starting-slots)
+                     (with-lineup-upgrade roster drop starting-slots)
                      (with-bids waiver (:faab-left my-team) n
                                 #(faab/market-cap (:position %) (:budget waiver) week)))
         habits   (when bidding?
@@ -524,6 +543,7 @@
      :seats    seats
      :my-team  my-team
      :drop     drop
+     :drop-costs costs
      :claims-left n
      :bidding? bidding?
      :habits   habits
@@ -550,7 +570,7 @@
   which prices its rivals' bids; without one they bid like Sleeper at large."
   [board {:keys [league my-roster-id] :as ctx}]
   (let [{:keys [teams waiver]} league
-        {:keys [fas market my-team drop xwalk by-id rostered levels claims-left
+        {:keys [fas market my-team drop drop-costs xwalk by-id rostered levels claims-left
                 bidding? habits]} (market-inputs board ctx)]
     {:players            (-> fas (faab/with-market market) with-trend)
      ;; The seat a claim would cost, for the browser to mark on the manager's
@@ -560,6 +580,7 @@
      :drop-candidate     (when drop (select-keys drop [:player-id :player-name
                                                        :position :ros-points]))
      :my-roster-players  (my-roster-players my-team xwalk by-id)
+     :drop-costs         drop-costs
      :rostered           rostered
      :replacement-levels levels
      :claims-left        claims-left
