@@ -232,3 +232,15 @@ for the known gaps between a league's real rules and what the board can score.
   - `:waivers-failed` and `:recompute-failed` deliberately keep stale data
     readable rather than blanking it. That is the good pattern; it should be
     stated as the convention rather than left as two coincidences.
+
+- **`fetch-matchups` reports its own bugs as 502** The catch in
+  `ingestion/matchups.clj` wraps `normalize-matchups` along with the fetches, so
+  an NPE or `ClassCastException` from an unexpected provider reply (or a bug of
+  ours) is answered `502` with the exception message, indistinguishable from an
+  upstream outage. `league-sync/sync-league` has the same shape, so change both
+  together: catch only the fetch calls for the 502 and let a normalizer failure
+  fall to a 500.
+
+  Also check that `fetch-matchups` has the `auth-failure?` branch `sync-league`
+  has (`league_sync.clj`), so an expired ESPN cookie passed through as 401 marks
+  the account stale instead of reading as a generic failure.
