@@ -52,14 +52,28 @@
                      (when-not (zero? v) [k (double v)]))))
         (concat scoring/stat-keys display-keys)))
 
+(def red-zone-keys
+  "Sleeper's red-zone counts by the row key they ride under: carries and passes
+  inside the 20, and targets there. Sleeper omits a count he did not record, so
+  an absent key is none."
+  {:rz-rush :rush_rz_att
+   :rz-tgt  :rec_rz_tgt
+   :rz-pass :pass_rz_att})
+
 (defn entry->row
   "Convert a raw entry to a played-game row, using positive `gp` as the gate."
   [{:keys [player_id stats week opponent]}]
   (when (and player_id stats week (pos? (or (:gp stats) 0)))
-    {:id       player_id
-     :week     (long week)
-     :opponent opponent
-     :stats    (scored-stats stats)}))
+    (reduce-kv (fn [row k stat]
+                 (cond-> row (pos? (or (get stats stat) 0)) (assoc k (double (get stats stat)))))
+               (cond-> {:id       player_id
+                        :week     (long week)
+                        :opponent opponent
+                        :stats    (scored-stats stats)}
+                 (pos? (or (:tm_off_snp stats) 0))
+                 (assoc :snaps (double (or (:off_snp stats) 0))
+                        :team-snaps (double (:tm_off_snp stats))))
+               red-zone-keys)))
 
 (defn- totals
   "Sum stats and count played rows for one player."
@@ -68,11 +82,15 @@
    :stats (reduce (fn [acc {:keys [stats]}] (merge-with + acc stats)) {} rows)})
 
 (defn game-log
-  "A player's rows as ordered per-week entries, oldest first."
+  "A player's rows as ordered per-week entries, oldest first. An entry carries the
+  offense snaps he played and his team ran (`rankings.role`) when Sleeper counted
+  them, and the red-zone counts of `red-zone-keys`; they sit beside `:stats` and
+  never reach scoring."
   [rows]
-  (mapv (fn [{:keys [week opponent stats]}]
-          (cond-> {:week week :stats stats}
-            opponent (assoc :opponent opponent)))
+  (mapv (fn [{:keys [week opponent stats snaps team-snaps] :as row}]
+          (cond-> (merge {:week week :stats stats} (select-keys row (keys red-zone-keys)))
+            opponent   (assoc :opponent opponent)
+            team-snaps (assoc :snaps snaps :team-snaps team-snaps)))
         (sort-by :week rows)))
 
 (defn accumulate

@@ -31,6 +31,7 @@
             [draft-day.rankings.injury :as injury]
             [draft-day.rankings.matchup :as matchup]
             [draft-day.rankings.pos-rank :as pos-rank]
+            [draft-day.rankings.role :as role]
             [draft-day.rankings.ros :as ros]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.scoring :as scoring]
@@ -455,6 +456,7 @@
                          ;; Before the log goes: rivals' claims are aimed
                          ;; partly by last week's game.
                          (waiver/with-last-game through-week)
+                         (role/with-role through-week)
                          without-history
                          (waiver-board-inputs scoring*)
                          (pipeline/assoc-outlook (:lines outlook))
@@ -500,7 +502,8 @@
 
 (def sensei-only-keys
   "Row keys the browser never draws, for Sensei's tools to read."
-  [:fantasypros/ros-pos-rank :fantasypros/ros-rank-min :fantasypros/ros-rank-max])
+  [:fantasypros/ros-pos-rank :fantasypros/ros-rank-min :fantasypros/ros-rank-max
+   :snap-share :snap-share-season :rz-rush :rz-tgt :rz-pass :role/since :role/vacated-by :role/vacated-status])
 
 (defn without-sensei-only
   "`reply` less what only Sensei reads: `:drop-costs` and `sensei-only-keys`."
@@ -512,7 +515,7 @@
 
 (defn waivers-handler
   "POST /api/waivers: `waivers-reply` as JSON, and a 400 for a body it cannot
-  price. `:drop-costs` and the experts' rest-of-season ranks are Sensei's and
+  price. `:drop-costs` and the experts' rest-of-season ranks and the snap and role facts are Sensei's and
   the browser reads none of them."
   [req]
   (try

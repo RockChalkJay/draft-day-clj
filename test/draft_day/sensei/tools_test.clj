@@ -268,3 +268,17 @@
     (is (= "WR31 (28-40)" (:ros-ecr (tools/row p)))))
   (is (= "WR31" (:ros-ecr (tools/row (assoc (first fx/free-agents) :fantasypros/ros-pos-rank "WR31")))))
   (is (not (contains? (tools/row (first fx/free-agents)) :ros-ecr)) "unranked: no key"))
+
+(deftest a-row-states-snaps-and-a-taken-over-role
+  (let [r (tools/row (assoc (first fx/free-agents) :snap-share 0.6527 :snap-share-season 0.31
+                            :role/since 3 :role/vacated-by "De'Von Achane" :role/vacated-status "IR"))]
+    (is (= 65 (:snap r)))
+    (is (= 31 (:snap-season r)))
+    (is (= "since wk 3, De'Von Achane IR" (:role r))))
+  (is (not-any? #(contains? (tools/row (first fx/free-agents)) %) [:snap :snap-season :role])))
+
+(deftest a-row-states-red-zone-counts-as-whole-numbers
+  (let [r (tools/row (assoc (first fx/free-agents) :rz-rush 14.0 :rz-tgt 1.0))]
+    (is (= 14 (:rz-rush r)))
+    (is (= 1 (:rz-tgt r)))
+    (is (not (contains? r :rz-pass)) "none recorded: no key")))
