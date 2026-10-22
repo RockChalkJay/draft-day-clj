@@ -325,7 +325,7 @@
 
   (is (= [:config :teams :drafted :picks :columns :my-team-id :watchlist
           :accounts :leagues :active-league :waiver-columns :phase
-          :sensei-open? :sensei-width]
+          :sensei-open? :sensei-width :view]
          db/persist-keys)
       "and this is everything that gets stored at all")
 
@@ -534,6 +534,19 @@
       (swap! store assoc fx/store-key
              (pr-str {:v fx/storage-version :state drafted-league}))
       (is (= [:team] (dispatched-views #(rf/dispatch-sync [:boot])))))))
+
+(deftest a-reload-reopens-the-tab-the-manager-was-on
+  (with-fake-storage
+    (fn [store]
+      (swap! store assoc fx/store-key
+             (pr-str {:v fx/storage-version
+                      :state (assoc drafted-league :view :waivers)}))
+      (is (= [:waivers] (dispatched-views #(rf/dispatch-sync [:boot]))))
+      (swap! store assoc fx/store-key
+             (pr-str {:v fx/storage-version
+                      :state (assoc drafted-league :view :board)}))
+      (is (= [:team] (dispatched-views #(rf/dispatch-sync [:boot])))
+          "a draft-day tab in a season league opens where the phase does"))))
 
 (deftest a-universe-reload-leaves-the-view-where-the-manager-put-it
   (swap! rdb/app-db assoc :view :board)
