@@ -14,13 +14,6 @@
             [draft-day.markdown :as md]
             [draft-day.sensei :as sensei]))
 
-(def starters
-  "What to offer an empty panel: one question for each thing it is for."
-  ["Who should I pick up this week, and who do I drop?"
-   "How does my roster look at each position?"
-   "Compare my team to the team I play this week"
-   "Is anyone on my bench worth starting?"])
-
 ;; Set by the header button, read once by the composer as it mounts: focus follows
 ;; the manager opening the panel, not a page load that finds it already open.
 (defonce focus-composer? (atom false))
@@ -121,12 +114,6 @@
     [:div.sn-me (:text m)]
     [answer m]))
 
-(defn empty-state []
-  [:div.starters
-   [:h3 "Try asking"]
-   (map (fn [q] ^{:key q} [:button {:on-click #(rf/dispatch [:sensei-send q])} q])
-        starters)])
-
 (defn near-bottom?
   "Is the log scrolled to within a line or two of its end?"
   [^js el]
@@ -151,9 +138,7 @@
                       :on-scroll #(reset! stick (near-bottom? (.-target %)))
                       :role "log" :aria-live "polite" :aria-busy @(rf/subscribe [:sensei-busy?])
                       :aria-label "Conversation with Sensei"}
-         (if (empty? messages)
-           [empty-state]
-           (map-indexed (fn [i m] ^{:key i} [message m]) messages))])})))
+         (map-indexed (fn [i m] ^{:key i} [message m]) messages)])})))
 
 (defn send-key?
   "Is this keydown a plain Enter, which sends, as opposed to Shift+Enter or an

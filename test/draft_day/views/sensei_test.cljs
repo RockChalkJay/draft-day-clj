@@ -26,12 +26,6 @@
   (swap! rdb/app-db assoc :sensei-enabled? true :sensei-open? false)
   (is (nil? (hiccup sensei/drawer))))
 
-(deftest an-empty-panel-offers-questions-that-send-themselves
-  (let [html (render sensei/empty-state)]
-    (is (re-find #"Who should I pick up this week" html))
-    (is (= [[:sensei-send "Is anyone on my bench worth starting?"]]
-           (press! sensei/empty-state "bench worth starting")))))
-
 (deftest an-answer-in-progress-shows-the-tool-it-waits-on
   (let [html (render sensei/answer {:text "" :tools ["my_team" "waiver_targets"] :status :streaming})]
     (is (re-find #"my_team" html))
