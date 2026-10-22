@@ -1150,6 +1150,12 @@
 
 (def waiver-columns-by-key (into {} (map (juxt :key identity)) waiver-column-catalog))
 
+(def waiver-numeric-keys
+  "The waiver columns whose cells are right-aligned numbers, so their headers
+  are too."
+  #{:rank :bye :week :week-rank :lineup :upgrade :pts :avg :gp :rec :yds :td
+    :rivals :adds :trend :form :tgt :car :ros-vorp})
+
 (defn waiver-rank-key
   "Descending sort key for the waiver board: what the claim adds to the starting
   lineup, then the bench delta, then rest-of-season points, then name.

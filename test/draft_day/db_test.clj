@@ -430,6 +430,10 @@
 
 ;; ---- waiver board ----
 
+(deftest numeric-waiver-headers-name-real-columns
+  (is (every? db/waiver-columns-by-key db/waiver-numeric-keys)
+      "a renamed column must not leave its header left-aligned"))
+
 (deftest the-two-catalogs-do-not-leak-into-each-other
   (testing "a waiver layout starts from its own catalog, not the board's"
     (is (= (mapv :key db/waiver-column-catalog)

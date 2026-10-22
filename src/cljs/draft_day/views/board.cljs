@@ -231,8 +231,10 @@
 
 (defn header-cell
   "One header: a sort button and a drag handle. `opts` names the board's
-  catalog and events, so the waiver board drags with the same code."
-  [{:keys [labels move] sort-event :sort} col sort drag ks]
+  catalog and events, so the waiver board drags with the same code. Its
+  `:th-class` maps a column key to a class its header carries, so a numeric
+  header can sit over its right-aligned cells."
+  [{:keys [labels move th-class] sort-event :sort} col sort drag ks]
   (let [k (:key col)
         d (labels k)
         active? (= (:key sort) k)
@@ -258,7 +260,8 @@
                            (reset! drag {}))
           ;; A drag abandoned off the row still ends, so nothing stays lit.
           :on-drag-end   #(reset! drag {})
-          :class (->> [(when active? "sorted")
+          :class (->> [(get th-class k)
+                       (when active? "sorted")
                        (when (= dragging k) "dragging")
                        (when (= over k) (drop-side ks dragging k))]
                       (filter some?)
