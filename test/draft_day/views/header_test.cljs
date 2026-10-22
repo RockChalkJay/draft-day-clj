@@ -50,4 +50,42 @@
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :my-roster-id 1
                                 :sync {:waiver {:type "faab" :budget 100}
                                        :teams [{:roster-id 1 :name "Mine"}]}}})
-  (is (re-find #"– / \$100" (render header/header))))
+  (is (re-find #"–[^/]*/ \$100" (render header/header))))
+
+(deftest the-season-row-carries-no-mode-chip-and-no-routine-status
+  ;; Routine is whatever the last load wrote, not a message shape.
+  (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
+         :status "642 players · cache" :universe-status "642 players · cache")
+  (let [html (render header/header)]
+    (is (not (re-find #"mode-tag" html)))
+    (is (not (re-find #"642 players" html)))))
+
+(deftest a-reworded-routine-status-is-still-routine
+  (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
+         :status "all 642 loaded (cache)" :universe-status "all 642 loaded (cache)")
+  (is (not (re-find #"all 642 loaded" (render header/header)))))
+
+(deftest a-status-with-something-to-say-stays-on-the-season-row
+  (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
+         :status "642 players · cache" :universe-status "642 players · cache")
+  (rf/dispatch-sync [:recompute-failed "502"])
+  (rf/clear-subscription-cache!)
+  (is (re-find #"Rankings update failed: 502" (render header/header))))
+
+(deftest a-failed-sync-turns-the-icon-red-and-says-why
+  (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
+         :active-league "sleeper:1"
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}})
+  (rf/dispatch-sync [:league-sync-failed "sleeper:1" "502" 502])
+  (rf/clear-subscription-cache!)
+  (let [html (render header/sync-button)]
+    (is (re-find #":class \"failed\"" html))
+    (is (re-find #"Sync failed: 502" html))))
+
+(deftest a-sync-in-flight-is-not-red
+  (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
+         :active-league "sleeper:1" :sync-status "Syncing rosters…" :sync-error nil
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}})
+  (let [html (render header/sync-button)]
+    (is (not (re-find #"failed\"" html)))
+    (is (re-find #"Syncing rosters" html))))
