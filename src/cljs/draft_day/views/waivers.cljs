@@ -390,6 +390,48 @@
 
 ;; ---- the view ----
 
+(def roster-peek
+  "Pixels from the board's bottom to the top of the roster table when the table
+  is not on the page to be measured (no league synced yet): the gap, the panel's
+  padding, its heading and the heading's margin."
+  58)
+
+(defn board-room
+  "How tall the board's scroll box may be so the roster table's top ends at the
+  window's bottom: what is left under `box-top` (the box's distance from the top
+  of the page) once `peek`, the distance from the box's bottom to that table, is
+  taken, never under `floor`."
+  [window-height box-top peek floor]
+  (max floor (- window-height box-top peek)))
+
+(defn board-box
+  "The board's scroll box, sized by where it actually sits. The chrome over it
+  (header, status line, controls) changes height, and so does what stands between
+  the box and the roster table, so a constant leaves the table's top a row too
+  high or too low; measuring both puts it on the window's bottom, with My Roster's
+  heading just above. The stylesheet's cap stands until this first runs."
+  [& _children]
+  (let [el  (atom nil)
+        fit (fn []
+              (when-let [e @el]
+                (let [rect  (.getBoundingClientRect e)
+                      table (.querySelector js/document ".waiver-roster table.roster")
+                      top   (+ (.-top rect) (.-scrollY js/window))
+                      peek  (if table
+                              (- (.-top (.getBoundingClientRect table)) (.-bottom rect))
+                              roster-peek)]
+                  (set! (.. e -style -maxHeight)
+                        (str (board-room (.-innerHeight js/window) top peek 240) "px")))))]
+    (r/create-class
+     {:component-did-mount
+      (fn [] (.addEventListener js/window "resize" fit) (fit))
+      :component-did-update fit
+      :component-will-unmount
+      (fn [] (.removeEventListener js/window "resize" fit))
+      :reagent-render
+      (fn [& children]
+        (into [:div.table-scroll {:ref #(reset! el %)}] children))})))
+
 (defn waivers-view []
   (let [players @(rf/subscribe [:waiver-players])
         cols    @(rf/subscribe [:visible-waiver-columns])
@@ -403,7 +445,7 @@
       [:div.filters [board/pos-filter] [board/search-box]]
       [columns/waiver-column-picker]]
      [:div.waiver-body
-      [:div.table-scroll
+      [board-box
        [:table.board
         [:thead [board/board-header waiver-columns cols sort]]
         [:tbody

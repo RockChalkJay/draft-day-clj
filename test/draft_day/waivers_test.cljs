@@ -1345,3 +1345,12 @@
     (is (re-find #"\bnum\b" (cls :pts)) "right-aligned like its cells")
     (is (re-find #"\bplayer\b" (cls :name)) "the sticky Player column")
     (is (not (re-find #"\bnum\b" (or (cls :position) ""))) "a text column stays left")))
+
+(deftest the-board-leaves-room-for-the-roster-table
+  (is (= 582 (waivers/board-room 900 268 50 240))
+      "what is left under the box, less the distance to the roster table")
+  (is (= 240 (waivers/board-room 400 300 50 240))
+      "a short window keeps the board usable rather than squeezing it to a stub")
+  (is (< (waivers/board-room 900 268 50 240)
+         (waivers/board-room 900 168 50 240))
+      "a taller status line above gives the board less"))

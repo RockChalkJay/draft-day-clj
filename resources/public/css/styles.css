@@ -494,25 +494,25 @@ button.undo:hover { color: var(--warn); }
    fact about the calendar. */
 .week-banner.stale-rules { border-color: var(--warn); color: var(--text); }
 
-/* Board left, my roster right. The claim and what it would cost are one
-   decision, so they belong on one screen — wrapping below the board when the
-   tab itself is narrow rather than squeezing the table. The tab, not the
-   viewport: Sensei's panel takes its width off the tab and is not always open,
-   so a viewport breakpoint is wrong for one of the two. */
+/* The board on top at the tab's full width, my roster underneath. Beside the
+   board the roster took 280px every column needs, most of all next to Sensei's
+   panel, so it stacks below at every width instead. The tab's own width, not
+   the viewport's, drives the container query below: the panel takes its width
+   off the tab and is not always open. */
 .waivers-view { container-type: inline-size; }
-.waiver-body { display: flex; gap: 12px; align-items: flex-start; }
-.waiver-body .table-scroll { flex: 1 1 auto; min-width: 0; }
-.waiver-roster-col { flex: 0 0 280px; }
-/* Beside the roster the board scrolls in its own box, so its header holds still
-   and the Player column stays in view while a wide board scrolls sideways.
-   Wrapped, the roster sits below it and the page scrolls instead, so a wheel
-   over the board never traps the pointer above the roster. */
-.waiver-body .table-scroll { max-height: calc(100vh - 175px); overflow: auto; }
-@container (max-width: 900px) {
-  .waiver-body { flex-wrap: wrap; }
-  .waiver-roster-col { flex: 1 1 100%; }
-  .waiver-body .table-scroll { max-height: none; }
-}
+.waiver-body { display: flex; flex-direction: column; gap: 12px; }
+.waiver-body .table-scroll { flex: 0 0 auto; min-width: 0; }
+/* Air under the roster, so its last row is not flush with the window's bottom
+   once the page is scrolled to the end. */
+.waiver-roster-col { flex: none; width: 100%; padding-bottom: 32px; }
+/* The board scrolls in its own box, so its header holds still and the Player
+   column stays in view while a wide board scrolls sideways. The box ends just
+   above the viewport's bottom so the roster's heading, and none of its rows,
+   shows beneath it rather than starting at the fold; a wheel that reaches the
+   box's end carries on to the page. `waivers/board-box` measures where the box
+   sits and sets the exact height; the 175px here is only the guess it starts
+   from. */
+.waiver-body .table-scroll { max-height: max(240px, calc(100vh - 233px)); overflow: auto; }
 @container (max-width: 780px) {
   table.board td { padding: 4px 6px; }
   table.board th { padding: 6px; }
@@ -528,7 +528,9 @@ table.board td.player .p-ident > .name-btn { max-width: 150px; }
 /* Reuses .roster-panel / table.roster wholesale — the draft board's My Roster
    box is the same object answering the same question, and a second roster style
    would only drift from it. */
-.waiver-roster .roster-head h3 { margin: 0 0 8px; }
+/* Coloured because, under a long board, this heading is all of the roster that
+   shows above the fold, and it has to read as a thing to scroll to. */
+.waiver-roster .roster-head h3 { margin: 0 0 8px; color: var(--accent); }
 .waiver-roster td.slot-player { font-size: 12px; }
 .waiver-roster tr.roster-group td { color: var(--muted); font-size: 10px;
   text-transform: uppercase; letter-spacing: .04em; padding-top: 8px;
