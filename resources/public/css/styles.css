@@ -507,10 +507,13 @@ button.undo:hover { color: var(--warn); }
 .waiver-roster-col .roster-panel { width: 268px; }
 /* The strip is the whole control: as tall as the board, tinted so it reads as
    something to press, and named by what pressing it does. */
-.roster-edge { flex: 0 0 14px; width: 14px; height: var(--board-h); padding: 0;
+.roster-edge { flex: 0 0 24px; width: 24px; height: var(--board-h); padding: 8px 0;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
   background: color-mix(in srgb, var(--accent) 16%, var(--panel));
   border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--panel)); border-radius: 7px;
   color: var(--accent); font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
+.roster-edge .label { writing-mode: vertical-rl; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; white-space: nowrap; }
 .roster-edge:hover, .roster-edge:focus-visible {
   background: color-mix(in srgb, var(--accent) 32%, var(--panel)); border-color: var(--accent); }
 .roster-edge:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

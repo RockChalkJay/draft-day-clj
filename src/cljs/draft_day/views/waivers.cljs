@@ -405,7 +405,8 @@
                       hidden? (= "none" (.-display (js/getComputedStyle panel)))]
                   (rf/dispatch [:set-waiver-roster (if hidden? :shown :hidden)])))}
    [:span.on [:span.sr-only "Hide My Roster"] [:span {:aria-hidden "true"} "›"]]
-   [:span.off [:span.sr-only "Show My Roster"] [:span {:aria-hidden "true"} "‹"]]])
+   [:span.off [:span.sr-only "Show My Roster"] [:span {:aria-hidden "true"} "‹"]]
+   [:span.label {:aria-hidden "true"} "My Roster"]])
 
 (defn waivers-view []
   (let [players @(rf/subscribe [:waiver-players])
