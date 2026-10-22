@@ -357,8 +357,9 @@
     (and synced? (not team?)) "Pick your team under Settings to see what a claim would cost."))
 
 (defn status-line
-  "One muted line over the board: which season it is for, how old the week's
-  projection is, and anything standing between the manager and a real answer.
+  "One muted note in the board's control row: which season it is for, how old
+  the week's projection is, and anything standing between the manager and a real
+  answer.
 
   In three states, not two. Preseason is said out loud rather than left to be
   inferred from an empty GP column: in August this board is the draft board,
@@ -440,9 +441,9 @@
         bidding (:bidding @(rf/subscribe [:waivers]))
         comparing (set @(rf/subscribe [:compare]))]
     [:div.waivers-view
-     [status-line]
      [:div.board-controls
       [:div.filters [board/pos-filter] [board/search-box]]
+      [status-line]
       [columns/waiver-column-picker]]
      [:div.waiver-body
       [board-box

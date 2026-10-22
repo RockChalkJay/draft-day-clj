@@ -462,7 +462,7 @@
   (swap! rdb/app-db assoc :accounts {})
   (rf/clear-subscription-cache!)
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
-         (press! header/season-stats "↻ Re-sync"))))
+         (press! header/season-stats "Re-sync"))))
 
 (deftest a-re-sync-reports-itself-on-the-button-that-started-it
   ;; Two of the four season tabs render no status line, so a failure reported
@@ -495,7 +495,7 @@
     (is (re-find #"not synced yet" out) "and says the rosters have never arrived"))
   (is (not (re-find #"No league active" (render waivers/status-line))))
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
-         (press! header/season-stats "↻ Re-sync"))))
+         (press! header/season-stats "Re-sync"))))
 
 (deftest the-status-line-says-only-the-week-and-when-it-was-fetched
   ;; The budget, the rival's budget and the waiver runs left are gone from this
