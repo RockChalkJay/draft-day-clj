@@ -69,7 +69,11 @@
                    (update :waiver-columns db/reconcile-columns db/waiver-column-catalog))
          ;; A stored override or a synced league's finished draft already says
          ;; which half this is; otherwise the week does, when the universe lands.
-         place (place-view db)]
+         ;; A stored tab is reopened through `:set-view` so its board loads,
+         ;; unless its phase no longer has it.
+         place (if-let [v (:view db)]
+                 [:dispatch [:set-view (db/view-for db v)]]
+                 (place-view db))]
      {:db db
       :fx (cond-> [[:dispatch [:fetch-players]]
                    [:dispatch [:fetch-sensei-status]]]
@@ -182,7 +186,7 @@
 
 ;; ---- UI state ----
 
-(rf/reg-event-fx :set-view
+(rf/reg-event-fx :set-view [persist]
   (fn [{:keys [db]} [_ v section]]
     ;; Each board is a full rank of the universe, so it loads on first open
     ;; only: after that a refresh is a button, not a side effect of navigation.

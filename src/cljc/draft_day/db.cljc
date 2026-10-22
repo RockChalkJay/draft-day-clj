@@ -109,7 +109,7 @@
   into `default-db`, so an older one simply lacks it."
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
    :accounts :leagues :active-league :waiver-columns :phase
-   :sensei-open? :sensei-width])
+   :sensei-open? :sensei-width :view])
 
 ;; ---- accounts and leagues ----
 
