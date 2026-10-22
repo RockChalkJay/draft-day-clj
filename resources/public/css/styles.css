@@ -1082,12 +1082,12 @@ nav.views { display: flex; }
 /* The season half is one quiet row: the week and the budget are plain text, the
    budget's left-over the only number with colour, and Re-sync an icon that
    speaks only while it works or when it fails. */
-.season-meta { display: flex; align-items: baseline; gap: 12px; font-size: 13px;
+.season-meta { display: flex; align-items: center; gap: 12px; font-size: 13px;
   color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .season-meta b { color: var(--text); font-weight: 600; }
 .season-meta b.good { color: var(--good); }
 .sync-btn { background: transparent; color: var(--muted); border: 1px solid transparent;
-  border-radius: 8px; padding: 5px 9px; font-size: 15px; line-height: 1; align-self: center; }
+  border-radius: 8px; padding: 5px 9px; font-size: 15px; line-height: 1; }
 .sync-btn:hover { color: var(--text); background: var(--panel2); border-color: var(--border); }
 .sync-btn.failed { color: var(--warn); border-color: var(--warn); }
 .sync-note { margin-left: 6px; font-size: 12px; display: inline-block; max-width: 22ch;

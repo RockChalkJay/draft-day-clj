@@ -462,7 +462,7 @@
   (swap! rdb/app-db assoc :accounts {})
   (rf/clear-subscription-cache!)
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
-         (press! header/season-stats "Re-sync"))))
+         (press! header/sync-button "Re-sync"))))
 
 (deftest a-re-sync-reports-itself-on-the-button-that-started-it
   ;; Two of the four season tabs render no status line, so a failure reported
@@ -470,14 +470,14 @@
   (with-league! synced 1)
   (rf/dispatch-sync [:sync-league {:provider "sleeper" :league-id "987654"}])
   (rf/clear-subscription-cache!)
-  (is (re-find #"Syncing" (render header/season-stats)))
+  (is (re-find #"Syncing" (render header/sync-button)))
   (rf/dispatch-sync [:league-sync-failed lk "401 from the host" 401])
   (rf/clear-subscription-cache!)
-  (is (re-find #"Sync failed" (render header/season-stats)))
+  (is (re-find #"Sync failed" (render header/sync-button)))
   (testing "and goes quiet again once rosters arrive, which is the fresher fact"
     (rf/dispatch-sync [:league-synced lk synced])
     (rf/clear-subscription-cache!)
-    (let [out (render header/season-stats)]
+    (let [out (render header/sync-button)]
       (is (not (re-find #"Sync failed" out)))
       (is (re-find #"synced" out)))))
 
@@ -490,12 +490,12 @@
          :active-league lk
          :waivers {})
   (rf/clear-subscription-cache!)
-  (let [out (render header/season-stats)]
+  (let [out (render header/sync-button)]
     (is (re-find #"Re-sync" out))
     (is (re-find #"not synced yet" out) "and says the rosters have never arrived"))
   (is (not (re-find #"No league active" (render waivers/status-line))))
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
-         (press! header/season-stats "Re-sync"))))
+         (press! header/sync-button "Re-sync"))))
 
 (deftest the-status-line-says-only-the-week-and-when-it-was-fetched
   ;; The budget, the rival's budget and the waiver runs left are gone from this

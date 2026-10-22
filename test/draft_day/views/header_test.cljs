@@ -68,6 +68,6 @@
   (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
          :active-league "sleeper:1" :sync-status "Sync failed: 502"
          :leagues {"sleeper:1" {:provider "sleeper" :league-id "1"}})
-  (let [html (render header/season-stats)]
+  (let [html (render header/sync-button)]
     (is (re-find #"sync-btn.failed|failed" html))
     (is (re-find #"Sync failed: 502" html))))

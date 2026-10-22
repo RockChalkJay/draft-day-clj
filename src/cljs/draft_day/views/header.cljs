@@ -79,34 +79,37 @@
      [:button.start-draft {:on-click #(rf/dispatch [:show-modal {:kind :start-draft}])} "Start Draft"]]))
 
 (defn season-stats
-  "The week, the budget and a way to refresh the rosters, on every season tab.
-
-  Re-sync is an icon: how old the rosters are rides on its hover, and words
-  appear beside it only while a sync is running or has something to say. It
-  reports itself here because all four tabs read the same synced rosters, and
-  two of them render no status line of their own."
+  "The week and the budget, on every season tab."
   []
-  (let [{:keys [week faab synced-at]} @(rf/subscribe [:season-header])
-        league @(rf/subscribe [:active-league])
-        status @(rf/subscribe [:sync-status])
-        failed? (boolean (and status (re-find #"(?i)fail|not refreshed|nothing usable" status)))
-        age    (if-let [at (util/fetched-at-label synced-at)]
-                 (str "synced " at)
-                 "not synced yet")]
+  (let [{:keys [week faab]} @(rf/subscribe [:season-header])]
     [:div.season-meta
      (when week
        [:span.meta-item "Wk " [:b week]])
      (when faab
        [:span.meta-item {:title "FAAB left of this season's budget"}
-        "FAAB " [:b.good (util/faab (:left faab))] (str " / " (util/faab (:budget faab)))])
-     (when league
-       [:button.sync-btn {:class    (when failed? "failed")
-                          :title    (str "Re-sync rosters · " (or status age))
-                          :on-click #(rf/dispatch [:refresh-league
-                                                   (select-keys league [:provider :league-id])])}
-        [:span {:aria-hidden "true"} "↻"]
-        [:span.sr-only "Re-sync"]
-        (when status [:span.sync-note status])])]))
+        "FAAB " [:b.good (util/faab (:left faab))] (str " / " (util/faab (:budget faab)))])]))
+
+(defn sync-button
+  "Re-sync, as an icon: how old the rosters are rides on its hover, and words
+  appear beside it only while a sync is running or has something to say. It
+  reports itself here because all four tabs read the same synced rosters, and
+  two of them render no status line of their own."
+  []
+  (let [{:keys [synced-at]} @(rf/subscribe [:season-header])
+        league  @(rf/subscribe [:active-league])
+        status  @(rf/subscribe [:sync-status])
+        failed? (boolean (and status (re-find #"(?i)fail|not refreshed|nothing usable" status)))
+        age     (if-let [at (util/fetched-at-label synced-at)]
+                  (str "synced " at)
+                  "not synced yet")]
+    (when league
+      [:button.sync-btn {:class    (when failed? "failed")
+                         :title    (str "Re-sync rosters · " (or status age))
+                         :on-click #(rf/dispatch [:refresh-league
+                                                  (select-keys league [:provider :league-id])])}
+       [:span {:aria-hidden "true"} "↻"]
+       [:span.sr-only "Re-sync"]
+       (when status [:span.sync-note status])])))
 
 (defn routine-status?
   "Is this the line every load ends on, `642 players · cache`? It says nothing
@@ -137,6 +140,7 @@
        :draft  [draft-stats]
        nil)
      [sensei/toggle]
+     (when (= mode :season) [sync-button])
      [:button.gear {:class      (when (= view :settings) "on")
                     :title      "Settings"
                     :aria-label "Settings"
