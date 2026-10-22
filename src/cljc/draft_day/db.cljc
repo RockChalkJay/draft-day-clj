@@ -1385,6 +1385,7 @@
      :waiver-sort  {:key :adds :dir -1}
      :waiver-status nil         ; what the waiver board is doing, or why it failed
      :sync-status  nil          ; what the rosters sync is doing, or why it failed
+     :sync-error   nil          ; true while the last sync failed or left something stale
      :matchup      nil          ; last /api/matchup reply
      :matchup-seq  0            ; newest /api/matchup request; older replies are dropped
      :matchup-status nil

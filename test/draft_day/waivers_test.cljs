@@ -481,6 +481,17 @@
       (is (not (re-find #"Sync failed" out)))
       (is (re-find #"synced" out)))))
 
+(deftest a-sync-is-marked-failed-by-state-not-by-its-message
+  (with-league! synced 1)
+  (rf/dispatch-sync [:league-sync-failed lk "401 from the host" 401])
+  (is (true? (:sync-error @rdb/app-db)))
+  (rf/dispatch-sync [:sync-league {:provider "sleeper" :league-id "987654"}])
+  (is (nil? (:sync-error @rdb/app-db)) "a new attempt clears it")
+  (rf/dispatch-sync [:league-synced lk synced])
+  (is (not (:sync-error @rdb/app-db)))
+  (rf/dispatch-sync [:league-synced lk (assoc synced :bid-history-error "timed out")])
+  (is (true? (:sync-error @rdb/app-db)) "rosters arrived but the history beside them did not"))
+
 (deftest a-league-whose-sync-failed-still-offers-to-retry-it
   ;; It has no `:name` until a reply lands, and gating the strip on the name made
   ;; it read as no league at all — hiding the retry on the one screen that

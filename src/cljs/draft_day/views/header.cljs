@@ -98,7 +98,7 @@
   (let [{:keys [synced-at]} @(rf/subscribe [:season-header])
         league  @(rf/subscribe [:active-league])
         status  @(rf/subscribe [:sync-status])
-        failed? (boolean (and status (re-find #"(?i)fail|not refreshed|nothing usable" status)))
+        failed? @(rf/subscribe [:sync-error])
         age     (if-let [at (util/fetched-at-label synced-at)]
                   (str "synced " at)
                   "not synced yet")]
@@ -111,18 +111,12 @@
        [:span.sr-only "Re-sync"]
        (when status [:span.sync-note status])])))
 
-(defn routine-status?
-  "Is this the line every load ends on, `642 players · cache`? It says nothing
-  was wrong, so the season half's one row leaves it out and keeps the room for
-  a status that has something to report."
-  [status]
-  (boolean (and status (re-matches #"\d+ players · .*" status))))
-
 (defn header []
   (let [mode   @(rf/subscribe [:mode])
         tabs   @(rf/subscribe [:mode-views])
         view   @(rf/subscribe [:view])
-        status @(rf/subscribe [:status])]
+        status @(rf/subscribe [:status])
+        routine @(rf/subscribe [:universe-status])]
     [:header.top
      [:div.brand "🏈 Draft Day"]
      [:nav.views
@@ -133,7 +127,7 @@
            tabs)]
      [league-switcher]
      ;; Truncated on a crowded header, so the whole text rides on hover.
-     (when-not (and (= mode :season) (routine-status? status))
+     (when-not (and (= mode :season) (= status routine))
        [:div.status {:title status} status])
      (case mode
        :season [season-stats]

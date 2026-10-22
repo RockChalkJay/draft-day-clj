@@ -8,7 +8,7 @@
 (doseq [k [:view :status :config :teams :my-team-id :players
            :nominated-id :sort :pos-filter :search :columns :drafted :ranked :modal
            :watchlist :importing :universe :universe-error
-           :accounts :leagues :waivers :waiver-sort :waiver-status :sync-status
+           :accounts :leagues :waivers :waiver-sort :waiver-status :sync-status :sync-error :universe-status
            :league-choices :league-choices-error
            :waiver-columns :compare
            :matchup :matchup-status :matchup-pick :lineup-view :settings-section
