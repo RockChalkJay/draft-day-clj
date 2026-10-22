@@ -525,6 +525,10 @@ button.undo:hover { color: var(--warn); }
    from. */
 .waiver-body .table-scroll { max-height: max(240px, calc(100vh - 233px)); overflow: auto; }
 @container (max-width: 780px) {
+  /* The note takes a line of its own rather than a sliver beside the filter. */
+  .waivers-view .board-controls { flex-wrap: wrap; }
+  .waivers-view .board-controls .week-banner { order: 3; flex: 1 0 100%; text-align: left; }
+
   table.board td { padding: 4px 6px; }
   table.board th { padding: 6px; }
 }
