@@ -505,24 +505,21 @@ button.undo:hover { color: var(--warn); }
    fact about the calendar. */
 .week-banner.stale-rules { border-color: var(--warn); color: var(--text); }
 
-/* The board on top at the tab's full width, my roster underneath. Beside the
-   board the roster took 280px every column needs, most of all next to Sensei's
-   panel, so it stacks below at every width instead. The tab's own width, not
-   the viewport's, drives the container query below: the panel takes its width
-   off the tab and is not always open. */
+/* My Roster is folded to a bar above the board until it is opened, and then it
+   is a column beside the board, between it and Sensei's panel, with its header
+   at the top. The tab's own width, not the viewport's, drives the container
+   query below: the panel takes its width off the tab and is not always open. */
 .waivers-view { container-type: inline-size; }
 .waiver-body { display: flex; flex-direction: column; gap: 12px; }
 .waiver-body .table-scroll { flex: 0 0 auto; min-width: 0; }
-/* Air under the roster, so its last row is not flush with the window's bottom
-   once the page is scrolled to the end. */
-.waiver-roster-col { flex: none; width: 100%; padding-bottom: 32px; }
+.waiver-body.roster-open { flex-direction: row; align-items: flex-start; }
+.waiver-body.roster-open .table-scroll { flex: 1 1 0; }
+.waiver-roster-col { flex: 0 0 300px; width: 300px; }
+.waiver-roster-col .roster-panel { height: auto; }
 /* The board scrolls in its own box, so its header holds still and the Player
-   column stays in view while a wide board scrolls sideways. The box ends just
-   above the viewport's bottom so the roster's heading, and none of its rows,
-   shows beneath it rather than starting at the fold; a wheel that reaches the
-   box's end carries on to the page. `waivers/board-box` measures where the box
-   sits and sets the exact height; the 175px here is only the guess it starts
-   from. */
+   column stays in view while a wide board scrolls sideways. `waivers/board-box`
+   measures where the box sits and ends it just above the viewport's bottom; the
+   233px here is only the guess it starts from. */
 .waiver-body .table-scroll { max-height: max(240px, calc(100vh - 233px)); overflow: auto; }
 @container (max-width: 780px) {
   /* The note takes a line of its own rather than a sliver beside the filter. */
@@ -531,6 +528,12 @@ button.undo:hover { color: var(--warn); }
 
   table.board td { padding: 4px 6px; }
   table.board th { padding: 6px; }
+
+  /* Too narrow to share a row: an open roster takes the tab's width above the
+     board instead of squeezing it. */
+  .waiver-body.roster-open { flex-direction: column; align-items: stretch; }
+  .waiver-body.roster-open .table-scroll { flex: 0 0 auto; }
+  .waiver-roster-col { order: -1; flex: none; width: 100%; }
 }
 table.board th.num { text-align: right; }
 table.board th.player, table.board td.player { position: sticky; left: 0; z-index: 1;
@@ -543,9 +546,25 @@ table.board td.player .p-ident > .name-btn { max-width: 150px; }
 /* Reuses .roster-panel / table.roster wholesale — the draft board's My Roster
    box is the same object answering the same question, and a second roster style
    would only drift from it. */
-/* Coloured because, under a long board, this heading is all of the roster that
-   shows above the fold, and it has to read as a thing to scroll to. */
-.waiver-roster .roster-head h3 { margin: 0 0 8px; color: var(--accent); }
+/* The header is the control that folds and opens the panel. Folded it is a bar
+   of its own; open it is the panel's first row, without a box inside the box. */
+.roster-bar { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px; }
+.roster-bar:hover { background: var(--panel2); }
+.roster-bar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.roster-bar h3 { margin: 0; font-size: 14px; color: var(--accent); }
+.roster-bar .chev { flex: none; color: var(--muted); transition: transform .15s ease; }
+.roster-bar[aria-expanded="true"] .chev { transform: rotate(90deg); color: var(--accent); }
+.roster-bar .sum { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster-bar .hint { margin-left: auto; color: var(--muted); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .04em; }
+.roster-bar.in-col { background: transparent; border: 0; border-radius: 6px; padding: 2px 0 8px; }
+.roster-bar.in-col:hover { background: transparent; }
+.roster-bar.in-col:focus-visible { outline-offset: -2px; }
+.roster-bar.in-col h3 { flex: 1 1 auto; }
+@media (prefers-reduced-motion: reduce) { .roster-bar .chev { transition: none; } }
 .waiver-roster td.slot-player { font-size: 12px; }
 .waiver-roster tr.roster-group td { color: var(--muted); font-size: 10px;
   text-transform: uppercase; letter-spacing: .04em; padding-top: 8px;

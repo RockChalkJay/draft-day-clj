@@ -1065,6 +1065,10 @@
 (rf/reg-event-db :sensei-toggle [persist]
   (fn [db _] (update db :sensei-open? not)))
 
+;; Open is the column beside the board; folded is the bar above it.
+(rf/reg-event-db :waiver-roster-toggle [persist]
+  (fn [db _] (update db :waiver-roster-open? not)))
+
 ;; Not persisted: a drag fires this on every pointer move, and the write waits for
 ;; `:sensei-resize-end`.
 (rf/reg-event-db :sensei-resize

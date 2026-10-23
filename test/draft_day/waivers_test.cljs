@@ -1357,11 +1357,38 @@
     (is (re-find #"\bplayer\b" (cls :name)) "the sticky Player column")
     (is (not (re-find #"\bnum\b" (or (cls :position) ""))) "a text column stays left")))
 
-(deftest the-board-leaves-room-for-the-roster-table
+(deftest the-board-ends-above-the-window-bottom
   (is (= 582 (waivers/board-room 900 268 50 240))
-      "what is left under the box, less the distance to the roster table")
+      "what is left under the box, less the gap")
   (is (= 240 (waivers/board-room 400 300 50 240))
       "a short window keeps the board usable rather than squeezing it to a stub")
   (is (< (waivers/board-room 900 268 50 240)
          (waivers/board-room 900 168 50 240))
       "a taller status line above gives the board less"))
+
+(deftest folded-my-roster-says-what-is-inside
+  (is (nil? (waivers/roster-summary nil)) "no roster yet")
+  (is (nil? (waivers/roster-summary {:starters [] :bench [] :parked []}))
+      "a team that holds nobody has nothing to count")
+  (is (= "3 players"
+         (waivers/roster-summary {:starters [{:player-id "a"}] :bench [{:player-id "b"}
+                                                                       {:player-id "c"}]}))
+      "starters and bench together")
+  (is (= "1 player" (waivers/roster-summary {:starters [{:player-id "a"}]})))
+  (is (= "3 players · 1 on IR · drop candidate Bee"
+         (waivers/roster-summary {:starters [{:player-id "a"}]
+                                  :bench    [{:player-id "b" :player-name "Bee" :drop? true}]
+                                  :parked   [{:player-id "c"}]}))
+      "IR counts as held, and the seat a claim would cost is named"))
+
+(deftest my-roster-folds-to-a-bar-and-opens-beside-the-board
+  (let [html (fn [] (rf/clear-subscription-cache!) (render waivers/roster-bar))]
+    (is (re-find #":aria-expanded false" (html)) "folded says so to a screen reader")
+    (is (re-find #"Show" (html)))
+    (rf/dispatch-sync [:waiver-roster-toggle])
+    (rf/clear-subscription-cache!)
+    (is (true? (:waiver-roster-open? (last (:persist @captured)))) "and it is remembered")
+    (let [open (render waivers/my-roster-panel)]
+      (is (re-find #":aria-expanded true" open) "the panel's own header folds it again")
+      (is (re-find #":aria-controls \"waiver-roster\"" open))
+      (is (re-find #"Hide" open)))))
