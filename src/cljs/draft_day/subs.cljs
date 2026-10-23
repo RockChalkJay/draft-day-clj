@@ -658,6 +658,9 @@
 
 (rf/reg-sub :sensei-width (fn [db _] (:sensei-width db)))
 
+;; My Roster beside the waiver board (true) or folded to a bar above it.
+(rf/reg-sub :waiver-roster-open? (fn [db _] (boolean (:waiver-roster-open? db))))
+
 (rf/reg-sub :sensei-messages (fn [db _] (:sensei-messages db)))
 
 (rf/reg-sub :sensei-busy? (fn [db _] (:sensei-busy? db)))

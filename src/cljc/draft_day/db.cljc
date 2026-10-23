@@ -109,7 +109,7 @@
   into `default-db`, so an older one simply lacks it."
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
    :accounts :leagues :active-league :waiver-columns :phase
-   :sensei-open? :sensei-width :view])
+   :sensei-open? :sensei-width :waiver-roster-open? :view])
 
 ;; ---- accounts and leagues ----
 
@@ -1402,6 +1402,7 @@
      :sensei-enabled? nil
      :sensei-open?  false
      :sensei-width  380
+     :waiver-roster-open? false     ; My Roster folded to a bar above the waiver board
      :sensei-messages []
      :sensei-busy?  false
      :sensei-seq    0           ; newest question; older streams' events are dropped
