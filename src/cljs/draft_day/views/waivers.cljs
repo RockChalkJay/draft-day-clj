@@ -270,15 +270,22 @@
                           (seq parked) (conj (str (count parked) " on IR"))
                           drop         (conj (str "drop candidate " drop))))))))
 
+(defn toggle-roster!
+  "Folds or opens My Roster, then puts focus back on its header: the button the
+  keyboard pressed is replaced by its twin in the other place."
+  []
+  (rf/dispatch-sync [:waiver-roster-toggle])
+  (r/after-render #(some-> (js/document.getElementById "roster-toggle") .focus)))
+
 (defn roster-toggle
   "My Roster's header, which is also the way to fold the panel or open it. It
   travels with the panel: a bar above the board while folded (`summary` says
   what is inside), the top of the column beside the board while open."
   [open? summary]
-  [:button.roster-bar {:class         (when open? "in-col")
-                       :aria-expanded (boolean open?)
-                       :aria-controls (when open? "waiver-roster")
-                       :on-click      #(rf/dispatch [:waiver-roster-toggle])}
+  [:button#roster-toggle.roster-bar {:class         (when open? "in-col")
+                                     :aria-expanded (boolean open?)
+                                     :aria-controls (when open? "waiver-roster")
+                                     :on-click      toggle-roster!}
    [:svg.chev {:width 12 :height 12 :view-box "0 0 12 12" :aria-hidden true}
     [:path {:d "M4 2.5 8 6 4 9.5" :fill "none" :stroke "currentColor" :stroke-width 1.6
             :stroke-linecap "round" :stroke-linejoin "round"}]]
