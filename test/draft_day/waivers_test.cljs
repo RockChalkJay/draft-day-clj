@@ -1392,3 +1392,9 @@
       (is (re-find #":aria-expanded true" open) "the panel's own header folds it again")
       (is (re-find #":aria-controls \"waiver-roster\"" open))
       (is (re-find #"Hide" open)))))
+
+(deftest an-open-roster-column-has-the-id-the-header-controls
+  (swap! rdb/app-db assoc :waiver-roster-open? true)
+  (rf/clear-subscription-cache!)
+  (is (re-find #":aside#waiver-roster\.waiver-roster-col" (render waivers/waivers-view))
+      "id before classes, the only order reagent's tag parser accepts"))

@@ -514,11 +514,7 @@ button.undo:hover { color: var(--warn); }
 .waiver-body .table-scroll { flex: 0 0 auto; min-width: 0; }
 .waiver-body.roster-open { flex-direction: row; align-items: flex-start; }
 .waiver-body.roster-open .table-scroll { flex: 1 1 0; }
-/* Held in view under the page header while the page scrolls, and scrolled in its
-   own box when the roster is taller than the window. */
-.waiver-roster-col { flex: 0 0 300px; width: 300px; position: sticky;
-  top: calc(var(--header-h, 49px) + 12px);
-  max-height: calc(100vh - var(--header-h, 49px) - 24px); overflow: auto; }
+.waiver-roster-col { flex: 0 0 300px; width: 300px; }
 .waiver-roster-col .roster-panel { height: auto; }
 /* The board scrolls in its own box, so its header holds still and the Player
    column stays in view while a wide board scrolls sideways. `waivers/board-box`
@@ -537,7 +533,7 @@ button.undo:hover { color: var(--warn); }
      board instead of squeezing it. */
   .waiver-body.roster-open { flex-direction: column; align-items: stretch; }
   .waiver-body.roster-open .table-scroll { flex: 0 0 auto; }
-  .waiver-roster-col { order: -1; flex: none; width: 100%; position: static; max-height: none; }
+  .waiver-roster-col { order: -1; flex: none; width: 100%; }
 }
 table.board th.num { text-align: right; }
 table.board th.player, table.board td.player { position: sticky; left: 0; z-index: 1;
