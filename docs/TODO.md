@@ -15,7 +15,10 @@ for the known gaps between a league's real rules and what the board can score.
 
 - **Remove the 🚨 for tier cliffs. Postion views with tier coloring accomplish the same thing in a clean way.**
 
-- **Warning when a nominated player would cause 3 or more shared bye weeks at the same position**
+- **Warn when a nominated player would make 3 or more shared bye weeks at one
+  position.** The board and the on-the-block card already pulse red when he
+  shares a bye with a starter at his position (`db/board-bye-clash?`), and My
+  Roster marks an uncovered starter amber; nothing counts a third.
 
 - **Add stats to the on the block card.** Target percentage, targets,
   receptions. The player picture is done (`views/controls.cljs` renders a
@@ -98,15 +101,14 @@ for the known gaps between a league's real rules and what the board can score.
   the table, defenses and the deep-pool split included.
 
 - **`:market-multiplier` never reaches the wire.** `engine/live-valuation`
-  computes and returns it (`src/clj/draft_day/rankings/engine.clj:89`)
-  precisely so the client does not recompose `inflation × market-heat` itself
-  and skip the band. But `rankings-handler` selects only
-  `[:inflation :inflation-index :market-heat]`
-  (`src/clj/draft_day/api/routes.clj:199`), so the key never ships, and the
-  header's fallback branch in `src/cljs/draft_day/core.cljs:71` always wins —
-  displaying the un-banded product, which is the exact defect the comment above
-  it says was fixed. `subs.cljs:97` also selects a key that never arrives. One
-  line to fix: add `:market-multiplier` to the `select-keys` vector.
+  computes and returns it (`rankings/engine.clj`) precisely so the client does
+  not recompose `inflation × market-heat` itself and skip the band. But
+  `rankings-handler` (`api/routes.clj`) selects only
+  `[:inflation :inflation-index :market-heat]`, so the key never ships, and the
+  fallback branch in `views/header.cljs` always wins — displaying the un-banded
+  product, which is the exact defect the comment above it says was fixed. The
+  `:market` sub in `subs.cljs` also selects a key that never arrives. One line
+  to fix: add `:market-multiplier` to the `select-keys` vector.
 
 - **The ESPN tables are documented numbering, not a payload this repo has
   read.** Three of them: the defensive entries in
@@ -129,7 +131,7 @@ for the known gaps between a league's real rules and what the board can score.
   honestly on it — while a wrong week mis-sizes every bid on the board and says
   nothing. `settings.scheduleSettings` is where it lives; confirm the spelling
   against a live league before reading it. `:waiver-position` is read from
-  `waiverRank` on the same evidence, i.e. none.
+  `waiverRank` and shown, but that spelling is just as unconfirmed.
 
 - **ESPN leagues have no bid history.** `ingestion/transactions.clj` is
   provider-agnostic and Sleeper is its only provider, so an ESPN sync carries no
@@ -201,9 +203,10 @@ for the known gaps between a league's real rules and what the board can score.
   - **throw `ex-info` with `:status`** — `league-sync.sleeper/fetch-json`,
     `league-import/fetch-raw-league`, `fetch-raw-rosters`
   - **result maps** `{:ok true …}` / `{:ok false :status :error}` —
-    `import-league`, `sync-league`, which exist to convert from the first
+    `import-league`, `sync-league`, `fetch-matchups` and `find-leagues`, which
+    exist to convert from the first
   - **nil on failure** — `pipeline/best-effort` (logs, returns nil),
-    `espn/http-get-string` (nil on any non-200)
+    `espn/http-get-string` and `nflverse/http-get-string` (nil on any non-200)
 
   `league-sync/unwrap-execution` is what made this visible. It is not fixing a
   bug so much as undoing damage the design does to itself: the status travels in
@@ -213,25 +216,28 @@ for the known gaps between a league's real rules and what the board can score.
   would be nothing to unwrap. The audit should decide where the throw→value
   boundary belongs and make it consistent rather than adding another adapter.
 
-- **ESPN `My Roster` sorts wrong** When a ESPN league is active, the `My Roster`
-  sort order is not in the standard sort order by position. e.g. QB, RB, WR, TE, 
-  FLEX, K, DEF, BENCH, IR
-
   Specific things already spotted:
 
-  - `espn/http-get-string` returns nil on any non-200, producing exactly the
-    silently empty column CLAUDE.md names as the worst ingestion failure — the
-    same shape as the FantasyPros 429 it warns about.
-  - `parallel/all`'s docstring notes `best-effort` does not catch `Error`, so
-    the escape path and the swallow path disagree about what a failure is.
-  - The frontend `:http` effect routes every non-2xx to `on-failure` with
-    `(:error body)`, which assumes every handler returns `{:error msg}`. Worth
-    confirming that holds everywhere. It now appends the HTTP status alongside
-    the message, which is what lets a 401 be told from a 502 — but the *message*
-    is still the only thing most handlers read.
-  - `:waivers-failed` and `:recompute-failed` deliberately keep stale data
-    readable rather than blanking it. That is the good pattern; it should be
-    stated as the convention rather than left as two coincidences.
+  - `espn/http-get-string` and `nflverse/http-get-string` return nil on any
+    non-200 and log nothing, since `best-effort` logs only a throw. That is
+    exactly the silently empty column CLAUDE.md names as the worst ingestion
+    failure — the same shape as the FantasyPros 429 it warns about. nflverse's
+    `required-columns` guards a wrong 200 body, not a refused request.
+  - `best-effort` catches `Exception` and `parallel/all` cancels its pending
+    tasks on anything thrown, `Error` included, so the escape path and the
+    swallow path disagree about what a failure is. The `parallel/all` docstring
+    gives a reason (an OOM on ESPN's 37MB feed), so this is probably intended;
+    it wants stating as the convention.
+  - The frontend `:http` effect falls back to "request failed" when an error
+    body has no `:error`, and every 4xx in `routes.clj` and the Sensei chat
+    carries one. What remains is a non-JSON error body, such as a proxy's HTML
+    502: `.json` rejects, the `.catch` branch reports the JS error text with a
+    nil status, and the 401-vs-502 distinction is lost.
+  - `:waivers-failed`, `:recompute-failed` and `:matchup-failed` deliberately
+    keep stale data readable rather than blanking it. That is the good pattern,
+    and each says so in a comment of its own; it should be stated once as the
+    convention. Not every `*-failed` handler follows it, on purpose
+    (`:player-news-failed` marks the card failed).
 
 - **`fetch-matchups` reports its own bugs as 502** The catch in
   `ingestion/matchups.clj` wraps `normalize-matchups` along with the fetches, so
@@ -241,6 +247,6 @@ for the known gaps between a league's real rules and what the board can score.
   together: catch only the fetch calls for the 502 and let a normalizer failure
   fall to a 500.
 
-  Also check that `fetch-matchups` has the `auth-failure?` branch `sync-league`
-  has (`league_sync.clj`), so an expired ESPN cookie passed through as 401 marks
-  the account stale instead of reading as a generic failure.
+  Its catch already passes an `ex-data` `:status` through, so a 401 from ESPN
+  reaches the client. Check that the browser marks the account stale on a
+  matchup 401 as it does on a sync one, instead of reading a generic failure.
