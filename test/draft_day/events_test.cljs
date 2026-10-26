@@ -325,7 +325,7 @@
 
   (is (= [:config :teams :drafted :picks :columns :my-team-id :watchlist
           :accounts :leagues :active-league :waiver-columns :phase
-          :sensei-open? :sensei-width :view]
+          :sensei-open? :sensei-width :waiver-roster-open? :view]
          db/persist-keys)
       "and this is everything that gets stored at all")
 
