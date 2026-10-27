@@ -7,8 +7,23 @@
 # variables set in front of it.
 set -euo pipefail
 
+# The server needs Java 21 or later: http-kit starts virtual threads, which 17
+# lacks. Use the OS's own package when it has one, else Adoptium's Temurin.
 sudo apt-get update
-sudo apt-get install -y default-jre-headless rsync
+sudo apt-get install -y rsync
+if apt-cache policy openjdk-21-jre-headless | grep -q 'Candidate: [0-9]'; then
+  sudo apt-get install -y openjdk-21-jre-headless
+else
+  sudo apt-get install -y wget gpg apt-transport-https
+  wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
+    | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/adoptium.gpg
+  echo "deb https://packages.adoptium.net/artifactory/deb $(. /etc/os-release; echo "$VERSION_CODENAME") main" \
+    | sudo tee /etc/apt/sources.list.d/adoptium.list
+  sudo apt-get update
+  sudo apt-get install -y temurin-21-jre
+fi
+# The units run /usr/bin/java; point it at 21 even with 17 still installed.
+sudo update-alternatives --set java "$(ls -d /usr/lib/jvm/*21*/bin/java | head -1)"
 
 id draftday >/dev/null 2>&1 || sudo useradd --system --home /opt/draft-day --shell /usr/sbin/nologin draftday
 sudo install -d -o draftday -g draftday /opt/draft-day /opt/draft-day/data

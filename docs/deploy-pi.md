@@ -7,11 +7,14 @@ gaps in those records that cannot be refetched, so the Pi is a second, independe
 source. The laptop's crontab stays as it is, and the two keep separate records:
 nothing syncs between them.
 
-Everything is built on the laptop; the Pi needs only a JRE.
+Everything is built on the laptop; the Pi needs only a JRE, **Java 21 or later**
+(the server's http-kit calls an API Java 17 lacks, and fails with a
+`NoSuchMethodError` on `newVirtualThreadPerTaskExecutor`).
 
 ## One-time setup
 
-Needs a 64-bit Raspberry Pi OS with ssh. A Pi 4 or 5 with 2 GB or more is
+Needs a 64-bit Raspberry Pi OS with ssh. The script installs Java 21 from the OS
+if it has it, else from Adoptium's Temurin repository. A Pi 4 or 5 with 2 GB or more is
 comfortable; with 1 GB the server plus an hourly harvest is tight.
 
 ```bash
