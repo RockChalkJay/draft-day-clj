@@ -14,8 +14,8 @@ Needs a 64-bit Raspberry Pi OS with ssh. A Pi 4 or 5 with 2 GB or more is
 comfortable; with 1 GB the server plus an hourly harvest is tight.
 
 ```bash
-TZ=America/Chicago LAN=192.168.1.0/24 \
-  ssh pi@raspberrypi.local 'bash -s' < scripts/pi-setup.sh
+ssh pi@raspberrypi.local 'TZ=America/Chicago LAN=192.168.1.0/24 bash -s' \
+  < scripts/pi-setup.sh
 ```
 
 `TZ` sets the Pi's time zone, which the timers use; match the laptop's. `LAN`

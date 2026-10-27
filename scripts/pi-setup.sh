@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # One-time Pi bootstrap, run on the Pi as a sudo-capable user:
 #   ssh pi@raspberrypi.local 'bash -s' < scripts/pi-setup.sh
-# TZ=America/Chicago to also set the time zone, so the timers' local times match
-# the laptop's crontab. LAN=192.168.1.0/24 to limit port 8080 to that network.
+# Put TZ=America/Chicago in the remote command ('TZ=... bash -s') to also set the
+# time zone, so the timers' local times match the laptop's crontab, and
+# LAN=192.168.1.0/24 to limit port 8080 to that network. ssh does not carry
+# variables set in front of it.
 set -euo pipefail
 
 sudo apt-get update
