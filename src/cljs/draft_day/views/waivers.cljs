@@ -264,11 +264,11 @@
   [{:keys [starters bench parked] :as roster}]
   (when roster
     (let [n    (+ (count starters) (count bench) (count parked))
-          drop (some #(when (:drop? %) (:player-name %)) (concat starters bench))]
+          drop-name (some #(when (:drop? %) (:player-name %)) (concat starters bench))]
       (when (pos? n)
         (str/join " · " (cond-> [(str n (if (= 1 n) " player" " players"))]
                           (seq parked) (conj (str (count parked) " on IR"))
-                          drop         (conj (str "drop candidate " drop))))))))
+                          drop-name    (conj (str "drop candidate " drop-name))))))))
 
 (defn toggle-roster!
   "Folds or opens My Roster, then puts focus back on its header: the button the
@@ -447,9 +447,12 @@
   (header, status line, controls, and My Roster's bar while it is folded) changes
   height, so a constant leaves the box's bottom short of the window or past it;
   measuring where it starts puts the bottom `board-gap` above the window's. The
-  stylesheet's cap stands until this first runs."
+  stylesheet's cap stands until this first runs. Its parent is watched as well as
+  the window: dragging Sensei's panel moves the tab across the width where an
+  open roster stacks above the board, and nothing else re-renders for that."
   [& _children]
   (let [el  (atom nil)
+        obs (atom nil)
         fit (fn []
               (when-let [e @el]
                 (let [top (+ (.-top (.getBoundingClientRect e)) (.-scrollY js/window))]
@@ -457,10 +460,17 @@
                         (str (board-room (.-innerHeight js/window) top board-gap 240) "px")))))]
     (r/create-class
      {:component-did-mount
-      (fn [] (.addEventListener js/window "resize" fit) (fit))
+      (fn []
+        (.addEventListener js/window "resize" fit)
+        (when (exists? js/ResizeObserver)
+          (reset! obs (js/ResizeObserver. fit))
+          (some->> @el .-parentNode (.observe @obs)))
+        (fit))
       :component-did-update fit
       :component-will-unmount
-      (fn [] (.removeEventListener js/window "resize" fit))
+      (fn []
+        (.removeEventListener js/window "resize" fit)
+        (some-> @obs .disconnect))
       :reagent-render
       (fn [& children]
         (into [:div.table-scroll {:ref #(reset! el %)}] children))})))
