@@ -462,7 +462,7 @@
   (swap! rdb/app-db assoc :accounts {})
   (rf/clear-subscription-cache!)
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
-         (press! header/season-stats "↻ Re-sync"))))
+         (press! header/sync-button "Re-sync"))))
 
 (deftest a-re-sync-reports-itself-on-the-button-that-started-it
   ;; Two of the four season tabs render no status line, so a failure reported
@@ -470,16 +470,27 @@
   (with-league! synced 1)
   (rf/dispatch-sync [:sync-league {:provider "sleeper" :league-id "987654"}])
   (rf/clear-subscription-cache!)
-  (is (re-find #"Syncing" (render header/season-stats)))
+  (is (re-find #"Syncing" (render header/sync-button)))
   (rf/dispatch-sync [:league-sync-failed lk "401 from the host" 401])
   (rf/clear-subscription-cache!)
-  (is (re-find #"Sync failed" (render header/season-stats)))
+  (is (re-find #"Sync failed" (render header/sync-button)))
   (testing "and goes quiet again once rosters arrive, which is the fresher fact"
     (rf/dispatch-sync [:league-synced lk synced])
     (rf/clear-subscription-cache!)
-    (let [out (render header/season-stats)]
+    (let [out (render header/sync-button)]
       (is (not (re-find #"Sync failed" out)))
       (is (re-find #"synced" out)))))
+
+(deftest a-sync-is-marked-failed-by-state-not-by-its-message
+  (with-league! synced 1)
+  (rf/dispatch-sync [:league-sync-failed lk "401 from the host" 401])
+  (is (true? (:sync-error @rdb/app-db)))
+  (rf/dispatch-sync [:sync-league {:provider "sleeper" :league-id "987654"}])
+  (is (nil? (:sync-error @rdb/app-db)) "a new attempt clears it")
+  (rf/dispatch-sync [:league-synced lk synced])
+  (is (not (:sync-error @rdb/app-db)))
+  (rf/dispatch-sync [:league-synced lk (assoc synced :bid-history-error "timed out")])
+  (is (true? (:sync-error @rdb/app-db)) "rosters arrived but the history beside them did not"))
 
 (deftest a-league-whose-sync-failed-still-offers-to-retry-it
   ;; It has no `:name` until a reply lands, and gating the strip on the name made
@@ -490,12 +501,12 @@
          :active-league lk
          :waivers {})
   (rf/clear-subscription-cache!)
-  (let [out (render header/season-stats)]
+  (let [out (render header/sync-button)]
     (is (re-find #"Re-sync" out))
     (is (re-find #"not synced yet" out) "and says the rosters have never arrived"))
   (is (not (re-find #"No league active" (render waivers/status-line))))
   (is (= [[:refresh-league {:provider "sleeper" :league-id "987654"}]]
-         (press! header/season-stats "↻ Re-sync"))))
+         (press! header/sync-button "Re-sync"))))
 
 (deftest the-status-line-says-only-the-week-and-when-it-was-fetched
   ;; The budget, the rival's budget and the waiver runs left are gone from this
@@ -1346,11 +1357,44 @@
     (is (re-find #"\bplayer\b" (cls :name)) "the sticky Player column")
     (is (not (re-find #"\bnum\b" (or (cls :position) ""))) "a text column stays left")))
 
-(deftest the-board-leaves-room-for-the-roster-table
+(deftest the-board-ends-above-the-window-bottom
   (is (= 582 (waivers/board-room 900 268 50 240))
-      "what is left under the box, less the distance to the roster table")
+      "what is left under the box, less the gap")
   (is (= 240 (waivers/board-room 400 300 50 240))
       "a short window keeps the board usable rather than squeezing it to a stub")
   (is (< (waivers/board-room 900 268 50 240)
          (waivers/board-room 900 168 50 240))
       "a taller status line above gives the board less"))
+
+(deftest folded-my-roster-says-what-is-inside
+  (is (nil? (waivers/roster-summary nil)) "no roster yet")
+  (is (nil? (waivers/roster-summary {:starters [] :bench [] :parked []}))
+      "a team that holds nobody has nothing to count")
+  (is (= "3 players"
+         (waivers/roster-summary {:starters [{:player-id "a"}] :bench [{:player-id "b"}
+                                                                       {:player-id "c"}]}))
+      "starters and bench together")
+  (is (= "1 player" (waivers/roster-summary {:starters [{:player-id "a"}]})))
+  (is (= "3 players · 1 on IR · drop candidate Bee"
+         (waivers/roster-summary {:starters [{:player-id "a"}]
+                                  :bench    [{:player-id "b" :player-name "Bee" :drop? true}]
+                                  :parked   [{:player-id "c"}]}))
+      "IR counts as held, and the seat a claim would cost is named"))
+
+(deftest my-roster-folds-to-a-bar-and-opens-beside-the-board
+  (let [html (fn [] (rf/clear-subscription-cache!) (render waivers/roster-bar))]
+    (is (re-find #":aria-expanded false" (html)) "folded says so to a screen reader")
+    (is (re-find #"Show" (html)))
+    (rf/dispatch-sync [:waiver-roster-toggle])
+    (rf/clear-subscription-cache!)
+    (is (true? (:waiver-roster-open? (last (:persist @captured)))) "and it is remembered")
+    (let [open (render waivers/my-roster-panel)]
+      (is (re-find #":aria-expanded true" open) "the panel's own header folds it again")
+      (is (re-find #":aria-controls \"waiver-roster\"" open))
+      (is (re-find #"Hide" open)))))
+
+(deftest an-open-roster-column-has-the-id-the-header-controls
+  (swap! rdb/app-db assoc :waiver-roster-open? true)
+  (rf/clear-subscription-cache!)
+  (is (re-find #":aside#waiver-roster\.waiver-roster-col" (render waivers/waivers-view))
+      "id before classes, the only order reagent's tag parser accepts"))

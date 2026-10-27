@@ -258,6 +258,46 @@
 
 ;; ---- panels ----
 
+(defn roster-summary
+  "One line of what folded My Roster holds: how many players, who is on IR and
+  the seat a claim would cost. Nil until there is a roster to count."
+  [{:keys [starters bench parked] :as roster}]
+  (when roster
+    (let [n    (+ (count starters) (count bench) (count parked))
+          drop (some #(when (:drop? %) (:player-name %)) (concat starters bench))]
+      (when (pos? n)
+        (str/join " · " (cond-> [(str n (if (= 1 n) " player" " players"))]
+                          (seq parked) (conj (str (count parked) " on IR"))
+                          drop         (conj (str "drop candidate " drop))))))))
+
+(defn toggle-roster!
+  "Folds or opens My Roster, then puts focus back on its header: the button the
+  keyboard pressed is replaced by its twin in the other place."
+  []
+  (rf/dispatch-sync [:waiver-roster-toggle])
+  (r/after-render #(some-> (js/document.getElementById "roster-toggle") .focus)))
+
+(defn roster-toggle
+  "My Roster's header, which is also the way to fold the panel or open it. It
+  travels with the panel: a bar above the board while folded (`summary` says
+  what is inside), the top of the column beside the board while open."
+  [open? summary]
+  [:button#roster-toggle.roster-bar {:class         (when open? "in-col")
+                                     :aria-expanded (boolean open?)
+                                     :aria-controls (when open? "waiver-roster")
+                                     :on-click      toggle-roster!}
+   [:svg.chev {:width 12 :height 12 :view-box "0 0 12 12" :aria-hidden true}
+    [:path {:d "M4 2.5 8 6 4 9.5" :fill "none" :stroke "currentColor" :stroke-width 1.6
+            :stroke-linecap "round" :stroke-linejoin "round"}]]
+   [:h3 "My Roster"]
+   (when (and summary (not open?)) [:span.sum summary])
+   [:span.hint (if open? "Hide" "Show")]])
+
+(defn roster-bar
+  "My Roster folded away: its header alone, above the board."
+  []
+  [roster-toggle false (roster-summary @(rf/subscribe [:my-roster]))])
+
 (defn my-roster-panel
   "What the manager already has, beside what he could claim.
 
@@ -280,7 +320,7 @@
         comparing (set @(rf/subscribe [:compare]))
         week      (:week @(rf/subscribe [:season-header]))]
     [:div.roster-panel.waiver-roster
-     [:div.roster-head [:h3 "My Roster"]]
+     [roster-toggle true nil]
      (cond
        (not synced?)
        [:p.muted "Sync a league to see your roster."]
@@ -357,8 +397,9 @@
     (and synced? (not team?)) "Pick your team under Settings to see what a claim would cost."))
 
 (defn status-line
-  "One muted line over the board: which season it is for, how old the week's
-  projection is, and anything standing between the manager and a real answer.
+  "One muted note in the board's control row: which season it is for, how old
+  the week's projection is, and anything standing between the manager and a real
+  answer.
 
   In three states, not two. Preseason is said out loud rather than left to be
   inferred from an empty GP column: in August this board is the draft board,
@@ -390,38 +431,30 @@
 
 ;; ---- the view ----
 
-(def roster-peek
-  "Pixels from the board's bottom to the top of the roster table when the table
-  is not on the page to be measured (no league synced yet): the gap, the panel's
-  padding, its heading and the heading's margin."
-  58)
+(def board-gap
+  "Pixels left between the board's bottom and the window's."
+  16)
 
 (defn board-room
-  "How tall the board's scroll box may be so the roster table's top ends at the
+  "How tall the board's scroll box may be so its bottom ends `gap` above the
   window's bottom: what is left under `box-top` (the box's distance from the top
-  of the page) once `peek`, the distance from the box's bottom to that table, is
-  taken, never under `floor`."
-  [window-height box-top peek floor]
-  (max floor (- window-height box-top peek)))
+  of the page) once `gap` is taken, never under `floor`."
+  [window-height box-top gap floor]
+  (max floor (- window-height box-top gap)))
 
 (defn board-box
   "The board's scroll box, sized by where it actually sits. The chrome over it
-  (header, status line, controls) changes height, and so does what stands between
-  the box and the roster table, so a constant leaves the table's top a row too
-  high or too low; measuring both puts it on the window's bottom, with My Roster's
-  heading just above. The stylesheet's cap stands until this first runs."
+  (header, status line, controls, and My Roster's bar while it is folded) changes
+  height, so a constant leaves the box's bottom short of the window or past it;
+  measuring where it starts puts the bottom `board-gap` above the window's. The
+  stylesheet's cap stands until this first runs."
   [& _children]
   (let [el  (atom nil)
         fit (fn []
               (when-let [e @el]
-                (let [rect  (.getBoundingClientRect e)
-                      table (.querySelector js/document ".waiver-roster table.roster")
-                      top   (+ (.-top rect) (.-scrollY js/window))
-                      peek  (if table
-                              (- (.-top (.getBoundingClientRect table)) (.-bottom rect))
-                              roster-peek)]
+                (let [top (+ (.-top (.getBoundingClientRect e)) (.-scrollY js/window))]
                   (set! (.. e -style -maxHeight)
-                        (str (board-room (.-innerHeight js/window) top peek 240) "px")))))]
+                        (str (board-room (.-innerHeight js/window) top board-gap 240) "px")))))]
     (r/create-class
      {:component-did-mount
       (fn [] (.addEventListener js/window "resize" fit) (fit))
@@ -438,13 +471,15 @@
         sort    @(rf/subscribe [:waiver-sort])
         week    (:week @(rf/subscribe [:waiver-meta]))
         bidding (:bidding @(rf/subscribe [:waivers]))
-        comparing (set @(rf/subscribe [:compare]))]
+        comparing (set @(rf/subscribe [:compare]))
+        roster?   @(rf/subscribe [:waiver-roster-open?])]
     [:div.waivers-view
-     [status-line]
      [:div.board-controls
       [:div.filters [board/pos-filter] [board/search-box]]
+      [status-line]
       [columns/waiver-column-picker]]
-     [:div.waiver-body
+     (when-not roster? [roster-bar])
+     [:div.waiver-body {:class (when roster? "roster-open")}
       [board-box
        [:table.board
         [:thead [board/board-header waiver-columns cols sort]]
@@ -462,7 +497,7 @@
                       :on-click #(rf/dispatch [:compare-toggle (:player-id p)])}
                  (map (fn [{k :key}] ^{:key k} [cell k p week bidding]) cols)])
               players)]]]
-      [:aside.waiver-roster-col [my-roster-panel]]]
+      (when roster? [:aside#waiver-roster.waiver-roster-col [my-roster-panel]])]
      [bid-tip-popover]
      ;; Sleeper's data, on Sleeper's terms: say whose it is wherever it shows.
      (when (some #(= :adds (:key %)) cols)

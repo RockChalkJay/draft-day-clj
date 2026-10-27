@@ -323,7 +323,7 @@
                         ^{:key pos}
                         [:button {:class (when (= active pos) "on")
                                   :on-click #(rf/dispatch [:set-pos-filter pos])} pos])]
-    [:div.pos-filter
+    [:div.pos-filter {:role "group" :aria-label "Position"}
      [:button {:class (when (nil? active) "on") :on-click #(rf/dispatch [:set-pos-filter nil])} "All"]
      (map pos-button-fn db/positions)]))
 

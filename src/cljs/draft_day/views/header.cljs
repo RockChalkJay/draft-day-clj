@@ -27,7 +27,7 @@
   (let [leagues @(rf/subscribe [:league-list])
         groups  @(rf/subscribe [:leagues-by-account])
         active  @(rf/subscribe [:active-league-key])
-        {:keys [league-name my-team-name]} @(rf/subscribe [:account])]
+        {:keys [league-name]} @(rf/subscribe [:account])]
     [:div.league-switcher
      (cond
        (empty? leagues)
@@ -50,8 +50,7 @@
                                          "No account")}
                      (map (fn [[k e]]
                             ^{:key k} [:option {:value k} (or (:name e) (:league-id e))])
-                          ls)])))])
-     (when my-team-name [:span.league-team my-team-name])]))
+                          ls)])))])]))
 
 (def view-labels
   {:board "Board" :league "League" :team "My Team" :matchup "Matchup" :waivers "Waivers"
@@ -80,43 +79,46 @@
      [:button.start-draft {:on-click #(rf/dispatch [:show-modal {:kind :start-draft}])} "Start Draft"]]))
 
 (defn season-stats
-  "The week, the budget and how old the rosters are, on every season tab.
-
-  Re-sync lives here and reports itself here: all four tabs read the same synced
-  rosters, and two of them render no status line of their own."
+  "The week and the budget, on every season tab."
   []
-  (let [{:keys [week faab synced-at]} @(rf/subscribe [:season-header])
-        league @(rf/subscribe [:active-league])
-        status @(rf/subscribe [:sync-status])]
-    [:div.stats.season-meta
+  (let [{:keys [week faab]} @(rf/subscribe [:season-header])]
+    [:div.season-meta
      (when week
-       [:div.stat [:span.stat-label "Week"] [:span.stat-val week]])
+       [:span.meta-item "Wk " [:b week]])
      (when faab
-       [:div.stat {:title "FAAB left of this season's budget"}
-        [:span.stat-label "FAAB"]
-        [:span.stat-val.good (str (util/faab (:left faab)) " / " (util/faab (:budget faab)))]])
-     (when league
-       ;; The button reports its own work: it is on all four season tabs, and
-       ;; two of them render no status line of their own.
-       [:button.sync-btn {:on-click #(rf/dispatch [:refresh-league
-                                                   (select-keys league [:provider :league-id])])}
-        "↻ Re-sync"
-        [:small (or status
-                    (if-let [at (util/fetched-at-label synced-at)]
-                      (str "synced " at)
-                      "not synced yet"))]])]))
+       [:span.meta-item {:title "FAAB left of this season's budget"}
+        "FAAB " [:b.good (util/faab (:left faab))] (str " / " (util/faab (:budget faab)))])]))
+
+(defn sync-button
+  "Re-sync, as an icon: how old the rosters are rides on its hover, and words
+  appear beside it only while a sync is running or has something to say. It
+  reports itself here because all four tabs read the same synced rosters, and
+  two of them render no status line of their own."
+  []
+  (let [{:keys [synced-at]} @(rf/subscribe [:season-header])
+        league  @(rf/subscribe [:active-league])
+        status  @(rf/subscribe [:sync-status])
+        failed? @(rf/subscribe [:sync-error])
+        age     (if-let [at (util/fetched-at-label synced-at)]
+                  (str "synced " at)
+                  "not synced yet")]
+    (when league
+      [:button.sync-btn {:class    (when failed? "failed")
+                         :title    (str "Re-sync rosters · " (or status age))
+                         :on-click #(rf/dispatch [:refresh-league
+                                                  (select-keys league [:provider :league-id])])}
+       [:span {:aria-hidden "true"} "↻"]
+       [:span.sr-only "Re-sync"]
+       (when status [:span.sync-note status])])))
 
 (defn header []
   (let [mode   @(rf/subscribe [:mode])
         tabs   @(rf/subscribe [:mode-views])
         view   @(rf/subscribe [:view])
-        status @(rf/subscribe [:status])]
+        status @(rf/subscribe [:status])
+        routine @(rf/subscribe [:universe-status])]
     [:header.top
      [:div.brand "🏈 Draft Day"]
-     ;; No mode yet means the week is still loading: draw neither half rather
-     ;; than one that may be taken back.
-     (when mode
-       [:span.mode-tag (if (= mode :season) "Season" "Draft")])
      [:nav.views
       (map (fn [v]
              ^{:key v}
@@ -125,14 +127,17 @@
            tabs)]
      [league-switcher]
      ;; Truncated on a crowded header, so the whole text rides on hover.
-     [:div.status {:title status} status]
+     (when-not (and (= mode :season) (= status routine))
+       [:div.status {:title status} status])
      (case mode
        :season [season-stats]
        :draft  [draft-stats]
        nil)
      [sensei/toggle]
-     [:button.gear {:class    (when (= view :settings) "on")
-                    :title    "Settings"
-                    :on-click #(rf/dispatch [:set-view :settings])}
+     (when (= mode :season) [sync-button])
+     [:button.gear {:class      (when (= view :settings) "on")
+                    :title      "Settings"
+                    :aria-label "Settings"
+                    :on-click   #(rf/dispatch [:set-view :settings])}
       "⚙"]]))
 

@@ -697,7 +697,8 @@
       {:db (assoc db :waiver-status "Nothing to sync — no league is selected.")}
       ;; Both keys: the board's status line is on two of the four season tabs,
       ;; and `:sync-status` is what the header's Re-sync shows on all of them.
-      {:db   (assoc db :waiver-status "Syncing rosters…" :sync-status "Syncing rosters…")
+      {:db   (assoc db :waiver-status "Syncing rosters…" :sync-status "Syncing rosters…"
+                    :sync-error nil)
        :http {:method :post :url "/api/league/sync"
               :body (league-request db league)
               :on-success [:league-synced (db/league-key provider league-id)]
@@ -744,7 +745,8 @@
                       :sync-status (cond
                                      (not league) "Sync returned nothing usable"
                                      (:bid-history-error league)
-                                     (str "bid history not refreshed: " (:bid-history-error league)))))
+                                     (str "bid history not refreshed: " (:bid-history-error league)))
+                      :sync-error (boolean (or (not league) (:bid-history-error league)))))
        :fx (cond-> [[:dispatch [:fetch-waivers]]]
              ;; The matchup board asked with no rosters is every team empty.
              (and (db/matchup-view? (:view db)) (= k (:active-league db)))
@@ -875,7 +877,8 @@
                    :waiver-status (str "League sync failed: " err)
                    ;; On the button that started it, so a re-sync from My Team
                    ;; or the season League tab is not silently month-old.
-                   :sync-status (str "Sync failed: " err))
+                   :sync-status (str "Sync failed: " err)
+                   :sync-error true)
       ;; A matchup on a never-synced league waits for this sync, so it is the
       ;; one place that can say why the board never arrived.
       (= k (:active-league db)) (assoc :matchup-status (str "League sync failed: " err))
@@ -1061,6 +1064,10 @@
 
 (rf/reg-event-db :sensei-toggle [persist]
   (fn [db _] (update db :sensei-open? not)))
+
+;; Open is the column beside the board; folded is the bar above it.
+(rf/reg-event-db :waiver-roster-toggle [persist]
+  (fn [db _] (update db :waiver-roster-open? not)))
 
 ;; Not persisted: a drag fires this on every pointer move, and the write waits for
 ;; `:sensei-resize-end`.
