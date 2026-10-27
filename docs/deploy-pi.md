@@ -28,7 +28,8 @@ scripts/deploy-pi.sh                 # PI=pi@raspberrypi.local by default
 SEED_DATA=1 scripts/deploy-pi.sh     # the first time: also copy data/trends and data/projections
 ```
 
-It builds the SPA and the uberjar, copies the jar and `deploy/*` units, and
+It builds the SPA and the uberjar (`lein with-profile +with-dev uberjar`, which adds
+`dev/` to the jar so the harvesters are in it; a plain `lein uberjar` leaves it out), copies the jar and `deploy/*` units, and
 restarts the server. `SKIP_BUILD=1` re-ships the last jar. Then open
 `http://raspberrypi.local:8080`.
 

@@ -12,7 +12,7 @@ export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Con
 
 if [ -z "${SKIP_BUILD:-}" ]; then
   npm run release
-  lein uberjar
+  lein with-profile +with-dev uberjar   # ships dev/ too, for the harvesters
 fi
 
 jar=$(ls -t target/uberjar/*-standalone.jar | head -1)
