@@ -1,0 +1,10 @@
+[Unit]
+Description=Draft Day: save the week's projections, kickoffs and injuries
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=draftday
+WorkingDirectory=/opt/draft-day
+ExecStart=/usr/bin/java -Xmx384m -cp /opt/draft-day/draft-day.jar clojure.main -m draft-day.tools.projections

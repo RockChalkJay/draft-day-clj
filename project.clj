@@ -22,6 +22,7 @@
                  ;; --- ingestion ---
                  [org.jsoup/jsoup "1.18.1"]         ; FantasyPros HTML scraping
                  [org.clojure/data.csv "1.1.0"]     ; nflverse / DynastyProcess CSVs
+                 [org.clojure/tools.cli "1.0.206"]  ; the tools/ harvesters' flags
                  [com.cognitect/transit-clj "1.0.333"] ; disk cache
                  ;; --- frontend (compiled by shadow-cljs via :lein true) ---
                  [thheller/shadow-cljs "2.28.18"]
@@ -41,6 +42,5 @@
   :test-selectors {:default     (complement :integration)
                    :integration :integration
                    :all         (constantly true)}
-  :profiles {:dev     {:source-paths ["dev"]
-                       :dependencies [[org.clojure/tools.cli "1.0.206"]]}
+  :profiles {:dev     {:source-paths ["dev"]}
              :uberjar {:aot :all}})

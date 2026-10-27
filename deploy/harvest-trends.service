@@ -1,0 +1,10 @@
+[Unit]
+Description=Draft Day: save Sleeper's trending adds and drops
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=draftday
+WorkingDirectory=/opt/draft-day
+ExecStart=/usr/bin/java -Xmx384m -cp /opt/draft-day/draft-day.jar clojure.main -m draft-day.tools.trends

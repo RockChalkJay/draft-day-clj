@@ -1,0 +1,11 @@
+[Unit]
+Description=Projection snapshots, five minutes after the laptop's Wed, Thu and Sun runs
+
+[Timer]
+OnCalendar=Wed *-*-* 08:05
+OnCalendar=Thu *-*-* 16:35
+OnCalendar=Sun *-*-* 10:20
+Persistent=true
+
+[Install]
+WantedBy=timers.target

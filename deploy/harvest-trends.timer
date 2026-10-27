@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly trending-list snapshot, half past (the laptop takes the hour)
+
+[Timer]
+OnCalendar=*:30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

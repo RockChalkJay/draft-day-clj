@@ -1,0 +1,15 @@
+[Unit]
+Description=Draft Day server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=draftday
+WorkingDirectory=/opt/draft-day
+Environment=PORT=8080
+ExecStart=/usr/bin/java -Xmx512m -jar /opt/draft-day/draft-day.jar
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
