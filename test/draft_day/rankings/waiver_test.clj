@@ -58,8 +58,8 @@
     (is (= {"star" "Mine" "meh" "Mine" "bad" "Rivals"} rostered)
         "who has him, answered without re-sending the rows")))
 
-(deftest include-rostered-appends-owned-players-tagged-with-their-owner
-  (let [{:keys [players]} (run :include-rostered true)
+(deftest include-owned-appends-owned-players-tagged-with-their-owner
+  (let [{:keys [players]} (run :include-owned? true)
         free   (remove :owner players)
         owned  (filter :owner players)
         by-id  (into {} (map (juxt :player-id identity)) owned)]
@@ -73,7 +73,7 @@
     (is (not-any? #(contains? % :bid) owned))
     (is (every? #(some? (:ros-points %)) owned) "but he is priced, to compare")))
 
-(deftest without-include-rostered-the-board-is-free-agents-only
+(deftest without-include-owned-the-board-is-free-agents-only
   (let [{:keys [players]} (run)]
     (is (not-any? :owner players))
     (is (not-any? #{"star" "meh" "bad"} (map :player-id players)))))

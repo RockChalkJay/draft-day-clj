@@ -506,7 +506,7 @@
 (deftest waivers-endpoint-lists-owned-players-only-when-asked
   (let [body  {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}
         plain (parse (waivers body))
-        all   (parse (waivers (assoc body :include-rostered true)))
+        all   (parse (waivers (assoc body :include-owned? true)))
         owned (filter :owner (:players all))]
     (is (not-any? :owner (:players plain)))
     (is (= #{"rb2" "rb3" "rb4"} (set (map :player-id owned))))
