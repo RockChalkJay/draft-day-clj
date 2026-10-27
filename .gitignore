@@ -34,3 +34,6 @@ out/
 # Everything under data/ is a local cache or a saved snapshot (provider caches, research
 # harness caches, trending lists); the bundled sample is committed under resources/.
 /data/*
+
+# macOS Finder metadata
+.DS_Store
