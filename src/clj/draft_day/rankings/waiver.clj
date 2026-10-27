@@ -594,13 +594,11 @@
                 :week   week}}))
 
 (defn waiver-board
-  "`:players` is the free agents only — `:rostered` is the compact `{player-id
+  "`:players` is the free agents only, unless `:include-rostered` appends
+  everyone on a roster after them, each row tagged `:owner {:roster-id :name}`
+  and priced as `owned-players` says. `:rostered` is the compact `{player-id
   team-name}` index that answers 'who has him' without re-sending the universe.
   No synced rosters is not an error: everyone is free.
-
-  `:include-rostered` appends everyone on a roster after the free agents, each
-  row tagged `:owner {:roster-id :name}` and priced as `owned-players` says,
-  for a board that shows the whole pool. Absent, the reply is unchanged.
 
   `:bid-history` is the league's cached history (`transactions/cached-history`),
   which prices its rivals' bids; without one they bid like Sleeper at large."
