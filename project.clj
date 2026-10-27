@@ -41,6 +41,15 @@
   :test-selectors {:default     (complement :integration)
                    :integration :integration
                    :all         (constantly true)}
-  :profiles {:dev     {:source-paths ["dev"]
-                       :dependencies [[org.clojure/tools.cli "1.0.206"]]}
-             :uberjar {:aot :all}})
+  :profiles {:dev      {:source-paths ["dev"]
+                        :dependencies [[org.clojure/tools.cli "1.0.206"]]}
+             :uberjar  {:aot :all}
+             ;; `lein with-profile +with-dev uberjar` ships dev/ as source, so a machine
+             ;; with only a JRE can run the trends and projections harvesters from the
+             ;; jar. Not AOT, and the research harnesses are left out.
+             :with-dev {:source-paths   ["dev"]
+                        :dependencies   [[org.clojure/tools.cli "1.0.206"]]
+                        :aot            ^:replace [draft-day.server]
+                        :jar-exclusions [#"draft_day/(benchmark|faab|replay)/.*"
+                                         #"draft_day/lineup_report\.clj"
+                                         #"draft_day/tools/(snapshot|refresh_player_ids)\.clj"]}})
