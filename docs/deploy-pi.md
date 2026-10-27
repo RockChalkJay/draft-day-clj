@@ -4,7 +4,8 @@ The Pi does two jobs from one jar: it serves the app on your home network, and i
 runs the harvesters (`tools.trends`, `tools.projections`) that save data the
 providers do not keep. The harvesters are the point. A laptop that sleeps leaves
 gaps in those records that cannot be refetched, so the Pi is a second, independent
-source. The laptop's crontab stays as it is.
+source. The laptop's crontab stays as it is, and the two keep separate records:
+nothing syncs between them.
 
 Everything is built on the laptop; the Pi needs only a JRE.
 
@@ -25,7 +26,6 @@ limits port 8080 to your network with `ufw`. Both are optional.
 
 ```bash
 scripts/deploy-pi.sh                 # PI=pi@raspberrypi.local by default
-SEED_DATA=1 scripts/deploy-pi.sh     # the first time: also copy data/trends and data/projections
 ```
 
 It builds the SPA and the uberjar (`lein with-profile +with-dev uberjar`, which adds
@@ -50,17 +50,6 @@ systemctl list-timers 'harvest-*'
 journalctl -u harvest-trends -u harvest-projections -n 50
 sudo systemctl start harvest-trends        # run one now
 ```
-
-## Bringing the snapshots home
-
-```bash
-scripts/pull-harvest.sh
-lein run -m draft-day.tools.projections --report
-lein run -m draft-day.tools.projections --report --dir data/trends
-```
-
-The pull copies only files the laptop lacks (names are UTC stamps), never
-overwrites and never deletes.
 
 ## What it does not do
 
