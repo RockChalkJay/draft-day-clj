@@ -58,22 +58,22 @@
     (is (= {"star" "Mine" "meh" "Mine" "bad" "Rivals"} rostered)
         "who has him, answered without re-sending the rows")))
 
-(deftest include-owned-appends-owned-players-tagged-with-their-owner
-  (let [{:keys [players]} (run :include-owned? true)
+(deftest include-rostered-appends-rostered-players-tagged-with-their-owner
+  (let [{:keys [players]} (run :include-rostered? true)
         free   (remove :owner players)
-        owned  (filter :owner players)
-        by-id  (into {} (map (juxt :player-id identity)) owned)]
+        rostered  (filter :owner players)
+        by-id  (into {} (map (juxt :player-id identity)) rostered)]
     (is (= #{"star" "meh" "bad"} (set (keys by-id))))
     (is (= {:roster-id 1 :name "Mine"} (:owner (by-id "star"))))
     (is (= {:roster-id 2 :name "Rivals"} (:owner (by-id "bad"))))
-    (is (= (concat free owned) players) "free agents lead, owned rows follow")
+    (is (= (concat free rostered) players) "free agents lead, rostered rows follow")
     (is (= (count board) (count players)) "the whole pool, once each")
-    (is (not-any? #(contains? % :upgrade) owned)
+    (is (not-any? #(contains? % :upgrade) rostered)
         "a held player is not a claim, so he carries no gain over a drop")
-    (is (not-any? #(contains? % :bid) owned))
-    (is (every? #(some? (:ros-points %)) owned) "but he is priced, to compare")))
+    (is (not-any? #(contains? % :bid) rostered))
+    (is (every? #(some? (:ros-points %)) rostered) "but he is priced, to compare")))
 
-(deftest without-include-owned-the-board-is-free-agents-only
+(deftest without-include-rostered-the-board-is-free-agents-only
   (let [{:keys [players]} (run)]
     (is (not-any? :owner players))
     (is (not-any? #{"star" "meh" "bad"} (map :player-id players)))))

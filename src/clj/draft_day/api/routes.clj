@@ -398,15 +398,15 @@
   over the free agents a synced league leaves available, and what to bid for
   them; or `{:error msg}` for a body the board cannot price. Sensei's tools read
   the same board through this, so they cannot disagree with the Waivers tab.
-  `:include-owned?` adds every owned player, tagged with his owner, after the
-  free agents.
+  `:include-rostered?` adds every rostered player, tagged with his owner, after
+  the free agents.
 
   Stateless on `rankings-handler`'s terms but none of its money: a waiver claim
   is one seat against a budget spent down over months (see `rankings.waiver`).
   `:through-week` comes from the universe envelope, not the request, so the
   board cannot price a week the data has not reached; in preseason it is 0."
   [{:keys [scoring num-teams replacement-config league my-roster-id roster-size roster
-           include-owned?]}]
+           include-rostered?]}]
   (let [scoring* (resolve-scoring scoring)]
     (cond
       ;; Same guard and the same reason as the rankings board: an all-zero
@@ -435,7 +435,7 @@
             adds         (trending/load-adds)
             ctx      {:league             league
                       :my-roster-id       my-roster-id
-                      :include-owned?     include-owned?
+                      :include-rostered?  include-rostered?
                       :roster-size        roster-size
                       :num-teams          (or num-teams 12)
                       :replacement-config replacement-config

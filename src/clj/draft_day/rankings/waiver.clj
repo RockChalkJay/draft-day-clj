@@ -157,7 +157,7 @@
   [board rostered]
   (filterv #(not (contains? rostered (:player-id %))) board))
 
-(defn owned-players
+(defn rostered-players
   "The board's rows for everyone on a roster, each tagged `:owner`, in board
   order. Priced like a held player (`my-roster-players`): no `:upgrade` or
   `:bid`, because you cannot claim a man another team holds."
@@ -594,21 +594,21 @@
                 :week   week}}))
 
 (defn waiver-board
-  "`:players` is the free agents only, unless `:include-owned?` appends
+  "`:players` is the free agents only, unless `:include-rostered?` appends
   everyone on a roster after them, each row tagged `:owner {:roster-id :name}`
-  and priced as `owned-players` says. `:rostered` is the compact `{player-id
+  and priced as `rostered-players` says. `:rostered` is the compact `{player-id
   team-name}` index that answers 'who has him' without re-sending the universe.
   No synced rosters is not an error: everyone is free.
 
   `:bid-history` is the league's cached history (`transactions/cached-history`),
   which prices its rivals' bids; without one they bid like Sleeper at large."
-  [board {:keys [league my-roster-id include-owned?] :as ctx}]
+  [board {:keys [league my-roster-id include-rostered?] :as ctx}]
   (let [{:keys [teams waiver]} league
         {:keys [fas market my-team drop drop-costs xwalk by-id rostered owners players
                 levels claims-left bidding? habits]} (market-inputs board ctx)]
     {:players            (cond-> (-> fas (faab/with-market market) with-trend)
-                           include-owned?
-                           (into (with-trend (owned-players players owners))))
+                           include-rostered?
+                           (into (with-trend (rostered-players players owners))))
      ;; The seat a claim would cost, for the browser to mark on the manager's
      ;; roster — which it splits itself, through `db/team-roster`, the one
      ;; reader the League tab uses too. On the envelope and not only on each
