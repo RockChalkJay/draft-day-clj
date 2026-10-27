@@ -60,9 +60,9 @@
 
 (deftest include-rostered-appends-rostered-players-tagged-with-their-owner
   (let [{:keys [players]} (run :include-rostered? true)
-        free   (remove :owner players)
+        free      (remove :owner players)
         rostered  (filter :owner players)
-        by-id  (into {} (map (juxt :player-id identity)) rostered)]
+        by-id     (db/index-by-id rostered)]
     (is (= #{"star" "meh" "bad"} (set (keys by-id))))
     (is (= {:roster-id 1 :name "Mine"} (:owner (by-id "star"))))
     (is (= {:roster-id 2 :name "Rivals"} (:owner (by-id "bad"))))

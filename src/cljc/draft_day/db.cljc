@@ -1309,7 +1309,7 @@
   board that quietly believes the wrong people are rostered.
 
   A team with no `:player-ids` vector is the shape that actually matters: it
-  reaches `waiver/rostered-index` as a team holding nobody, and every player on
+  reaches `waiver/owner-index` as a team holding nobody, and every player on
   it silently becomes a free agent. `:active-ids` is repaired alongside it
   because it decides the *other* question — whether a claim needs a drop at
   all.

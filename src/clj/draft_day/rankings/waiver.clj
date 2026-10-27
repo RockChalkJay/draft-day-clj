@@ -147,11 +147,6 @@
                        (held-ids team xwalk))))
         teams))
 
-(defn rostered-index
-  "`{canonical-player-id team-name}` over every team in the synced league."
-  [teams xwalk]
-  (update-vals (owner-index teams xwalk) :name))
-
 (defn free-agents
   "The board minus everyone on a roster."
   [board rostered]
@@ -538,8 +533,8 @@
   (let [{:keys [teams waiver]} league
         xwalk    (db/provider->player-id board (:provider league)
                                          (:provider-players league))
-        rostered (rostered-index teams xwalk)
         owners   (owner-index teams xwalk)
+        rostered (update-vals owners :name)
         {:keys [levels players]} (with-ros-vorp board num-teams replacement-config)
         by-id    (db/index-by-id players)
         my-team  (first (filter #(= (:roster-id %) my-roster-id) teams))
@@ -606,9 +601,10 @@
   (let [{:keys [teams waiver]} league
         {:keys [fas market my-team drop drop-costs xwalk by-id rostered owners players
                 levels claims-left bidding? habits]} (market-inputs board ctx)]
-    {:players            (cond-> (-> fas (faab/with-market market) with-trend)
-                           include-rostered?
-                           (into (with-trend (rostered-players players owners))))
+    {:players            (with-trend
+                           (cond-> (faab/with-market fas market)
+                             include-rostered?
+                             (into (rostered-players players owners))))
      ;; The seat a claim would cost, for the browser to mark on the manager's
      ;; roster — which it splits itself, through `db/team-roster`, the one
      ;; reader the League tab uses too. On the envelope and not only on each
