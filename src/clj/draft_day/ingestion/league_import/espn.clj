@@ -18,6 +18,7 @@
   ones already verified against its live feed; the rest are marked where they
   are not, because a wrong id here is silent — it prices a rule nobody set."
   (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [jsonista.core :as json]
             [org.httpkit.client :as http]
             [draft-day.db :as db]
@@ -87,7 +88,8 @@
                                                     :timeout 30000})]
     (cond
       error
-      (throw (ex-info "ESPN league fetch failed" {:status 502}))
+      (do (log/warn error "ESPN league fetch failed:" (ex-message error))
+          (throw (ex-info "ESPN league fetch failed" {:status 502})))
 
       (not= 200 status)
       (let [[s msg] (status-error status)] (throw (ex-info msg {:status s})))
