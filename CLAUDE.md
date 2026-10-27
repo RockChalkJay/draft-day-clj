@@ -25,6 +25,8 @@ Fantasy football auction-draft assistant (VBD-based). Backend: stateless JSON AP
 - `tools.trends`: fetch Sleeper's trending adds/drops and save them as JSON under `data/trends/<season>/week-NN/` (one run, one file)
 - `tools.projections`: save the week's raw Sleeper projection entries, ESPN kickoffs and the injury list as JSON under `data/projections/<season>/week-NN/` (NN = the week the line is for; one run, one file). Also an `outlook` (Sleeper's lines for the weeks left, summed per player) and `ros_ecr` (FantasyPros' rest-of-season expert ranks, by format). Sleeper revises past weeks' lines after the games, so a vintage line cannot be refetched. `--report [--dir data/trends]` lists snapshots per week and flags gaps, short and missing weeks, and a stale newest snapshot
 
+The two `tools.*` harvesters also run on a Raspberry Pi with only a JRE (Java 21 or later, which http-kit's virtual threads need): `lein with-profile +with-dev uberjar` ships `dev/` as source (not AOT), then `java -cp draft-day.jar clojure.main -m draft-day.tools.X`. A plain `lein uberjar` stays clean.
+
 ## Architecture
 
 **Stateless design**: Backend caches only provider data (players universe, weekly line, bid history) on disk. All draft state lives in browser, round-tripped to `/api/rankings` on every request. Rankings engine: pure function of `(players, scoring, roster-config, league-state)`.
