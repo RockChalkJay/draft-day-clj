@@ -58,6 +58,26 @@
     (is (= {"star" "Mine" "meh" "Mine" "bad" "Rivals"} rostered)
         "who has him, answered without re-sending the rows")))
 
+(deftest include-rostered-appends-rostered-players-tagged-with-their-owner
+  (let [{:keys [players]} (run :include-rostered? true)
+        free      (remove :owner players)
+        rostered  (filter :owner players)
+        by-id     (db/index-by-id rostered)]
+    (is (= #{"star" "meh" "bad"} (set (keys by-id))))
+    (is (= {:roster-id 1 :name "Mine"} (:owner (by-id "star"))))
+    (is (= {:roster-id 2 :name "Rivals"} (:owner (by-id "bad"))))
+    (is (= (concat free rostered) players) "free agents lead, rostered rows follow")
+    (is (= (count board) (count players)) "the whole pool, once each")
+    (is (not-any? #(contains? % :upgrade) rostered)
+        "a held player is not a claim, so he carries no gain over a drop")
+    (is (not-any? #(contains? % :bid) rostered))
+    (is (every? #(some? (:ros-points %)) rostered) "but he is priced, to compare")))
+
+(deftest without-include-rostered-the-board-is-free-agents-only
+  (let [{:keys [players]} (run)]
+    (is (not-any? :owner players))
+    (is (not-any? #{"star" "meh" "bad"} (map :player-id players)))))
+
 (deftest roster-ids-are-translated-out-of-the-providers-id-space
   ;; Sleeper hands back its own ids; the board is keyed by GSIS wherever one
   ;; resolved. An id with no entry maps to itself, which is how team defenses

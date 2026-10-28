@@ -136,18 +136,32 @@
   there is one default arity rather than two that could drift."
   db/held-ids)
 
-(defn rostered-index
-  "`{canonical-player-id team-name}` over every team in the synced league."
+(defn owner-index
+  "`{canonical-player-id {:roster-id :name}}` over every team in the synced
+  league: who holds him, by the id a roster is keyed on as well as the name,
+  which two teams may share."
   [teams xwalk]
   (into {}
-        (mapcat (fn [{:keys [name] :as team}]
-                  (map (fn [id] [id name]) (held-ids team xwalk))))
+        (mapcat (fn [{:keys [roster-id name] :as team}]
+                  (map (fn [id] [id {:roster-id roster-id :name name}])
+                       (held-ids team xwalk))))
         teams))
 
 (defn free-agents
   "The board minus everyone on a roster."
   [board rostered]
   (filterv #(not (contains? rostered (:player-id %))) board))
+
+(defn rostered-players
+  "The board's rows for everyone on a roster, each tagged `:owner`, in board
+  order. Priced like a held player (`my-roster-players`): no `:upgrade` or
+  `:bid`, because you cannot claim a man another team holds."
+  [board owners]
+  (into []
+        (keep (fn [p]
+                (when-let [owner (get owners (:player-id p))]
+                  (assoc p :owner owner))))
+        board))
 
 (defn recently-dropped
   "Board ids of the players a manager let go in the week claims are decided in
@@ -519,7 +533,8 @@
   (let [{:keys [teams waiver]} league
         xwalk    (db/provider->player-id board (:provider league)
                                          (:provider-players league))
-        rostered (rostered-index teams xwalk)
+        owners   (owner-index teams xwalk)
+        rostered (update-vals owners :name)
         {:keys [levels players]} (with-ros-vorp board num-teams replacement-config)
         by-id    (db/index-by-id players)
         my-team  (first (filter #(= (:roster-id %) my-roster-id) teams))
@@ -549,6 +564,7 @@
     {:players  players
      :levels   levels
      :rostered rostered
+     :owners   owners
      :xwalk    xwalk
      :by-id    by-id
      :seats    seats
@@ -573,17 +589,22 @@
                 :week   week}}))
 
 (defn waiver-board
-  "`:players` is the free agents only — `:rostered` is the compact `{player-id
+  "`:players` is the free agents only, unless `:include-rostered?` appends
+  everyone on a roster after them, each row tagged `:owner {:roster-id :name}`
+  and priced as `rostered-players` says. `:rostered` is the compact `{player-id
   team-name}` index that answers 'who has him' without re-sending the universe.
   No synced rosters is not an error: everyone is free.
 
   `:bid-history` is the league's cached history (`transactions/cached-history`),
   which prices its rivals' bids; without one they bid like Sleeper at large."
-  [board {:keys [league my-roster-id] :as ctx}]
+  [board {:keys [league my-roster-id include-rostered?] :as ctx}]
   (let [{:keys [teams waiver]} league
-        {:keys [fas market my-team drop drop-costs xwalk by-id rostered levels claims-left
-                bidding? habits]} (market-inputs board ctx)]
-    {:players            (-> fas (faab/with-market market) with-trend)
+        {:keys [fas market my-team drop drop-costs xwalk by-id rostered owners players
+                levels claims-left bidding? habits]} (market-inputs board ctx)]
+    {:players            (with-trend
+                           (cond-> (faab/with-market fas market)
+                             include-rostered?
+                             (into (rostered-players players owners))))
      ;; The seat a claim would cost, for the browser to mark on the manager's
      ;; roster — which it splits itself, through `db/team-roster`, the one
      ;; reader the League tab uses too. On the envelope and not only on each

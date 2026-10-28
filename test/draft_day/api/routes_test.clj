@@ -503,6 +503,19 @@
     (is (seq (:players b)))
     (is (not-any? #(contains? % :fantasypros/ros-pos-rank) (concat (:players b) (:my-roster-players b))))))
 
+(deftest waivers-endpoint-lists-rostered-players-only-when-asked
+  (let [body  {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}
+        plain (parse (waivers body))
+        all   (parse (waivers (assoc body :include-rostered? true)))
+        rostered (filter :owner (:players all))]
+    (is (not-any? :owner (:players plain)))
+    (is (= #{"rb2" "rb3" "rb4"} (set (map :player-id rostered))))
+    (is (= {:roster-id 2 :name "Rivals"}
+           (some #(when (= "rb4" (:player-id %)) (:owner %)) rostered))
+        "the owner's roster id rides the row, for the browser to key a color on")
+    (is (not-any? #(contains? % :ros/stats) (:players all))
+        "rostered rows are stripped like the free agents beside them")))
+
 (deftest waivers-endpoint-ranks-a-position-on-points-so-far
   (let [b  (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1}))
         by (into {} (map (juxt :player-id identity)) (:players b))]

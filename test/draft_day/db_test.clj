@@ -519,7 +519,7 @@
         "the server's reason is kept over ours")))
 
 (deftest a-team-with-no-player-ids-is-repaired-not-trusted
-  ;; The shape that actually matters: it reaches `waiver/rostered-index` as a
+  ;; The shape that actually matters: it reaches `waiver/owner-index` as a
   ;; team holding nobody, and every player on it silently becomes a free agent.
   (let [out (db/reconcile-league-sync {:provider "sleeper"
                                        :teams [{:roster-id 1}
