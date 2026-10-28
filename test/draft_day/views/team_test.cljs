@@ -134,6 +134,11 @@
     (is (= ["big" "small"] (mapv :player-id (team/best-claims ps 3))))
     (is (= ["big"] (mapv :player-id (team/best-claims ps 1))))))
 
+(deftest best-claims-skip-a-player-another-team-holds
+  (let [ps [{:player-id "held" :lineup-upgrade 9.0 :owner {:roster-id 2 :name "Them"}}
+            {:player-id "free" :lineup-upgrade 2.0}]]
+    (is (= ["free"] (mapv :player-id (team/best-claims ps 3))))))
+
 (deftest the-this-week-card-reads-the-managers-own-game
   (with-synced-team! {:my-roster-players players})
   (swap! rdb/app-db assoc

@@ -489,11 +489,13 @@ button.undo:hover { color: var(--warn); }
 .week-banner { padding: 6px 10px; border-radius: 8px; background: var(--panel2);
   border: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .week-banner.preseason { border-color: var(--accent); color: var(--text); }
-/* On the waiver board the banner is a note in the control row, not a bar of its
-   own: bare text, right-aligned, boxed again only when it has to be noticed. */
-.board-controls .week-banner { flex: 1 1 0; min-width: 0; text-align: right;
-  background: none; border-color: transparent; padding: 4px 0; }
-.board-controls .week-banner.preseason { border-color: var(--accent); padding: 4px 10px; }
+/* On the waiver board the banner is a note above the control row, not a bar of
+   its own: bare text, boxed again only when it has to be noticed. It is its own
+   line because beside the filters it was left whatever width they did not use,
+   and with the pool toggle in the row that was a one-word column. */
+.waivers-view > .week-banner { background: none; border-color: transparent;
+  padding: 0; margin-bottom: 6px; }
+.waivers-view > .week-banner.preseason { border-color: var(--accent); padding: 4px 10px; }
 /* How old this week's projection is, said next to the week it is for. Muted
    because it is provenance rather than a number you read the board by — but
    present, because a weekly projection revises through the week and one that
@@ -522,9 +524,7 @@ button.undo:hover { color: var(--warn); }
    233px here is only the guess it starts from. */
 .waiver-body .table-scroll { max-height: max(240px, calc(100vh - 233px)); overflow: auto; }
 @container (max-width: 780px) {
-  /* The note takes a line of its own rather than a sliver beside the filter. */
   .waivers-view .board-controls { flex-wrap: wrap; }
-  .waivers-view .board-controls .week-banner { order: 3; flex: 1 0 100%; text-align: left; }
 
   table.board td { padding: 4px 6px; }
   table.board th { padding: 6px; }
@@ -604,8 +604,41 @@ td.bid { cursor: help; }
 /* Whose data a column is, under the board that shows it. */
 .source-note { font-size: 11px; color: var(--muted); padding: 0 2px; }
 
-/* Search found him, but he is not on the wire. Without this the free-agent
-   table just comes back empty and the manager learns nothing. */
+/* "All players" on the waiver board: a rostered player's row takes his team's
+   color (`--owner`, set inline), as a stripe, a wash and the name pill.
+   The wash is set on the cells, and spelled out to outrank `table.board
+   td.player`, or the sticky Player cell would keep the board's own background.
+   The stripe's space is held on every row so the columns line up. */
+.with-owners tbody tr td:first-child { border-left: 4px solid transparent; }
+table.board tbody tr.rostered td:first-child { border-left-color: var(--owner); }
+/* Muted text lifts on a washed row: at 16% (26% on hover) the board's muted gray
+   falls under 4.5:1 on the lightest hues (4.2, and 3.4 on hover). */
+table.board tbody tr.rostered { --muted: #aab2c4; }
+table.board tbody tr.rostered td {
+  background: color-mix(in oklab, var(--owner) 16%, var(--panel)); }
+/* The compare marker is a shadow on the row, which the opaque cells above would
+   cover, so a compared rostered row draws it on its first cell. */
+table.board tbody tr.rostered.comparing td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+table.board tbody tr.rostered:hover td {
+  background: color-mix(in oklab, var(--owner) 26%, var(--panel)); }
+.owner-pill { display: inline-block; max-width: 150px; overflow: hidden;
+  text-overflow: ellipsis; vertical-align: bottom; font-size: 11px; font-weight: 600;
+  color: var(--owner); border-radius: 6px; padding: 1px 7px;
+  background: color-mix(in oklab, var(--owner) 24%, transparent);
+  border: 1px solid color-mix(in oklab, var(--owner) 55%, transparent); }
+.owner-pill .you { margin-left: 3px; font-weight: 700; opacity: .8; }
+
+/* A board with nothing to list says why in a row of its own, under the header,
+   so the box keeps its size and nothing beside it moves. */
+.board-empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px;
+  position: sticky; left: 0; }
+.board-empty p { margin: 0 0 6px; }
+.board-empty strong { color: var(--text); }
+table.board tbody tr.board-empty-row:hover { background: none; }
+.board-empty button { margin-top: 8px; }
+
+/* Search found him, but he is not on the wire, and other free agents still
+   match: the table is not empty, so this says who has him beneath it. */
 .rostered-note { font-size: 12px; color: var(--muted); padding: 4px 2px; }
 .rostered-note span { color: var(--text); }
 

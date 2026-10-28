@@ -901,7 +901,26 @@
      ;; The whole roster config, not `db/replacement-config` — that drops K and
      ;; DST, which fill starting slots. See `waiver/with-lineup-upgrade`.
      :roster             (get-in db [:config :roster])
-     :roster-size        (count (db/roster-template (get-in db [:config :roster])))}))
+     :roster-size        (count (db/roster-template (get-in db [:config :roster])))
+     :include-rostered?  (boolean (:waiver-show-rostered? db))}))
+
+;; Free agents only, or every rostered player too. Turning it on asks the board
+;; again: the rostered rows are priced server-side and only sent on request.
+;; Turning it off asks for nothing, since `:waiver-players` already drops them,
+;; but it takes with them what only they could be holding: the Owner sort, and a
+;; compare slot whose row is gone.
+(rf/reg-event-fx :set-waiver-show-rostered [persist]
+  (fn [{:keys [db]} [_ show?]]
+    (if show?
+      {:db       (assoc db :waiver-show-rostered? true)
+       :dispatch [:fetch-waivers]}
+      (let [held? (into #{} (comp (filter :owner) (map :player-id))
+                        (get-in db [:waivers :players]))]
+        {:db (cond-> (assoc db :waiver-show-rostered? false)
+               (= :owner (get-in db [:waiver-sort :key]))
+               (assoc :waiver-sort (:waiver-sort (db/default-db)))
+               (seq (:compare db))
+               (update :compare (fn [ids] (vec (remove held? ids)))))}))))
 
 (rf/reg-event-fx :fetch-waivers
   (fn [{:keys [db]} _]
@@ -918,7 +937,11 @@
   (fn [db [_ n resp]]
     (if-not (= n (:waiver-seq db))
       db
-      (assoc db :waivers resp :waiver-status nil))))
+      ;; Stamped with whether it was asked for the rostered rows, which the
+      ;; board needs to tell an empty All players view from one still waiting
+      ;; on its reply.
+      (assoc db :waivers (assoc resp :rostered-included? (boolean (:waiver-show-rostered? db)))
+             :waiver-status nil))))
 
 (rf/reg-event-db :waivers-failed
   (fn [db [_ err]]

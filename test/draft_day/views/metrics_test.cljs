@@ -85,10 +85,10 @@
 
 (def ^:private not-a-row
   "Board columns deliberately absent from the tile, each for a stated reason:
-  identity (the head says it), schedule (no winner, and Opp is in the head),
+  identity (the head says it, and whose he is), schedule (no winner, and Opp is in the head),
   raw counts the tile shows as a rate or the card's stat table carries, and the designation, which is a chip on
   the name rather than a word among tabular numbers."
-  #{:rank :name :team :position :bye :opp :tgt :car :rec :yds :td :inj})
+  #{:rank :name :team :position :bye :opp :tgt :car :rec :yds :td :inj :owner})
 
 (deftest every-board-metric-reaches-the-list
   (let [labels (set (map :label metrics/rows))]

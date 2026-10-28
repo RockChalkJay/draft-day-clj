@@ -123,6 +123,7 @@
   waiver board's own order — at most `n`."
   [players n]
   (->> players
+       (remove :owner)
        (filter #(pos? (or (:lineup-upgrade %) 0)))
        (sort-by db/waiver-rank-key)
        (take n)

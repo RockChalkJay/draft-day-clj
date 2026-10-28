@@ -109,7 +109,7 @@
   into `default-db`, so an older one simply lacks it."
   [:config :teams :drafted :picks :columns :my-team-id :watchlist
    :accounts :leagues :active-league :waiver-columns :phase
-   :sensei-open? :sensei-width :waiver-roster-open? :view])
+   :sensei-open? :sensei-width :waiver-roster-open? :waiver-show-rostered? :view])
 
 ;; ---- accounts and leagues ----
 
@@ -1119,6 +1119,7 @@
    {:key :adds      :label "Adds"   :tooltip "Times he was added in the last 48 hours across Sleeper leagues. Blank unless he is among the 100 most added" :default? true :group :bidding}
    {:key :risk      :label "Risk"   :tooltip risk-tip :default? true :group :essentials}
    {:key :inj       :label "Inj"    :tooltip "Current injury status, from Sleeper"      :default? true :group :essentials}
+   {:key :owner     :label "Owner"  :tooltip "The team in your league that holds him. Free agent when nobody does" :default? true :group :essentials}
    {:key :week-rank :label "Wk#"    :tooltip "Rank at his position on this week's projection, e.g. WR19. Blank when he is not projected" :default? false :group :week}
    {:key :opp       :label "Opp"    :tooltip "This week's opponent"        :default? false :group :week}
    {:key :lineup    :label "Lineup" :tooltip "Rest-of-season points he adds to your starting lineup, after the drop. 0 = he would not start" :default? false :group :projections}
@@ -1176,9 +1177,13 @@
   Missing values read as 0 rather than nil — a nil inside a vector sort key
   throws rather than sorting last, exactly as `rank-key` documents. That also
   makes a board with no lineup delta at all — no roster config, or no team
-  picked — fall straight through to the order it had before."
+  picked — fall straight through to the order it had before.
+
+  A rostered player ranks after every free agent: he has no gain to read, and a
+  0 would put him above the free agents whose gain is negative."
   [p]
-  [(- (double (or (:lineup-upgrade p) 0)))
+  [(if (:owner p) 1 0)
+   (- (double (or (:lineup-upgrade p) 0)))
    (- (double (or (:upgrade p) 0)))
    (- (double (or (:ros-points p) 0)))
    (str (:player-name p))])
@@ -1226,7 +1231,8 @@
    :car       #(get-in % [:nflverse/season-to-date :usage :carries])
    :ros-vorp  :ros-vorp
    :risk      :injury-risk
-   :inj       :sleeper/injury-status})
+   :inj       :sleeper/injury-status
+   :owner     #(get-in % [:owner :name])})
 
 (defn default-waiver-columns [] (default-columns waiver-column-catalog))
 
@@ -1264,6 +1270,34 @@
      (not bids?)               (filterv (comp not faab-columns :key) cols)
      (false? (runs-faab? sync)) (mapv #(if (faab-columns (:key %)) (assoc % :visible? false :faab-only? true) %) cols)
      :else                     cols)))
+
+(def rostered-columns
+  "Waiver columns that only answer while the board lists rostered players."
+  #{:owner})
+
+(defn without-rostered-columns
+  "`cols` less `rostered-columns` unless the board lists rostered players: with
+  free agents only, every cell would read Free agent."
+  [cols show-rostered?]
+  (if show-rostered?
+    cols
+    (filterv (comp not rostered-columns :key) cols)))
+
+(def owner-hues
+  "OKLCH hues the other teams in a league are drawn in, none within 40 degrees
+  of the accent blue (about 262) that marks the manager's own."
+  [307 334 1 28 55 82 109 136 163 190 217])
+
+(defn owner-colors
+  "`{roster-id css-color}` for every team: the manager's own in the accent, the
+  rest in `owner-hues` by their place among the roster ids. Roster order, not
+  standings, so a team keeps its color all season."
+  [teams my-roster-id]
+  (->> (sort-by (comp str :roster-id) (remove #(= (:roster-id %) my-roster-id) teams))
+       (map-indexed (fn [i t]
+                      [(:roster-id t)
+                       (str "oklch(0.78 0.13 " (nth owner-hues (mod i (count owner-hues))) ")")]))
+       (into (if my-roster-id {my-roster-id "var(--accent)"} {}))))
 
 (defn repair-lineup
   "One team's `:starter-ids`, with each nil kept in place as `empty-seat`.
@@ -1403,6 +1437,7 @@
      :sensei-open?  false
      :sensei-width  380
      :waiver-roster-open? false     ; My Roster folded to a bar above the waiver board
+     :waiver-show-rostered? false   ; the waiver board lists every rostered player too
      :sensei-messages []
      :sensei-busy?  false
      :sensei-seq    0           ; newest question; older streams' events are dropped
