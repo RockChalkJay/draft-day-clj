@@ -484,6 +484,32 @@
       (is (vector? (db/waiver-rank-key {})))
       (is (= 2 (count (sort-by db/waiver-rank-key [{} {:upgrade 1.0}])))))))
 
+(deftest a-rostered-player-ranks-after-every-free-agent
+  (let [fa-down (fn [nm] {:player-name nm :lineup-upgrade -5.0 :ros-points 1.0})
+        held    {:player-name "held" :ros-points 300.0 :owner {:roster-id 2 :name "Them"}}]
+    (is (= ["a" "held"]
+           (mapv :player-name (sort-by db/waiver-rank-key [held (fa-down "a")])))
+        "a free agent whose gain is negative still outranks a held player's missing one")))
+
+(deftest owner-colors-are-stable-and-the-managers-own-is-the-accent
+  (let [teams  (mapv (fn [i] {:roster-id i}) (range 1 13))
+        colors (db/owner-colors teams 3)]
+    (is (= "var(--accent)" (colors 3)))
+    (is (= 12 (count colors)))
+    (is (= 12 (count (set (vals colors)))) "twelve teams, twelve colors")
+    (is (= colors (db/owner-colors (reverse teams) 3))
+        "by roster id, so a team keeps its color whatever order the sync lists it in")
+    (is (= {} (db/owner-colors nil nil)))
+    (testing "more teams than hues cycle rather than throw"
+      (is (= 20 (count (db/owner-colors (mapv (fn [i] {:roster-id i}) (range 20)) nil)))))))
+
+(deftest rostered-columns-show-only-with-rostered-players
+  (let [cols (db/default-waiver-columns)
+        ks   (fn [cs] (set (map :key cs)))]
+    (is (contains? (ks cols) :owner) "stored, so the manager's layout keeps it")
+    (is (not (contains? (ks (db/without-rostered-columns cols false)) :owner)))
+    (is (contains? (ks (db/without-rostered-columns cols true)) :owner))))
+
 (deftest reconcile-league-sync-throws-away-what-it-cannot-repair
   ;; Unlike the other reconcilers this one may discard: a synced league is a
   ;; cache of somebody else's state, re-fetchable in one click, so a bad shape

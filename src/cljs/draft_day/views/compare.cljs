@@ -261,7 +261,8 @@
       {:on-click #(rf/dispatch [:show-modal {:kind :player-detail
                                              :player-id (:player-id p)}])
        :extra    [(status-chip p)]})]
-    [:p.cmp-meta (util/pos-label (assoc p :pos-rank (db/season-rank p))) " · " (or (:team p) "FA")]]])
+    [:p.cmp-meta (util/pos-label (assoc p :pos-rank (db/season-rank p))) " · " (or (:team p) "FA")
+     (when-let [owner (:owner p)] (str " · " (:name owner)))]]])
 
 (defn band-content
   "One band as it is drawn — its surviving rows, then the prose that belongs

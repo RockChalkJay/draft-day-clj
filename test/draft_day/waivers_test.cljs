@@ -1398,3 +1398,86 @@
   (rf/clear-subscription-cache!)
   (is (re-find #":aside#waiver-roster\.waiver-roster-col" (render waivers/waivers-view))
       "id before classes, the only order reagent's tag parser accepts"))
+
+;; ---- rostered players on the board ----
+
+(def ^:private reply-with-rostered
+  {:players [{:player-id "fa" :player-name "Free Agent" :position "WR" :trending/adds 10}
+             {:player-id "mine" :player-name "My Guy" :position "RB" :trending/adds 50
+              :owner {:roster-id 1 :name "Mine"}}
+             {:player-id "theirs" :player-name "Their Guy" :position "RB" :trending/adds 90
+              :owner {:roster-id 2 :name "Them"}}]
+   :rostered {"mine" "Mine" "theirs" "Them"}})
+
+(deftest the-request-asks-for-rostered-players-only-when-the-toggle-is-on
+  (with-league! synced 1)
+  (rf/dispatch-sync [:fetch-waivers])
+  (is (false? (:include-rostered? (:body (last-http)))))
+  (rf/dispatch-sync [:set-waiver-show-rostered true])
+  (rf/dispatch-sync [:fetch-waivers])
+  (is (true? (:include-rostered? (:body (last-http))))))
+
+(deftest the-toggle-is-remembered-and-asks-the-server-again
+  (rf/dispatch-sync [:set-waiver-show-rostered true])
+  (is (true? (:waiver-show-rostered? @rdb/app-db)))
+  (is (true? (:waiver-show-rostered? (last (:persist @captured)))))
+  (is (= [:fetch-waivers] (dispatched))))
+
+(deftest the-board-drops-rostered-rows-until-the-toggle-is-on
+  (with-league! synced 1)
+  (let [ids #(set (map :player-id %))]
+    (is (= #{"fa"} (ids (board-of (:players reply-with-rostered)))))
+    (is (= #{"fa" "mine" "theirs"}
+           (ids (board-of (:players reply-with-rostered) {:waiver-show-rostered? true}))))))
+
+(deftest a-rostered-row-knows-whether-it-is-the-managers-and-what-color-it-is
+  (with-league! synced 1)
+  (let [rows (board-of (:players reply-with-rostered) {:waiver-show-rostered? true})
+        by   (into {} (map (juxt :player-id identity)) rows)]
+    (is (true? (get-in by ["mine" :owner :mine?])))
+    (is (false? (get-in by ["theirs" :owner :mine?])))
+    (is (= "var(--accent)" (get-in by ["mine" :owner :color])))
+    (is (re-find #"^oklch" (get-in by ["theirs" :owner :color])))
+    (is (nil? (:owner (by "fa"))) "a free agent has no owner to color")))
+
+(deftest the-owner-column-appears-with-the-rostered-players
+  (let [keys-of (fn [] (rf/clear-subscription-cache!)
+                  (set (map :key (sub [:visible-waiver-columns]))))]
+    (is (not (contains? (keys-of) :owner)))
+    (swap! rdb/app-db assoc :waiver-show-rostered? true)
+    (is (contains? (keys-of) :owner))))
+
+(deftest a-rostered-player-can-be-compared-with-a-free-agent
+  (swap! rdb/app-db assoc :waivers reply-with-rostered :compare ["theirs" "fa"])
+  (is (= ["Their Guy" "Free Agent"] (mapv :player-name (sub [:compare-players])))))
+
+(deftest the-owner-cell-names-the-team-or-says-free-agent
+  (is (re-find #"Free agent" (pr-str (waivers/cell :owner {:player-id "fa" :position "WR"} 5))))
+  (let [out (pr-str (waivers/cell :owner {:player-id "x" :position "WR"
+                                          :owner {:name "Them" :mine? false}} 5))]
+    (is (re-find #"Them" out))
+    (is (not (re-find #"You" out))))
+  (is (re-find #"You" (pr-str (waivers/cell :owner {:player-id "x" :position "WR"
+                                                    :owner {:name "Mine" :mine? true}} 5)))))
+
+(deftest the-not-free-note-is-for-the-free-agent-board-only
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc :players universe :waivers {:players [] :rostered {"A" "Them"}}
+         :search "starter")
+  (rf/clear-subscription-cache!)
+  (is (re-find #"Not free" (render waivers/waivers-view)))
+  (swap! rdb/app-db assoc :waiver-show-rostered? true)
+  (rf/clear-subscription-cache!)
+  (is (not (re-find #"Not free" (render waivers/waivers-view)))
+      "with everyone listed, the row says who has him"))
+
+(deftest the-drop-note-survives-a-rostered-row-leading-the-board
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc :waiver-show-rostered? true
+         :waivers {:players [{:player-id "theirs" :player-name "Their Guy" :position "RB"
+                              :trending/adds 90 :owner {:roster-id 2 :name "Them"}}
+                             {:player-id "fa" :player-name "Free Agent" :position "WR"
+                              :trending/adds 10
+                              :drop-candidate {:player-name "Bench B" :position "WR"}}]})
+  (rf/clear-subscription-cache!)
+  (is (re-find #"Bench B" (render waivers/waivers-view))))

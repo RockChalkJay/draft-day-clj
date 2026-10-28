@@ -604,6 +604,24 @@ td.bid { cursor: help; }
 /* Whose data a column is, under the board that shows it. */
 .source-note { font-size: 11px; color: var(--muted); padding: 0 2px; }
 
+/* "All players" on the waiver board: a rostered player's row takes his team's
+   color (`--owner`, set inline), as a stripe, a faint wash and the name pill.
+   The wash is set on the cells, and spelled out to outrank `table.board
+   td.player`, or the sticky Player cell would keep the board's own background.
+   The stripe's space is held on every row so the columns line up. */
+.with-owners tbody tr td:first-child { border-left: 4px solid transparent; }
+table.board tbody tr.rostered td:first-child { border-left-color: var(--owner); }
+table.board tbody tr.rostered td {
+  background: color-mix(in oklab, var(--owner) 9%, var(--panel)); }
+table.board tbody tr.rostered:hover td {
+  background: color-mix(in oklab, var(--owner) 17%, var(--panel)); }
+.owner-pill { display: inline-block; max-width: 150px; overflow: hidden;
+  text-overflow: ellipsis; vertical-align: bottom; font-size: 11px; font-weight: 600;
+  color: var(--owner); border-radius: 6px; padding: 1px 7px;
+  background: color-mix(in oklab, var(--owner) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--owner) 55%, transparent); }
+.owner-pill .you { margin-left: 3px; font-weight: 700; opacity: .8; }
+
 /* Search found him, but he is not on the wire. Without this the free-agent
    table just comes back empty and the manager learns nothing. */
 .rostered-note { font-size: 12px; color: var(--muted); padding: 4px 2px; }

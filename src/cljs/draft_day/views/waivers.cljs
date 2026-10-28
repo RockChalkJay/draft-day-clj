@@ -237,6 +237,11 @@
     :inj       (let [st (:sleeper/injury-status p)]
                  [:td {:class (when (db/serious-injury? st) "inj-serious")}
                   (or st "–")])
+    :owner     (let [{team :name :keys [mine?]} (:owner p)]
+                 [:td (if team
+                        [:span.owner-pill {:title team} team
+                         (when mine? [:span.you "You"])]
+                        [:span.muted "Free agent"])])
     [:td "–"]))
 
 (defn cell
@@ -475,6 +480,18 @@
       (fn [& children]
         (into [:div.table-scroll {:ref #(reset! el %)}] children))})))
 
+(defn pool-filter
+  "Free agents alone, or every player with the team that holds him."
+  []
+  (let [all? @(rf/subscribe [:waiver-show-rostered?])
+        btn  (fn [label on? show?]
+               [:button {:class (when on? "on")
+                         :on-click #(rf/dispatch [:set-waiver-show-rostered show?])}
+                label])]
+    [:div.pos-filter {:role "group" :aria-label "Players shown"}
+     [btn "Free agents" (not all?) false]
+     [btn "All players" all? true]]))
+
 (defn waivers-view []
   (let [players @(rf/subscribe [:waiver-players])
         cols    @(rf/subscribe [:visible-waiver-columns])
@@ -482,16 +499,17 @@
         week    (:week @(rf/subscribe [:waiver-meta]))
         bidding (:bidding @(rf/subscribe [:waivers]))
         comparing (set @(rf/subscribe [:compare]))
-        roster?   @(rf/subscribe [:waiver-roster-open?])]
+        roster?   @(rf/subscribe [:waiver-roster-open?])
+        all?      @(rf/subscribe [:waiver-show-rostered?])]
     [:div.waivers-view
      [:div.board-controls
-      [:div.filters [board/pos-filter] [board/search-box]]
+      [:div.filters [board/pos-filter] [board/search-box] [pool-filter]]
       [status-line]
       [columns/waiver-column-picker]]
      (when-not roster? [roster-bar])
      [:div.waiver-body {:class (when roster? "roster-open")}
       [board-box
-       [:table.board
+       [:table.board {:class (when all? "with-owners")}
         [:thead [board/board-header waiver-columns cols sort]]
         [:tbody
          (map (fn [p]
@@ -499,8 +517,10 @@
                 [:tr {:class (->> [(when (and (:drop-candidate p)
                                               (pos? (or (:upgrade p) 0)))
                                      "upgrade")
+                                   (when (:owner p) "rostered")
                                    (when (comparing (:player-id p)) "comparing")]
                                   (remove nil?) (str/join " "))
+                      :style (when-let [c (get-in p [:owner :color])] {"--owner" c})
                       ;; Click to compare. A second row fills the other slot; a
                       ;; third evicts the older, so one player can be held while
                       ;; the board is clicked through challengers.
@@ -512,7 +532,7 @@
      ;; Sleeper's data, on Sleeper's terms: say whose it is wherever it shows.
      (when (some #(= :adds (:key %)) cols)
        [:div.source-note "Adds: Sleeper trending adds, last 48 hours · via Sleeper"])
-     (when-let [rostered @(rf/subscribe [:rostered-matches])]
+     (when-let [rostered (when-not all? @(rf/subscribe [:rostered-matches]))]
        (when (seq rostered)
          [:div.rostered-note
           "Not free: "
@@ -521,7 +541,7 @@
                       (str player-name " (" position ") — " team)))
                (interpose ", ")
                (into [:span]))]))
-     (when-let [drop (:drop-candidate (first players))]
+     (when-let [drop (some :drop-candidate players)]
        [:div.drop-note
         "A claim costs a roster spot. Yours would come from "
         [:strong (:player-name drop)]

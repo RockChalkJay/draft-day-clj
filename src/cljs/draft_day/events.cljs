@@ -901,7 +901,15 @@
      ;; The whole roster config, not `db/replacement-config` — that drops K and
      ;; DST, which fill starting slots. See `waiver/with-lineup-upgrade`.
      :roster             (get-in db [:config :roster])
-     :roster-size        (count (db/roster-template (get-in db [:config :roster])))}))
+     :roster-size        (count (db/roster-template (get-in db [:config :roster])))
+     :include-rostered?  (boolean (:waiver-show-rostered? db))}))
+
+;; Free agents only, or every rostered player too. The board is asked again:
+;; the rostered rows are priced server-side and only sent on request.
+(rf/reg-event-fx :set-waiver-show-rostered [persist]
+  (fn [{:keys [db]} [_ show?]]
+    {:db       (assoc db :waiver-show-rostered? (boolean show?))
+     :dispatch [:fetch-waivers]}))
 
 (rf/reg-event-fx :fetch-waivers
   (fn [{:keys [db]} _]

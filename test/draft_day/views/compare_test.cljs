@@ -304,3 +304,9 @@
                                  {:player-name "B" :week-points 8.0
                                   :upgrade 2.0 :injury-risk 3} nil nil))
         (str k " draws nothing"))))
+
+(deftest the-head-says-whose-a-rostered-player-is
+  (let [head (fn [p] (pr-str (cmp/player-head p :left nil 5)))]
+    (is (re-find #"Them" (head {:player-id "x" :position "RB" :team "NYG"
+                                :owner {:roster-id 2 :name "Them"}})))
+    (is (not (re-find #"Them" (head {:player-id "x" :position "RB" :team "NYG"}))))))

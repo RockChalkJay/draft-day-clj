@@ -488,9 +488,12 @@
 (rf/reg-sub :draft-has-picks? (fn [db _] (db/drafted-anything? db)))
 
 ;; The stored columns as the active league shows them — see `db/waiver-columns-for`.
-(rf/reg-sub :league-waiver-columns :<- [:waiver-columns] :<- [:league-sync] :<- [:pos-filter]
-  (fn [[cols ls pos] _]
-    (db/columns-for-position (db/waiver-columns-for cols ls) db/waiver-columns-by-key pos)))
+(rf/reg-sub :league-waiver-columns
+  :<- [:waiver-columns] :<- [:league-sync] :<- [:pos-filter] :<- [:waiver-show-rostered?]
+  (fn [[cols ls pos show-rostered?] _]
+    (-> (db/waiver-columns-for cols ls)
+        (db/without-rostered-columns show-rostered?)
+        (db/columns-for-position db/waiver-columns-by-key pos))))
 
 (rf/reg-sub :visible-waiver-columns :<- [:league-waiver-columns]
   (fn [cols _] (filterv db/shown? cols)))
@@ -519,11 +522,25 @@
   :<- [:waiver-sort]
   :<- [:pos-filter]
   :<- [:search]
-  (fn [[w sort pos-filter search] _]
+  :<- [:waiver-show-rostered?]
+  :<- [:league-sync]
+  :<- [:my-roster-id]
+  (fn [[w sort pos-filter search show-rostered? ls mine] _]
     (let [q        (str/lower-case (or search ""))
+          colors   (db/owner-colors (:teams ls) mine)
+          tag      (fn [{:keys [owner] :as p}]
+                     (cond-> p owner
+                       (update :owner assoc
+                               :mine? (= (:roster-id owner) mine)
+                               :color (get colors (:roster-id owner)))))
           filtered (->> (:players w)
+                        ;; Dropped here as well as at the request: the reply to
+                        ;; the toggle takes a round trip, and these rows must not
+                        ;; outlive it.
+                        (filter #(or show-rostered? (not (:owner %))))
                         (filter #(or (nil? pos-filter) (= (:position %) pos-filter)))
-                        (filter #(matches-search? % q)))
+                        (filter #(matches-search? % q))
+                        (map tag))
           ;; The board's own order, independent of the active sort column —
           ;; exactly as `:board-players` does it, so the `#` column keeps
           ;; meaning "where he ranks" and not "which row he is on".
@@ -660,6 +677,9 @@
 
 ;; My Roster beside the waiver board (true) or folded to a bar above it.
 (rf/reg-sub :waiver-roster-open? (fn [db _] (boolean (:waiver-roster-open? db))))
+
+;; Whether the waiver board lists every rostered player or the free agents alone.
+(rf/reg-sub :waiver-show-rostered? (fn [db _] (boolean (:waiver-show-rostered? db))))
 
 (rf/reg-sub :sensei-messages (fn [db _] (:sensei-messages db)))
 
