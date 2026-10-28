@@ -200,6 +200,8 @@ shadow-cljs also serves `resources/public` on :8280, but nothing answers
 | `DRAFTDAY_WEEKLY_ECR_TTL_HOURS` | `3` | the window for FantasyPros' expert ranks for the current week, which the experts revise as news lands |
 | `DRAFTDAY_AS_OF_WEEK` | unset | dev only: truncate the in-season data at a week, so a finished season replays as one in progress |
 | `DRAFTDAY_SENSEI` | unset | `claude-cli` turns on the in-app chat, which runs `claude -p` on your own plan. See [docs/sensei.md](docs/sensei.md) |
+| `DRAFTDAY_SENSEI_WEB` | on | `off` takes web search and fetch away from the in-app chat |
+| `DRAFTDAY_SENSEI_WEB_HOSTS` | the big outlets | comma-separated exact hosts the chat may read pages from, e.g. `www.fantasypros.com,sports.yahoo.com` |
 | `DRAFTDAY_SENSEI_SLEEPER_USER` | unset | your Sleeper username. [Sensei](#connect-sensei) lists your Sleeper leagues from it |
 | `DRAFTDAY_ESPN_SWID` / `_S2` | unset | your ESPN session cookies. [Sensei](#connect-sensei) lists your ESPN leagues with them; both are needed, and `lein test :integration` reads them too |
 | `DRAFTDAY_ESPN_LEAGUE` | unset | `lein test :integration` only: check ESPN's stat ids, slot table and team abbreviations against a live league. Without it those tests skip out loud |

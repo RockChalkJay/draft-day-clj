@@ -2,15 +2,20 @@
   "The in-app chat: one question put to `claude -p`, answered as a stream.
 
   The process is isolated by hand, since `--bare` will not read a subscription
-  login: no built-in tools, only Sensei's own MCP server, no settings file (and
-  so no hook or plugin) and no CLAUDE.md, no session kept, none of the app's
+  login: no built-in tools but web search and a fetch limited to named hosts
+  (`web-flags`), Sensei's own MCP server, no settings file (and so no hook or
+  plugin) and no CLAUDE.md, no session kept, none of the app's
   secrets in its environment, and one owner-only working directory outside the
   repo so no new auto-memory folder appears per run. It runs on the owner's own
   plan, so it is off unless `DRAFTDAY_SENSEI=claude-cli`, answers this machine
   only and takes one question at a time. See docs/sensei.md for the terms.
 
   The answer is the model's, and the tools hand it text other people write:
-  league-mates' team names, news. A client renders it as text plus a safe
+  league-mates' team names, news, and now the pages it searches. A fetch is the
+  one way out that carries a URL of the model's choosing, so it is allowed for
+  named hosts only, and `--permission-mode dontAsk` makes every tool not
+  allowed a refusal rather than a prompt, which is what gives that list teeth.
+  A client renders it as text plus a safe
   markdown subset, never an image or raw HTML, or an instruction planted in a
   team name can make the browser fetch a URL of the planter's choosing."
   (:require [clojure.java.io :as io]
@@ -85,17 +90,55 @@
   [_session-id]
   ["--no-session-persistence"])
 
+(def default-web-hosts
+  "The hosts the chat's WebFetch may read: outlets that publish weekly waiver,
+  start/sit and sleeper articles. A permission rule matches one host exactly,
+  so `www.` is its own entry."
+  ["www.fantasypros.com" "www.rotoballer.com" "sports.yahoo.com" "bleacherreport.com"
+   "www.espn.com" "www.cbssports.com" "www.nbcsports.com"])
+
+(defn web?
+  "Does the chat get web tools? On unless `DRAFTDAY_SENSEI_WEB` is `off`."
+  [env]
+  (not= "off" (get env "DRAFTDAY_SENSEI_WEB")))
+
+(defn web-hosts
+  "The hosts WebFetch may read: `DRAFTDAY_SENSEI_WEB_HOSTS`, comma-separated,
+  when set, else `default-web-hosts`. A name that is not a plain host is
+  dropped, since it is written into a permission rule. Set but empty means
+  none, so only search remains."
+  [env]
+  (if-some [custom (get env "DRAFTDAY_SENSEI_WEB_HOSTS")]
+    (->> (str/split custom #",")
+         (map (comp str/lower-case str/trim))
+         (filter #(re-matches #"[a-z0-9]([a-z0-9.-]*[a-z0-9])?" %))
+         distinct
+         vec)
+    default-web-hosts))
+
+(defn web-flags
+  "The `--tools` and `--allowedTools` for the web access `env` allows: search,
+  and a fetch for each of `web-hosts` (none exposed when there are none)."
+  [env]
+  (if (web? env)
+    (let [hosts (web-hosts env)]
+      ["--tools" (if (seq hosts) "WebSearch,WebFetch" "WebSearch")
+       "--allowedTools" (str/join "," (concat ["mcp__sensei" "WebSearch"]
+                                              (map #(str "WebFetch(domain:" % ")") hosts)))])
+    ["--tools" "" "--allowedTools" "mcp__sensei"]))
+
 (defn command
-  "The `claude` argv for one question. The prompt goes in on stdin."
-  [{:keys [port session-id]}]
-  (into ["claude" "-p"
-         "--output-format" "stream-json" "--verbose" "--include-partial-messages"
-         "--tools" ""
-         "--setting-sources" ""
-         "--strict-mcp-config" "--mcp-config" (mcp-config port)
-         "--allowedTools" "mcp__sensei"
-         "--append-system-prompt" (chat-note)]
-        (session-flags session-id)))
+  "The `claude` argv for one question, with the web access `env` allows. The
+  prompt goes in on stdin."
+  [{:keys [port session-id env]}]
+  (-> ["claude" "-p"
+       "--output-format" "stream-json" "--verbose" "--include-partial-messages"]
+      (into (web-flags env))
+      (into ["--permission-mode" "dontAsk"
+             "--setting-sources" ""
+             "--strict-mcp-config" "--mcp-config" (mcp-config port)
+             "--append-system-prompt" (chat-note)])
+      (into (session-flags session-id))))
 
 (defn history->prompt
   "One prompt from the transcript so far, the league open in the app and the
@@ -367,7 +410,7 @@
             (try
               (let [cancel  (promise)
                     secrets (context/secrets (context/accounts env))
-                    command (command {:port ((:port server)) :session-id (:session-id q)})]
+                    command (command {:port ((:port server)) :session-id (:session-id q) :env env})]
                 (or (http/as-channel
                      req
                      {:on-close (fn [_ _] (deliver cancel true))
