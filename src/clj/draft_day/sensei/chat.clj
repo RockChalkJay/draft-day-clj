@@ -31,7 +31,8 @@
 
 (def timeout-ms
   "How long a run may take, answered or not, before it is stopped. Measured
-  questions took 17-26 s, and every other question waits on the lock."
+  questions took 17-26 s, 39-69 s when the model also searches and fetches, and
+  every other question waits on the lock."
   180000)
 
 (def max-message 4000)
