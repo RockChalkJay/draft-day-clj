@@ -45,9 +45,12 @@
          (str "Review my team in every league I play in, one league at a time, naming the league "
               "before each section. In each, check")
          (str "Review my team in the league " (pr-str league) ". Check"))
-       " my lineup for injuries, byes and anyone on my bench who should start instead. "
-       "Then look at the waiver wire for claims worth making, naming the drop for each. "
-       "Finish with my moves in priority order."))
+       " my lineup for injuries, byes and anyone on my bench who should start instead, "
+       "weighing this week's expert ranks as well as the projections. "
+       "Then look at every board of the waiver wire for claims worth making, naming the drop "
+       "for each and the signals that back it. "
+       "Finish with my moves in priority order: claims and drops, start and sit calls, "
+       "and any sleeper worth a stash."))
 
 (def prompts
   [{:name        "weekly_review"
