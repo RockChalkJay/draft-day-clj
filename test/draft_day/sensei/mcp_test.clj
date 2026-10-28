@@ -89,6 +89,7 @@
     (doseq [k ["`adds`" "`form`" "`wk-ecr`" "`ros-ecr`" "`role`" "`on`"]]
       (is (str/includes? text k) (str "names " k)))
     (is (not (str/includes? text "Lead with")) "lineup is one signal, not the lead")
+    (is (str/includes? text "no `adds` means he is not trending") "an absent adds is not an unknown one")
     (is (str/includes? text "do not put a FAAB amount") "the bid model is still on hold")))
 
 (deftest prompts-carry-the-weekly-review
