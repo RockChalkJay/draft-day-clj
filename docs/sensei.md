@@ -266,8 +266,10 @@ the run draws on the plan's limits.
   question at a time (`429` for a second). The process runs from one
   owner-only directory under the system temp dir, refused if it is a link or
   another user's, since `-p` trusts its working directory without asking. Its
-  flags are `--tools ""`, `--setting-sources ""` (no settings file, so no hook
-  or plugin), `--strict-mcp-config` pointing at the port this server bound (not
+  flags are `--tools "WebSearch,WebFetch"` (no shell, no file tools),
+  `--permission-mode dontAsk`, `--allowedTools` for Sensei's server, search and a
+  fetch of each host in `chat/web-hosts`, `--setting-sources ""` (no settings
+  file, so no hook or plugin), `--strict-mcp-config` pointing at the port this server bound (not
   the one a request's `Host` names) and `--no-session-persistence`. Its
   environment sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and carries no
   `DRAFTDAY_`, `ANTHROPIC_` or `CLAUDE_CODE_USE_` variable: an API key wins
@@ -282,6 +284,21 @@ the run draws on the plan's limits.
   including one the CLI splits across two deltas: text that could be the start
   of a secret waits for the next. A run is stopped three minutes after it
   starts, answered or not, and stopping it kills whatever the process started.
+
+  **Web access.** The panel can search the web and read pages from a list of
+  outlets (`DRAFTDAY_SENSEI_WEB_HOSTS`, comma-separated exact hosts; default
+  FantasyPros, RotoBaller, Yahoo Sports, Bleacher Report, ESPN, CBS Sports and
+  NBC Sports; `DRAFTDAY_SENSEI_WEB=off` removes it). The model holds league data
+  and reads pages other people write, so a fetch is the risk: an instruction on a
+  page could ask it to put a roster in a URL. Search runs on Anthropic's side and
+  carries no URL of the model's choosing, and a fetch is allowed for named hosts
+  only. That list binds only under `--permission-mode dontAsk`: measured on
+  Claude Code 2.1.286, a host that was not allowed was fetched anyway in the
+  default mode, and refused before any request under `dontAsk`. A rule matches
+  one host exactly, so `www.fantasypros.com` and `fantasypros.com` are two. The
+  cost is that a page from an unlisted outlet is out of reach, though its
+  search snippet is not. No credential is ever in a tool result, and every reply
+  is still masked.
 
   In the app, `Ask Sensei` appears in the header once the server reports the
   chat is on and opens a panel docked on the right of every tab: tool chips while
