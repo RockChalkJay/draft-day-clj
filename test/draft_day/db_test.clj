@@ -1056,3 +1056,11 @@
 (deftest every-waiver-column-sits-in-a-picker-group
   (let [groups (set (map first db/waiver-column-groups))]
     (is (every? #(groups (:group %)) db/waiver-column-catalog))))
+
+(deftest owner-hues-keep-clear-of-the-accent
+  (let [accent 262.0
+        gap    (fn [h] (let [d (Math/abs (- (double h) accent))] (min d (- 360 d))))]
+    (is (= 11 (count db/owner-hues)) "one per rival in a twelve-team league")
+    (is (= (count db/owner-hues) (count (set db/owner-hues))))
+    (doseq [h db/owner-hues]
+      (is (>= (gap h) 40) (str "hue " h " is too close to the manager's own accent")))))

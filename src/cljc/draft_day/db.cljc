@@ -1284,9 +1284,9 @@
     (filterv (comp not rostered-columns :key) cols)))
 
 (def owner-hues
-  "OKLCH hues the other teams in a league are drawn in, none near the accent
-  blue that marks the manager's own."
-  [20 50 80 110 145 180 210 300 330 355 275])
+  "OKLCH hues the other teams in a league are drawn in, none within 40 degrees
+  of the accent blue (about 262) that marks the manager's own."
+  [307 334 1 28 55 82 109 136 163 190 217])
 
 (defn owner-colors
   "`{roster-id css-color}` for every team: the manager's own in the accent, the

@@ -613,6 +613,9 @@ td.bid { cursor: help; }
 table.board tbody tr.rostered td:first-child { border-left-color: var(--owner); }
 table.board tbody tr.rostered td {
   background: color-mix(in oklab, var(--owner) 9%, var(--panel)); }
+/* The compare marker is a shadow on the row, which the opaque cells above would
+   cover, so a compared rostered row draws it on its first cell. */
+table.board tbody tr.rostered.comparing td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 table.board tbody tr.rostered:hover td {
   background: color-mix(in oklab, var(--owner) 17%, var(--panel)); }
 .owner-pill { display: inline-block; max-width: 150px; overflow: hidden;

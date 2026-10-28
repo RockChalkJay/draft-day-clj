@@ -1448,7 +1448,8 @@
     (is (contains? (keys-of) :owner))))
 
 (deftest a-rostered-player-can-be-compared-with-a-free-agent
-  (swap! rdb/app-db assoc :waivers reply-with-rostered :compare ["theirs" "fa"])
+  (swap! rdb/app-db assoc :waivers reply-with-rostered :waiver-show-rostered? true
+         :compare ["theirs" "fa"])
   (is (= ["Their Guy" "Free Agent"] (mapv :player-name (sub [:compare-players])))))
 
 (deftest the-owner-cell-names-the-team-or-says-free-agent
@@ -1481,3 +1482,37 @@
                               :drop-candidate {:player-name "Bench B" :position "WR"}}]})
   (rf/clear-subscription-cache!)
   (is (re-find #"Bench B" (render waivers/waivers-view))))
+
+(deftest turning-the-toggle-off-asks-the-server-for-nothing
+  (swap! rdb/app-db assoc :waiver-show-rostered? true :waivers reply-with-rostered)
+  (reset! captured {:http [] :persist [] :debounce [] :dispatch []})
+  (rf/dispatch-sync [:set-waiver-show-rostered false])
+  (is (false? (:waiver-show-rostered? @rdb/app-db)))
+  (is (empty? (dispatched)) "the browser already drops the rows")
+  (is (false? (:waiver-show-rostered? (last (:persist @captured))))))
+
+(deftest turning-the-toggle-off-takes-the-owner-sort-and-held-compare-slots-with-it
+  (swap! rdb/app-db assoc :waiver-show-rostered? true :waivers reply-with-rostered
+         :waiver-sort {:key :owner :dir 1} :compare ["theirs" "fa"])
+  (rf/dispatch-sync [:set-waiver-show-rostered false])
+  (is (= {:key :adds :dir -1} (:waiver-sort @rdb/app-db)))
+  (is (= ["fa"] (:compare @rdb/app-db)))
+  (swap! rdb/app-db assoc :waiver-show-rostered? true :waiver-sort {:key :risk :dir 1})
+  (rf/dispatch-sync [:set-waiver-show-rostered false])
+  (is (= {:key :risk :dir 1} (:waiver-sort @rdb/app-db)) "another sort is the manager's own"))
+
+(deftest a-hidden-rostered-player-is-not-comparable
+  (swap! rdb/app-db assoc :waivers reply-with-rostered :waiver-show-rostered? false)
+  (rf/clear-subscription-cache!)
+  (is (nil? (get (sub [:comparable-by-id]) "theirs")))
+  (is (some? (get (sub [:comparable-by-id]) "fa")))
+  (swap! rdb/app-db assoc :waiver-show-rostered? true)
+  (rf/clear-subscription-cache!)
+  (is (some? (get (sub [:comparable-by-id]) "theirs"))))
+
+(deftest an-owner-the-sync-does-not-list-still-gets-a-color
+  (with-league! synced 1)
+  (let [rows (board-of [{:player-id "x" :player-name "X" :position "RB"
+                         :owner {:roster-id 99 :name "Unlisted"}}]
+                       {:waiver-show-rostered? true})]
+    (is (= "var(--muted)" (get-in (first rows) [:owner :color])))))

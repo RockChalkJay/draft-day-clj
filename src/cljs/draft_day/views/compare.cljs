@@ -282,10 +282,13 @@
     (let [claim (band :claim a b sep)]
       [:div.cmp-band
        (or claim
-           ;; Empties on exactly one pair: two players already held. One of
-           ;; each keeps its rows — an asymmetry `row-has-value?` will not hide.
-           [:p.cmp-note "You hold both of these players, so there is "
-            "no claim to price."])
+           ;; Empties when neither player is a free agent: both the manager's
+           ;; (no `:owner`) or at least one held by another team. One of each
+           ;; keeps its rows — an asymmetry `row-has-value?` will not hide.
+           [:p.cmp-note
+            (if (or (:owner a) (:owner b))
+              "Neither of these players is a free agent, so there is no claim to price."
+              "You hold both of these players, so there is no claim to price.")])
        ;; From whichever side is a free agent — with a rostered player on the
        ;; left, only the right one carries a claim.
        (when-let [drop (and claim (some :drop-candidate [a b]))]

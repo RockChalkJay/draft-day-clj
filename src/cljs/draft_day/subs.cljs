@@ -532,7 +532,10 @@
                      (cond-> p owner
                        (update :owner assoc
                                :mine? (= (:roster-id owner) mine)
-                               :color (get colors (:roster-id owner)))))
+                               ;; A team the sync does not list still needs a
+                               ;; color, or its row styles read a variable
+                               ;; that was never set.
+                               :color (get colors (:roster-id owner) "var(--muted)"))))
           filtered (->> (:players w)
                         ;; Dropped here as well as at the request: the reply to
                         ;; the toggle takes a round trip, and these rows must not
@@ -588,9 +591,11 @@
 ;; six hundred players every time a row is clicked.
 (rf/reg-sub :comparable-by-id
   :<- [:waivers]
-  (fn [w _]
+  :<- [:waiver-show-rostered?]
+  (fn [[w show-rostered?] _]
     (into {} (map (juxt :player-id identity))
-          (concat (:players w) (:my-roster-players w)))))
+          (concat (filter #(or show-rostered? (not (:owner %))) (:players w))
+                  (:my-roster-players w)))))
 
 (rf/reg-sub :compare-players
   :<- [:comparable-by-id]

@@ -310,3 +310,11 @@
     (is (re-find #"Them" (head {:player-id "x" :position "RB" :team "NYG"
                                 :owner {:roster-id 2 :name "Them"}})))
     (is (not (re-find #"Them" (head {:player-id "x" :position "RB" :team "NYG"}))))))
+
+(deftest the-claim-note-does-not-say-you-hold-a-player-another-team-does
+  (let [note (fn [a b] (pr-str (cmp/band-content :claim a b nil nil)))
+        mine {:player-name "Mine" :week-points 8.0}
+        theirs {:player-name "Theirs" :week-points 9.0 :owner {:roster-id 2 :name "Them"}}]
+    (is (re-find #"You hold both" (note mine (assoc mine :player-name "Also mine"))))
+    (is (not (re-find #"You hold both" (note mine theirs))))
+    (is (re-find #"Neither of these players is a free agent" (note theirs theirs)))))

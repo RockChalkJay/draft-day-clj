@@ -904,12 +904,23 @@
      :roster-size        (count (db/roster-template (get-in db [:config :roster])))
      :include-rostered?  (boolean (:waiver-show-rostered? db))}))
 
-;; Free agents only, or every rostered player too. The board is asked again:
-;; the rostered rows are priced server-side and only sent on request.
+;; Free agents only, or every rostered player too. Turning it on asks the board
+;; again: the rostered rows are priced server-side and only sent on request.
+;; Turning it off asks for nothing, since `:waiver-players` already drops them,
+;; but it takes with them what only they could be holding: the Owner sort, and a
+;; compare slot whose row is gone.
 (rf/reg-event-fx :set-waiver-show-rostered [persist]
   (fn [{:keys [db]} [_ show?]]
-    {:db       (assoc db :waiver-show-rostered? (boolean show?))
-     :dispatch [:fetch-waivers]}))
+    (if show?
+      {:db       (assoc db :waiver-show-rostered? true)
+       :dispatch [:fetch-waivers]}
+      (let [held? (into #{} (comp (filter :owner) (map :player-id))
+                        (get-in db [:waivers :players]))]
+        {:db (cond-> (assoc db :waiver-show-rostered? false)
+               (= :owner (get-in db [:waiver-sort :key]))
+               (assoc :waiver-sort (:waiver-sort (db/default-db)))
+               (seq (:compare db))
+               (update :compare (fn [ids] (vec (remove held? ids)))))}))))
 
 (rf/reg-event-fx :fetch-waivers
   (fn [{:keys [db]} _]
