@@ -605,7 +605,7 @@ td.bid { cursor: help; }
 .source-note { font-size: 11px; color: var(--muted); padding: 0 2px; }
 
 /* "All players" on the waiver board: a rostered player's row takes his team's
-   color (`--owner`, set inline), as a stripe, a faint wash and the name pill.
+   color (`--owner`, set inline), as a stripe, a wash and the name pill.
    The wash is set on the cells, and spelled out to outrank `table.board
    td.player`, or the sticky Player cell would keep the board's own background.
    The stripe's space is held on every row so the columns line up. */
@@ -628,8 +628,15 @@ table.board tbody tr.rostered:hover td {
   border: 1px solid color-mix(in oklab, var(--owner) 55%, transparent); }
 .owner-pill .you { margin-left: 3px; font-weight: 700; opacity: .8; }
 
-/* Search found him, but he is not on the wire. Without this the free-agent
-   table just comes back empty and the manager learns nothing. */
+/* A board with nothing to list says why in the box the table would have had. */
+.board-empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px;
+  border: 1px solid var(--border); border-radius: 10px; }
+.board-empty p { margin: 0 0 6px; }
+.board-empty strong { color: var(--text); }
+.board-empty button { margin-top: 8px; }
+
+/* Search found him, but he is not on the wire, and other free agents still
+   match: the table is not empty, so this says who has him beneath it. */
 .rostered-note { font-size: 12px; color: var(--muted); padding: 4px 2px; }
 .rostered-note span { color: var(--text); }
 

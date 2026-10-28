@@ -557,18 +557,22 @@
 ;; This is what `:rostered` is *for*: search "Chase" while he is on somebody's
 ;; roster and the free-agent table is simply empty, which teaches the manager
 ;; nothing. Names come from the universe the browser already has rather than
-;; from the wire, so answering "who has him" costs no payload at all.
+;; from the wire, so answering "who has him" costs no payload at all. Within the
+;; position filter, as the board is: a WR named under an RB filter is not an
+;; answer to what is on screen.
 (rf/reg-sub :rostered-matches
   :<- [:waivers]
   :<- [:universe-by-id]
   :<- [:search]
-  (fn [[w by-id search] _]
+  :<- [:pos-filter]
+  (fn [[w by-id search pos] _]
     (let [q (str/lower-case (or search ""))]
       (when-not (str/blank? q)
         (->> (:rostered w)
              (keep (fn [[id team]]
                      (when-let [p (get by-id id)]
-                       (when (matches-search? p q)
+                       (when (and (matches-search? p q)
+                                  (or (nil? pos) (= pos (:position p))))
                          {:player-name (:player-name p)
                           :position    (:position p)
                           :team        team}))))

@@ -937,7 +937,11 @@
   (fn [db [_ n resp]]
     (if-not (= n (:waiver-seq db))
       db
-      (assoc db :waivers resp :waiver-status nil))))
+      ;; Stamped with whether it was asked for the rostered rows, which the
+      ;; board needs to tell an empty All players view from one still waiting
+      ;; on its reply.
+      (assoc db :waivers (assoc resp :rostered-included? (boolean (:waiver-show-rostered? db)))
+             :waiver-status nil))))
 
 (rf/reg-event-db :waivers-failed
   (fn [db [_ err]]

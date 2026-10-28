@@ -1463,7 +1463,9 @@
 
 (deftest the-not-free-note-is-for-the-free-agent-board-only
   (with-league! synced 1)
-  (swap! rdb/app-db assoc :players universe :waivers {:players [] :rostered {"A" "Them"}}
+  (swap! rdb/app-db assoc :players universe
+         :waivers {:players [{:player-id "fa" :player-name "Starter Two" :position "WR"}]
+                   :rostered {"A" "Them"}}
          :search "starter")
   (rf/clear-subscription-cache!)
   (is (re-find #"Not free" (render waivers/waivers-view)))
@@ -1516,3 +1518,63 @@
                          :owner {:roster-id 99 :name "Unlisted"}}]
                        {:waiver-show-rostered? true})]
     (is (= "var(--muted)" (get-in (first rows) [:owner :color])))))
+
+(deftest a-searched-rostered-player-gets-a-message-not-an-empty-table
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc :players universe :waivers {:players [] :rostered {"A" "Them"}}
+         :search "starter")
+  (rf/clear-subscription-cache!)
+  (let [out (render waivers/waivers-view)]
+    (is (re-find #"is rostered by Them" out))
+    (is (re-find #"Show all players" out))
+    (is (not (re-find #"Not free" out)) "the message replaces the note")
+    (is (not (re-find #":table.board" out)) "no bare header over nothing")))
+
+(deftest an-empty-board-names-the-filters-that-emptied-it
+  (is (re-find #"No free agents match" (pr-str (waivers/empty-board nil false nil ""))))
+  (is (re-find #"No free agents match QB" (pr-str (waivers/empty-board nil false "QB" ""))))
+  (is (re-find #"goff" (pr-str (waivers/empty-board nil false nil "goff"))))
+  (is (re-find #"No players match" (pr-str (waivers/empty-board nil true nil "")))))
+
+(deftest a-long-list-of-rostered-matches-is-counted-not-listed
+  (let [many (mapv (fn [i] {:player-name (str "P" i) :position "WR" :team "Them"}) (range 7))
+        out  (pr-str (waivers/empty-board many false nil "p"))]
+    (is (re-find #"P2" out))
+    (is (not (re-find #"P3" out)))
+    (is (re-find #"and 4 more" out))))
+
+(deftest only-a-reply-that-can-answer-is-empty
+  (is (false? (waivers/no-rows? nil false [])) "still loading keeps its table")
+  (is (true? (waivers/no-rows? {:players []} false [])))
+  (is (false? (waivers/no-rows? {:players [{:player-id "a"}]} false [{:player-id "a"}])))
+  (testing "All players waits for a reply that carried the rostered rows"
+    (is (false? (waivers/no-rows? {:players []} true [])) "the free-agent reply on screen is not an answer")
+    (is (true? (waivers/no-rows? {:players [] :rostered-included? true} true [])))))
+
+(deftest a-reply-is-stamped-with-whether-it-carried-the-rostered-rows
+  (swap! rdb/app-db assoc :waiver-seq 3)
+  (rf/dispatch-sync [:waivers-loaded 3 {:players []}])
+  (is (false? (:rostered-included? (:waivers @rdb/app-db))))
+  (swap! rdb/app-db assoc :waiver-show-rostered? true)
+  (rf/dispatch-sync [:waivers-loaded 3 {:players []}])
+  (is (true? (:rostered-included? (:waivers @rdb/app-db)))))
+
+(deftest the-all-players-switch-does-not-claim-nobody-matches-while-it-loads
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc :players universe :waivers {:players [] :rostered {"A" "Them"}
+                                                       :rostered-included? false}
+         :waiver-show-rostered? true :search "starter")
+  (rf/clear-subscription-cache!)
+  (is (not (re-find #"No players match" (render waivers/waivers-view)))))
+
+(deftest rostered-matches-stay-within-the-position-filter
+  (with-league! synced 1)
+  (swap! rdb/app-db assoc :players universe :waivers {:players [] :rostered {"A" "Them"}}
+         :search "starter")
+  (rf/clear-subscription-cache!)
+  (is (= 1 (count (sub [:rostered-matches]))))
+  (let [pos (:position (first (sub [:rostered-matches])))
+        other (first (remove #{pos} ["QB" "RB" "WR" "TE"]))]
+    (swap! rdb/app-db assoc :pos-filter other)
+    (rf/clear-subscription-cache!)
+    (is (empty? (sub [:rostered-matches])))))
