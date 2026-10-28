@@ -167,33 +167,36 @@
 (defn row
   "One player as the tools state him: a few keys in a fixed order, nothing nil,
   numbers rounded, and no column the board would hide at his position (a
-  quarterback's targets read 0.0, which says nothing)."
-  [p]
-  (let [pos  (:position p)
-        lead [[:name (:player-name p)]
-              [:player-id (:player-id p)]
-              [:position pos]
-              [:pos-rank (db/season-rank p)]
-              [:team (:team p)]
-              [:slot (:slot p)]
-              [:opp (opponent p)]
-              [:inj (injury p)]
-              [:outlook (:outlook-ppg p)]
-              [:wk-ecr (wk-ecr p)]
-              [:ros-ecr (ros-ecr p)]
-              [:snap (percent (:snap-share p))]
-              [:snap-season (percent (:snap-share-season p))]
-              [:role (role p)]
-              [:rz-rush (whole (:rz-rush p))]
-              [:rz-tgt (whole (:rz-tgt p))]
-              [:rz-pass (whole (:rz-pass p))]
-              [:drop-candidate (when (:drop? p) true)]
-              [:drop-cost (:drop-cost p)]
-              [:unvalued (when (:unvalued? p) true)]]
-        cols (keep (fn [k] (when (db/applies? (db/waiver-columns-by-key k) pos)
-                             [k ((db/waiver-sort-accessors k) p)]))
-                   (columns))]
-    (compact (concat lead cols))))
+  quarterback's targets read 0.0, which says nothing). `on` names the boards
+  that list him, for a row of `waiver-targets`."
+  ([p] (row p nil))
+  ([p on]
+    (let [pos  (:position p)
+          lead [[:name (:player-name p)]
+                [:on on]
+                [:player-id (:player-id p)]
+                [:position pos]
+                [:pos-rank (db/season-rank p)]
+                [:team (:team p)]
+                [:slot (:slot p)]
+                [:opp (opponent p)]
+                [:inj (injury p)]
+                [:outlook (:outlook-ppg p)]
+                [:wk-ecr (wk-ecr p)]
+                [:ros-ecr (ros-ecr p)]
+                [:snap (percent (:snap-share p))]
+                [:snap-season (percent (:snap-share-season p))]
+                [:role (role p)]
+                [:rz-rush (whole (:rz-rush p))]
+                [:rz-tgt (whole (:rz-tgt p))]
+                [:rz-pass (whole (:rz-pass p))]
+                [:drop-candidate (when (:drop? p) true)]
+                [:drop-cost (:drop-cost p)]
+                [:unvalued (when (:unvalued? p) true)]]
+          cols (keep (fn [k] (when (db/applies? (db/waiver-columns-by-key k) pos)
+                               [k ((db/waiver-sort-accessors k) p)]))
+                     (columns))]
+      (compact (concat lead cols)))))
 
 (defn legend
   "What each row key means, off the column catalog's tooltips."
@@ -201,7 +204,8 @@
   (->> (columns)
        (keep (fn [k] (when-let [tip (:tooltip (db/waiver-columns-by-key k))]
                        (str "- " (name k) ": " tip))))
-       (into ["- pos-rank: his rank at his position on fantasy points so far (preseason rank before week 1)"
+       (into ["- on: waiver_targets only, the boards that list him (lineup, adds, form, role, experts)"
+              "- pos-rank: his rank at his position on fantasy points so far (preseason rank before week 1)"
               "- opp: this week's opponent"
               "- inj: Sleeper's injury designation"
               "- outlook: Sleeper's projected points a game over the weeks he has left, under this league's scoring"
@@ -379,26 +383,117 @@
       (throw (tool-error (str "position must be one of " (str/join ", " db/positions)))))
     pos))
 
+(def board-size
+  "How many players each of `waiver-targets`' boards after the lineup one adds."
+  4)
+
+(def experts-per-position
+  "How many of the experts' best-ranked free agents the experts board takes at
+  each position, since ranks at different positions do not compare."
+  2)
+
+(def snap-rise-min
+  "How far his share of snaps must be above his season's, as a fraction, for a
+  player to be on the role board without a vacated role to name."
+  0.15)
+
+(defn wk-rank
+  "The number in `RB29`, the experts' rank at his position this week."
+  [p]
+  (some->> (:fantasypros/wk-pos-rank p) (re-find #"\d+") parse-long))
+
+(defn form-gap
+  "Points a game his last three weeks run above his season's, or nil when they
+  do not or he has played fewer than two games."
+  [p]
+  (let [form (:form-points p)
+        avg  (:season-ppg p)
+        gp   ((db/waiver-sort-accessors :gp) p)]
+    (when (and (number? form) (number? avg) (number? gp) (>= gp 2) (> form avg))
+      (- form avg))))
+
+(defn snap-rise
+  "How far his share of his team's snaps over his last three games played is
+  above his season's, as a fraction, or nil when either is unknown."
+  [p]
+  (let [recent (:snap-share p)
+        season (:snap-share-season p)]
+    (when (and (number? recent) (number? season))
+      (- recent season))))
+
+(defn adds-board
+  "The most added on Sleeper, most first."
+  [players]
+  (->> players
+       (filter :trending/adds)
+       (sort-by (juxt (comp - :trending/adds) :player-name))
+       (take board-size)))
+
+(defn form-board
+  "The furthest above his season's rate over the last three weeks, furthest
+  first."
+  [players]
+  (->> players
+       (filter form-gap)
+       (sort-by (juxt (comp - form-gap) :player-name))
+       (take board-size)))
+
+(defn role-board
+  "Players who took a role a teammate's injury opened, then those whose snap
+  share has climbed `snap-rise-min` over his season's, the biggest rise first."
+  [players]
+  (->> players
+       (filter #(or (:role/since %) (some-> (snap-rise %) (>= snap-rise-min))))
+       (sort-by (juxt #(if (:role/since %) 0 1) #(- (or (snap-rise %) 0)) :player-name))
+       (take board-size)))
+
+(defn experts-board
+  "The experts' best-ranked free agents this week, `n` at each of `positions`."
+  [players positions n]
+  (mapcat (fn [pos]
+            (->> players
+                 (filter #(and (= pos (:position %)) (wk-rank %)))
+                 (sort-by (juxt wk-rank :player-name))
+                 (take n)))
+          positions))
+
+(defn listed
+  "`boards`, `[name players]` pairs, as rows: each player once, in the order he
+  first appears, with `:on` naming every board that lists him."
+  [boards]
+  (let [ps    (mapcat second boards)
+        by-id (into {} (map (juxt :player-id identity)) ps)
+        on    (reduce (fn [m [board players]]
+                        (reduce #(update %1 (:player-id %2) (fnil conj []) board) m players))
+                      {}
+                      boards)]
+    (mapv #(row (by-id %) (on %)) (distinct (map :player-id ps)))))
+
 (defn waiver-targets
-  "The free agents ranked as the Waivers tab's # column ranks them
-  (`db/waiver-rank-key`), at one position or all. The tab opens sorted by Adds
-  instead, which is a sort and not a claim order."
+  "The free agents on several boards, since the engine's lineup arithmetic is
+  one signal and not the verdict. `lineup` is the Waivers tab's # column
+  (`db/waiver-rank-key`), at one position or all; the tab opens sorted by Adds
+  instead, which is a sort and not a claim order. The others are what the
+  arithmetic cannot see: Sleeper's adds, recent form, a vacated role and the
+  experts' ranks for this week. A player on several boards is listed once."
   [deps {:keys [position limit] :as args}]
   (let [pos       (position-arg position)
         positions (if pos [pos] claim-positions)
         n         (-> (if (number? limit) (long limit) 10) (max 1) (min max-targets))
         entry     (the-league deps args)
-        reply     (checked ((:reply deps) entry))]
+        reply     (checked ((:reply deps) entry))
+        free      (filter (comp (set positions) :position) (:players reply))]
     {:league         (named entry)
      :week           (:week reply)
      :through-week   (:through-week reply)
      :positions      positions
      :drop-candidate (get-in reply [:drop-candidate :player-name])
-     :players        (->> (:players reply)
-                          (filter (comp (set positions) :position))
-                          (sort-by db/waiver-rank-key)
-                          (take n)
-                          (mapv row))}))
+     :players        (listed [["lineup"  (take n (sort-by db/waiver-rank-key free))]
+                              ["adds"    (adds-board free)]
+                              ["form"    (form-board free)]
+                              ["role"    (role-board free)]
+                              ["experts" (experts-board free positions
+                                                        (if pos board-size experts-per-position))]])}))
 
 (defn find-players
   "Universe players matching `q`: by player id exactly, else by name through
@@ -570,16 +665,21 @@
     :handler      matchup}
    {:name         "waiver_targets"
     :title       "Waiver targets"
-    :description  (str "Free agents in one league, best claim first: ordered by lineup, then upgrade, "
-                       "both measured against the drop-candidate. Quarterbacks, backs, receivers and "
-                       "tight ends unless a position is named, which is how to ask for a kicker or "
-                       "a defense.\n\nRow keys:\n" (legend))
+    :description  (str "Free agents in one league on several boards, because the engine's lineup "
+                       "arithmetic is one signal and not the verdict. A row's on says which boards list "
+                       "him; a player is listed once, the lineup board first. lineup: best claim first, "
+                       "ordered by lineup then upgrade, both measured against the drop-candidate. adds: "
+                       "most added on Sleeper. form: furthest above his season's rate over the last three "
+                       "weeks. role: took a role a teammate's injury opened, or his snap share has "
+                       "climbed. experts: the experts' best-ranked free agents this week at each "
+                       "position. Quarterbacks, backs, receivers and tight ends unless a position is "
+                       "named, which is how to ask for a kicker or a defense.\n\nRow keys:\n" (legend))
     :input-schema {:type                 "object"
                    :properties           {:league   league-property
                                           :position {:type "string" :enum db/positions
                                                      :description "Only this position"}
                                           :limit    {:type "integer" :minimum 1 :maximum max-targets
-                                                     :description "How many players (default 10)"}}
+                                                     :description "How many players on the lineup board (default 10); the other boards add up to four each"}}
                    :additionalProperties false}
     :handler      waiver-targets}
    {:name         "evaluate_claim"

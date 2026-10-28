@@ -49,6 +49,78 @@
   (testing "a position the board does not have"
     (is (re-find #"position must be one of" (:error (call "waiver_targets" {:position "LB"} (fx/deps)))))))
 
+(def ^:private board-agents
+  "Free agents each on one board but the lineup one: b1 trending, b2 hot, b3 in
+  a vacated role, b4 climbing the snap counts, b5 and b6 ranked by the experts
+  at WR, b7 at RB. b8 has nothing but a lineup gain."
+  [{:player-id "b1" :player-name "Bee One" :position "WR" :lineup-upgrade 0.0 :upgrade -5.0 :ros-points 40.0
+    :trending/adds 9000}
+   {:player-id "b2" :player-name "Bee Two" :position "RB" :lineup-upgrade 0.0 :upgrade -4.0 :ros-points 50.0
+    :form-points 14.0 :season-ppg 8.0 :season-gp 5}
+   {:player-id "b3" :player-name "Bee Three" :position "RB" :lineup-upgrade 0.0 :upgrade -6.0 :ros-points 30.0
+    :role/since 4 :role/vacated-by "Starter Back" :role/vacated-status "IR"
+    :snap-share 0.6 :snap-share-season 0.55}
+   {:player-id "b4" :player-name "Bee Four" :position "WR" :lineup-upgrade 0.0 :upgrade -7.0 :ros-points 20.0
+    :snap-share 0.7 :snap-share-season 0.4}
+   {:player-id "b5" :player-name "Bee Five" :position "WR" :lineup-upgrade 0.0 :upgrade -8.0 :ros-points 10.0
+    :fantasypros/wk-pos-rank "WR31"}
+   {:player-id "b6" :player-name "Bee Six" :position "WR" :lineup-upgrade 0.0 :upgrade -9.0 :ros-points 9.0
+    :fantasypros/wk-pos-rank "WR27"}
+   {:player-id "b7" :player-name "Bee Seven" :position "RB" :lineup-upgrade 0.0 :upgrade -9.5 :ros-points 8.0
+    :fantasypros/wk-pos-rank "RB40"}
+   {:player-id "b8" :player-name "Bee Eight" :position "TE" :lineup-upgrade 6.0 :upgrade 6.0 :ros-points 70.0}])
+
+(defn- board-deps [players]
+  (fx/deps {:reply (constantly (assoc fx/reply :players players))}))
+
+(defn- targets [players args]
+  (:players (:result (call "waiver_targets" args (board-deps players)))))
+
+(defn- on-of [rows id]
+  (:on (first (filter #(= id (:player-id %)) rows))))
+
+(deftest waiver-targets-surface-players-the-lineup-arithmetic-rates-zero
+  (let [rows (targets board-agents {:limit 1})]
+    (is (= "b8" (:player-id (first rows))) "the lineup board leads, as before")
+    (is (= ["b8" "b1" "b2" "b3" "b4" "b7" "b6" "b5"] (map :player-id rows))
+        "then adds, form, role (vacated role first), then the experts' best at each position in turn")
+    (is (= ["lineup"] (on-of rows "b8")))
+    (is (= ["adds"] (on-of rows "b1")))
+    (is (= ["form"] (on-of rows "b2")))
+    (is (= ["role"] (on-of rows "b3")))
+    (is (= ["role"] (on-of rows "b4")) "a snap share fifteen points over his season's")
+    (is (= ["experts"] (on-of rows "b6")))))
+
+(deftest a-player-on-several-boards-is-listed-once-with-every-board
+  (let [shared (assoc (nth board-agents 1) :trending/adds 100 :fantasypros/wk-pos-rank "RB12" :lineup-upgrade 9.0)
+        rows   (targets [shared] {})]
+    (is (= ["b2"] (map :player-id rows)))
+    (is (= ["lineup" "adds" "form" "experts"] (:on (first rows))))))
+
+(deftest the-boards-are-bounded-and-ordered
+  (let [adds (map #(assoc (first board-agents) :player-id (str "a" %) :player-name (str "Add " %)
+                          :trending/adds (* 100 %))
+                  (range 1 8))
+        rows (targets adds {:limit 1})]
+    (is (= ["a7" "a6" "a5" "a4"] (map :player-id (filter #(some #{"adds"} (:on %)) rows)))
+        "the four most added, most first")))
+
+(deftest the-form-board-needs-two-games-and-a-rate-above-his-season-s
+  (let [hot   {:player-id "h" :player-name "H" :position "RB" :form-points 14.0 :season-ppg 8.0 :season-gp 1}
+        flat  (assoc hot :player-id "f" :season-gp 6 :form-points 7.0)
+        ok    (assoc hot :player-id "o" :season-gp 6)]
+    (is (= ["o"] (map :player-id (tools/form-board [hot flat ok])))
+        "one game is not form, and below his average is not hot")))
+
+(deftest a-position-narrows-every-board-and-widens-the-experts
+  (let [wrs   (map #(assoc (first board-agents) :player-id (str "w" %) :player-name (str "W " %)
+                           :fantasypros/wk-pos-rank (str "WR" (+ 20 %)))
+                   (range 1 7))
+        rows  (targets (concat wrs board-agents) {:position "wr" :limit 1})]
+    (is (every? #(= "WR" (:position %)) rows))
+    (is (= 4 (count (filter #(some #{"experts"} (:on %)) rows)))
+        "four at the one position named, where the unfiltered list takes two at each")))
+
 (deftest my-team-splits-the-roster-as-my-team-draws-it
   (let [{:keys [result]} (call "my_team" {} (fx/deps))]
     (is (= [["p1" "RB"]] (map (juxt :player-id :slot) (:starters result)))

@@ -126,6 +126,17 @@ columns read through `db/waiver-sort-accessors`, and their legend is the column
 catalog's tooltips. `my_team` splits the roster through `db/team-roster`, as My
 Team does.
 
+**Boards, not one ranking.** `lineup` and `upgrade` rank the pool by what a claim
+adds to this roster, and cut it to ten, so a trending add or a player stepping into
+a vacated role with no lineup gain never reached the model. `waiver_targets` now
+lists the lineup board as before and up to four more at each of the others: the
+most added on Sleeper (`adds`), the furthest above his season's rate over three
+weeks (`form`, two games at least), players who took a vacated role or whose snap
+share is fifteen points over his season's (`role`), and the experts' best-ranked
+free agents this week at each position (`experts`, `wk-ecr`). A player on several
+is listed once, with `on` naming them. The lineup board keeps the Waivers tab's
+order, so the two cannot disagree about who the best claim is.
+
 **Comparing drops.** `waiver_targets` measures every claim against one drop, the
 board's `drop-candidate`, which is the cheapest seat by arithmetic and not a
 verdict on the player. `evaluate_claim` prices one add against any drop the
