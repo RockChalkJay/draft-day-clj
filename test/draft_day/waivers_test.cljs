@@ -1519,26 +1519,30 @@
                        {:waiver-show-rostered? true})]
     (is (= "var(--muted)" (get-in (first rows) [:owner :color])))))
 
-(deftest a-searched-rostered-player-gets-a-message-not-an-empty-table
+(deftest a-searched-rostered-player-gets-a-row-that-says-whose-he-is
+  (let [out (pr-str (waivers/empty-board [{:player-name "Jared Goff" :position "QB" :team "Them"}]
+                                         false nil "goff" 9))]
+    (is (re-find #"Jared Goff" out))
+    (is (re-find #"is rostered by Them" out))
+    (is (re-find #"Show all players" out))
+    (is (re-find #":col-span 9" out) "one row across every column, so the board keeps its size")))
+
+(deftest the-not-free-note-gives-way-to-the-empty-row
   (with-league! synced 1)
   (swap! rdb/app-db assoc :players universe :waivers {:players [] :rostered {"A" "Them"}}
          :search "starter")
   (rf/clear-subscription-cache!)
-  (let [out (render waivers/waivers-view)]
-    (is (re-find #"is rostered by Them" out))
-    (is (re-find #"Show all players" out))
-    (is (not (re-find #"Not free" out)) "the message replaces the note")
-    (is (not (re-find #":table.board" out)) "no bare header over nothing")))
+  (is (not (re-find #"Not free" (render waivers/waivers-view)))))
 
 (deftest an-empty-board-names-the-filters-that-emptied-it
-  (is (re-find #"No free agents match" (pr-str (waivers/empty-board nil false nil ""))))
-  (is (re-find #"No free agents match QB" (pr-str (waivers/empty-board nil false "QB" ""))))
-  (is (re-find #"goff" (pr-str (waivers/empty-board nil false nil "goff"))))
-  (is (re-find #"No players match" (pr-str (waivers/empty-board nil true nil "")))))
+  (is (re-find #"No free agents match" (pr-str (waivers/empty-board nil false nil "" 5))))
+  (is (re-find #"No free agents match QB" (pr-str (waivers/empty-board nil false "QB" "" 5))))
+  (is (re-find #"goff" (pr-str (waivers/empty-board nil false nil "goff" 5))))
+  (is (re-find #"No players match" (pr-str (waivers/empty-board nil true nil "" 5)))))
 
 (deftest a-long-list-of-rostered-matches-is-counted-not-listed
   (let [many (mapv (fn [i] {:player-name (str "P" i) :position "WR" :team "Them"}) (range 7))
-        out  (pr-str (waivers/empty-board many false nil "p"))]
+        out  (pr-str (waivers/empty-board many false nil "p" 5))]
     (is (re-find #"P2" out))
     (is (not (re-find #"P3" out)))
     (is (re-find #"and 4 more" out))))

@@ -508,27 +508,30 @@
   3)
 
 (defn empty-board
-  "What stands in for a board with no rows. Searching for a rostered player with
-  free agents only used to leave a bare header and a small note beneath it; here
-  the note is the board, with the way to see him. `pos` and `search` are said
-  back when set, since the filter the manager has to clear is not otherwise on
-  the message."
-  [rostered all? pos search]
-  [:div.board-empty
-   (if (seq rostered)
-     [:<>
-      (map (fn [{:keys [player-name position team]}]
-             ^{:key (str player-name position team)}
-             [:p [:strong player-name] (str " (" position ") is rostered by " team ".")])
-           (take empty-board-names rostered))
-      (when (> (count rostered) empty-board-names)
-        [:p (str "and " (- (count rostered) empty-board-names) " more.")])
-      [:button {:on-click #(rf/dispatch [:set-waiver-show-rostered true])}
-       "Show all players"]]
-     [:p (str "No " (if all? "players" "free agents") " match"
-              (when pos (str " " pos))
-              (when-not (str/blank? search) (str " \u201c" search "\u201d"))
-              ".")])])
+  "The one row a board with no rows has, across all `n` columns. It stays inside
+  the table, under the header, so the board keeps its size and its columns and
+  nothing beside it moves. Searching for a rostered player with free agents only
+  used to leave a small note beneath; here the note is the row, with the way to
+  see him. `pos` and `search` are said back when set, since the filter the
+  manager has to clear is not otherwise on the message."
+  [rostered all? pos search n]
+  [:tr.board-empty-row
+   [:td {:col-span n}
+    [:div.board-empty
+       (if (seq rostered)
+         [:<>
+          (map (fn [{:keys [player-name position team]}]
+                 ^{:key (str player-name position team)}
+                 [:p [:strong player-name] (str " (" position ") is rostered by " team ".")])
+               (take empty-board-names rostered))
+          (when (> (count rostered) empty-board-names)
+            [:p (str "and " (- (count rostered) empty-board-names) " more.")])
+          [:button {:on-click #(rf/dispatch [:set-waiver-show-rostered true])}
+           "Show all players"]]
+         [:p (str "No " (if all? "players" "free agents") " match"
+                  (when pos (str " " pos))
+                  (when-not (str/blank? search) (str " \u201c" search "\u201d"))
+                  ".")])]]])
 
 (defn waivers-view []
   (let [players @(rf/subscribe [:waiver-players])
@@ -550,27 +553,27 @@
       [columns/waiver-column-picker]]
      (when-not roster? [roster-bar])
      [:div.waiver-body {:class (when roster? "roster-open")}
-      (if bare?
-        [empty-board rostered all? pos search]
-        [board-box
-          [:table.board {:class (when all? "with-owners")}
-           [:thead [board/board-header waiver-columns cols sort]]
-           [:tbody
-            (map (fn [p]
-                   ^{:key (:player-id p)}
-                   [:tr {:class (->> [(when (and (:drop-candidate p)
-                                                 (pos? (or (:upgrade p) 0)))
-                                        "upgrade")
-                                      (when (:owner p) "rostered")
-                                      (when (comparing (:player-id p)) "comparing")]
-                                     (remove nil?) (str/join " "))
-                         :style (when-let [c (get-in p [:owner :color])] {"--owner" c})
-                         ;; Click to compare. A second row fills the other slot; a
-                         ;; third evicts the older, so one player can be held while
-                         ;; the board is clicked through challengers.
-                         :on-click #(rf/dispatch [:compare-toggle (:player-id p)])}
-                    (map (fn [{k :key}] ^{:key k} [cell k p week bidding]) cols)])
-                 players)]]])
+      [board-box
+       [:table.board {:class (when all? "with-owners")}
+        [:thead [board/board-header waiver-columns cols sort]]
+        [:tbody
+         (if bare?
+           [empty-board rostered all? pos search (count cols)]
+           (map (fn [p]
+                  ^{:key (:player-id p)}
+                  [:tr {:class (->> [(when (and (:drop-candidate p)
+                                                (pos? (or (:upgrade p) 0)))
+                                       "upgrade")
+                                     (when (:owner p) "rostered")
+                                     (when (comparing (:player-id p)) "comparing")]
+                                    (remove nil?) (str/join " "))
+                        :style (when-let [c (get-in p [:owner :color])] {"--owner" c})
+                        ;; Click to compare. A second row fills the other slot; a
+                        ;; third evicts the older, so one player can be held while
+                        ;; the board is clicked through challengers.
+                        :on-click #(rf/dispatch [:compare-toggle (:player-id p)])}
+                   (map (fn [{k :key}] ^{:key k} [cell k p week bidding]) cols)])
+                players))]]]
       (when roster? [:aside#waiver-roster.waiver-roster-col [my-roster-panel]])]
      [bid-tip-popover]
      ;; Sleeper's data, on Sleeper's terms: say whose it is wherever it shows.
