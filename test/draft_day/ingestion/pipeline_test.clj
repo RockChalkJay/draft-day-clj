@@ -679,3 +679,46 @@
       (with-redefs [fantasypros/fetch-ros-ecr (fn [] (throw (ex-info "down" {})))
                     pipeline/ros-ecr-ttl-hours (constantly 0.0)]
         (is (= by (:by-format (pipeline/load-ros-ecr 2026))))))))
+
+(def ^:private weekly-ranks
+  {:ppr {"ollie gordon_rb" {:fantasypros/wk-pos-rank "RB29" :fantasypros/wk-rank-min 28
+                            :fantasypros/wk-rank-max 33 :fantasypros/wk-grade "C"}}})
+
+(deftest weekly-ecr-joins-by-name-and-position
+  (let [ranks {(draft-day.ingestion.match/key-for "Ollie Gordon" "RB") (val (first (:ppr weekly-ranks)))}
+        [a b] (pipeline/assoc-weekly-ecr [{:player-name "Ollie Gordon" :position "RB"}
+                                          {:player-name "Ollie Gordon" :position "WR"}]
+                                         ranks)]
+    (is (= "RB29" (:fantasypros/wk-pos-rank a)))
+    (is (not (contains? b :fantasypros/wk-pos-rank)) "another position is another player")
+    (is (= [{:player-name "x" :position "RB"}]
+           (pipeline/assoc-weekly-ecr [{:player-name "x" :position "RB"}] nil)))))
+
+(deftest weekly-ecr-is-not-loaded-offline-or-while-replaying-a-week
+  (let [calls (atom 0)]
+    (with-redefs [fantasypros/fetch-weekly-ecr (fn [_] (swap! calls inc) {})
+                  pipeline/weekly-ecr-cache-path (fn [_ _] (tmp "weekly-ecr-gate"))]
+      (with-redefs [pipeline/offline? (constantly true)]
+        (is (nil? (pipeline/load-weekly-ecr 2026 8))))
+      (with-redefs [pipeline/offline? (constantly false)
+                    nflverse-weekly/as-of-week (constantly 8)]
+        (is (nil? (pipeline/load-weekly-ecr 2026 8))))
+      (is (zero? @calls)))))
+
+(deftest weekly-ecr-has-a-cache-per-week
+  (is (not= (pipeline/weekly-ecr-cache-path 2026 8) (pipeline/weekly-ecr-cache-path 2026 9))))
+
+(deftest weekly-ecr-is-cached-and-served-stale-when-the-pages-fail
+  (let [path (tmp "weekly-ecr")]
+    (pipeline/delete-cache! path)
+    (with-redefs [pipeline/offline? (constantly false)
+                  nflverse-weekly/as-of-week (constantly nil)
+                  pipeline/weekly-ecr-cache-path (fn [_ _] path)]
+      (let [calls (atom 0)]
+        (with-redefs [fantasypros/fetch-weekly-ecr (fn [week] (swap! calls inc) (is (= 8 week)) weekly-ranks)]
+          (is (= weekly-ranks (:by-format (pipeline/load-weekly-ecr 2026 8))))
+          (pipeline/load-weekly-ecr 2026 8)
+          (is (= 1 @calls) "the second read is the fresh cache")))
+      (with-redefs [fantasypros/fetch-weekly-ecr (fn [_] (throw (ex-info "down" {})))
+                    pipeline/weekly-ecr-ttl-hours (constantly 0.0)]
+        (is (= weekly-ranks (:by-format (pipeline/load-weekly-ecr 2026 8))))))))

@@ -643,7 +643,7 @@
                               :fetched-at (now-iso)
                               :by-format  (fantasypros/fetch-ros-ecr)})})))
 
-(defn assoc-ros-ecr
+(defn assoc-ranks
   "Join one format's `{key entry}` of expert ranks onto players by name and
   position, leaving a player the experts do not rank unannotated. The format is
   the caller's choice and has no default: a standard league must not read PPR
@@ -656,6 +656,46 @@
               (merge p entry)
               p))
           players)))
+
+(def assoc-ros-ecr
+  "`assoc-ranks` for the rest-of-season ranks."
+  assoc-ranks)
+
+(def assoc-weekly-ecr
+  "`assoc-ranks` for this week's ranks."
+  assoc-ranks)
+
+(def weekly-ecr-schema-version
+  "Version of the weekly expert-rank cache envelope."
+  1)
+
+(defn weekly-ecr-cache-path
+  "One file per season/week: the ranks are for one week's games, and the set
+  fetched last week answers a different question."
+  [season week]
+  (format "data/weekly_ecr.v%d.%d-w%02d.transit" weekly-ecr-schema-version season week))
+
+(defn weekly-ecr-ttl-hours
+  "Short, because the experts re-rank through the week as news lands."
+  []
+  (Double/parseDouble (or (System/getenv "DRAFTDAY_WEEKLY_ECR_TTL_HOURS") "3")))
+
+(defn load-weekly-ecr
+  "FantasyPros' expert ranks for `week`, `{:fetched-at :by-format {format
+  {key entry}}}`, off a cache of its own. Nil offline, when replaying a week
+  (today's ranks would leak the future), and with nothing cached when
+  FantasyPros does not answer or has not rolled its pages over to `week`."
+  [season week]
+  (when-not (or (offline?) (nflverse-weekly/as-of-week))
+    (load-ttl-cache
+     {:path           (weekly-ecr-cache-path season week)
+      :ttl-hours      (weekly-ecr-ttl-hours)
+      :schema-version weekly-ecr-schema-version
+      :label          "weekly expert ranks"
+      :fetch          (fn [] {:season     season
+                              :week       week
+                              :fetched-at (now-iso)
+                              :by-format  (fantasypros/fetch-weekly-ecr week)})})))
 
 (defn assoc-outlook
   "Join an outlook onto players by Sleeper id as `:outlook/games` and

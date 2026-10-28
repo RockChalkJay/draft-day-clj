@@ -138,6 +138,16 @@
     (cond-> ros-pos-rank
       (and ros-rank-min ros-rank-max) (str " (" ros-rank-min "-" ros-rank-max ")"))))
 
+(defn wk-ecr
+  "The experts' rank at his position for this week alone, with the spread of
+  their individual ranks and FantasyPros' start/sit grade: `RB29 (28-33) C`.
+  Nil for a player they do not rank."
+  [{:fantasypros/keys [wk-pos-rank wk-rank-min wk-rank-max wk-grade]}]
+  (when wk-pos-rank
+    (cond-> wk-pos-rank
+      (and wk-rank-min wk-rank-max) (str " (" wk-rank-min "-" wk-rank-max ")")
+      wk-grade                      (str " " wk-grade))))
+
 (defn percent
   "A share as a whole percent, or nil."
   [share]
@@ -169,6 +179,7 @@
               [:opp (opponent p)]
               [:inj (injury p)]
               [:outlook (:outlook-ppg p)]
+              [:wk-ecr (wk-ecr p)]
               [:ros-ecr (ros-ecr p)]
               [:snap (percent (:snap-share p))]
               [:snap-season (percent (:snap-share-season p))]
@@ -195,6 +206,7 @@
               "- inj: Sleeper's injury designation"
               "- outlook: Sleeper's projected points a game over the weeks he has left, under this league's scoring"
               "- ros-ecr: FantasyPros' experts' rest-of-season rank at his position in this league's scoring format, with the range of their ranks; absent when they do not rank him"
+              "- wk-ecr: FantasyPros' experts' rank at his position for this week alone in this league's scoring format, the range of their ranks and FantasyPros' start/sit grade (A+ start to F sit); absent when they do not rank him or have not published this week"
               "- snap: percent of his team's offensive snaps over his last three weeks played; snap-season is the season's"
               "- rz-rush, rz-tgt, rz-pass: his carries, targets and passes inside the 20 this season through the last week played, as Sleeper counts them; absent means none recorded"
               "- role: set when a teammate at his position who held the role went on injured reserve and he has taken it over, with the week it changed"
