@@ -197,6 +197,7 @@ shadow-cljs also serves `resources/public` on :8280, but nothing answers
 | `DRAFTDAY_WEEKLY_TTL_HOURS` | `1` | the same window for the weekly line, which moves far faster |
 | `DRAFTDAY_OUTLOOK_TTL_HOURS` | `6` | the window for Sleeper's remaining-weeks outlook, which the rest-of-season forecast starts from |
 | `DRAFTDAY_ROS_ECR_TTL_HOURS` | `12` | the window for FantasyPros' rest-of-season expert ranks, which Sensei reads beside the engine's numbers |
+| `DRAFTDAY_WEEKLY_ECR_TTL_HOURS` | `3` | the window for FantasyPros' expert ranks for the current week, which the experts revise as news lands |
 | `DRAFTDAY_AS_OF_WEEK` | unset | dev only: truncate the in-season data at a week, so a finished season replays as one in progress |
 | `DRAFTDAY_SENSEI` | unset | `claude-cli` turns on the in-app chat, which runs `claude -p` on your own plan. See [docs/sensei.md](docs/sensei.md) |
 | `DRAFTDAY_SENSEI_SLEEPER_USER` | unset | your Sleeper username. [Sensei](#connect-sensei) lists your Sleeper leagues from it |

@@ -216,3 +216,61 @@
 (deftest fetch-ros-fails-whole-when-one-page-does
   (with-redefs [fp/fetch-page (fn [url] (when-not (str/includes? url "ros-te") (ros-page "ros" "RB" ["A" 1 1 1])))]
     (is (thrown? Exception (fp/fetch-ros-ecr)))))
+
+(defn- weekly-page [type pos week & rows]
+  (str "<html><body><script>var ecrData = {\"ranking_type_name\":\"" type "\",\"week\":\"" week
+       "\",\"players\":["
+       (str/join
+        "," (map (fn [[name rank lo hi grade]]
+                   (str "{\"player_name\":\"" name "\",\"player_position_id\":\"" pos "\","
+                        "\"pos_rank\":\"" pos rank "\",\"rank_min\":\"" lo "\",\"rank_max\":\"" hi "\","
+                        "\"start_sit_grade\":\"" grade "\"}"))
+                 rows))
+       "]};</script></body></html>"))
+
+(deftest weekly-urls-are-the-position-pages-without-the-cheatsheet-suffix
+  (is (= "https://www.fantasypros.com/nfl/rankings/ppr-rb.php" (fp/weekly-url "RB" :ppr)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/half-point-ppr-wr.php" (fp/weekly-url "WR" :half-ppr)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/te.php" (fp/weekly-url "TE" :standard)))
+  (is (= "https://www.fantasypros.com/nfl/rankings/dst.php" (fp/weekly-url "DST" :ppr))
+      "a defense has only the bare page")
+  (is (thrown? clojure.lang.ExceptionInfo (fp/weekly-url "RB" :half))))
+
+(deftest parse-weekly-takes-the-rank-its-spread-and-the-grade
+  (let [idx    (match/by-key (fp/parse-weekly-ecr (weekly-page "weekly" "RB" 8 ["Jonah Coleman" 29 28 33 "C"]) "RB" 8))
+        coleman (get idx (match/key-for "Jonah Coleman" "RB"))]
+    (is (= "RB29" (:fantasypros/wk-pos-rank coleman)))
+    (is (= 28 (:fantasypros/wk-rank-min coleman)))
+    (is (= 33 (:fantasypros/wk-rank-max coleman)))
+    (is (= "C" (:fantasypros/wk-grade coleman)))))
+
+(deftest parse-weekly-refuses-a-page-that-is-not-this-weeks-ranking-of-that-position
+  (is (nil? (fp/parse-weekly-ecr (weekly-page "ros" "RB" 8 ["A" 1 1 1 "A"]) "RB" 8)) "the rest-of-season sheet")
+  (is (nil? (fp/parse-weekly-ecr (weekly-page "weekly" "WR" 8 ["A" 1 1 1 "A"]) "RB" 8)) "another position's page")
+  (is (nil? (fp/parse-weekly-ecr (weekly-page "weekly" "RB" 7 ["A" 1 1 1 "A"]) "RB" 8)) "last week's ranks")
+  (is (nil? (fp/parse-weekly-ecr "<html>nothing</html>" "RB" 8))))
+
+(deftest fetch-weekly-reads-twelve-pages-and-scopes-them-by-format
+  (let [asked (atom [])
+        page  (fn [url]
+                (swap! asked conj url)
+                (let [pos (str/upper-case (second (re-find #"-?([a-z]+)\.php$" url)))
+                      fmt (cond (str/includes? url "half-point") "H" (str/includes? url "ppr") "P" :else "S")]
+                  (weekly-page "weekly" pos 8 [(str pos " " fmt) 1 1 1 "A"])))
+        out   (with-redefs [fp/fetch-page page] (fp/fetch-weekly-ecr 8))
+        rank  (fn [fmt pos] (get-in out [fmt (match/key-for (str pos " " ({:ppr "P" :half-ppr "H" :standard "S"} fmt)) pos)
+                                     :fantasypros/wk-pos-rank]))]
+    (is (= 12 (count @asked)) "nine format pages, three bare ones")
+    (is (= "RB1" (rank :half-ppr "RB")))
+    (is (= "RB1" (rank :standard "RB")))
+    (is (some? (get-in out [:ppr (match/key-for "QB S" "QB")])) "QB joins every format from his one page")))
+
+(deftest fetch-weekly-fails-whole-when-one-page-does
+  (with-redefs [fp/fetch-page (fn [url] (when-not (str/includes? url "te.php") (weekly-page "weekly" "RB" 8 ["A" 1 1 1 "A"])))]
+    (is (thrown? Exception (fp/fetch-weekly-ecr 8)))))
+
+(deftest fetch-weekly-fails-whole-when-a-page-has-not-rolled-over
+  (with-redefs [fp/fetch-page (fn [url]
+                                (let [pos (str/upper-case (second (re-find #"-?([a-z]+)\.php$" url)))]
+                                  (weekly-page "weekly" pos (if (= "DST" pos) 7 8) ["A" 1 1 1 "A"])))]
+    (is (thrown? Exception (fp/fetch-weekly-ecr 8)))))

@@ -21,7 +21,8 @@
 ;; whichever week a test asks about.
 (use-fixtures :each
   (fn [run] (with-redefs [pipeline/load-outlook (constantly nil)
-                          pipeline/load-ros-ecr (constantly nil)]
+                          pipeline/load-ros-ecr (constantly nil)
+                          pipeline/load-weekly-ecr (constantly nil)]
               (run))))
 (defn- input-stream [s] (java.io.ByteArrayInputStream. (.getBytes ^String s "UTF-8")))
 
@@ -488,6 +489,27 @@
     (is (= ["RB3" "2026-10-20T00:00:00Z"] (ros-of "ppr")))
     (is (= ["RB9" "2026-10-20T00:00:00Z"] (ros-of "standard"))
         "a standard league reads the standard ranks, never PPR's")))
+
+(deftest waivers-reads-this-weeks-experts-in-the-leagues-own-format
+  (let [ranks  {:ppr      {"rb0_rb" {:fantasypros/wk-pos-rank "RB29"}}
+                :standard {"rb0_rb" {:fantasypros/wk-pos-rank "RB35"}}}
+        env    {:fetched-at "2026-10-27T00:00:00Z" :by-format ranks}
+        wk-of  (fn [scoring]
+                 (with-redefs [pipeline/load-weekly-ecr (constantly env)]
+                   (let [reply (routes/waivers-reply {:scoring scoring :num-teams 12 :league synced :my-roster-id 1})]
+                     [(some #(when (= "rb0" (:player-id %)) (:fantasypros/wk-pos-rank %)) (:players reply))
+                      (:weekly-ecr-fetched-at reply)])))]
+    (is (= ["RB29" "2026-10-27T00:00:00Z"] (wk-of "ppr")))
+    (is (= ["RB35" "2026-10-27T00:00:00Z"] (wk-of "standard"))
+        "a standard league reads the standard ranks, never PPR's")))
+
+(deftest the-browser-is-not-sent-this-weeks-expert-ranks
+  (let [env {:fetched-at "x" :by-format {:ppr {"rb0_rb" {:fantasypros/wk-pos-rank "RB29" :fantasypros/wk-grade "C"}}}}
+        b   (with-redefs [pipeline/load-weekly-ecr (constantly env)]
+              (parse (waivers {:scoring "ppr" :num-teams 12 :league synced :my-roster-id 1})))]
+    (is (seq (:players b)))
+    (is (not-any? #(or (contains? % :fantasypros/wk-pos-rank) (contains? % :fantasypros/wk-grade))
+                  (concat (:players b) (:my-roster-players b))))))
 
 (deftest a-refused-body-gains-no-keys-from-the-strip
   (is (= {:error "x"} (routes/without-sensei-only {:error "x"})))

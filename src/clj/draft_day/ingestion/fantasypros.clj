@@ -14,6 +14,8 @@
      cheatsheet, for the finer tier that page cuts within the position.
    - Rest-of-season rank (`parse-ros-ecr`): the same blob off the in-season
      rankings pages, for the experts' view of a player from here on.
+   - Weekly rank (`parse-weekly-ecr`): the same blob off the week's rankings
+     pages, for the experts' view of a player this week alone.
    - AAV (`parse-aav`): scrapes FantasyPros' auction-value calculator (the
      draftwizard `#OverallTable`) for a raw market price per player."
   (:require [clojure.string :as str]
@@ -208,19 +210,21 @@
                         :fantasypros/ros-rank-max (->int (:rank_max p))}))))
            seq))))
 
-(defn fetch-ros-ecr
+(defn fetch-position-pages
   "Network: `{format {key entry}}` for all three formats off the twelve
-  rest-of-season pages: RB, WR and TE per format, QB, K and DST once. Throws
-  when any page fails, since a format missing a position would read as experts
-  who do not rank him."
-  []
+  per-position pages `url` names: RB, WR and TE per format, QB, K and DST once.
+  `parse` turns one page's HTML into entries for its position, or nil when it
+  is not the page wanted. Throws when any page fails, since a format missing a
+  position would read as experts who do not rank him. `what` names the pages in
+  that error."
+  [what url parse]
   (let [formats (keys pos-format-prefixes)
         page    (fn [pos fmt] [pos (if (pos-formats pos) fmt :standard)])
         pages   (distinct (for [pos (keys pos-formats), fmt formats] (page pos fmt)))
         rows    (parallel/all
                  (into {} (map (fn [[pos fmt :as p]]
-                                 [p #(or (some-> (fetch-page (ros-url pos fmt)) (parse-ros-ecr pos))
-                                         (throw (ex-info "rest-of-season page failed"
+                                 [p #(or (some-> (fetch-page (url pos fmt)) (parse pos))
+                                         (throw (ex-info (str what " page failed")
                                                          {:position pos :format fmt})))]))
                        pages))]
     (into {}
@@ -231,6 +235,53 @@
                                   (map (juxt :key #(dissoc % :key))))
                             (keys pos-formats))]))
           formats)))
+
+(defn fetch-ros-ecr
+  "Network: the rest-of-season ranks, `{format {key entry}}`, off the twelve
+  pages `ros-url` names. See `fetch-position-pages`."
+  []
+  (fetch-position-pages "rest-of-season" ros-url parse-ros-ecr))
+
+(defn weekly-url
+  "The rankings page for `pos` at scoring format `fmt`, on the per-position
+  page's rules: QB, K and DST have only the bare page. It names no week: the
+  vendor serves the current one, which `parse-weekly-ecr` checks."
+  [pos fmt]
+  (str/replace (pos-cheatsheet-url pos fmt) "-cheatsheets.php" ".php"))
+
+(defn parse-weekly-ecr
+  "Pure: a weekly page for `pos` -> seq of `{:key :fantasypros/wk-pos-rank
+  \"RB29\" :fantasypros/wk-rank-min :fantasypros/wk-rank-max :fantasypros/wk-grade
+  \"C\"}`, or nil.
+
+  Nil unless the page really is the weekly ranking of `pos` for `week`. A page
+  still on last week's ranks is the vendor's to roll over on its own schedule,
+  and reading it as this week's would put a stale call beside this week's
+  opponent. The other traps are `parse-ros-ecr`'s: a wrong URL answers 200 with
+  another sheet."
+  [html pos week]
+  (let [{:keys [ranking_type_name players] page-week :week} (ecr-data html)]
+    (when (and (= "weekly" ranking_type_name)
+               (= week (->int page-week))
+               (seq players)
+               (every? #(= pos (:player_position_id %)) players))
+      (->> players
+           (keep (fn [p]
+                   (let [k (match/key-for (:player_name p) pos)]
+                     (when (and k (:pos_rank p))
+                       {:key                      k
+                        :fantasypros/wk-pos-rank  (:pos_rank p)
+                        :fantasypros/wk-rank-min  (->int (:rank_min p))
+                        :fantasypros/wk-rank-max  (->int (:rank_max p))
+                        :fantasypros/wk-grade     (:start_sit_grade p)}))))
+           seq))))
+
+(defn fetch-weekly-ecr
+  "Network: the ranks for `week`, `{format {key entry}}`, off the twelve pages
+  `weekly-url` names. Throws when any page fails or is not on `week`. See
+  `fetch-position-pages`."
+  [week]
+  (fetch-position-pages "weekly" weekly-url #(parse-weekly-ecr %1 %2 week)))
 
 ;; --- AAV (auction values) ---
 

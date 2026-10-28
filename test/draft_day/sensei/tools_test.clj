@@ -1,5 +1,6 @@
 (ns draft-day.sensei.tools-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [draft-day.db :as db]
             [draft-day.sensei.context :as context]
             [draft-day.sensei.fixtures :as fx]
@@ -297,6 +298,14 @@
     (is (= "WR31 (28-40)" (:ros-ecr (tools/row p)))))
   (is (= "WR31" (:ros-ecr (tools/row (assoc (first fx/free-agents) :fantasypros/ros-pos-rank "WR31")))))
   (is (not (contains? (tools/row (first fx/free-agents)) :ros-ecr)) "unranked: no key"))
+
+(deftest a-row-states-the-experts-rank-for-this-week
+  (let [p (assoc (first fx/free-agents) :fantasypros/wk-pos-rank "RB29" :fantasypros/wk-rank-min 28
+                 :fantasypros/wk-rank-max 33 :fantasypros/wk-grade "C")]
+    (is (= "RB29 (28-33) C" (:wk-ecr (tools/row p)))))
+  (is (= "RB29" (:wk-ecr (tools/row (assoc (first fx/free-agents) :fantasypros/wk-pos-rank "RB29")))))
+  (is (not (contains? (tools/row (first fx/free-agents)) :wk-ecr)) "unranked: no key")
+  (is (str/includes? (tools/legend) "- wk-ecr:")))
 
 (deftest a-row-states-snaps-and-a-taken-over-role
   (let [r (tools/row (assoc (first fx/free-agents) :snap-share 0.6527 :snap-share-season 0.31

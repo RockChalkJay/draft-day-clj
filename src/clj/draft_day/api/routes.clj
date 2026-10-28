@@ -432,6 +432,7 @@
             weekly       (pipeline/load-weekly season* week)
             outlook      (pipeline/load-outlook season* week (inc season-games))
             ros-ecr      (pipeline/load-ros-ecr season*)
+            weekly-ecr   (pipeline/load-weekly-ecr season* week)
             adds         (trending/load-adds)
             ctx      {:league             league
                       :my-roster-id       my-roster-id
@@ -465,6 +466,7 @@
                          (waiver-board-inputs scoring*)
                          (pipeline/assoc-outlook (:lines outlook))
                          (pipeline/assoc-ros-ecr (get-in ros-ecr [:by-format (scoring/format-of scoring*)]))
+                         (pipeline/assoc-weekly-ecr (get-in weekly-ecr [:by-format (scoring/format-of scoring*)]))
                          (ros/with-ros scoring* ctx)
                          (pipeline/assoc-weekly (:lines weekly))
                          (pipeline/assoc-trending (:adds adds))
@@ -507,12 +509,15 @@
                ;; nil offline or replaying; rest-of-season then rests on the preseason line.
                :outlook-fetched-at (:fetched-at outlook)
                :ros-ecr-fetched-at (:fetched-at ros-ecr)
+               :weekly-ecr-fetched-at (:fetched-at weekly-ecr)
                ;; nil offline or when Sleeper never answered; rivals bid on need alone.
                :trending     (some-> adds (select-keys [:fetched-at :lookback-hours])))))))
 
 (def sensei-only-keys
   "Row keys the browser never draws, for Sensei's tools to read."
   [:fantasypros/ros-pos-rank :fantasypros/ros-rank-min :fantasypros/ros-rank-max
+   :fantasypros/wk-pos-rank :fantasypros/wk-rank-min :fantasypros/wk-rank-max
+   :fantasypros/wk-grade
    :snap-share :snap-share-season :rz-rush :rz-tgt :rz-pass :role/since :role/vacated-by :role/vacated-status])
 
 (defn without-sensei-only
@@ -526,7 +531,7 @@
 
 (defn waivers-handler
   "POST /api/waivers: `waivers-reply` as JSON, and a 400 for a body it cannot
-  price. `:drop-costs` and the experts' rest-of-season ranks and the snap and role facts are Sensei's and
+  price. `:drop-costs`, the experts' ranks and the snap and role facts are Sensei's and
   the browser reads none of them."
   [req]
   (try

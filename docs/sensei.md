@@ -144,6 +144,13 @@ makes a large disagreement worth a look, but whether averaging the two predicts
 better is unmeasured. The weekly snapshots save the ranks (`ros_ecr`) so that it
 can be.
 
+Rows also carry `wk-ecr`, the same experts' rank for this week's games alone,
+with the range of their ranks and FantasyPros' start/sit grade (`RB29 (28-33) C`).
+It is read for the league's own scoring format, absent when the experts do not
+rank him or FantasyPros has not published the week, and display only. Its snapshot
+key is `weekly_ecr`, which matters more than the rest-of-season one: a week's
+ranks cannot be fetched again once the next week begins.
+
 **Who took over.** Rows carry `snap` (his share of his team's offensive snaps
 over his last three weeks played), `snap-season`, and `role` when a teammate at
 his position who held the role went to injured reserve and he has taken it
