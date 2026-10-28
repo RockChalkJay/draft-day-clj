@@ -402,7 +402,7 @@
     (and synced? (not team?)) "Pick your team under Settings to see what a claim would cost."))
 
 (defn status-line
-  "One muted note in the board's control row: which season it is for, how old
+  "One muted note above the board's control row: which season it is for, how old
   the week's projection is, and anything standing between the manager and a real
   answer.
 
@@ -502,9 +502,9 @@
         roster?   @(rf/subscribe [:waiver-roster-open?])
         all?      @(rf/subscribe [:waiver-show-rostered?])]
     [:div.waivers-view
+     [status-line]
      [:div.board-controls
       [:div.filters [board/pos-filter] [board/search-box] [pool-filter]]
-      [status-line]
       [columns/waiver-column-picker]]
      (when-not roster? [roster-bar])
      [:div.waiver-body {:class (when roster? "roster-open")}
