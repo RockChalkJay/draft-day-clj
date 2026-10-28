@@ -137,6 +137,19 @@ free agents this week at each position (`experts`, `wk-ecr`). A player on severa
 is listed once, with `on` naming them. The lineup board keeps the Waivers tab's
 order, so the two cannot disagree about who the best claim is.
 
+**Weighing the sources.** The instructions name five kinds of evidence and ask
+for a recommendation when two independent ones agree: fit (`lineup`, `upgrade`,
+`outlook`), the market (`adds`), momentum (`form`, `trend`, `snap`, `role`,
+red-zone use), the experts (`wk-ecr` this week, `ros-ecr` for the rest of the
+season) and health (`inj`, news). They keep this week apart from the season, and
+say that a `lineup` of 0 is a stash or a role bet when the others agree, not a
+reason to pass. Where the model can search the web it is told to look up the
+week's waiver wire, start/sit and sleeper articles for the shortlist and the
+drop only, at most three searches, and to name the outlet behind each claim: an
+outlet's figure is never an engine number. Whether this reads better is a
+judgment of answers, not a measurement, so there is no test of the advice,
+only of what the instructions name.
+
 **Comparing drops.** `waiver_targets` measures every claim against one drop, the
 board's `drop-candidate`, which is the cheapest seat by arithmetic and not a
 verdict on the player. `evaluate_claim` prices one add against any drop the

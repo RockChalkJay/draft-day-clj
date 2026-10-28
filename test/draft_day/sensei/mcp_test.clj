@@ -84,6 +84,13 @@
     (is (= [7 8] (map :id json)) "the notification gets nothing"))
   (is (= 202 (:status (post [{:jsonrpc "2.0" :method "notifications/initialized"}])))))
 
+(deftest the-instructions-weigh-the-market-form-and-the-experts-not-only-lineup
+  (let [text (get-in (rpc (request 1 "initialize" {:protocolVersion "2025-06-18"})) [:json :result :instructions])]
+    (doseq [k ["`adds`" "`form`" "`wk-ecr`" "`ros-ecr`" "`role`" "`on`"]]
+      (is (str/includes? text k) (str "names " k)))
+    (is (not (str/includes? text "Lead with")) "lineup is one signal, not the lead")
+    (is (str/includes? text "do not put a FAAB amount") "the bid model is still on hold")))
+
 (deftest prompts-carry-the-weekly-review
   (let [[p :as listed] (get-in (rpc (request 9 "prompts/list")) [:json :result :prompts])]
     (is (= ["weekly_review"] (map :name listed)))
