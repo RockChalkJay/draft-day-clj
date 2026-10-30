@@ -58,8 +58,7 @@
   [path data]
   (io/make-parents path)
   (let [target (.toPath (.getAbsoluteFile (io/file path)))
-        tmp    (java.nio.file.Files/createTempFile (.getParent target) ".write-" ".tmp"
-                                                   (make-array java.nio.file.attribute.FileAttribute 0))]
+        tmp    (.resolveSibling target (str ".write-" (random-uuid) ".tmp"))]
     (try
       (with-open [out (io/output-stream (.toFile tmp))]
         (transit/write (transit/writer out :json) data))
@@ -372,9 +371,9 @@
                               (do (.setLastModified (io/file path) (System/currentTimeMillis))
                                   cached)
                               (do (write-transit! path fetched)
-                                  ;; No weekly file is the truth in preseason and an outage
+                                  ;; A missing source is the truth in preseason and an outage
                                   ;; otherwise, and the fetch cannot tell them apart.
-                                  (when-not (:weekly fetched)
+                                  (when-not (and (:weekly fetched) (:sleeper fetched))
                                     (age-cache! path failure-backoff-ms (realized-ttl-hours)))
                                   fetched))))))]
        (reset! realized-memo {:memo-path path :env env})

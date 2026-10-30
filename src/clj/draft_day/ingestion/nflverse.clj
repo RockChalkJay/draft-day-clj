@@ -376,7 +376,7 @@
   "How long a whole JDK-client request, body included, may take. The client's own
   timeouts stop at the response headers, so a connection that stalls mid-body
   would otherwise block its caller, and every board request behind it, forever."
-  60)
+  120)
 
 (defn get-string
   "GET `url` with `headers` through the JDK client, following redirects

@@ -613,6 +613,16 @@
                 "and waits a TTL before trying again, rather than on every request"))))
       (.delete (io/file path)))))
 
+(deftest a-sleeper-outage-beside-a-healthy-nflverse-is-asked-again-in-minutes
+  (with-redefs [pipeline/offline? (constantly false)
+                nflverse-weekly/fetch (fn [_] {:by-key {} :through-week 3})
+                sleeper-actual/fetch  (fn [& _] (throw (ex-info "down" {})))]
+    (let [path (tmp "realized-sleeper-down")]
+      (.delete (io/file path))
+      (pipeline/load-realized 2026 {:path path})
+      (is (not (pipeline/cache-fresh? path (/ (* 2 pipeline/failure-backoff-ms) 3600000.0))))
+      (.delete (io/file path)))))
+
 (deftest a-cold-start-with-no-weekly-file-is-asked-again-in-minutes
   (with-redefs [pipeline/offline? (constantly false)
                 nflverse-weekly/fetch (fn [_] nil)
