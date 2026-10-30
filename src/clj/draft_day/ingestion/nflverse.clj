@@ -372,18 +372,36 @@
           {}
           (sort (keys rows-by-season))))
 
+(def request-deadline-seconds
+  "How long a whole JDK-client request, body included, may take. The client's own
+  timeouts stop at the response headers, so a connection that stalls mid-body
+  would otherwise block its caller, and every board request behind it, forever."
+  60)
+
+(defn get-string
+  "GET `url` with `headers` through the JDK client, following redirects
+  explicitly (nflverse release URLs 302 to object storage and the JDK client
+  does not follow them by default). The body, or nil on a non-200; throws when
+  `request-deadline-seconds` pass."
+  [url headers]
+  (let [client  (-> (HttpClient/newBuilder)
+                    (.followRedirects HttpClient$Redirect/NORMAL)
+                    (.connectTimeout (java.time.Duration/ofSeconds 15))
+                    (.build))
+        builder (HttpRequest/newBuilder (URI/create url))
+        _       (doseq [[k v] headers] (.header builder k v))
+        fut     (.sendAsync client (.build builder) (HttpResponse$BodyHandlers/ofString))]
+    (try
+      (let [resp (.get fut request-deadline-seconds java.util.concurrent.TimeUnit/SECONDS)]
+        (when (= 200 (.statusCode resp)) (.body resp)))
+      (catch java.util.concurrent.TimeoutException _
+        (.cancel fut true)
+        (throw (ex-info "request timed out" {:url url :seconds request-deadline-seconds}))))))
+
 (defn http-get-string
-  "The JDK client rather than http-kit, and following redirects explicitly:
-  nflverse release URLs 302 to object storage, and the JDK client does not
-  follow redirects by default."
+  "`get-string` with no extra headers."
   [url]
-  (let [client (-> (HttpClient/newBuilder)
-                   (.followRedirects HttpClient$Redirect/NORMAL)
-                   (.build))
-        resp   (.send client
-                      (.build (HttpRequest/newBuilder (URI/create url)))
-                      (HttpResponse$BodyHandlers/ofString))]
-    (when (= 200 (.statusCode resp)) (.body resp))))
+  (get-string url {}))
 
 (def required-columns
   "Columns a response has to carry before it counts as this file at all.

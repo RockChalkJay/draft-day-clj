@@ -3,8 +3,7 @@
   league. Weekly rows are accumulated because Sleeper supplies team defenses
   and counts some stats differently from nflverse; a missing week is treated as
   no appearance, while an entry with `gp` and empty stats is a scoreless game."
-  (:require [clojure.tools.logging :as log]
-            [jsonista.core :as json]
+  (:require [jsonista.core :as json]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
             [draft-day.ingestion.parallel :as parallel]
             [draft-day.json :refer [mapper]]
@@ -110,14 +109,13 @@
 
 (defn fetch
   "Fetch played weeks, returning Sleeper-keyed realized columns or nil if none
-  arrive. Fired together; `sleeper-http` holds them to the host's limit."
+  arrive. Fired together; `sleeper-http` holds them to the host's limit. Throws
+  when any week fails: a missing week would read as a complete set, drop a
+  game from every player's line, and replace a good cached copy."
   [season through-week]
   (when (and (number? through-week) (pos? through-week))
     (let [weeks   (range 1 (inc (long through-week)))
-          fetch-w (fn [w]
-                    #(try (fetch-week season w)
-                          (catch Exception e
-                            (log/warn e "sleeper-actual: week" w "failed"))))
+          fetch-w (fn [w] #(fetch-week season w))
           results (vals (parallel/all (zipmap weeks (map fetch-w weeks))))
           rows    (into [] (comp cat (keep entry->row)) results)]
       (when (seq rows)

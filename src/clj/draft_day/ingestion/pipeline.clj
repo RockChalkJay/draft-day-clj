@@ -52,10 +52,24 @@
 (defn offline? []
   (= "1" (System/getenv "DRAFTDAY_OFFLINE")))
 
-(defn write-transit! [path data]
+(defn write-transit!
+  "Write `data` to `path` through a sibling file moved into place, so a crash or
+  a full disk mid-write leaves the old file rather than a truncated fresh one."
+  [path data]
   (io/make-parents path)
-  (with-open [out (io/output-stream path)]
-    (transit/write (transit/writer out :json) data)))
+  (let [target (.toPath (.getAbsoluteFile (io/file path)))
+        tmp    (java.nio.file.Files/createTempFile (.getParent target) ".write-" ".tmp"
+                                                   (make-array java.nio.file.attribute.FileAttribute 0))]
+    (try
+      (with-open [out (io/output-stream (.toFile tmp))]
+        (transit/write (transit/writer out :json) data))
+      (java.nio.file.Files/move tmp target
+                                (into-array java.nio.file.CopyOption
+                                            [java.nio.file.StandardCopyOption/REPLACE_EXISTING
+                                             java.nio.file.StandardCopyOption/ATOMIC_MOVE]))
+      (catch Throwable t
+        (java.nio.file.Files/deleteIfExists tmp)
+        (throw t)))))
 
 (defn read-transit [path]
   (when (.exists (io/file path))
@@ -74,11 +88,24 @@
          (< (- (System/currentTimeMillis) (.lastModified f))
             (long (* ttl-hours 3600 1000))))))
 
+(defn age-cache!
+  "Back-date `path` so it goes stale `ms` from now rather than a full
+  `ttl-hours`: the file is freshness-checked by its modification time."
+  [path ms ttl-hours]
+  (let [ttl (long (* ttl-hours 3600 1000))]
+    (.setLastModified (io/file path) (+ (System/currentTimeMillis) (- ms ttl)))))
+
 (def failure-backoff-ms
   "How long a failed `load-ttl-cache` fetch keeps the next one from trying."
   (* 5 60 1000))
 
 (defonce ^:private cache-failed-at (atom {}))
+
+(defn backing-off?
+  "Whether a fetch for `path` failed within `failure-backoff-ms`."
+  [path]
+  (boolean (when-let [t (get @cache-failed-at path)]
+             (< (- (System/currentTimeMillis) t) failure-backoff-ms))))
 
 (defn reset-cache-failures!
   "Forget every failed fetch, so the next `load-ttl-cache` tries again (tests)."
@@ -108,8 +135,7 @@
   `nflverse-weekly` requires this namespace."
   [{:keys [path ttl-hours schema-version fetch label]}]
   (let [cached (read-ttl-cache path schema-version label)
-        backing-off? (when-let [t (get @cache-failed-at path)]
-                       (< (- (System/currentTimeMillis) t) failure-backoff-ms))]
+        backing-off? (backing-off? path)]
     (if (or (and cached (cache-fresh? path ttl-hours)) backing-off?)
       cached
       (try (let [env (assoc (fetch) :schema-version schema-version)]
@@ -345,7 +371,12 @@
                               ;; Kept copies restart their clock, or every request retries.
                               (do (.setLastModified (io/file path) (System/currentTimeMillis))
                                   cached)
-                              (do (write-transit! path fetched) fetched))))))]
+                              (do (write-transit! path fetched)
+                                  ;; No weekly file is the truth in preseason and an outage
+                                  ;; otherwise, and the fetch cannot tell them apart.
+                                  (when-not (:weekly fetched)
+                                    (age-cache! path failure-backoff-ms (realized-ttl-hours)))
+                                  fetched))))))]
        (reset! realized-memo {:memo-path path :env env})
        env))))
 
@@ -390,13 +421,16 @@
   "Fetch, anchor, validate, and enrich the live universe, without the realized
   columns."
   [season]
-  (let [anchored (player-ids/attach-ids (sleeper/fetch-universe season)
+  (let [week-one (sleeper/week-one-stats season)
+        anchored (player-ids/attach-ids (sleeper/fetch-universe season week-one)
                                         (player-ids/pinned-index))
         {:keys [players report]} (validate/validate-universe anchored)]
     (validate/log-report! "sleeper universe" report)
     (when (validate/systemic-failure? report)
       (throw (ex-info "player universe failed validation" report)))
-    (assoc (enrich-universe season players) :validation report)))
+    (-> (enrich-universe season players)
+        (assoc :validation report)
+        (assoc-in [:sources :sleeper/week-one] {:ok? (some? week-one)}))))
 
 (defn fetch-enriched-universe
   "Fetch the live universe with every column, realized ones included."
@@ -419,11 +453,24 @@
 (defn cached-universe
   "Read a schema-matched disk cache, or return nil."
   [path]
-  (when-let [env (cached->universe (read-transit path))]
+  (when-let [env (cached->universe (try (read-transit path)
+                                        (catch Exception e
+                                          (log/warn e "universe cache unreadable")
+                                          nil)))]
     (when (= schema-version (:schema-version env))
       (let [{:keys [players] :as v} (checked "cache" (:players env))]
         (when (seq players)
           (merge env v {:source "cache"}))))))
+
+(def retry-ms
+  "How long a universe that fell back past a fresh cache is held before live
+  ingestion is tried again."
+  (* 10 60 1000))
+
+(defn degraded?
+  "Whether a source of `env` failed, leaving a column empty or a line sparse."
+  [env]
+  (boolean (some (comp false? :ok?) (vals (:sources env)))))
 
 (defn live-universe
   "Fetch and cache the live universe, falling back to stale cache, sample, or empty."
@@ -437,17 +484,20 @@
                :validation     validation
                :sources        sources
                :players        players}]
-      (write-transit! cache-path env)
-      (assoc env :source "live"))
+      (let [kept (when (degraded? env)
+                   (let [c (cached-universe cache-path)]
+                     (when (and c (= season' (:season c)) (not (degraded? c))) c)))]
+        (if kept
+          ;; A refetch that lost a source does not replace a whole copy.
+          (do (age-cache! cache-path retry-ms (cache-ttl-hours))
+              kept)
+          (do (write-transit! cache-path env)
+              (when (degraded? env) (age-cache! cache-path retry-ms (cache-ttl-hours)))
+              (assoc env :source "live")))))
     (catch Exception _
       (or (cached-universe cache-path)
           (let [s (sample-universe)] (when (seq (:players s)) s))
           {:schema-version schema-version :players [] :source "empty"}))))
-
-(def retry-ms
-  "How long a universe that fell back past a fresh cache is held before live
-  ingestion is tried again."
-  (* 10 60 1000))
 
 (defn expires-at
   "When a universe just loaded against `cache-path` should be reloaded: when the
@@ -532,12 +582,22 @@
                       env))
            env    (or memo
                       (let [cached (read-weekly path)]
-                        (if (and fresh? (weekly-answers? cached season week))
+                        (cond
+                          (and fresh? (weekly-answers? cached season week))
                           cached
+
+                          ;; Every request would otherwise wait out Sleeper's timeouts again.
+                          (and (not refresh) (backing-off? path))
+                          (when (weekly-answers? cached season week) cached)
+
+                          :else
                           (try
-                            (live-weekly season week path)
+                            (let [live (live-weekly season week path)]
+                              (swap! cache-failed-at dissoc path)
+                              live)
                             (catch Exception e
                               (log/warn e "weekly projections fetch failed:" (ex-message e))
+                              (swap! cache-failed-at assoc path (System/currentTimeMillis))
                               (when (weekly-answers? cached season week) cached))))))]
        (reset! weekly-memo {:memo-path path :env env})
        (when (seq (:lines env)) env)))))
