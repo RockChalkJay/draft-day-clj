@@ -163,7 +163,7 @@
                ;; Rules ride along so the board can be compared against the
                ;; rules in force when it is *read* — see the ns docstring.
                :on-success [:ranked-loaded n (db/rules-stamp (:config db))]
-               :on-failure [:recompute-failed]}}))))
+               :on-failure [:recompute-failed n]}}))))
 
 (rf/reg-event-db :ranked-loaded
   (fn [db [_ n rules resp]]
@@ -178,11 +178,14 @@
           (assoc :status (:universe-status db)))))))
 
 (rf/reg-event-db :recompute-failed
-  (fn [db [_ err]]
+  (fn [db [_ n err]]
     ;; Leave :ranked alone: stale but readable beats blank, and the status
-    ;; line plus `:ranked-rules` are what say so. See the ns docstring.
-    (let [msg (str "Rankings update failed: " err)]
-      (assoc db :status msg :recompute-error msg))))
+    ;; line plus `:ranked-rules` are what say so. See the ns docstring. Only the
+    ;; newest request may speak, or an old failure sits over a board that landed.
+    (if-not (= n (:recompute-seq db))
+      db
+      (let [msg (str "Rankings update failed: " err)]
+        (assoc db :status msg :recompute-error msg)))))
 
 ;; ---- UI state ----
 
@@ -430,8 +433,9 @@
     ;; same line, so the modal is not a way round Settings.
     (let [owned     (db/league-owned-keys db)
           pick      (fn [k typed] (if (owned k) (get-in db [:config k]) typed))
-          num-teams (max 2 (min 20 (or (pick :num-teams num-teams) 12)))
-          bankroll  (max 1 (or (pick :starting-bankroll starting-bankroll) 200))
+          finite    (fn [x] (when (and (number? x) (js/isFinite x)) x))
+          num-teams (max 2 (min 20 (or (finite (pick :num-teams num-teams)) 12)))
+          bankroll  (max 1 (or (finite (pick :starting-bankroll starting-bankroll)) 200))
           cfg   (assoc (:config db)
                        :num-teams num-teams
                        :starting-bankroll bankroll)
@@ -726,7 +730,11 @@
           mine     (or (:my-roster-id entry)
                        (db/my-roster-id-for (:teams league)
                                             (:user-id (db/league-account db entry))))]
-      {:db (-> db
+      ;; A reply for a league disconnected while it was in flight would merge
+      ;; into a fresh entry with a name and a sync and no provider.
+      (if-not entry
+        {}
+        {:db (-> db
                (update-in [:leagues k] merge
                           ;; Client clock: it answers "how old is what I am
                           ;; looking at", which is a question about this browser.
@@ -750,7 +758,7 @@
        :fx (cond-> [[:dispatch [:fetch-waivers]]]
              ;; The matchup board asked with no rosters is every team empty.
              (and (db/matchup-view? (:view db)) (= k (:active-league db)))
-             (conj [:dispatch [:fetch-matchup]]))})))
+             (conj [:dispatch [:fetch-matchup]]))}))))
 
 (rf/reg-event-fx :connect-account
   (fn [{:keys [db]} [_ provider credentials]]
@@ -830,11 +838,23 @@
           next-k (when moved? (first (sort (keys (:leagues db')))))]
       (if-not moved?
         {:db db'}
-        {:db (cond-> (assoc db' :active-league nil :waivers nil :compare [])
+        {:db (cond-> (assoc db'
+                      :active-league nil
+                      :waivers nil
+                      :compare []
+                      ;; With no league left to activate nothing else drops what
+                      ;; was asked about the one that went, or the replies in flight.
+                      :waiver-seq (inc (:waiver-seq db 0))
+                      :matchup nil
+                      :matchup-pick nil
+                      :matchup-status nil
+                      :matchup-seq (inc (:matchup-seq db 0))
+                      :sensei-messages []
+                      :sensei-busy? false
+                      :sensei-seq (inc (:sensei-seq db 0)))
                next-k (activate next-k))
-         :fx (if next-k
-               [[:dispatch [:recompute]] [:dispatch [:fetch-waivers]]]
-               [])}))))
+         :fx (cond-> [[:http-stream-abort :sensei]]
+               next-k (into [[:dispatch [:recompute]] [:dispatch [:fetch-waivers]]]))}))))
 
 (defn choose-league
   "Store this league under its account, make it active, and go ask both
@@ -852,7 +872,8 @@
     ;; Sync is who is rostered, import is the rules; `:recompute` because until
     ;; the import answers this league seeds the previous one's config.
     {:db (-> db (assoc-in [:leagues k] entry) (activate k))
-     :fx [[:dispatch [:sync-league req]]
+     :fx [[:http-stream-abort :sensei]
+          [:dispatch [:sync-league req]]
           [:dispatch [:import-league req]]
           [:dispatch [:recompute]]]}))
 
@@ -931,7 +952,7 @@
        :http {:method :post :url "/api/waivers"
               :body (waiver-request db)
               :on-success [:waivers-loaded n]
-              :on-failure [:waivers-failed]}})))
+              :on-failure [:waivers-failed n]}})))
 
 (rf/reg-event-db :waivers-loaded
   (fn [db [_ n resp]]
@@ -944,10 +965,13 @@
              :waiver-status nil))))
 
 (rf/reg-event-db :waivers-failed
-  (fn [db [_ err]]
+  (fn [db [_ n err]]
     ;; Leave :waivers alone — the previous board is stale but readable, which
-    ;; beats blanking it. Same call as :recompute-failed makes.
-    (assoc db :waiver-status (str "Waiver board failed: " err))))
+    ;; beats blanking it. Same call as :recompute-failed makes, and the same
+    ;; seq guard: a league you left must not name its failure under this one.
+    (if-not (= n (:waiver-seq db))
+      db
+      (assoc db :waiver-status (str "Waiver board failed: " err)))))
 
 
 (defn- matchup-request
@@ -992,7 +1016,7 @@
            :http {:method :post :url "/api/matchup"
                   :body (matchup-request db)
                   :on-success [:matchup-loaded n]
-                  :on-failure [:matchup-failed]}})))))
+                  :on-failure [:matchup-failed n]}})))))
 
 (rf/reg-event-db :matchup-loaded
   (fn [db [_ n resp]]
@@ -1001,10 +1025,12 @@
       (assoc db :matchup resp :matchup-status nil))))
 
 (rf/reg-event-db :matchup-failed
-  (fn [db [_ err]]
+  (fn [db [_ n err]]
     ;; The previous board stays, as `:waivers-failed` does: a scoreboard a few
     ;; minutes old still answers who is winning.
-    (assoc db :matchup-status (str "Matchup failed: " err))))
+    (if-not (= n (:matchup-seq db))
+      db
+      (assoc db :matchup-status (str "Matchup failed: " err)))))
 
 (rf/reg-event-db :toggle-lineup-view
   ;; Per team, so each side of the matchup can show its set or best lineup on

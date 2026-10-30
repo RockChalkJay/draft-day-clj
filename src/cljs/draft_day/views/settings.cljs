@@ -133,7 +133,9 @@
   between supporting one more and supporting them one at a time."
   [picked draft on-done]
   (let [p     @picked
-        creds (into {} (filter (comp not-empty str val)) @draft)
+        creds (into {} (keep (fn [[k v]] (let [s (str/trim (str v))]
+                                           (when (seq s) [k s]))))
+                    @draft)
         bad   (providers/credential-errors p creds)]
     [:<>
      [:div.provider-tabs

@@ -38,7 +38,9 @@
             [:input {:type "number" :min 1 :value @budget
                      :disabled (contains? owned :starting-bankroll)
                      :title (when (contains? owned :starting-bankroll) why)
-                     :on-change #(reset! budget (js/parseInt (.. % -target -value) 10))}]]]
+                     :on-change #(let [v (js/parseInt (.. % -target -value) 10)]
+                                   (when (and (integer? v) (pos? v))
+                                     (reset! budget v)))}]]]
           [:h4 "Team names " [:span.muted "(first is you)"]]
           [:div.team-names
            (map (fn [i]

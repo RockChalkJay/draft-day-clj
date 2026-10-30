@@ -68,7 +68,7 @@
 (deftest a-status-with-something-to-say-stays-on-the-season-row
   (swap! rdb/app-db assoc :universe {:through-week 3} :view :waivers
          :status "642 players · cache" :universe-status "642 players · cache")
-  (rf/dispatch-sync [:recompute-failed "502"])
+  (rf/dispatch-sync [:recompute-failed (:recompute-seq @rdb/app-db) "502"])
   (rf/clear-subscription-cache!)
   (is (re-find #"Rankings update failed: 502" (render header/header))))
 
