@@ -245,7 +245,8 @@
                                      {:week week :status status})))))
 
 (defn week-one-stats
-  "Fetch best-effort week-one stats keyed by player-id.
+  "Fetch best-effort week-one stats keyed by player-id: nil when the fetch
+  failed, so a caller can tell that from a week with no entries.
 
   Week one is intentionally used as the baseline for the season line; the
   in-season weekly line is handled separately so the two horizons stay distinct."
@@ -261,8 +262,9 @@
 (defn fetch-universe
   "Fetch the normalized player universe for a season."
   ([] (fetch-universe (season/current)))
-  ([season] (universe-from-entries (fetch-projections season)
-                                   (week-one-stats season))))
+  ([season] (fetch-universe season (week-one-stats season)))
+  ([season week-one] (universe-from-entries (fetch-projections season)
+                                            week-one)))
 
 (defn home-teams [games week]
   (into #{} (comp (filter #(= week (:week %))) (keep :home)) games))
