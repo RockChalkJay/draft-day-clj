@@ -108,7 +108,7 @@
   (rf/dispatch-sync [:recompute])
   (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
                      (db/rules-stamp (:config @rdb/app-db)) {:players [{:player-id "p1"}]}])
-  (rf/dispatch-sync [:recompute-failed "boom"])
+  (rf/dispatch-sync [:recompute-failed (:recompute-seq @rdb/app-db) "boom"])
   (is (= "p1" (-> @rdb/app-db :ranked :players first :player-id))
       "stale but readable beats blank")
   (is (re-find #"failed" (:status @rdb/app-db)))
@@ -127,7 +127,7 @@
   (is (= "✓ Imported \"RaiderNation\" (2026)" (:status @rdb/app-db)))
 
   (testing "not even when it is clearing an earlier failure of its own"
-    (rf/dispatch-sync [:recompute-failed "boom"])
+    (rf/dispatch-sync [:recompute-failed (:recompute-seq @rdb/app-db) "boom"])
     (rf/dispatch-sync [:set-status "✓ Imported \"RaiderNation\" (2026)"])
     (rf/dispatch-sync [:recompute])
     (rf/dispatch-sync [:ranked-loaded (:recompute-seq @rdb/app-db)
@@ -400,6 +400,15 @@
       (rf/dispatch-sync [:start-draft {:num-teams 10 :starting-bankroll 100 :team-names []}])
       (is (= [] (fx/read-drafts))))))
 
+(deftest a-budget-that-is-not-a-number-never-reaches-the-config
+  (with-fake-storage
+    (fn [_]
+      (rf/dispatch-sync [:start-draft {:num-teams js/NaN :starting-bankroll js/NaN :team-names []}])
+      (is (= 200 (get-in @rdb/app-db [:config :starting-bankroll]))
+          "NaN falls back to the default rather than into every bankroll")
+      (is (= 12 (get-in @rdb/app-db [:config :num-teams])))
+      (is (every? #(= 200 (:bankroll %)) (:teams @rdb/app-db))))))
+
 (deftest escape-closes-the-modal-and-leaves-the-comparison-alone
   (reset! rdb/app-db (assoc (loaded-db)
                             :view :waivers
@@ -654,3 +663,18 @@
 (deftest picking-a-tab-sets-it
   (rf/dispatch-sync [:set-player-detail-tab :season])
   (is (= :season (:player-detail-tab @rdb/app-db))))
+
+(deftest an-old-request-failing-does-not-speak-over-a-newer-one
+  (rf/dispatch-sync [:recompute])
+  (let [old (:recompute-seq @rdb/app-db)]
+    (rf/dispatch-sync [:recompute])
+    (rf/dispatch-sync [:recompute-failed old "boom"])
+    (is (nil? (:recompute-error @rdb/app-db)))
+    (rf/dispatch-sync [:waivers-failed 99 "boom"])
+    (is (not (re-find #"failed" (str (:waiver-status @rdb/app-db)))))
+    (rf/dispatch-sync [:matchup-failed 99 "boom"])
+    (is (not (re-find #"failed" (str (:matchup-status @rdb/app-db)))))))
+
+(deftest a-sync-reply-for-a-league-that-is-gone-adds-nothing
+  (rf/dispatch-sync [:league-synced "sleeper:gone" {:teams []}])
+  (is (nil? (get-in @rdb/app-db [:leagues "sleeper:gone"]))))

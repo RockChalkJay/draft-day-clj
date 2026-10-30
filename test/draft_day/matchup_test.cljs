@@ -104,7 +104,7 @@
   ;; A scoreboard a few minutes old still answers who is winning.
   (connect!)
   (rf/dispatch-sync [:matchup-loaded 0 reply])
-  (rf/dispatch-sync [:matchup-failed "network down"])
+  (rf/dispatch-sync [:matchup-failed (:matchup-seq @rdb/app-db) "network down"])
   (is (some? (:matchup @rdb/app-db)))
   (is (re-find #"network down" (:matchup-status @rdb/app-db))))
 
