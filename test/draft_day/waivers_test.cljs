@@ -117,7 +117,7 @@
 (deftest a-failed-refresh-leaves-the-last-board-readable
   ;; Stale but readable beats blank; the status line is what says it is stale.
   (rf/dispatch-sync [:waivers-loaded 0 {:players [{:player-id "p"}]}])
-  (rf/dispatch-sync [:waivers-failed "boom"])
+  (rf/dispatch-sync [:waivers-failed (:waiver-seq @rdb/app-db) "boom"])
   (is (= "p" (-> @rdb/app-db :waivers :players first :player-id)))
   (is (re-find #"boom" (:waiver-status @rdb/app-db))))
 
@@ -269,7 +269,7 @@
   (is (= :in-season (sub [:season-phase])))
   (testing "a failed refresh leaves it unknown rather than asserting preseason"
     (swap! rdb/app-db assoc :waivers nil)
-    (rf/dispatch-sync [:waivers-failed "boom"])
+    (rf/dispatch-sync [:waivers-failed (:waiver-seq @rdb/app-db) "boom"])
     (rf/clear-subscription-cache!)
     (is (= :unknown (sub [:season-phase])))))
 
@@ -288,6 +288,15 @@
     (swap! rdb/app-db assoc :search "")
     (rf/clear-subscription-cache!)
     (is (nil? (sub [:rostered-matches])))))
+
+(deftest a-rostered-player-is-found-under-the-keys-the-reply-decodes-to
+  (swap! rdb/app-db assoc
+         :players [{:player-id "00-0038564" :player-name "Ja'Marr Chase" :position "WR"}]
+         :search "chase"
+         :waivers {:players [] :rostered {:00-0038564 "Mine"}})
+  (rf/clear-subscription-cache!)
+  (is (= ["Mine"] (mapv :team (sub [:rostered-matches])))
+      "fx decodes JSON with keywordized keys, so an id arrives as a keyword"))
 
 ;; ---- cells ----
 
@@ -878,7 +887,7 @@
                      (db/rules-stamp (:config @rdb/app-db))
                      {:players [{:player-id "p1" :worth 51}]}])
   (rf/dispatch-sync [:set-active-league "sleeper:b"])
-  (rf/dispatch-sync [:recompute-failed "offline"])
+  (rf/dispatch-sync [:recompute-failed (:recompute-seq @rdb/app-db) "offline"])
   (rf/clear-subscription-cache!)
   (is (true? (sub [:board-rules-stale?])))
   (is (some? (:ranked @rdb/app-db)) "still readable, as :recompute-failed intends")

@@ -251,6 +251,9 @@
       (is (= [] leagues))
       (is (= "u1" (:user-id user))))))
 
+(deftest a-pasted-username-is-looked-up-without-its-whitespace
+  (is (= "user/bob" (sync-sleeper/user-path {:username " bob\n"}))))
+
 (deftest an-unknown-username-keeps-its-404
   (with-redefs [league-sync/find-user
                 (fn [_ _] (throw (ex-info "Sleeper user not found" {:status 404})))]

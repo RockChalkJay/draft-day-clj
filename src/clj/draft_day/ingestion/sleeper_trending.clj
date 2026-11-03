@@ -145,11 +145,15 @@
 
 (defn write-snapshot!
   "Save `snap` where `snapshot-path` puts it, in the folder for `week` (default
-  the weeks played the snapshot names); returns the path."
+  the weeks played the snapshot names); returns the path. Throws naming the
+  folder when it cannot be made, since `make-parents` only returns false and
+  `spit` would then blame a missing file."
   ([dir snap] (write-snapshot! dir snap (:through_week snap)))
   ([dir snap week]
-   (let [path (snapshot-path dir (:season snap) week (:fetched_at snap))]
-     (io/make-parents path)
+   (let [path   (snapshot-path dir (:season snap) week (:fetched_at snap))
+         folder (.getParentFile (io/file path))]
+     (when-not (or (.isDirectory folder) (.mkdirs folder))
+       (throw (ex-info (str "cannot create " folder ": not writable by this user") {:path (str folder)})))
      (spit path (json/write-value-as-string snap pretty-mapper))
      path)))
 
