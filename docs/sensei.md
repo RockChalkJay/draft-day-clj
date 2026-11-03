@@ -145,7 +145,8 @@ season) and health (`inj`, news). They keep this week apart from the season, and
 say that a `lineup` of 0 is a stash or a role bet when the others agree, not a
 reason to pass. Where the model can search the web it is told to look up the
 week's waiver wire, start/sit and sleeper articles for the shortlist and the
-drop only, at most three searches, and to name the outlet behind each claim: an
+drop only, at most three searches (in the in-app chat `DRAFTDAY_SENSEI_SEARCHES`
+raises the ceiling, and the model uses fewer on a narrow question), and to name the outlet behind each claim: an
 outlet's figure is never an engine number. Whether this reads better is a
 judgment of answers, not a measurement, so there is no test of the advice,
 only of what the instructions name.

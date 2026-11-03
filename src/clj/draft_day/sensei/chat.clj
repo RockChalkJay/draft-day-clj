@@ -68,10 +68,26 @@
   []
   (private-dir (io/file (System/getProperty "java.io.tmpdir") "draft-day-sensei")))
 
+(def default-searches
+  "How many web searches one answer may make unless `DRAFTDAY_SENSEI_SEARCHES`
+  says otherwise."
+  3)
+
+(defn search-limit
+  "The most web searches one answer may make under `env`: the positive whole
+  number in `DRAFTDAY_SENSEI_SEARCHES`, else `default-searches`."
+  [env]
+  (let [n (try (Long/parseLong (str/trim (str (get env "DRAFTDAY_SENSEI_SEARCHES"))))
+               (catch NumberFormatException _ nil))]
+    (if (and n (pos? n)) n default-searches)))
+
 (defn chat-note
-  "What the panel adds to the persona the MCP server already serves."
-  []
-  (str/trim (slurp (io/resource "sensei/chat.md"))))
+  "What the panel adds to the persona the MCP server already serves, with the
+  ceiling on web searches filled in."
+  [searches]
+  (-> (slurp (io/resource "sensei/chat.md"))
+      (str/replace "{searches}" (str searches))
+      str/trim))
 
 (defn mcp-config
   "Sensei's own endpoint on this server, as `--mcp-config` takes it."
@@ -94,14 +110,14 @@
 
 (defn command
   "The `claude` argv for one question. The prompt goes in on stdin."
-  [{:keys [port session-id]}]
+  [{:keys [port session-id searches] :or {searches default-searches}}]
   (into ["claude" "-p"
          "--output-format" "stream-json" "--verbose" "--include-partial-messages"
          "--tools" web-search-tool
          "--setting-sources" ""
          "--strict-mcp-config" "--mcp-config" (mcp-config port)
          "--allowedTools" (str "mcp__sensei," web-search-tool)
-         "--append-system-prompt" (chat-note)]
+         "--append-system-prompt" (chat-note searches)]
         (session-flags session-id)))
 
 (defn history->prompt
@@ -374,7 +390,8 @@
             (try
               (let [cancel  (promise)
                     secrets (context/secrets (context/accounts env))
-                    command (command {:port ((:port server)) :session-id (:session-id q)})]
+                    command (command {:port ((:port server)) :session-id (:session-id q)
+                                      :searches (search-limit env)})]
                 (or (http/as-channel
                      req
                      {:on-close (fn [_ _] (deliver cancel true))

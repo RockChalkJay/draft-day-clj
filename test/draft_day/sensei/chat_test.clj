@@ -147,6 +147,18 @@
     (testing "the prompt is not on the command line"
       (is (not-any? #(str/includes? % "Manager:") argv)))))
 
+(deftest search-limit-is-three-unless-the-env-says-otherwise
+  (is (= 3 (chat/search-limit {})))
+  (is (= 8 (chat/search-limit {"DRAFTDAY_SENSEI_SEARCHES" " 8 "})))
+  (doseq [bad ["0" "-2" "many" "" "2.5"]]
+    (is (= 3 (chat/search-limit {"DRAFTDAY_SENSEI_SEARCHES" bad})) (str "falls back on " (pr-str bad)))))
+
+(deftest the-ceiling-reaches-the-model
+  (let [note #(second (drop-while (fn [a] (not= "--append-system-prompt" a)) (chat/command %)))]
+    (is (str/includes? (note {:port 1}) "up to 3 times"))
+    (is (str/includes? (note {:port 1 :searches 7}) "up to 7 times"))
+    (is (not (str/includes? (note {:port 1 :searches 7}) "{searches}")))))
+
 (deftest session-id-is-ignored-for-now
   (is (= (chat/command {:port 1}) (chat/command {:port 1 :session-id "abc"}))))
 
