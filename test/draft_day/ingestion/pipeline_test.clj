@@ -32,6 +32,23 @@
     (.delete (io/file path))
     (is (not (pipeline/cache-fresh? path 24)))))     ; missing file -> not fresh
 
+(deftest a-failed-write-leaves-the-old-file-and-no-litter
+  (let [path (tmp "atomic")
+        dir  (.getParentFile (.getAbsoluteFile (io/file path)))
+        litter #(count (filter (fn [f] (.startsWith (.getName f) ".write-")) (.listFiles dir)))
+        before (litter)]
+    (pipeline/write-transit! path {:v 1})
+    (is (thrown? Exception (pipeline/write-transit! path (delay (throw (ex-info "x" {}))))))
+    (is (= {:v 1} (pipeline/read-transit path)))
+    (is (= before (litter)))
+    (.delete (io/file path))))
+
+(deftest an-unreadable-universe-cache-is-no-cache
+  (let [path (tmp "truncated")]
+    (spit path "[\"^ \",")
+    (is (nil? (pipeline/cached-universe path)))
+    (.delete (io/file path))))
+
 (deftest delete-cache-removes-the-file-and-is-idempotent
   (let [path (tmp "delete")]
     (pipeline/write-transit! path {:players []})
@@ -147,19 +164,22 @@
           fixture (universe-fixture 120)]
       (.delete (io/file path))
       ;; live success writes the cache
-      (with-redefs [sleeper/fetch-universe (fn [& _] fixture)]
+      (with-redefs [sleeper/week-one-stats (constantly {})
+                    sleeper/fetch-universe (fn [& _] fixture)]
         (let [r (pipeline/load-universe {:refresh true :cache-path path})]
           (is (= "live" (:source r)))
           (is (= (mapv :player-id fixture) (mapv :player-id (:players r))))
           (is (every? :ids (:players r)) "anchoring attaches the crosswalk")))
       ;; fetch down -> stale cache preferred over sample
-      (with-redefs [sleeper/fetch-universe (fn [& _] (throw (ex-info "down" {})))]
+      (with-redefs [sleeper/week-one-stats (constantly {})
+                    sleeper/fetch-universe (fn [& _] (throw (ex-info "down" {})))]
         (let [r (pipeline/load-universe {:refresh true :cache-path path})]
           (is (= "cache" (:source r)))
           (is (= (mapv :player-id fixture) (mapv :player-id (:players r))))))
       ;; fetch down + no cache -> bundled sample
       (.delete (io/file path))
-      (with-redefs [sleeper/fetch-universe (fn [& _] (throw (ex-info "down" {})))]
+      (with-redefs [sleeper/week-one-stats (constantly {})
+                    sleeper/fetch-universe (fn [& _] (throw (ex-info "down" {})))]
         (let [r (pipeline/load-universe {:refresh true :cache-path path})]
           (is (= "sample" (:source r)))
           (is (seq (:players r))))))))
@@ -214,9 +234,11 @@
     (let [path    (tmp "stale")
           fixture (universe-fixture 120)]
       (.delete (io/file path))
-      (with-redefs [sleeper/fetch-universe (fn [& _] fixture)]
+      (with-redefs [sleeper/week-one-stats (constantly {})
+                    sleeper/fetch-universe (fn [& _] fixture)]
         (pipeline/load-universe {:refresh true :cache-path path :season 2025}))
-      (with-redefs [sleeper/fetch-universe (fn [& _] (throw (ex-info "down" {})))]
+      (with-redefs [sleeper/week-one-stats (constantly {})
+                    sleeper/fetch-universe (fn [& _] (throw (ex-info "down" {})))]
         (let [r (pipeline/load-universe {:refresh true :cache-path path})]
           (is (= "cache" (:source r)))
           (is (= 2025 (:season r))
@@ -224,11 +246,43 @@
 
 (deftest offline-short-circuits-to-the-sample
   (with-redefs [pipeline/offline? (constantly true)
+                sleeper/week-one-stats (constantly {})
                 sleeper/fetch-universe (fn [& _]
                                          (throw (AssertionError. "no network offline")))]
     (let [r (pipeline/load-universe {:refresh true :cache-path (tmp "unused")})]
       (is (= "sample" (:source r)))
       (is (seq (:players r))))))
+
+(deftest a-universe-that-lost-a-source-is-retried-soon-not-held-a-day
+  (with-redefs [pipeline/offline? (constantly false)
+                sleeper/week-one-stats (constantly {})
+                sleeper/fetch-universe (fn [& _] (universe-fixture 120))
+                pipeline/enrich-universe (fn [_ u] {:players u
+                                                    :sources {:espn {:ok? false}}})]
+    (let [path (tmp "degraded")]
+      (.delete (io/file path))
+      (pipeline/load-universe {:refresh true :cache-path path})
+      (is (<= (pipeline/expires-at path)
+              (+ (System/currentTimeMillis) pipeline/retry-ms 1000))
+          "a copy with a failed source is reloaded in minutes, not a day"))))
+
+(deftest a-failed-week-one-fetch-marks-the-universe-degraded
+  (with-redefs [sleeper/week-one-stats (constantly nil)
+                sleeper/fetch-universe (fn [& _] (universe-fixture 120))
+                pipeline/enrich-universe (fn [_ u] {:players u :sources {}})]
+    (is (pipeline/degraded? (pipeline/fetch-base-universe 2026)))))
+
+(deftest a-degraded-refetch-does-not-replace-a-whole-copy
+  (with-redefs [pipeline/offline? (constantly false)
+                sleeper/week-one-stats (constantly {})
+                sleeper/fetch-universe (fn [& _] (universe-fixture 120))]
+    (let [path (tmp "keep-whole")]
+      (.delete (io/file path))
+      (with-redefs [pipeline/enrich-universe (fn [_ u] {:players u :sources {:espn {:ok? true}}})]
+        (pipeline/load-universe {:refresh true :cache-path path :season 2026}))
+      (with-redefs [pipeline/enrich-universe (fn [_ u] {:players u :sources {:espn {:ok? false}}})]
+        (pipeline/load-universe {:refresh true :cache-path path :season 2026}))
+      (is (not (pipeline/degraded? (pipeline/read-transit path)))))))
 
 (deftest every-universe-id-belongs-to-exactly-one-space
   ;; The invariant that lets :player-id mix GSIS ids, team abbreviations and
@@ -420,6 +474,19 @@
         ;; … but not for a different week, where it would be simply wrong.
         (is (nil? (pipeline/load-weekly 2026 6 {:refresh true :path path})))))))
 
+(deftest a-weekly-fetch-that-failed-is-not-retried-on-every-request
+  (with-redefs [pipeline/offline? (constantly false)]
+    (let [path  (tmp "weekly-backoff")
+          calls (atom 0)]
+      (pipeline/delete-cache! path)
+      (pipeline/reset-cache-failures!)
+      (with-redefs [sleeper/fetch-weekly (fn [& _] (swap! calls inc) (throw (ex-info "down" {})))
+                    espn-schedule/fetch (constantly nil)]
+        (is (nil? (pipeline/load-weekly 2026 5 {:path path})))
+        (is (nil? (pipeline/load-weekly 2026 5 {:path path})))
+        (is (= 1 @calls) "the second request does not wait out the vendor again"))
+      (pipeline/reset-cache-failures!))))
+
 (deftest weekly-fresh-cache-is-not-re-read-per-call
   ;; The decoded envelope is held in memory for the same reason `api.routes`
   ;; holds the universe: a fresh file should not be re-read and re-decoded on
@@ -544,6 +611,27 @@
                 "and does not overwrite it")
             (is (pipeline/cache-fresh? path 1)
                 "and waits a TTL before trying again, rather than on every request"))))
+      (.delete (io/file path)))))
+
+(deftest a-sleeper-outage-beside-a-healthy-nflverse-is-asked-again-in-minutes
+  (with-redefs [pipeline/offline? (constantly false)
+                nflverse-weekly/fetch (fn [_] {:by-key {} :through-week 3})
+                sleeper-actual/fetch  (fn [& _] (throw (ex-info "down" {})))]
+    (let [path (tmp "realized-sleeper-down")]
+      (.delete (io/file path))
+      (pipeline/load-realized 2026 {:path path})
+      (is (not (pipeline/cache-fresh? path (/ (* 2 pipeline/failure-backoff-ms) 3600000.0))))
+      (.delete (io/file path)))))
+
+(deftest a-cold-start-with-no-weekly-file-is-asked-again-in-minutes
+  (with-redefs [pipeline/offline? (constantly false)
+                nflverse-weekly/fetch (fn [_] nil)
+                sleeper-actual/fetch  (fn [& _] nil)]
+    (let [path (tmp "realized-cold")]
+      (.delete (io/file path))
+      (pipeline/load-realized 2026 {:path path})
+      (is (not (pipeline/cache-fresh? path (/ (* 2 pipeline/failure-backoff-ms) 3600000.0)))
+          "an outage on the first fetch is not held for the hour a real answer is")
       (.delete (io/file path)))))
 
 (deftest a-sample-universe-keeps-its-own-realized-columns

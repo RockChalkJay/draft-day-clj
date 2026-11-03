@@ -16,10 +16,9 @@
   40KB body on a different endpoint and an hourly cadence, so it uses http-kit
   like everything else and does not want the JDK client this namespace needs."
   (:require [draft-day.ingestion.match :as match]
+            [draft-day.ingestion.nflverse :as nflverse]
             [draft-day.json :refer [mapper]]
-            [jsonista.core :as json])
-  (:import [java.net.http HttpClient HttpRequest HttpResponse$BodyHandlers]
-           [java.net URI]))
+            [jsonista.core :as json]))
 
 (def position-map
   "ESPN `defaultPositionId` -> the board's position. The same numbering on every
@@ -92,17 +91,9 @@
                                    :espn/adp (get-in p [:ownership :averageDraftPosition])))]))))
           arr)))
 
-(defn- http-get-string [url headers]
-  (let [builder (HttpRequest/newBuilder (URI/create url))]
-    (doseq [[k v] headers] (.header builder k v))
-    (let [resp (.send (HttpClient/newHttpClient)
-                      (.build (.GET builder))
-                      (HttpResponse$BodyHandlers/ofString))]
-      (when (= 200 (.statusCode resp)) (.body resp)))))
-
 (defn fetch
   "Network: fetch + parse ESPN auction values and season projections -> by-key
   enrichment map. nil on failure."
   [year]
-  (when-let [body (http-get-string (api-url year) {"x-fantasy-filter" filter-header})]
+  (when-let [body (nflverse/get-string (api-url year) {"x-fantasy-filter" filter-header})]
     (enrichment year (json/read-value body mapper))))

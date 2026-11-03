@@ -873,6 +873,21 @@
 ;; The crosswalk itself is pinned in `rankings.matchup-test`, whose fixture
 ;; makes the two id spaces disagree; these cover the handler.
 
+(deftest a-failed-week-lookup-is-retried-soon-not-held-for-the-ttl
+  (let [cache @#'routes/nfl-week-cache
+        calls (atom 0)]
+    (try
+      (reset! @#'routes/nfl-week-cache nil)
+      (with-redefs [pipeline/offline? (constantly false)
+                    routes/nfl-week-retry-ms 0
+                    matchups/current-week (fn [_ _]
+                                            (if (= 1 (swap! calls inc))
+                                              (throw (ex-info "down" {}))
+                                              8))]
+        (is (nil? (routes/current-nfl-week)))
+        (is (= 8 (routes/current-nfl-week))))
+      (finally (reset! @#'routes/nfl-week-cache cache)))))
+
 (def ^:private raw-matchups
   [{:matchup_id 1 :roster_id 1 :points 31.0
     :starters ["rb2" "rb3"] :players ["rb2" "rb3"]

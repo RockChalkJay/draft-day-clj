@@ -271,3 +271,22 @@
         "a pure defender still does not join")
     (is (some? (nflverse/row->season-line (assoc (first out) "receptions" "5")))
         "and he has a history line")))
+
+(deftest a-body-that-stalls-after-the-headers-times-out
+  (let [server (com.sun.net.httpserver.HttpServer/create
+                (java.net.InetSocketAddress. "127.0.0.1" 0) 0)]
+    (.createContext server "/stall"
+                    (reify com.sun.net.httpserver.HttpHandler
+                      (handle [_ ex]
+                        (.sendResponseHeaders ex 200 100)
+                        (.write (.getResponseBody ex) (byte-array 1))
+                        (.flush (.getResponseBody ex))
+                        (Thread/sleep 5000)
+                        (.close ex))))
+    (.start server)
+    (try
+      (with-redefs [nflverse/request-deadline-seconds 1]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"timed out"
+                              (nflverse/http-get-string
+                               (str "http://127.0.0.1:" (.getPort (.getAddress server)) "/stall")))))
+      (finally (.stop server 0)))))

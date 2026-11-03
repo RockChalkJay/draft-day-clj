@@ -81,6 +81,13 @@
   (is (nil? (actual/fetch 2026 0)))
   (is (nil? (actual/fetch 2026 nil))))
 
+(deftest one-failed-week-fails-the-fetch
+  (with-redefs [actual/fetch-week (fn [_ w]
+                                    (if (= 2 w)
+                                      (throw (ex-info "down" {:week w}))
+                                      []))]
+    (is (thrown? Exception (actual/fetch 2026 3)))))
+
 (deftest snap-counts-ride-beside-the-stats-and-never-in-them
   (let [row (actual/entry->row {:player_id "a" :week 3
                                 :stats {:gp 1.0 :rec 2.0 :off_snp 43.0 :tm_off_snp 66.0}})]

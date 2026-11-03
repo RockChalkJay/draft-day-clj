@@ -360,6 +360,11 @@
   once a week, and the waiver board is re-posted on every refresh."
   (* 10 60 1000))
 
+(def nfl-week-retry-ms
+  "How long a failed lookup is held before Sleeper is asked again, so one
+  timeout does not price the board off the data's own week for a full TTL."
+  (* 60 1000))
+
 (defonce ^:private nfl-week-cache (atom nil))
 
 (defn current-nfl-week
@@ -376,7 +381,8 @@
                       (catch Exception e
                         (log/warn "current NFL week unavailable:" (ex-message e))
                         nil))]
-          (reset! nfl-week-cache {:week wk :at now})
+          (reset! nfl-week-cache {:week wk
+                                  :at   (if wk now (- (+ now nfl-week-retry-ms) nfl-week-ttl-ms))})
           wk)))))
 
 (defn waiver-weeks
