@@ -20,7 +20,8 @@
   `db/provider->player-id` and needs the universe, which ingestion of a *league*
   has no business loading. `rankings.waiver` does the mapping where both halves
   are already in hand."
-  (:require [draft-day.ingestion.sleeper-http :as sleeper-http]
+  (:require [clojure.string :as str]
+            [draft-day.ingestion.sleeper-http :as sleeper-http]
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.parallel :as parallel]
@@ -86,10 +87,17 @@
    :display-name (or (not-empty (:display_name raw)) (:username raw))
    :avatar       (:avatar raw)})
 
+(defn user-path
+  "The user lookup's path. Trimmed because `providers/credential-errors`
+  validates the trimmed name, and a pasted trailing space would otherwise pass
+  it and then 404 as part of the URL."
+  [credentials]
+  (str "user/" (str/trim (str (:username credentials)))))
+
 (defmethod league-sync/find-user :sleeper
   [_ {:keys [credentials]}]
   (normalize-user
-   (get-json (str "user/" (:username credentials))
+   (get-json (user-path credentials)
              {:empty-is-missing? true :not-found-msg "Sleeper user not found"})))
 
 (defn normalize-league-entry

@@ -157,3 +157,25 @@
   (is (= [["a" "b"] ""] (fx/ndjson-split "" "a\n\nb\n")))
   (is (= {:done true} (fx/parse-event "{\"done\":true}")))
   (is (nil? (fx/parse-event "not json"))))
+
+(deftest adding-a-league-stops-the-answer-about-the-one-before
+  (swap! rdb/app-db assoc :accounts {"a1" {:provider "sleeper"}})
+  (let [{:keys [abort]} (ask! :league-choose "a1" {:league-id "L2" :name "Two"})]
+    (is (seq abort) "the claude process behind it would otherwise hold the single slot")))
+
+(deftest disconnecting-the-last-league-drops-what-was-asked-about-it
+  (swap! rdb/app-db assoc
+         :accounts {"a1" {:provider "sleeper"}}
+         :leagues {"sleeper:1" {:provider "sleeper" :league-id "1" :account-key "a1"}}
+         :waivers {:players []} :waiver-seq 3
+         :matchup {:matchups []} :matchup-seq 2
+         :sensei-messages [{:role :user :text "q"}] :sensei-busy? true)
+  (let [{:keys [abort]} (ask! :disconnect-account "a1")
+        db' @rdb/app-db]
+    (is (seq abort))
+    (is (nil? (:matchup db')))
+    (is (empty? (:sensei-messages db')))
+    (is (not (:sensei-busy? db')))
+    (is (= 4 (:waiver-seq db')) "a waiver reply still in flight no longer matches")
+    (rf/dispatch-sync [:waivers-loaded 3 {:players [{:player-id "x"}]}])
+    (is (nil? (:waivers @rdb/app-db)))))

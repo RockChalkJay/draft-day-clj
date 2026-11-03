@@ -570,7 +570,7 @@
       (when-not (str/blank? q)
         (->> (:rostered w)
              (keep (fn [[id team]]
-                     (when-let [p (get by-id id)]
+                     (when-let [p (get by-id (if (keyword? id) (name id) id))]
                        (when (and (matches-search? p q)
                                   (or (nil? pos) (= pos (:position p))))
                          {:player-name (:player-name p)
