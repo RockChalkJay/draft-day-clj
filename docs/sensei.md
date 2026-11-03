@@ -266,7 +266,10 @@ the run draws on the plan's limits.
   question at a time (`429` for a second). The process runs from one
   owner-only directory under the system temp dir, refused if it is a link or
   another user's, since `-p` trusts its working directory without asking. Its
-  flags are `--tools ""`, `--setting-sources ""` (no settings file, so no hook
+  flags are `--tools WebSearch` (the one built-in tool, so the model can look up
+  the week's articles; `WebFetch` stays off, since it would let an instruction
+  planted in a team name request a URL carrying what the model has read),
+  `--setting-sources ""` (no settings file, so no hook
   or plugin), `--strict-mcp-config` pointing at the port this server bound (not
   the one a request's `Host` names) and `--no-session-persistence`. Its
   environment sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and carries no

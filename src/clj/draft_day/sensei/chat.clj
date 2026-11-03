@@ -2,8 +2,8 @@
   "The in-app chat: one question put to `claude -p`, answered as a stream.
 
   The process is isolated by hand, since `--bare` will not read a subscription
-  login: no built-in tools, only Sensei's own MCP server, no settings file (and
-  so no hook or plugin) and no CLAUDE.md, no session kept, none of the app's
+  login: no built-in tool but a web search, Sensei's own MCP server, no
+  settings file (and so no hook or plugin) and no CLAUDE.md, no session kept, none of the app's
   secrets in its environment, and one owner-only working directory outside the
   repo so no new auto-memory folder appears per run. It runs on the owner's own
   plan, so it is off unless `DRAFTDAY_SENSEI=claude-cli`, answers this machine
@@ -85,15 +85,21 @@
   [_session-id]
   ["--no-session-persistence"])
 
+(def built-in-tools
+  "The one built-in tool the chat keeps: a search. Not `WebFetch`, which would
+  let an instruction planted in a team name make the model request a URL of the
+  planter's choosing, carrying what it has read."
+  "WebSearch")
+
 (defn command
   "The `claude` argv for one question. The prompt goes in on stdin."
   [{:keys [port session-id]}]
   (into ["claude" "-p"
          "--output-format" "stream-json" "--verbose" "--include-partial-messages"
-         "--tools" ""
+         "--tools" built-in-tools
          "--setting-sources" ""
          "--strict-mcp-config" "--mcp-config" (mcp-config port)
-         "--allowedTools" "mcp__sensei"
+         "--allowedTools" (str "mcp__sensei," built-in-tools)
          "--append-system-prompt" (chat-note)]
         (session-flags session-id)))
 

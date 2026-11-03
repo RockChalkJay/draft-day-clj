@@ -132,13 +132,15 @@
 (deftest command-is-isolated
   (let [argv (chat/command {:port 9090})]
     (is (= ["claude" "-p"] (take 2 argv)))
-    (testing "no built-in tools, only Sensei's server, nothing kept"
+    (testing "a web search and Sensei's server, nothing kept"
       (is (some #{"--strict-mcp-config"} argv))
       (is (some #{"--no-session-persistence"} argv))
-      (is (= "" (second (drop-while #(not= "--tools" %) argv))))
+      (is (= "WebSearch" (second (drop-while #(not= "--tools" %) argv)))
+          "no shell, file or fetch tool")
       (is (= "" (second (drop-while #(not= "--setting-sources" %) argv)))
           "no settings file, so no hook or plugin")
-      (is (= "mcp__sensei" (second (drop-while #(not= "--allowedTools" %) argv)))))
+      (is (= "mcp__sensei,WebSearch"
+             (second (drop-while #(not= "--allowedTools" %) argv)))))
     (testing "the MCP config points at this server's port"
       (is (str/includes? (second (drop-while #(not= "--mcp-config" %) argv))
                          "http://127.0.0.1:9090/api/sensei/mcp")))
