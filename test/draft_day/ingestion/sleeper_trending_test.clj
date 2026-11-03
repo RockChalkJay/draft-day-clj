@@ -127,6 +127,13 @@
     (is (= (str dir "/unknown-season/week-00/x.json")
            (trending/snapshot-path dir nil 0 "x")))))
 
+(deftest a-folder-that-cannot-be-made-is-named-in-the-error
+  (let [blocked (java.io.File/createTempFile "not-a-dir" "")
+        snap    (trending/snapshot "2026-10-07T07:00:22.114Z" 2026 4 100 [])]
+    (.deleteOnExit blocked)
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"cannot create .*week-04"
+                          (trending/write-snapshot! (str blocked) snap)))))
+
 (deftest a-snapshot-that-will-not-write-does-not-cost-the-board-its-list
   (with-redefs [trending/fetch-raw (constantly raw)
                 pipeline/offline?  (constantly false)]
