@@ -269,8 +269,8 @@ the run draws on the plan's limits.
   flags are `--tools WebSearch` (the one built-in tool, so the model can look up
   the week's articles; `WebFetch` stays off, since it would let an instruction
   planted in a team name request a URL carrying what the model has read),
-  `--setting-sources ""` (no settings file, so no hook
-  or plugin), `--strict-mcp-config` pointing at the port this server bound (not
+  `--setting-sources ""` (no settings file, so no hook or plugin),
+  `--strict-mcp-config` pointing at the port this server bound (not
   the one a request's `Host` names) and `--no-session-persistence`. Its
   environment sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and carries no
   `DRAFTDAY_`, `ANTHROPIC_` or `CLAUDE_CODE_USE_` variable: an API key wins

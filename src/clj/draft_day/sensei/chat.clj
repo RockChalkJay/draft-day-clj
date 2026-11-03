@@ -3,11 +3,12 @@
 
   The process is isolated by hand, since `--bare` will not read a subscription
   login: no built-in tool but a web search, Sensei's own MCP server, no
-  settings file (and so no hook or plugin) and no CLAUDE.md, no session kept, none of the app's
-  secrets in its environment, and one owner-only working directory outside the
-  repo so no new auto-memory folder appears per run. It runs on the owner's own
-  plan, so it is off unless `DRAFTDAY_SENSEI=claude-cli`, answers this machine
-  only and takes one question at a time. See docs/sensei.md for the terms.
+  settings file (and so no hook or plugin) and no CLAUDE.md, no session kept,
+  none of the app's secrets in its environment, and one owner-only working
+  directory outside the repo so no new auto-memory folder appears per run. It
+  runs on the owner's own plan, so it is off unless
+  `DRAFTDAY_SENSEI=claude-cli`, answers this machine only and takes one
+  question at a time. See docs/sensei.md for the terms.
 
   The answer is the model's, and the tools hand it text other people write:
   league-mates' team names, news. A client renders it as text plus a safe
@@ -85,7 +86,7 @@
   [_session-id]
   ["--no-session-persistence"])
 
-(def built-in-tools
+(def web-search-tool
   "The one built-in tool the chat keeps: a search. Not `WebFetch`, which would
   let an instruction planted in a team name make the model request a URL of the
   planter's choosing, carrying what it has read."
@@ -96,10 +97,10 @@
   [{:keys [port session-id]}]
   (into ["claude" "-p"
          "--output-format" "stream-json" "--verbose" "--include-partial-messages"
-         "--tools" built-in-tools
+         "--tools" web-search-tool
          "--setting-sources" ""
          "--strict-mcp-config" "--mcp-config" (mcp-config port)
-         "--allowedTools" (str "mcp__sensei," built-in-tools)
+         "--allowedTools" (str "mcp__sensei," web-search-tool)
          "--append-system-prompt" (chat-note)]
         (session-flags session-id)))
 
