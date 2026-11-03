@@ -129,21 +129,49 @@
       (finally
         (run! io/delete-file (reverse (file-seq base)))))))
 
+(defn- flag [argv k] (second (drop-while #(not= k %) argv)))
+
 (deftest command-is-isolated
-  (let [argv (chat/command {:port 9090})]
+  (let [argv (chat/command {:port 9090 :env {}})]
     (is (= ["claude" "-p"] (take 2 argv)))
-    (testing "no built-in tools, only Sensei's server, nothing kept"
+    (testing "only Sensei's server and the web, nothing kept, nothing prompted for"
       (is (some #{"--strict-mcp-config"} argv))
       (is (some #{"--no-session-persistence"} argv))
-      (is (= "" (second (drop-while #(not= "--tools" %) argv))))
-      (is (= "" (second (drop-while #(not= "--setting-sources" %) argv)))
-          "no settings file, so no hook or plugin")
-      (is (= "mcp__sensei" (second (drop-while #(not= "--allowedTools" %) argv)))))
+      (is (= "WebSearch,WebFetch" (flag argv "--tools"))
+          "no Bash, Read, Write or Edit")
+      (is (= "dontAsk" (flag argv "--permission-mode"))
+          "a tool not allowed is refused, which is what makes the host list bind")
+      (is (= "" (flag argv "--setting-sources"))
+          "no settings file, so no hook or plugin"))
     (testing "the MCP config points at this server's port"
-      (is (str/includes? (second (drop-while #(not= "--mcp-config" %) argv))
-                         "http://127.0.0.1:9090/api/sensei/mcp")))
+      (is (str/includes? (flag argv "--mcp-config") "http://127.0.0.1:9090/api/sensei/mcp")))
     (testing "the prompt is not on the command line"
       (is (not-any? #(str/includes? % "Manager:") argv)))))
+
+(deftest the-web-is-search-and-a-fetch-for-named-hosts-only
+  (let [rules (set (str/split (flag (chat/command {:port 1 :env {}}) "--allowedTools") #","))]
+    (is (contains? rules "mcp__sensei"))
+    (is (contains? rules "WebSearch"))
+    (is (contains? rules "WebFetch(domain:www.fantasypros.com)"))
+    (is (not-any? #{"WebFetch" "Bash" "Read" "Write" "Edit"} rules)
+        "no bare WebFetch, which would read any host"))
+  (testing "the owner's own hosts replace the defaults, and a non-host is dropped"
+    (let [argv (chat/command {:port 1 :env {"DRAFTDAY_SENSEI_WEB_HOSTS" " Example.com, x) Bash(*,,my-site.org "}})
+          rules (set (str/split (flag argv "--allowedTools") #","))]
+      (is (contains? rules "WebFetch(domain:example.com)"))
+      (is (contains? rules "WebFetch(domain:my-site.org)"))
+      (is (not (contains? rules "WebFetch(domain:www.fantasypros.com)")))
+      (is (not-any? #(str/includes? % "Bash") rules) "it would have been a rule of its own")))
+  (testing "no hosts leaves search alone, and no WebFetch tool at all"
+    (let [argv (chat/command {:port 1 :env {"DRAFTDAY_SENSEI_WEB_HOSTS" ""}})]
+      (is (= "WebSearch" (flag argv "--tools")))
+      (is (= "mcp__sensei,WebSearch" (flag argv "--allowedTools"))))))
+
+(deftest the-web-can-be-switched-off
+  (let [argv (chat/command {:port 1 :env {"DRAFTDAY_SENSEI_WEB" "off"}})]
+    (is (= "" (flag argv "--tools")))
+    (is (= "mcp__sensei" (flag argv "--allowedTools")))
+    (is (= "dontAsk" (flag argv "--permission-mode")))))
 
 (deftest session-id-is-ignored-for-now
   (is (= (chat/command {:port 1}) (chat/command {:port 1 :session-id "abc"}))))
