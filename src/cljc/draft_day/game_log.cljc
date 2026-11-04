@@ -15,8 +15,8 @@
      :points   (when entry (scoring/player-points {:stats stats} scoring))}))
 
 (defn table
-  "nil when there is nothing to draw: a kicker, a defense, or a season that has
-  not started."
+  "nil when there is nothing to draw: a defense, or a season that has not
+  started."
   [player through-week scoring]
   (when-let [columns (get sl/position-rows (:position player))]
     (when (and through-week (pos? through-week))

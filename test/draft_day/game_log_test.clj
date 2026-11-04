@@ -63,9 +63,35 @@
     (is (false? (:played? wk2)))
     (is (= [nil nil nil nil] (:values wk2)))))
 
-(deftest a-kicker-and-a-defense-get-no-table
-  (is (nil? (gl/table {:position "K"} 5 ppr)))
+(deftest a-defense-gets-no-table
   (is (nil? (gl/table {:position "DST"} 5 ppr))))
+
+(def aubrey
+  {:position "K"
+   :realized/game-log
+   [{:week 1 :opponent "DAL" :stats {:fgm_20_29 1.0 :fgm_40_49 2.0 :xpm 3.0}}
+    {:week 3 :opponent "NYG" :stats {}}]})
+
+(deftest a-kicker-gets-xp-and-fg-groups
+  (let [cols (:columns (gl/table aubrey 3 ppr))]
+    (is (= ["ATT" "MADE" "ATT" "MADE" "0-29" "30-39" "40-49" "50+"] (mapv first cols)))
+    (is (= ["XP" "XP" "FG" "FG" "FG" "FG" "FG" "FG"] (mapv #(nth % 2) cols)))))
+
+(deftest attempts-are-makes-plus-misses
+  (let [k {:position "K"
+           :realized/game-log
+           [{:week 1 :stats {:fgm_20_29 1.0 :fgm_40_49 1.0 :fgmiss_30_39 1.0
+                             :xpm 2.0 :xpmiss 1.0}}]}]
+    (is (= [3.0 2.0 3.0 2.0 1.0 0 1.0 0]
+           (:values (first (:rows (gl/table k 1 ppr))))))))
+
+(deftest a-kicker-bye-reads-nothing-and-a-quiet-week-reads-zero
+  (let [[wk1 wk2 wk3] (:rows (gl/table aubrey 3 ppr))]
+    (is (= [3.0 3.0 3.0 3.0 1.0 0 2.0 0] (:values wk1)))
+    (is (= [0 0 0 0 0 0 0 0] (:values wk3)))
+    (is (false? (:played? wk2)))
+    (is (every? nil? (:values wk2)))
+    (is (some? (:points wk1)))))
 
 (deftest a-season-that-has-not-started-gets-no-table
   (is (nil? (gl/table nacua 0 ppr)))

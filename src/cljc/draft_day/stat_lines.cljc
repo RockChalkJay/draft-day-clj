@@ -27,16 +27,21 @@
   Keyed by the same Sleeper stat keys a projected `:stats` line uses, which is
   why a realized season and a projected one can share a row without translation.
 
-  QB/RB/WR/TE only, and the key set is the gate: K and DST miss and render no
-  game log at all, since a weekly log of kicks and sacks is not what it is for.
-  The Season table has its own, wider set: `season-rows`.
+  QB/RB/WR/TE and K, and the key set is the gate: DST misses and renders no game
+  log at all. A row's optional third element is the header its column is drawn
+  under, which a kicker's XP and FG each get. His attempts are makes plus
+  misses by distance: Sleeper states the misses in full and the weekly nflverse
+  file only from forty yards out, so that fallback reads low. The Season table
+  has its own, wider set: `season-rows`.
 
   A label may name more than one key: `TD` is rushing plus receiving, because a
   back who scores twelve does not care which way they came, and two rows of
   single digits reads worse than one honest total. Quarterbacks keep theirs
   split — a passing touchdown and a rushing touchdown are different skills, and
   a QB who runs for fourteen is a different asset from one who does not."
-  (let [receiving [["Rec"     [:rec]]
+  (let [made-fg   [:fgm_0_19 :fgm_20_29 :fgm_30_39 :fgm_40_49 :fgm_50p]
+        missed-fg [:fgmiss_0_19 :fgmiss_20_29 :fgmiss_30_39 :fgmiss_40_49 :fgmiss_50p]
+        receiving [["Rec"     [:rec]]
                    ["Rec Yd"  [:rec_yd]]
                    ["Rush Yd" [:rush_yd]]
                    ["TD"      [:rush_td :rec_td]]]]
@@ -49,7 +54,15 @@
            ["Rec Yd"  [:rec_yd]]
            ["TD"      [:rush_td :rec_td]]]
      "WR" receiving
-     "TE" receiving}))
+     "TE" receiving
+     "K"  [["ATT"   [:xpm :xpmiss] "XP"]
+           ["MADE"  [:xpm] "XP"]
+           ["ATT"   (into made-fg missed-fg) "FG"]
+           ["MADE"  made-fg "FG"]
+           ["0-29"  [:fgm_0_19 :fgm_20_29] "FG"]
+           ["30-39" [:fgm_30_39] "FG"]
+           ["40-49" [:fgm_40_49] "FG"]
+           ["50+"   [:fgm_50p] "FG"]]}))
 
 (def season-rows
   "position -> ordered `[label stat-keys kind]` the player card's Season table

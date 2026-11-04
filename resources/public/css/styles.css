@@ -1007,6 +1007,14 @@ button.pd-latest:focus-visible { outline: 2px solid var(--accent); outline-offse
 .pd-log td { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 .pd-log td.opp { text-align: left; color: var(--muted); }
 .pd-log tbody tr + tr th, .pd-log tbody tr + tr td { border-top: 1px solid var(--border); }
+.pd-log thead tr.grp th { text-align: center; color: var(--text); font-size: 11px;
+  border-bottom: 2px solid #999fac; }
+.pd-log thead tr.grp th:empty { border-bottom: 0; }
+.pd-log .edge { border-left: 1px solid var(--muted); }
+/* Centred under a group header, a stretched column's right-aligned figure sits
+   off the header's middle; grouped tables centre theirs. */
+.pd-log.grouped td.num, .pd-log.grouped thead th.num { text-align: center; }
+.pd-log.grouped td.num.pts, .pd-log.grouped thead th.num.pts { text-align: right; }
 .pd-log .pts { color: var(--text); font-weight: 600; border-left: 1px solid var(--border); }
 
 /* A week he was out is stated, not dashed: four dashes and an empty Pts cell
