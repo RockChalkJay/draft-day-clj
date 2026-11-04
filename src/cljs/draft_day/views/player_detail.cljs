@@ -167,28 +167,45 @@
 ;; dashes and a blank Pts cell read as data that failed to load, where "Out" is
 ;; the fact. `game-log/table` is what decides which weeks those are.
 
+(defn column-groups
+  "`[[group span]]` for the log's columns in order, a run of one group being one
+  header. A column with no group reads as a blank run."
+  [columns]
+  (map (fn [run] [(nth (first run) 2 nil) (count run)])
+       (partition-by #(nth % 2 nil) columns)))
+
 (defn game-log-table
   "The week-by-week table, or nil when there is nothing to draw."
   [player through-week scoring]
   (when-let [{:keys [columns rows]}
              (game-log/table player through-week scoring)]
-    [:table.pd-log
-     [:thead
-      [:tr [:th.lbl "Wk"] [:th.lbl "Opp"]
-       (map (fn [[label _]] ^{:key label} [:th.num label]) columns)
-       [:th.num.pts "Pts"]]]
-     [:tbody
-      (map (fn [{:keys [week opponent played? values points]}]
-             ^{:key week}
-             [:tr {:class (when-not played? "out")}
-              [:th.lbl week]
-              [:td.opp (or opponent "–")]
-              (if played?
-                [:<>
-                 (map-indexed (fn [i v] ^{:key i} [:td.num (player-stats/cell v)]) values)
-                 [:td.num.pts (util/week-points points)]]
-                [:td.num.out-note {:col-span (inc (count columns))} "Out"])])
-           rows)]]))
+    (let [grouped? (some #(nth % 2 nil) columns)
+          starts   (set (reductions + 0 (map second (column-groups columns))))
+          edge     (fn [i] (when (and grouped? (contains? starts i)) "edge"))]
+      [:table.pd-log {:class (when grouped? "grouped")}
+       [:thead
+        (when grouped?
+          [:tr.grp [:th {:col-span 2}]
+           (map-indexed (fn [i [group n]] ^{:key i} [:th.num.edge {:col-span n} group])
+                        (column-groups columns))
+           [:th]])
+        [:tr [:th.lbl "Wk"] [:th.lbl "Opp"]
+         (map-indexed (fn [i [label _]] ^{:key i} [:th.num {:class (edge i)} label]) columns)
+         [:th.num.pts "Pts"]]]
+       [:tbody
+        (map (fn [{:keys [week opponent played? values points]}]
+               ^{:key week}
+               [:tr {:class (when-not played? "out")}
+                [:th.lbl week]
+                [:td.opp (or opponent "–")]
+                (if played?
+                  [:<>
+                   (map-indexed (fn [i v] ^{:key i}
+                                  [:td.num {:class (edge i)} (player-stats/cell (if (and grouped? (zero? v)) nil v))])
+                                values)
+                   [:td.num.pts (util/week-points points)]]
+                  [:td.num.out-note {:col-span (inc (count columns))} "Out"])])
+             rows)]])))
 
 (defn tiles
   "The strip of numbers under the head, `[{:label :value :sub}]`: this week's

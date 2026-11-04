@@ -185,3 +185,13 @@
   (let [tabs (pd/tabs-for {:log? false :season? true})]
     (is (= :season (pd/shown-tab tabs :season)))
     (is (= :news (pd/shown-tab tabs :game-log)) "no game log to show, so the first offered")))
+
+(deftest a-kickers-columns-group-into-xp-and-fg
+  (is (= [["XP" 2] ["FG" 5]]
+         (pd/column-groups [["ATT" [:xpm] "XP"] ["MADE" [:xpm] "XP"]
+                            ["ATT" [:fgm] "FG"] ["MADE" [:fgm] "FG"]
+                            ["0-29" [:fgm] "FG"] ["30-39" [:fgm] "FG"]
+                            ["40-49" [:fgm] "FG"]]))))
+
+(deftest columns-with-no-group-are-one-blank-run
+  (is (= [[nil 2]] (pd/column-groups [["Rec" [:rec]] ["Rec Yd" [:rec_yd]]]))))
