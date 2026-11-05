@@ -413,7 +413,7 @@ flowchart TD
     start["load-universe"] --> off{"DRAFTDAY_OFFLINE?"}
     off -- yes --> sample["bundled sample<br/>resources/sample_players.edn"]
     off -- no --> fresh{"disk cache fresh?<br/>mtime vs TTL"}
-    fresh -- yes --> cached["data/players_cache.v9.transit"]
+    fresh -- yes --> cached["data/cache/players_cache.v16.transit"]
     fresh -- no --> live["live fetch"]
 
     live --> fan["fan out — all at once"]
@@ -560,7 +560,7 @@ row count.
 
 ### Cache and provenance
 
-The universe is cached to `data/players_cache.v9.transit`. The schema version
+The universe is cached to `data/cache/players_cache.v16.transit`. The schema version
 rides in both the filename and the payload, so bumping it orphans the old file
 rather than silently reusing an incompatible one. Freshness is file mtime
 against `DRAFTDAY_CACHE_TTL_HOURS`. `POST /api/cache/reset` drops it.

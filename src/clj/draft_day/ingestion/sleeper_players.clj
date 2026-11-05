@@ -22,6 +22,7 @@
   endpoint be called rarely."
   (:require [clojure.string :as str]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
+            [draft-day.ingestion.paths :as paths]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
             [draft-day.json :refer [mapper]]
@@ -29,7 +30,7 @@
 
 (def schema-version 1)
 
-(def default-cache-path (str "data/injuries.v" schema-version ".transit"))
+(def default-cache-path (str paths/cache-root "/injuries.v" schema-version ".transit"))
 
 (def players-url "https://api.sleeper.app/v1/players/nfl")
 
