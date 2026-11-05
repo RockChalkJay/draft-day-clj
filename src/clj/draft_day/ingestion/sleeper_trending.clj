@@ -30,6 +30,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
+            [draft-day.ingestion.paths :as paths]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.season :as season]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
@@ -40,7 +41,7 @@
 
 (def schema-version 1)
 
-(def default-cache-path (str "data/trending_adds.v" schema-version ".transit"))
+(def default-cache-path (str paths/cache-root "/trending_adds.v" schema-version ".transit"))
 
 (def snapshot-schema-version 1)
 

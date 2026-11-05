@@ -49,6 +49,7 @@
             [clojure.tools.logging :as log]
             [draft-day.bid-history :as bid-history]
             [draft-day.ingestion.league-sync :as league-sync]
+            [draft-day.ingestion.paths :as paths]
             [draft-day.ingestion.pipeline :as pipeline]
             [draft-day.ingestion.season :as season]
             [draft-day.providers :as providers])
@@ -92,7 +93,7 @@
   orphans the old files rather than reading them into missing keys."
   3)
 
-(def cache-dir (str "data/bid_history.v" schema-version))
+(def cache-dir (str paths/cache-root "/bid_history.v" schema-version))
 
 (defn cache-path
   "Where one league-season is cached, or nil for an id or season that could not

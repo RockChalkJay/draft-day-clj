@@ -19,6 +19,7 @@
             [draft-day.ingestion.sleeper-actual :as sleeper-actual]
             [draft-day.ingestion.sleeper-defense :as sleeper-defense]
             [draft-day.ingestion.parallel :as parallel]
+            [draft-day.ingestion.paths :as paths]
             [draft-day.ingestion.player-ids :as player-ids]
             [draft-day.ingestion.season :as season]
             [draft-day.ingestion.sleeper :as sleeper]
@@ -30,7 +31,7 @@
   "Version of the persisted universe envelope and player-row shape."
   16)
 
-(def default-cache-path (str "data/players_cache.v" schema-version ".transit"))
+(def default-cache-path (str paths/cache-root "/players_cache.v" schema-version ".transit"))
 (def ^:private sample-resource "sample_players.edn")
 
 (defn now-iso
@@ -309,7 +310,7 @@
   6)
 
 (def default-realized-cache-path
-  (str "data/realized.v" realized-schema-version ".transit"))
+  (str paths/cache-root "/realized.v" realized-schema-version ".transit"))
 
 (defn- realized-ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_REALIZED_TTL_HOURS") "1")))
@@ -531,11 +532,11 @@
   4)
 
 (def default-weekly-cache-path
-  (str "data/weekly_projections.v" weekly-schema-version ".transit"))
+  (str paths/cache-root "/weekly_projections.v" weekly-schema-version ".transit"))
 
 (def matchup-weekly-cache-path
   "Separate cache path for matchup projections, which use a different week."
-  (str "data/weekly_projections_matchup.v" weekly-schema-version ".transit"))
+  (str paths/cache-root "/weekly_projections_matchup.v" weekly-schema-version ".transit"))
 
 (defn- weekly-ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_WEEKLY_TTL_HOURS") "1")))
@@ -609,7 +610,7 @@
   "One file per season/week: the outlook is a sum over the weeks left,
   so the one fetched last Tuesday answers a different question."
   [season from-week]
-  (format "data/outlook.v%d.%d-w%02d.transit" outlook-schema-version season from-week))
+  (format "%s/outlook.v%d.%d-w%02d.transit" paths/cache-root outlook-schema-version season from-week))
 
 (defn outlook-ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_OUTLOOK_TTL_HOURS") "6")))
@@ -681,7 +682,7 @@
   "One file per season: the pages rank the season in progress, and last year's
   copy answers nothing."
   [season]
-  (format "data/ros_ecr.v%d.%d.transit" ros-ecr-schema-version season))
+  (format "%s/ros_ecr.v%d.%d.transit" paths/cache-root ros-ecr-schema-version season))
 
 (defn ros-ecr-ttl-hours []
   (Double/parseDouble (or (System/getenv "DRAFTDAY_ROS_ECR_TTL_HOURS") "12")))
@@ -732,7 +733,7 @@
   "One file per season/week: the ranks are for one week's games, and the set
   fetched last week answers a different question."
   [season week]
-  (format "data/weekly_ecr.v%d.%d-w%02d.transit" weekly-ecr-schema-version season week))
+  (format "%s/weekly_ecr.v%d.%d-w%02d.transit" paths/cache-root weekly-ecr-schema-version season week))
 
 (defn weekly-ecr-ttl-hours
   "Short, because the experts re-rank through the week as news lands."

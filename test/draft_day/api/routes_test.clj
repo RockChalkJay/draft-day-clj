@@ -17,7 +17,7 @@
 (def ^:private mapper (json/object-mapper {:decode-key-fn keyword}))
 (defn- parse [resp] (json/read-value (:body resp) mapper))
 
-;; `load-outlook` reaches Sleeper and writes `data/outlook.*` otherwise, for
+;; `load-outlook` reaches Sleeper and writes `data/cache/outlook.*` otherwise, for
 ;; whichever week a test asks about.
 (use-fixtures :each
   (fn [run] (with-redefs [pipeline/load-outlook (constantly nil)
