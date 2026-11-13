@@ -55,6 +55,8 @@
 ;; its `:expires-at`, or a long-running server never sees another day's data.
 (defonce ^:private universe-cache (atom nil))
 
+(declare current-nfl-week)
+
 (defn- universe [refresh?]
   (let [cached @universe-cache
         base   (if (and (not refresh?) cached
@@ -62,7 +64,12 @@
                                      (< (System/currentTimeMillis)))))
                  cached
                  (reset! universe-cache (pipeline/load-universe {:refresh refresh?})))]
-    (-> base pipeline/with-realized sleeper-players/with-injuries)))
+    (-> base
+        ;; Before `with-realized`, so a stub is joined to what he has played.
+        (sleeper-players/with-unseasoned (season/resolve-season (:season base))
+                                         current-nfl-week)
+        pipeline/with-realized
+        sleeper-players/with-injuries)))
 
 (defn reset-universe!
   "Drop the in-memory universe so the next request reloads it (used in tests)."
@@ -275,7 +282,7 @@
         (json-response 400 {:error "each team's bankroll must cover $1 per roster slot"})
 
         :else
-        (let [players  (-> (:players (universe false))
+        (let [players  (-> (into [] (remove :unseasoned?) (:players (universe false)))
                            (vendor/for-scoring scoring*)
                            without-history)
               nt       (or num-teams 12)

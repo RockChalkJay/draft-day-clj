@@ -151,3 +151,62 @@
         (let [joined (update env :players assoc-injuries injuries)]
           (reset! joined-memo {:base env :injuries injuries :joined joined})
           joined)))))
+
+(defonce ^:private unseasoned-memo (atom nil))
+
+(defonce ^:private unseasoned-skip (atom nil))
+
+(defn- skip!
+  "Logs why stubs were skipped, once per reason: the universe is asked for on
+  every request, and a missing line would otherwise warn on each."
+  [reason]
+  (when (not= reason (first (reset-vals! unseasoned-skip reason)))
+    (log/warn "unseasoned players skipped: no" reason)))
+
+(defn- unseasoned-week
+  "`week-fn`'s week when stubs apply to it, else nil: in season, after week one."
+  [{:keys [source]} week-fn]
+  (when (and (#{"live" "cache"} source)
+             (not (pipeline/offline?))
+             (nil? (nflverse-weekly/as-of-week)))
+    (let [week (week-fn)]
+      (when (and (number? week) (> week 1)) week))))
+
+(defn with-unseasoned
+  "The universe with the players Sleeper projects for the week but gave no season
+  line added as `:unseasoned?` stubs (`pipeline/unseasoned-players`).
+
+  `week-fn` names the week being played and is only asked once the universe
+  qualifies: live or cached, in season past week one (the August board is
+  already drawn), and not offline or replaying a week, where today's line would
+  leak the future. Without a weekly line or a directory the universe is
+  returned as it was, and the reason is logged. The join is memoized on its
+  inputs, so an unchanged universe stays the same object for
+  `pipeline/with-realized`'s own memo."
+  [env season week-fn]
+  (if-let [week (unseasoned-week env week-fn)]
+    (let [lines     (:lines (pipeline/load-weekly season week))
+          directory (load-directory)
+          memo      @unseasoned-memo]
+      (cond
+        (or (empty? lines) (empty? directory))
+        (do (skip! (if (empty? lines) "weekly line" "player directory"))
+            env)
+
+        (and (identical? (:base memo) env) (= week (:week memo))
+             (= lines (:lines memo)) (= directory (:directory memo)))
+        (do (reset! unseasoned-skip nil)
+            (:joined memo))
+
+        :else
+        (let [stubs  (pipeline/unseasoned-players (:players env) lines directory)
+              joined (if (seq stubs) (update env :players into stubs) env)]
+          (reset! unseasoned-skip nil)
+          (when (seq stubs)
+            (log/info "week" week "has a line for" (count stubs)
+                      "players with no season line, added to the board:"
+                      (str/join ", " (map :player-name stubs))))
+          (reset! unseasoned-memo {:base env :week week :lines lines
+                                   :directory directory :joined joined})
+          joined)))
+    env))

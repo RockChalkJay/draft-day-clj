@@ -1047,3 +1047,60 @@
     (is (seq (:players b)))
     (is (not-any? #(or (contains? % :snap-share) (contains? % :role/since) (contains? % :rz-rush))
                   (concat (:players b) (:my-roster-players b))))))
+
+;; ---- players Sleeper projects for a week but not for the season ----
+
+(defn- with-unseasoned-universe
+  "`f` with the in-season fixture as a cached universe in week 8, a weekly line
+  for the signing `rb-new` and Sleeper's directory naming him."
+  [f]
+  (routes/reset-universe!)
+  (with-redefs [pipeline/load-universe (fn [& _] (assoc in-season :source "cache"))
+                pipeline/load-realized (constantly {:weekly {:through-week 8 :by-key {} :positions {}}
+                                                    :sleeper {:by-key {}}})
+                sleeper-players/load-injuries (constantly nil)
+                sleeper-players/load-directory
+                (constantly {"rb-new" {:name "Corey Kiner" :position "RB" :team "NE"}})
+                routes/current-nfl-week (constantly 8)
+                pipeline/load-weekly
+                (fn [season week & _]
+                  (assoc (stub-weekly season week)
+                         :lines {"rb-new" {:stats {:rush_yd 60.0 :rush_td 0.5} :opponent "BUF" :home? true}
+                                 "rb0" {:stats {:rush_yd 90.0} :opponent "BUF" :home? true}}))
+                pipeline/load-outlook
+                (constantly {:lines {"rb-new" {:games 10 :stats {:rush_yd 500.0 :rush_td 4.0}}}})
+                trending/load-adds (constantly nil)
+                transactions/cached-history (constantly nil)]
+    (f)))
+
+(deftest a-player-with-a-week-line-and-no-season-line-is-on-the-in-season-board
+  (with-unseasoned-universe
+    (fn []
+      (let [by-id (into {} (map (juxt :player-id identity))
+                        (:players (parse (routes/players-handler {:query-params {}}))))]
+        (is (= {:player-name "Corey Kiner" :position "RB" :team "NE" :unseasoned? true}
+               (select-keys (by-id "rb-new") [:player-name :position :team :unseasoned?])))
+        (is (= 41 (count by-id)) "the 40 in the universe and the one the directory named")))))
+
+(deftest an-unseasoned-player-is-priced-for-the-rest-of-the-season
+  (with-unseasoned-universe
+    (fn []
+      (let [b  (parse (routes/waivers-handler
+                       {:body (input-stream (json/write-value-as-string
+                                             {:scoring "ppr" :num-teams 12 :my-roster-id 1
+                                              :roster-size 2
+                                              :league (assoc-in synced [:teams 0 :player-ids]
+                                                                ["rb2" "rb-new"])}))}))
+            me (into {} (map (juxt :player-id identity)) (:my-roster-players b))]
+        (is (pos? (:ros-points (me "rb-new"))) "off the outlook, not preseason zero")
+        (is (not (:unvalued? (me "rb-new"))))
+        (is (= 9.0 (:week-points (me "rb-new"))) "and his week line is joined, scored under the league")))))
+
+(deftest an-unseasoned-player-never-reaches-the-draft-board
+  (with-unseasoned-universe
+    (fn []
+      (let [resp (routes/rankings-handler
+                  {:body (input-stream (json/write-value-as-string
+                                        {:scoring "ppr" :num-teams 12}))})]
+        (is (= 200 (:status resp)))
+        (is (not-any? #(= "rb-new" (:player-id %)) (:players (parse resp))))))))
