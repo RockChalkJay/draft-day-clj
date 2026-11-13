@@ -96,3 +96,46 @@
           "nobody in this listing carries a designation"))
     (with-redefs [pipeline/offline? (constantly true)]
       (is (nil? (sp/load-directory)) "offline there is none, which is not an empty one"))))
+
+(def ^:private env {:source "cache" :players [{:player-id "00-1" :ids {:sleeper "100"}}]})
+
+(defn- with-week
+  "`f` in season, week 8, with Sleeper projecting `lines` and naming `directory`."
+  [lines directory f]
+  (with-redefs [pipeline/offline?            (constantly false)
+                nflverse-weekly/as-of-week (constantly nil)
+                pipeline/load-weekly       (fn [& _] {:lines lines})
+                sp/load-directory          (constantly directory)]
+    (f)))
+
+(def ^:private kiner {"99999999" {:name "Corey Kiner" :position "RB" :team "NE"}})
+
+(deftest a-player-sleeper-projects-for-the-week-is-added-in-season
+  (with-week {"100" {} "99999999" {}} kiner
+    #(is (= ["00-1" "99999999"]
+            (mapv :player-id (:players (sp/with-unseasoned env 2026 (constantly 8))))))))
+
+(deftest nothing-is-added-before-week-two-offline-or-replaying
+  (with-week {"99999999" {}} kiner
+    (fn []
+      (is (= env (sp/with-unseasoned env 2026 (constantly 1))) "the August board is drawn")
+      (is (= env (sp/with-unseasoned env 2026 (constantly nil))) "no week from Sleeper")
+      (let [sample (assoc env :source "sample")]
+        (is (= sample (sp/with-unseasoned sample 2026 (constantly 8)))))
+      (with-redefs [pipeline/offline? (constantly true)]
+        (is (= env (sp/with-unseasoned env 2026 (constantly 8)))))
+      (with-redefs [nflverse-weekly/as-of-week (constantly 5)]
+        (is (= env (sp/with-unseasoned env 2026 (constantly 8))) "today's line would leak the future")))))
+
+(deftest the-universe-is-left-as-it-was-when-a-source-is-missing
+  (with-week {} kiner
+    #(is (= env (sp/with-unseasoned env 2026 (constantly 8))) "no weekly line"))
+  (with-week {"99999999" {}} nil
+    #(is (= env (sp/with-unseasoned env 2026 (constantly 8))) "no directory")))
+
+(deftest an-unchanged-input-gives-back-the-same-universe-object
+  (with-week {"99999999" {}} kiner
+    (fn []
+      (is (identical? (sp/with-unseasoned env 2026 (constantly 8))
+                      (sp/with-unseasoned env 2026 (constantly 8)))
+          "so `pipeline/with-realized`'s identity memo keeps working"))))

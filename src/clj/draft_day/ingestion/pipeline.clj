@@ -662,6 +662,31 @@
   [p]
   (or (get-in p [:ids :sleeper]) (:player-id p)))
 
+(defn unseasoned-players
+  "Stubs for the players Sleeper projects for the week (`lines`, by Sleeper id)
+  that `players` does not hold, named off `directory`. A season line with no
+  points, as a mid-season signing has, leaves a player out of the universe
+  although he is on a roster and in a lineup.
+
+  A stub carries no preseason line: its rest-of-season points come from the
+  outlook and what he has played. It is anchored like any universe player, so
+  he gets his GSIS id where the snapshot has one. An id the directory cannot
+  name is skipped and logged."
+  [players lines directory]
+  (let [held     (into #{} (map sleeper-id) players)
+        missing  (sort (remove held (keys lines)))
+        {named true unnamed false} (group-by #(contains? directory %) missing)]
+    (when (seq unnamed)
+      (log/warn "weekly line with no season line and no name in Sleeper's list:" (vec unnamed)))
+    (player-ids/attach-ids
+     (mapv (fn [sid]
+             (let [{:keys [name position team]} (get directory sid)]
+               (cond-> {:player-id sid :player-name name :position position
+                        :stats {} :unseasoned? true}
+                 team (assoc :team team))))
+           named)
+     (player-ids/pinned-index))))
+
 (defn assoc-trending
   "Join Sleeper's trending adds onto players as `:trending/adds`, by Sleeper id
   as `assoc-weekly` joins, leaving a player off the list unannotated."

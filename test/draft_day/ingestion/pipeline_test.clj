@@ -810,3 +810,23 @@
       (with-redefs [fantasypros/fetch-weekly-ecr (fn [_] (throw (ex-info "down" {})))
                     pipeline/weekly-ecr-ttl-hours (constantly 0.0)]
         (is (= weekly-ranks (:by-format (pipeline/load-weekly-ecr 2026 8))))))))
+
+(deftest a-player-with-a-week-line-and-no-season-line-becomes-a-stub
+  (let [players [{:player-id "00-1" :ids {:sleeper "100" :gsis "00-1"}}
+                 {:player-id "NE" :ids {:sleeper "NE" :team "NE"}}]
+        lines   {"100" {} "NE" {} "99999999" {} "no-name" {}}
+        names   {"99999999" {:name "Corey Kiner" :position "RB" :team "NE"}}
+        stubs   (pipeline/unseasoned-players players lines names)]
+    (is (= ["99999999"] (mapv :player-id stubs))
+        "a defense is held by its abbreviation, and an id with no name is skipped")
+    (is (= {:player-name "Corey Kiner" :position "RB" :team "NE" :stats {} :unseasoned? true
+            :ids {:sleeper "99999999"}}
+           (select-keys (first stubs) [:player-name :position :team :stats :unseasoned? :ids]))
+        "anchored like a universe player: no GSIS id in the snapshot leaves the Sleeper id"))
+  (is (= "00-0040556" (:player-id (first (pipeline/unseasoned-players
+                                          [] {"12491" {}} {"12491" {:name "Corey Kiner" :position "RB"}}))))
+      "and one the snapshot knows gets his GSIS id, so the nflverse joins reach him"))
+
+(deftest nobody-is-a-stub-when-the-universe-holds-everyone-the-week-projects
+  (is (empty? (pipeline/unseasoned-players [{:player-id "00-1" :ids {:sleeper "100"}}]
+                                           {"100" {}} {"100" {:name "A" :position "RB"}}))))
