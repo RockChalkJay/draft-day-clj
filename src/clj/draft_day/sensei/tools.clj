@@ -727,19 +727,26 @@
         names   (into {} (map (juxt :roster-id :name)) (:teams league))
         rows-of (fn [{:keys [auctions budget]}]
                   (let [budget (or budget (get-in league [:waiver :budget]))]
-                    (->> auctions
-                         (map #(auction-row % budget player names))
-                         (filter #(or (nil? pos) (= pos (:position %)))))))
+                    (map #(auction-row % budget player names) auctions)))
+        wanted  (fn [rows] (filter #(or (nil? pos) (= pos (:position %))) rows))
+        ;; A player the universe no longer holds has no position to count under,
+        ;; and the model should know the summary left him out.
+        unplaced (fn [rows] (let [n (count (filter :unvalued rows))] (when (pos? n) n)))
         [current previous] (:seasons history)
         latest  (reduce max 0 (keep :week (:auctions current)))
-        rows    (cond->> (rows-of current)
-                  (number? weeks) (filter #(> (:week %) (- latest (long weeks)))))]
+        season  (cond->> (rows-of current)
+                  (number? weeks) (filter #(> (:week %) (- latest (long weeks)))))
+        rows    (wanted season)
+        last-season (some-> previous rows-of)]
     (compact [[:league        (named entry)]
               [:season        (:season current)]
               [:budget        (or (:budget current) (get-in league [:waiver :budget]))]
               [:auctions      (count rows)]
               [:by-position   (position-summary rows)]
-              [:last-season   (some-> previous rows-of position-summary not-empty)]
+              [:unplaced      (unplaced season)]
+              [:last-season   (when last-season
+                                (not-empty (compact [[:by-position (not-empty (position-summary (wanted last-season)))]
+                                                     [:unplaced    (unplaced last-season)]])))]
               [:bids          (vec (take max-bids (sort-by (juxt (comp - :week) (comp - #(or (:won %) 0))) rows)))]])))
 
 (def default-news-items
@@ -895,7 +902,9 @@
                        "winning bid (won, and won-pct of the season budget), the runner-up bid (second) and "
                        "how many bid; a summary per position (median-pct, p90-pct, top-pct of budget, and "
                        "contested-median-pct over the auctions two or more managers bid in, since most "
-                       "claims are uncontested $0 pickups); and last season's summary when cached. Recorded bids, not a prediction. Position "
+                       "claims are uncontested $0 pickups); and last season's summary when cached. "
+                       "unplaced counts auctions for players the board no longer holds, which no "
+                       "position summary includes. Recorded bids, not a prediction. Position "
                        "narrows it; weeks keeps the last few weeks of auctions.")
     :input-schema {:type                 "object"
                    :properties           {:league   league-property

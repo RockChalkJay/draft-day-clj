@@ -499,7 +499,8 @@
              :contested 0}]
            (:by-position result))
         "most auctions first; an unvalued player has no position to count under")
-    (is (= [{:position "RB" :auctions 1 :median-pct 50.0 :p90-pct 50.0 :top-pct 50.0 :contested 0}]
+    (is (= 1 (:unplaced result)) "the player the universe lost is counted, not dropped silently")
+    (is (= {:by-position [{:position "RB" :auctions 1 :median-pct 50.0 :p90-pct 50.0 :top-pct 50.0 :contested 0}]}
            (:last-season result)))))
 
 (deftest league-bids-narrow-by-position-and-weeks
