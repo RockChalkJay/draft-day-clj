@@ -326,6 +326,26 @@ the run draws on the plan's limits.
   suggestion. Both found something the board does not say: the manager's
   kicker and defense were both on bye.
 
+Three more in the in-app chat in week 10 of 2026, against the same kind of
+league, after start/sit, matchups and bids got their own instructions:
+
+| Question | Tool calls | Searches | Time |
+| --- | --- | --- | --- |
+| Who should I start at FLEX this week? | 6 | 2 | 31 s |
+| Giants or Jets, which gives up more fantasy points to opposing receivers? | 1 | 0 | 6 s |
+| What should I bid on the top waiver target this week? | 8 | 1 | 40 s |
+
+- The matchup went straight to `defense_vs_position` and quoted both teams'
+  season and last-three-game rates in this league's scoring.
+- The bid started from `league_bids` (QB claims here are $0 unless contested,
+  and the four contested ones went for a median of $11), then quoted FF
+  Beacon's range from search results as FF Beacon's.
+- Neither the start/sit nor the bid answer searched at first: the chat note's
+  "a narrow question needs one search or none" read as permission to skip the
+  experts. The persona's rule to search before either was not enough on its
+  own; it took the same rule in the chat note, which is appended to the system
+  prompt.
+
 ## Open questions
 
 - **One account per host.** The env holds one ESPN cookie pair and one Sleeper
