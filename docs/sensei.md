@@ -193,7 +193,7 @@ no red-zone usage reads as a yardage role. A key is absent when none was recorde
 **What a defense allows.** "Giants or Jets, who gives up more to receivers?"
 had no tool, and the web's defense-vs-position tables disagreed with each other
 and ran weeks behind: in week 10 the freshest found stopped at week 7 or 8, on
-five sites with five different numbers. Every game-log row already names the
+six sites with six different numbers. Every game-log row already names the
 team the player faced, so `rankings/opponent.clj` sums what each position scored
 against each team under the league's own rules, through `through-week`, per
 game and over the team's last three games. A game is a week the team played,

@@ -441,4 +441,8 @@
 
 (deftest defense-vs-position-before-a-game-says-so
   (is (re-find #"no game has been played"
-               (:error (call "defense_vs_position" {:position "WR"} (fx/deps))))))
+               (:error (call "defense_vs_position" {:position "WR"}
+                             (fx/deps {:reply (constantly (assoc fx/reply :through-week 0))})))))
+  (is (re-find #"game logs are unavailable"
+               (:error (call "defense_vs_position" {:position "WR"} (fx/deps))))
+      "weeks were played but no log arrived: not the same as no games"))

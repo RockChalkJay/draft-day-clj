@@ -439,7 +439,9 @@
         reply (checked ((:reply deps) entry))
         table (:defense-vs-position reply)
         _     (when (empty? table)
-                (throw (tool-error "no game has been played this season, so no defense has allowed anything yet")))
+                (throw (tool-error (if (pos? (or (:through-week reply) 0))
+                                     "this season's game logs are unavailable, so what each defense allowed cannot be counted"
+                                     "no game has been played this season, so no defense has allowed anything yet"))))
         poss  (if pos [pos] db/positions)
         rows  (if (seq abbrs)
                 (for [team abbrs, p poss
