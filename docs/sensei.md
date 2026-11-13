@@ -146,9 +146,11 @@ season) and health (`inj`, news). They keep this week apart from the season, and
 say that a `lineup` of 0 is a stash or a role bet when the others agree, not a
 reason to pass. Where the model can search the web it is told to look up the
 week's waiver wire, start/sit and sleeper articles for the shortlist and the
-drop only, at most three searches (in the in-app chat `DRAFTDAY_SENSEI_SEARCHES`
-raises the ceiling, and the model uses fewer on a narrow question), and to name the outlet behind each claim: an
-outlet's figure is never an engine number. Whether this reads better is a
+drop only, at most three searches (five in the in-app chat, where
+`DRAFTDAY_SENSEI_SEARCHES` moves the ceiling and the model uses fewer on a
+narrow question), and to name the outlet behind each claim: an outlet's figure
+is never an engine number. A start/sit question, a matchup and a bid each have
+their own short section (see Trusted sources below). Whether this reads better is a
 judgment of answers, not a measurement, so there is no test of the advice,
 only of what the instructions name.
 
@@ -226,8 +228,9 @@ the winning team. ESPN publishes no losing bids, so its leagues answer that
 there is no history.
 
 **What the screen holds back, Sensei holds back.** No bid predictions while
-`db/bid-predictions?` is off, and the instructions tell the model not to put a
-FAAB figure on a claim. No raw rest-of-season points, which no surface shows.
+`db/bid-predictions?` is off, and the instructions tell the model never to
+present a bid as the engine's. A bid it does give is someone else's figure,
+named: this league's recorded auctions (`league_bids`) or an outlet's. No raw rest-of-season points, which no surface shows.
 `lineup`, `upgrade` and VORP stay.
 
 **No credential reaches the model.** No tool takes one. Cookies come from the
@@ -259,6 +262,45 @@ They carry no `lineup`, `upgrade` or `drop-cost`, which are priced against the
 manager's own seats. `matchup` is fetched live per call through
 `routes/matchup-reply`, the function behind `POST /api/matchup`. An owner id
 is never stated.
+
+## Trusted sources
+
+Researched in week 10 of 2026, for the instructions' Who to start, Matchups,
+Bids and Sources sections.
+
+**Whose start/sit calls.** Accuracy is measured: FantasyPros scores every
+ranker's weekly calls and keeps a three-year in-season leaderboard. 2025's top
+five were Justin Boone (Yahoo), Pat Thorman (Establish the Run), Jamie Calandro
+(RotoBaller), Chris Gimino (RotoGrinders) and Jeff Ratcliffe (FTN). Across
+years, Thorman has finished in the top four four years running, Boone has nine
+top-ten finishes, and Sean Koerner (Action Network) has won three times. Each
+week FantasyPros publishes "Most Accurate Experts (Week N)", a consensus of only
+the best-measured rankers with start/sit grades, on a host the chat could
+already read; the instructions send a start/sit question there first.
+
+**Which pages the chat can read.** One `claude -p` fetch per candidate, with
+the chat's flags:
+
+| Host | Fetch | Kept |
+| --- | --- | --- |
+| www.fantasylife.com, establishtherun.com, www.actionnetwork.com, www.draftsharks.com | read | added |
+| www.fantasypros.com ("Most Accurate Experts") | read | already listed |
+| www.footballguys.com | index read, articles paywalled | no |
+| www.ftnfantasy.com | 403 | no |
+| ffbeacon.com | 429 | no |
+
+**Bids.** FF Beacon publishes the median and upper-end winning FAAB bid per
+waiver target, as a share of budget, from real claims in the Sleeper leagues
+synced to it (1,427 over 2023-26). It is the best outside evidence for a bid,
+and it turns away every automated read with a 429, its own browser excepted.
+Its terms forbid getting around a rate limit, so the server does not drive its
+calculator; the model reads its figures from search results, which carry them,
+and the terms allow quoting with attribution. FAABLab (faablab.app; faablab.ai
+does not resolve) draws its page by script, so a fetch reads an empty page, and
+its bids are what its users submit: weaker evidence, and said so. Both rank
+behind this league's own auctions (`league_bids`), which are the same rivals.
+
+**Matchups.** Not from the web: see What a defense allows, above.
 
 ## Measured
 
@@ -324,8 +366,9 @@ the run draws on the plan's limits.
 
   **Web access.** The panel can search the web and read pages from a list of
   outlets (`DRAFTDAY_SENSEI_WEB_HOSTS`, comma-separated exact hosts; default
-  FantasyPros, RotoBaller, Yahoo Sports, Bleacher Report, ESPN, CBS Sports and
-  NBC Sports; `DRAFTDAY_SENSEI_WEB=off` removes it). The model holds league data
+  FantasyPros, RotoBaller, Yahoo Sports, Bleacher Report, ESPN, CBS Sports, NBC
+  Sports, Fantasy Life, Establish the Run, Action Network and Draft Sharks;
+  `DRAFTDAY_SENSEI_WEB=off` removes it). The model holds league data
   and reads pages other people write, so a fetch is the risk: an instruction on a
   page could ask it to put a roster in a URL. Search runs on Anthropic's side and
   carries no URL of the model's choosing, and a fetch is allowed for named hosts

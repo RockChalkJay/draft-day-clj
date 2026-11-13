@@ -46,9 +46,10 @@
               "before each section. In each, check")
          (str "Review my team in the league " (pr-str league) ". Check"))
        " my lineup for injuries, byes and anyone on my bench who should start instead, "
-       "weighing this week's expert ranks as well as the projections. "
+       "weighing this week's expert ranks, the most accurate experts' calls and what each "
+       "opponent allows the position as well as the projections. "
        "Then look at every board of the waiver wire for claims worth making, naming the drop "
-       "for each and the signals that back it. "
+       "for each, the signals that back it and what this league has paid for players like him. "
        "Finish with my moves in priority order: claims and drops, start and sit calls, "
        "and any sleeper worth a stash."))
 

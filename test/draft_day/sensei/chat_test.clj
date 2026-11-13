@@ -148,15 +148,15 @@
     (testing "the prompt is not on the command line"
       (is (not-any? #(str/includes? % "Manager:") argv)))))
 
-(deftest search-limit-is-three-unless-the-env-says-otherwise
-  (is (= 3 (chat/search-limit {})))
+(deftest search-limit-is-five-unless-the-env-says-otherwise
+  (is (= 5 (chat/search-limit {})))
   (is (= 8 (chat/search-limit {"DRAFTDAY_SENSEI_SEARCHES" " 8 "})))
   (doseq [bad ["0" "-2" "many" "" "2.5"]]
-    (is (= 3 (chat/search-limit {"DRAFTDAY_SENSEI_SEARCHES" bad})) (str "falls back on " (pr-str bad)))))
+    (is (= 5 (chat/search-limit {"DRAFTDAY_SENSEI_SEARCHES" bad})) (str "falls back on " (pr-str bad)))))
 
 (deftest the-ceiling-reaches-the-model
   (let [note #(second (drop-while (fn [a] (not= "--append-system-prompt" a)) (chat/command %)))]
-    (is (str/includes? (note {:port 1}) "up to 3 times"))
+    (is (str/includes? (note {:port 1}) "up to 5 times"))
     (is (str/includes? (note {:port 1 :searches 7}) "up to 7 times"))
     (is (not (str/includes? (note {:port 1 :searches 7}) "{searches}")))))
 
@@ -165,6 +165,8 @@
     (is (contains? rules "mcp__sensei"))
     (is (contains? rules "WebSearch"))
     (is (contains? rules "WebFetch(domain:www.fantasypros.com)"))
+    (is (contains? rules "WebFetch(domain:establishtherun.com)") "an accurate expert's home")
+    (is (not-any? #(str/includes? % "ffbeacon") rules) "it turns automated reads away")
     (is (not-any? #{"WebFetch" "Bash" "Read" "Write" "Edit"} rules)
         "no bare WebFetch, which would read any host"))
   (testing "the owner's own hosts replace the defaults, and a non-host is dropped"
