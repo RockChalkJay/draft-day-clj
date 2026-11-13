@@ -20,8 +20,10 @@
             [draft-day.ingestion.match :as match]
             [draft-day.providers :as providers]
             [draft-day.rankings.lineup :as lineup]
+            [draft-day.rankings.opponent :as opponent]
             [draft-day.rankings.waiver :as waiver]
-            [draft-day.sensei.context :as context]))
+            [draft-day.sensei.context :as context]
+            [draft-day.team-names :as team-names]))
 
 (defn per-league
   "`f` of a league entry, computed at most once per league for as long as the
@@ -148,6 +150,14 @@
       (and wk-rank-min wk-rank-max) (str " (" wk-rank-min "-" wk-rank-max ")")
       wk-grade                      (str " " wk-grade))))
 
+(defn opp-vs-pos
+  "What his opponent this week has allowed his position a game, ranked:
+  `WR 8th most (31.2/g)`. Nil on a bye or before a game is played."
+  [p]
+  (when-let [{:keys [rank of per-game]} (:opp-vs-pos p)]
+    (when (and rank of (number? per-game))
+      (str (:position p) " " (opponent/rank-label rank of) " (" (format "%.1f" (double per-game)) "/g)"))))
+
 (defn percent
   "A share as a whole percent, or nil."
   [share]
@@ -180,6 +190,7 @@
                 [:team (:team p)]
                 [:slot (:slot p)]
                 [:opp (opponent p)]
+                [:opp-vs-pos (opp-vs-pos p)]
                 [:inj (injury p)]
                 [:outlook (:outlook-ppg p)]
                 [:wk-ecr (wk-ecr p)]
@@ -207,6 +218,7 @@
        (into ["- on: waiver_targets only, the boards that list him (lineup, adds, form, role, experts)"
               "- pos-rank: his rank at his position on fantasy points so far (preseason rank before week 1)"
               "- opp: this week's opponent"
+              "- opp-vs-pos: what this week's opponent has allowed his position a game this season under this league's scoring, ranked among the 32 from the most allowed (the softest matchup) to the fewest"
               "- inj: Sleeper's injury designation"
               "- outlook: Sleeper's projected points a game over the weeks he has left, under this league's scoring"
               "- ros-ecr: FantasyPros' experts' rest-of-season rank at his position in this league's scoring format, with the range of their ranks; absent when they do not rank him"
@@ -382,6 +394,66 @@
     (when (and pos (not (some #{pos} db/positions)))
       (throw (tool-error (str "position must be one of " (str/join ", " db/positions)))))
     pos))
+
+(defn team-arg
+  "The team abbreviation `q` names: an abbreviation, a full name, a nickname
+  (`Giants`) or a city with one team in it, or a tool error. Checked before any
+  league is read, so a bad one costs no board."
+  [q]
+  (let [q    (str/lower-case (str/trim (str q)))
+        hits (filter (fn [[abbr full]]
+                       (let [full (str/lower-case full)]
+                         (or (= q (str/lower-case abbr))
+                             (= q full)
+                             (str/ends-with? full (str " " q))
+                             (str/starts-with? full (str q " ")))))
+                     (sort team-names/names))]
+    (if (= 1 (count hits))
+      (ffirst hits)
+      (throw (tool-error (str (if (seq hits) "More than one team matches " "No team matches ")
+                              (pr-str q)
+                              (when (seq hits)
+                                (str ": " (str/join ", " (map (fn [[abbr full]] (str abbr " " full)) hits))))))))))
+
+(defn allowed-row
+  "One team's line at one position as `defense_vs_position` states it."
+  [team pos {:keys [rank of per-game recent-per-game games]}]
+  (compact [[:team team]
+            [:name (team-names/full-name team)]
+            [:position pos]
+            [:rank (opponent/rank-label rank of)]
+            [:per-game per-game]
+            [:recent recent-per-game]
+            [:games games]]))
+
+(defn defense-vs-position
+  "What defenses have allowed each position this season, under the league's
+  scoring, off the waiver reply's `:defense-vs-position`: for the named teams at
+  one position or all, or every team at one position, most allowed first."
+  [deps {:keys [position teams] :as args}]
+  (let [pos   (position-arg position)
+        abbrs (mapv team-arg (if (string? teams) [teams] teams))
+        _     (when (and (nil? pos) (empty? abbrs))
+                (throw (tool-error "name a position, teams, or both")))
+        entry (the-league deps args)
+        reply (checked ((:reply deps) entry))
+        table (:defense-vs-position reply)
+        _     (when (empty? table)
+                (throw (tool-error "no game has been played this season, so no defense has allowed anything yet")))
+        poss  (if pos [pos] db/positions)
+        rows  (if (seq abbrs)
+                (for [team abbrs, p poss
+                      :let [line (get-in table [team p])]
+                      :when line]
+                  (allowed-row team p line))
+                (->> table
+                     (keep (fn [[team by-pos]] (when-let [line (get by-pos pos)] [team line])))
+                     (sort-by (comp :rank second))
+                     (map (fn [[team line]] (allowed-row team pos line)))))]
+    {:league       (named entry)
+     :through-week (:through-week reply)
+     :scoring      "this league's own"
+     :teams        (vec rows)}))
 
 (def board-size
   "How many players each of `waiver-targets`' boards after the lineup one adds."
@@ -622,7 +694,7 @@
   [{:name         "leagues"
     :title        "Leagues"
     :description  (str "The leagues the manager plays in, each with the key that the league argument of "
-                       "my_team, team_roster, matchup and waiver_targets takes. Call this first when the question does not "
+                       "my_team, team_roster, matchup, waiver_targets and defense_vs_position takes. Call this first when the question does not "
                        "name a league.")
     :input-schema {:type "object" :properties {} :additionalProperties false}
     :handler      leagues}
@@ -700,6 +772,24 @@
                    :required             ["add"]
                    :additionalProperties false}
     :handler      evaluate-claim}
+   {:name         "defense_vs_position"
+    :title        "Defense vs position"
+    :description  (str "What each NFL defense has allowed each position this season, per game, scored "
+                       "under this league's own rules, off every game played through through-week: "
+                       "per-game, recent (its last three games) and rank among the 32, worded from the "
+                       "most allowed (the softest matchup) to the fewest. For DST it is what defenses "
+                       "scored against that team's offense. Name teams (abbreviation, name or nickname) "
+                       "to compare them, a position for every team ordered by most allowed, or both. "
+                       "Use this for any matchup question rather than a web table.")
+    :input-schema {:type                 "object"
+                   :properties           {:league   league-property
+                                          :position {:type "string" :enum db/positions
+                                                     :description "Only this position"}
+                                          :teams    {:type        "array"
+                                                     :items       {:type "string"}
+                                                     :description "Teams to compare, e.g. [\"NYG\", \"Jets\"]"}}
+                   :additionalProperties false}
+    :handler      defense-vs-position}
    {:name         "player_news"
     :title        "Player news"
     :description  (str "A player's latest news notes (Rotowire, via ESPN), newest first, and his "

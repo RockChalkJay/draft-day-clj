@@ -95,7 +95,8 @@ the owner uses it.
 ```
   sensei.context   accounts -> leagues -> the /api/waivers body of each
   sensei.tools     leagues, my_team, league_teams, team_roster, matchup,
-                   waiver_targets, evaluate_claim, player_news
+                   waiver_targets, evaluate_claim, defense_vs_position,
+                   player_news
   sensei.mcp       POST /api/sensei/mcp
   sensei.chat      POST /api/sensei/chat, GET /api/sensei/status
        ^ Claude Code      ^ claude -p, the in-app panel      ^ API adapter (later)
@@ -188,6 +189,28 @@ passes inside the 20 this season, as Sleeper counts them. They are raw counts an
 not shares, because Sleeper publishes no team total and one summed from players
 would be an estimate. Touchdowns are the volatile part of a line, so snaps with
 no red-zone usage reads as a yardage role. A key is absent when none was recorded.
+
+**What a defense allows.** "Giants or Jets, who gives up more to receivers?"
+had no tool, and the web's defense-vs-position tables disagreed with each other
+and ran weeks behind: in week 10 the freshest found stopped at week 7 or 8, on
+five sites with five different numbers. Every game-log row already names the
+team the player faced, so `rankings/opponent.clj` sums what each position scored
+against each team under the league's own rules, through `through-week`, per
+game and over the team's last three games. A game is a week the team played,
+not a row. A defense's own row names the offense it faced, so DST reads as how
+good that offense is to stream against. `defense_vs_position` answers it for
+named teams or a whole position, and every row carries `opp-vs-pos` for this
+week's opponent (`WR 8th most (31.2/g)`). The rank is always worded with its
+direction, never a bare number: `#1 defense` is the best one in football talk
+and the softest matchup in a DvP table, and a model reading it the wrong way
+would bench a receiver for the best matchup of his week.
+
+It is built from the universe's game logs, which reach only players the
+universe holds. Measured against Sleeper's raw weekly stats in week 10 of 2026
+(PPR, weeks 1-9): 3,303 of 3,525 player-games, but the points allowed differ by
+1.5% at QB and TE, under 0.4% at RB and WR and nothing at K and DST, because the
+missing rows are backups (Jalon Daniels' 11-14 point weeks the biggest). That
+was under the 2% at which reading positions off the raw stats would pay.
 
 **What the screen holds back, Sensei holds back.** No bid predictions while
 `db/bid-predictions?` is off, and the instructions tell the model not to put a

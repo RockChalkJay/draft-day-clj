@@ -392,3 +392,53 @@
     (is (= 14 (:rz-rush r)))
     (is (= 1 (:rz-tgt r)))
     (is (not (contains? r :rz-pass)) "none recorded: no key")))
+
+;; ---- defense vs position ----
+
+(def ^:private allowed
+  {"NYG" {"WR" {:rank 8 :of 32 :per-game 31.24 :recent-per-game 29.6 :games 7 :points 218.7}
+          "RB" {:rank 30 :of 32 :per-game 14.0 :recent-per-game 12.0 :games 7 :points 98.0}}
+   "NYJ" {"WR" {:rank 20 :of 32 :per-game 28.8 :recent-per-game 33.1 :games 8 :points 230.4}}})
+
+(defn- dvp-deps []
+  (fx/deps {:reply (constantly (assoc fx/reply :defense-vs-position allowed))}))
+
+(deftest a-row-states-what-his-opponent-allows-his-position
+  (is (= "WR 8th most (31.2/g)"
+         (:opp-vs-pos (tools/row (assoc (first fx/free-agents)
+                                        :opp-vs-pos (assoc (get-in allowed ["NYG" "WR"]) :team "NYG"))))))
+  (is (= [:opp :opp-vs-pos :inj]
+         (->> (keys (tools/row (assoc (first fx/free-agents) :opp-vs-pos {:rank 1 :of 32 :per-game 1.0})))
+              (filter #{:opp :opp-vs-pos :inj})))
+      "beside the opponent it is about")
+  (is (not (contains? (tools/row (first fx/free-agents)) :opp-vs-pos)) "no line: no key")
+  (is (str/includes? (tools/legend) "- opp-vs-pos:")))
+
+(deftest defense-vs-position-compares-the-named-teams
+  (let [{:keys [result]} (call "defense_vs_position" {:teams ["Giants" "nyj"] :position "WR"} (dvp-deps))]
+    (is (= ["NYG" "NYJ"] (map :team (:teams result))))
+    (is (= {:team "NYG" :name "New York Giants" :position "WR" :rank "8th most"
+            :per-game 31.2 :recent 29.6 :games 7}
+           (first (:teams result))))
+    (is (= "this league's own" (:scoring result)))
+    (is (= 6 (:through-week result)))))
+
+(deftest defense-vs-position-lists-every-team-at-a-position-most-first
+  (let [{:keys [result]} (call "defense_vs_position" {:position "WR"} (dvp-deps))]
+    (is (= ["8th most" "13th fewest"] (map :rank (:teams result))))))
+
+(deftest defense-vs-position-reads-every-position-of-a-named-team
+  (let [{:keys [result]} (call "defense_vs_position" {:teams "New York Giants"} (dvp-deps))]
+    (is (= ["RB" "WR"] (map :position (:teams result))) "in the board's position order")
+    (is (= "3rd fewest" (:rank (first (:teams result)))))))
+
+(deftest defense-vs-position-asks-again-rather-than-guessing-a-team
+  (let [deps (fx/deps {:reply (fn [_] (throw (ex-info "priced a board" {})))})]
+    (is (re-find #"More than one team matches \"new york\": NYG New York Giants, NYJ New York Jets"
+                 (:error (call "defense_vs_position" {:teams ["New York"]} deps))))
+    (is (re-find #"No team matches" (:error (call "defense_vs_position" {:teams ["Gotham"]} deps))))
+    (is (re-find #"name a position, teams, or both" (:error (call "defense_vs_position" {} deps))))))
+
+(deftest defense-vs-position-before-a-game-says-so
+  (is (re-find #"no game has been played"
+               (:error (call "defense_vs_position" {:position "WR"} (fx/deps))))))

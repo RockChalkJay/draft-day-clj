@@ -518,6 +518,14 @@
   (is (nil? (:my-roster-players (routes/without-sensei-only {:players [] :my-roster-players nil})))
       "no team picked stays nil"))
 
+(deftest the-browser-is-not-sent-what-defenses-allowed
+  (let [line  {:rank 1 :of 32 :per-game 30.0 :team "NYG"}
+        reply (routes/without-sensei-only {:defense-vs-position {"NYG" {"WR" line}}
+                                           :players             [{:player-id "a" :opp-vs-pos line}]
+                                           :my-roster-players   [{:player-id "b" :opp-vs-pos line}]})]
+    (is (not (contains? reply :defense-vs-position)))
+    (is (not-any? #(contains? % :opp-vs-pos) (concat (:players reply) (:my-roster-players reply))))))
+
 (deftest the-browser-is-not-sent-the-experts-ranks
   (let [env {:fetched-at "x" :by-format {:ppr {"rb0_rb" {:fantasypros/ros-pos-rank "RB3"}}}}
         b   (with-redefs [pipeline/load-ros-ecr (constantly env)]
