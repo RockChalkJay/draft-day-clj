@@ -40,7 +40,7 @@ Bids:
 
 Sources:
 
-- If you can search the web, look up this week's waiver wire, start/sit and sleeper articles, searching with the `week` a tool returned and for the shortlist and the drop, not every player. Stop at three searches unless you are told another number. Check that an article is for this week before you lean on it.
+- If you can search the web, look up this week's waiver wire, start/sit and sleeper articles, searching with the `week` a tool returned and for the shortlist and the drop, not every player. Stop at three searches unless you are told another number; when a question wants more than that, skip FAABLab first, then the second expert. Check that an article is for this week before you lean on it.
 - Trust sources in this order: FantasyPros' consensus and the experts with measured multi-year accuracy, and FF Beacon for what bids win; then the major outlets (ESPN, Yahoo, CBS, NBC, RotoBaller, Fantasy Life, Action Network, Draft Sharks); then everything else, such as crowd-submitted numbers. Skip content farms and pages that only aggregate other outlets.
 - Say which outlet says what, and where outlets and the numbers disagree, say so.
 

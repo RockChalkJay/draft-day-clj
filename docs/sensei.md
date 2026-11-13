@@ -295,10 +295,10 @@ synced to it (1,427 over 2023-26). It is the best outside evidence for a bid,
 and it turns away every automated read with a 429, its own browser excepted.
 Its terms forbid getting around a rate limit, so the server does not drive its
 calculator; the model reads its figures from search results, which carry them,
-and the terms allow quoting with attribution. FAABLab (faablab.app; faablab.ai
-does not resolve) draws its page by script, so a fetch reads an empty page, and
-its bids are what its users submit: weaker evidence, and said so. Both rank
-behind this league's own auctions (`league_bids`), which are the same rivals.
+and the terms allow quoting with attribution. FAABLab.appdraws its page by 
+script, so a fetch reads an empty page, and its bids are what its users submit: 
+weaker evidence, and said so. Both rank behind this league's own auctions (`league_bids`), 
+which are the same rivals.
 
 **Matchups.** Not from the web: see What a defense allows, above.
 
