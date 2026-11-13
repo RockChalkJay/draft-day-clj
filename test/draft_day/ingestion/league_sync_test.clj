@@ -4,6 +4,7 @@
             [draft-day.ingestion.league-import :as league-import]
             [draft-day.ingestion.league-sync :as league-sync]
             [draft-day.ingestion.league-sync.sleeper :as sync-sleeper]
+            [draft-day.ingestion.sleeper-players :as sleeper-players]
             [draft-day.ingestion.league-import.sleeper :as import-sleeper]))
 
 (def ^:private raw
@@ -161,6 +162,22 @@
     (let [{:keys [ok league]} (league-sync/sync-league {:provider "sleeper" :league-id "1"})]
       (is ok)
       (is (= 3 (count (:teams league)))))))
+
+(deftest the-sync-names-the-rostered-players-the-directory-knows
+  (let [ids       (into #{} (mapcat :players) (:rosters raw))
+        known     (first (sort ids))
+        directory {known {:name "Corey Kiner" :position "RB" :team "NE"}
+                   "not-rostered" {:name "Nobody" :position "WR"}}]
+    (is (= [{:id known :name "Corey Kiner" :position "RB"}]
+           (:provider-players (sync-of (assoc raw :directory directory))))
+        "only a rostered id, in the shape ESPN's sync ships")
+    (is (nil? (:provider-players (sync-of raw)))
+        "no directory, no names, and the sync is otherwise unchanged")))
+
+(deftest a-failed-directory-does-not-fail-the-sync
+  (with-redefs [sleeper-players/load-directory
+                (fn [] (throw (ex-info "Sleeper players fetch failed" {})))]
+    (is (nil? (sync-sleeper/fetch-directory)))))
 
 (deftest an-unknown-provider-is-a-400
   (let [{:keys [ok status error]} (league-sync/sync-league {:provider "yahoo" :league-id "1"})]

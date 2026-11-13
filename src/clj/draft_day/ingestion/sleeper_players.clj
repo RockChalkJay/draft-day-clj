@@ -1,5 +1,6 @@
 (ns draft-day.ingestion.sleeper-players
-  "Who Sleeper currently lists as injured, with the body part and its note.
+  "Who Sleeper currently lists as injured, with the body part and its note, and
+  who every player is.
 
   The projections feed embeds a player object per entry and its
   `:injury_status` is old (a receiver listed Questionable on Sleeper's own
@@ -17,18 +18,25 @@
   player keeps what the projections feed said, since today's designation is
   news that week never had.
 
+  The same dump is also kept as a directory, `{sleeper-id {:name :position
+  :team}}` for the skill positions. A roster names players by Sleeper id, and a
+  player the projections feed carries no season line for is not in the
+  universe, so the directory is the only place his name can come from.
+
   Cached apart from the universe on `DRAFTDAY_INJURY_TTL_HOURS` (default 3).
   Designations move by the hour on a game day, but Sleeper asks that this
   endpoint be called rarely."
   (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [draft-day.ingestion.nflverse-weekly :as nflverse-weekly]
             [draft-day.ingestion.paths :as paths]
             [draft-day.ingestion.pipeline :as pipeline]
+            [draft-day.ingestion.sleeper :as sleeper]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
             [draft-day.json :refer [mapper]]
             [jsonista.core :as json]))
 
-(def schema-version 1)
+(def schema-version 2)
 
 (def default-cache-path (str paths/cache-root "/injuries.v" schema-version ".transit"))
 
@@ -59,6 +67,22 @@
                                (number? news_updated)              (assoc :updated-at news_updated))])))
         raw))
 
+(defn directory
+  "`{sleeper-id {:name :position :team}}` for every player scored at QB, RB, WR,
+  TE or K, by `sleeper/fantasy-position`, so a two-way player is filed where he
+  scores. Team defenses are left out: they are keyed by abbreviation in both
+  id spaces and the universe already names them. `:team` is absent for a
+  player on no roster."
+  [raw]
+  (into {}
+        (keep (fn [[id {:keys [first_name last_name team] :as player}]]
+                (let [pos (some-> (sleeper/fantasy-position player) sleeper/canon-pos)]
+                  (when (and pos (not= "DST" pos))
+                    [(name id) (cond-> {:name     (str/trim (str first_name " " last_name))
+                                        :position pos}
+                                 (not (str/blank? team)) (assoc :team team))]))))
+        raw))
+
 (defn live
   "The envelope for a fresh list. An answer with no player in it throws, since
   caching nobody would read as everybody healthy."
@@ -66,8 +90,13 @@
   (let [raw (fetch-raw)]
     (when-not (and (map? raw) (some (comp :player_id val) raw))
       (throw (ex-info "Sleeper players list empty" {})))
-    {:fetched-at (pipeline/now-iso)
-     :injuries   (normalize raw)}))
+    (let [injuries (normalize raw)
+          names    (directory raw)]
+      (log/info "Sleeper player list:" (count names) "players named,"
+                (count injuries) "with a designation")
+      {:fetched-at (pipeline/now-iso)
+       :injuries   injuries
+       :directory  names})))
 
 (defn load-injuries
   "`{:fetched-at :injuries {sleeper-id {...}}}`, fresh from the cache, else live,
@@ -81,6 +110,13 @@
                                :schema-version schema-version
                                :fetch          live
                                :label          "injury list"}))))
+
+(defn load-directory
+  "`{sleeper-id {:name :position :team}}` off the same cache as the designations,
+  or nil where there is none to read (offline, replaying a week, nothing cached
+  and Sleeper silent). A caller treats nil as no names, never as no players."
+  []
+  (:directory (load-injuries)))
 
 (defn assoc-injuries
   "Set each player's designation from `injuries`, by Sleeper id. One the list

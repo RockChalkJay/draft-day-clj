@@ -282,6 +282,14 @@
       (and week (= week (:bye p))) "Bye"
       :else "–")))
 
+(defn unvalued-name
+  "A player the board has no row for, drawn muted: by name where the league's
+  sync named him, else by his id, which says the crosswalk missed."
+  [p]
+  (if-let [nm (:player-name p)]
+    [:span.muted {:title "Not on the board: no projection for this player"} nm]
+    [:span.muted {:title (str "No player for id " (:player-id p))} (:player-id p)]))
+
 (defn player-ident
   "`logo name opponent` — the one way a player is named. Opponent reads off
   `week-matchup` and is dropped when `week` is nil (the draft half has none) or
@@ -294,8 +302,7 @@
   [p week {:keys [on-click mirror? extra logo?] :or {logo? true}}]
   (let [logo (when logo? (team-logo (:team p)))
         nm   (cond
-               (:unvalued? p) [:span.muted {:title (str "No player for id " (:player-id p))}
-                               (:player-id p)]
+               (:unvalued? p) (unvalued-name p)
                on-click       [:button.name-btn {:on-click on-click :tab-index -1
                                                  :title "Player detail"}
                                (:player-name p)]

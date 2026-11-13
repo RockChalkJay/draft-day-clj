@@ -68,3 +68,31 @@
   (let [env {:source "sample" :players [{:player-id "7"}]}]
     (with-redefs [sp/load-injuries (fn [] (throw (AssertionError. "must not load")))]
       (is (= env (sp/with-injuries env))))))
+
+(def ^:private listing
+  {"12491" {:player_id "12491" :first_name "Corey" :last_name "Kiner" :position "RB" :team "NE"}
+   "8"     {:player_id "8" :first_name "Cut" :last_name "Kicker" :position "K" :team nil}
+   "9"     {:player_id "9" :first_name "Travis" :last_name "Hunter" :position "DB"
+            :fantasy_positions ["DB" "WR"] :team "JAX"}
+   "10"    {:player_id "10" :first_name "Some" :last_name "Linebacker" :position "LB"
+            :fantasy_positions ["LB"] :team "DAL"}
+   "NE"    {:player_id "NE" :first_name "New England" :last_name "" :position "DEF" :team "NE"}})
+
+(deftest the-directory-names-every-skill-player-by-sleeper-id
+  (is (= {"12491" {:name "Corey Kiner" :position "RB" :team "NE"}
+          "8"     {:name "Cut Kicker" :position "K"}
+          "9"     {:name "Travis Hunter" :position "WR" :team "JAX"}}
+         (sp/directory listing))
+      "a two-way player is filed where he scores, a teamless one has no :team, and
+       neither an IDP player nor a team defense is listed"))
+
+(deftest the-directory-rides-the-same-cache-as-the-designations
+  (let [path (temp-path)]
+    (with-redefs [sp/fetch-raw      (constantly listing)
+                  pipeline/offline? (constantly false)
+                  sp/default-cache-path path]
+      (is (= "Corey Kiner" (:name (get (sp/load-directory) "12491"))))
+      (is (= {} (:injuries (sp/load-injuries)))
+          "nobody in this listing carries a designation"))
+    (with-redefs [pipeline/offline? (constantly true)]
+      (is (nil? (sp/load-directory)) "offline there is none, which is not an empty one"))))

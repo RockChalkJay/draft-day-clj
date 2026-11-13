@@ -1037,6 +1037,23 @@
   [p]
   (slot-rank (or (:slot p) (:position p))))
 
+(defn provider-player-index
+  "`{provider-id {:id :name :position}}` from a sync's `:provider-players`."
+  [provider-players]
+  (into {} (map (juxt :id identity)) provider-players))
+
+(defn unvalued-row
+  "The row for an id `by-id` cannot resolve: `{:player-id id :unvalued? true}`,
+  with `:player-name` where the league's `:provider-players` names him. The id
+  is the provider's, since an unresolved id maps to itself.
+
+  Never a `:position`: the lineup optimizers keep a row only if it has one, and
+  a man with a position and no projection would be seated at nothing instead of
+  skipped."
+  [named id]
+  (cond-> {:player-id id :unvalued? true}
+    (:name (get named id)) (assoc :player-name (:name (get named id)))))
+
 (defn team-roster
   "One synced team as every season view draws it — the League tab's cards, My
   Team and the Waivers panel alike: `{:starters :bench :parked}`, each a vector
@@ -1051,11 +1068,12 @@
   then drawn in `seat-rank` order, since hosts disagree about lineup order.
   An unfilled seat (`empty-seat`) consumes its index and is dropped: this is
   a list of who a team holds, not of its seats. Ids go through `held-ids`, and
-  an id `by-id` cannot resolve keeps its place as `{:player-id id :unvalued?
-  true}` — a roster that silently skipped him would show fewer players than the
-  team holds, which is how a missing crosswalk hides."
+  an id `by-id` cannot resolve keeps its place as `unvalued-row` — a roster
+  that silently skipped him would show fewer players than the team holds, which
+  is how a missing crosswalk hides."
   [team league xwalk by-id]
-  (let [row      (fn [id] (or (get by-id id) {:player-id id :unvalued? true}))
+  (let [named    (provider-player-index (:provider-players league))
+        row      (fn [id] (or (get by-id id) (unvalued-row named id)))
         seats    (vec (starter-seats team league))
         lineup   (held-ids team xwalk :starter-ids)
         starters (into []

@@ -170,4 +170,8 @@
   (testing "the logo can be left off"
     (is (not (re-find #"team-logo" (pr-str (util/player-ident {:player-name "A" :team "LAR"} 3 {:logo? false}))))))
   (testing "an unvalued player shows his id"
-    (is (re-find #"No player for id" (pr-str (util/player-ident {:player-id "x" :unvalued? true} 3 nil))))))
+    (is (re-find #"No player for id" (pr-str (util/player-ident {:player-id "x" :unvalued? true} 3 nil)))))
+  (testing "or his name, where the league's sync gave one"
+    (let [s (pr-str (util/player-ident {:player-id "x" :unvalued? true :player-name "Corey Kiner"} 3 nil))]
+      (is (re-find #"Corey Kiner" s))
+      (is (not (re-find #"No player for id" s))))))

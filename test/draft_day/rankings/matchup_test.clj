@@ -55,12 +55,13 @@
    :starter-ids (mapv sleeper-id lineup)
    :player-points (into {} (map (fn [[id v]] [(sleeper-id id) v])) actuals)})
 
-(defn- run [& {:keys [team score board slots]
+(defn- run [& {:keys [team score board slots provider-players]
                :or   {team team score score board board slots slots}}]
   (matchup/matchup-board board {:league {:teams [team]}
                                 :matchups [{:matchup-id 1 :roster-ids [1 2]}]
                                 :scores {1 score}
                                 :provider :sleeper
+                                :provider-players provider-players
                                 :slots slots}))
 
 (defn- side [& args] (first (:teams (apply run args))))
@@ -149,6 +150,16 @@
         qb   (first (:starters t))]
     (is (:unvalued? qb))
     (is (= "QB" (:slot qb)) "the seat is still named")
+    (is (= 20.0 (:actual qb)) "and his score still shows")))
+
+(deftest an-unvalued-player-the-sync-named-is-drawn-by-name
+  (let [thin  (remove #(= "qb1" (:player-id %)) board)
+        named [{:id (sleeper-id "qb1") :name "Corey Kiner" :position "RB"}]
+        qb    (first (:starters (side :board thin :provider-players named)))]
+    (is (:unvalued? qb))
+    (is (= "Corey Kiner" (:player-name qb)))
+    (is (not (contains? qb :position))
+        "no position: the optimizer would seat a man it holds no projection for")
     (is (= 20.0 (:actual qb)) "and his score still shows")))
 
 (defn- espn-side
