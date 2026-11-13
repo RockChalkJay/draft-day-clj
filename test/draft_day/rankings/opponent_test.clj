@@ -36,6 +36,21 @@
     (is (== 4.0 (get-in nyg ["WR" :recent-per-game])) "weeks 3, 4 and 5")
     (is (== 3.0 (get-in nyg ["WR" :per-game])))))
 
+(deftest a-teams-line-off-rows-in-any-order
+  (let [rows [{:team "NYG" :position "WR" :week 4 :points 8.0}
+              {:team "NYG" :position "RB" :week 1 :points 12.0}
+              {:team "NYG" :position "WR" :week 2 :points 4.0}
+              {:team "NYG" :position "WR" :week 2 :points 6.0}
+              {:team "NYG" :position "WR" :week 3 :points 2.0}
+              {:team "NYJ" :position "WR" :week 1 :points 5.0}]]
+    (is (= {"NYG" {"WR" {:games 4 :points 20.0 :per-game 5.0 :recent-per-game (/ 20.0 3)}
+                   "RB" {:games 4 :points 12.0 :per-game 3.0 :recent-per-game 0.0}}
+            "NYJ" {"WR" {:games 1 :points 5.0 :per-game 5.0 :recent-per-game 5.0}
+                   "RB" {:games 1 :points 0.0 :per-game 0.0 :recent-per-game 0.0}}}
+           (opponent/team-lines rows))
+        "recent is the team's weeks 2-4 by number, not the rows' last three; the RB's week 1 falls outside it")
+    (is (= {} (opponent/team-lines [])))))
+
 (deftest a-defenses-row-is-what-its-offense-allowed
   (let [dst (player "DST" [1 "NYJ" {:pts_allow_0 1.0}])]
     (is (== 10.0 (get-in (opponent/points-allowed [dst] ppr 1) ["NYJ" "DST" :per-game]))

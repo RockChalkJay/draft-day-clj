@@ -43,28 +43,23 @@
   "`{team {position {:games :points :per-game :recent-per-game}}}` off
   `allowed-rows`. A position nobody played against a team scored nothing there."
   [rows]
-  (let [weeks     (reduce (fn [acc {:keys [team week]}]
-                            (update acc team (fnil conj (sorted-set)) week))
-                          {} rows)
-        positions (distinct (map :position rows))
-        totals    (reduce (fn [acc {:keys [team position week points]}]
-                            (update-in acc [team position week] (fnil + 0.0) points))
-                          {} rows)]
-    (into {}
-          (map (fn [[team played]]
-                 (let [recent (set (take-last recent-games played))]
-                   [team
-                    (into {}
-                          (map (fn [pos]
-                                 (let [by-week (get-in totals [team pos] {})
-                                       total   (reduce + 0.0 (vals by-week))
-                                       last-n  (reduce + 0.0 (keep (fn [[w pts]] (when (recent w) pts)) by-week))]
-                                   [pos {:games           (count played)
-                                         :points          total
-                                         :per-game        (per-game total (count played))
-                                         :recent-per-game (per-game last-n (count recent))}])))
-                          positions)])))
-          weeks)))
+  (let [positions (distinct (map :position rows))]
+    (update-vals
+     (group-by :team rows)
+     (fn [team-rows]
+       (let [played (sort (distinct (map :week team-rows)))
+             recent (set (take-last recent-games played))
+             by-pos (group-by :position team-rows)
+             sum    (fn [rows] (reduce + 0.0 (map :points rows)))]
+         (into {}
+               (map (fn [pos]
+                      (let [total (sum (by-pos pos))]
+                        [pos {:games           (count played)
+                              :points          total
+                              :per-game        (per-game total (count played))
+                              :recent-per-game (per-game (sum (filter (comp recent :week) (by-pos pos)))
+                                                         (count recent))}])))
+               positions))))))
 
 (defn with-ranks
   "`lines` with `:rank` and `:of` on each position's line: 1 is the team that
