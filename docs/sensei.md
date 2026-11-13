@@ -96,7 +96,7 @@ the owner uses it.
   sensei.context   accounts -> leagues -> the /api/waivers body of each
   sensei.tools     leagues, my_team, league_teams, team_roster, matchup,
                    waiver_targets, evaluate_claim, defense_vs_position,
-                   player_news
+                   league_bids, player_news
   sensei.mcp       POST /api/sensei/mcp
   sensei.chat      POST /api/sensei/chat, GET /api/sensei/status
        ^ Claude Code      ^ claude -p, the in-app panel      ^ API adapter (later)
@@ -211,6 +211,19 @@ universe holds. Measured against Sleeper's raw weekly stats in week 10 of 2026
 1.5% at QB and TE, under 0.4% at RB and WR and nothing at K and DST, because the
 missing rows are backups (Jalon Daniels' 11-14 point weeks the biggest). That
 was under the 2% at which reading positions off the raw stats would pay.
+
+**What this league pays.** With the bid model on hold, the strongest evidence
+for a bid is what the same rivals have already paid. `league_bids` reads the
+history the last sync cached (no provider call, as `/api/waivers` reads it):
+each auction's winner, winning bid and its share of the budget, the runner-up
+bid and how many bid, and a summary per position, with last season's beside it
+while this one is young. Most claims are uncontested $0 pickups, so the median
+winning bid at every position of a real 12-team league read 0% in week 10; the
+summary gives the auctions two or more managers bid in a count and a median of
+their own (8% at RB there). These are recorded bids, not predictions, so they
+are stated while `db/bid-predictions?` is off. Owner ids are not; a row names
+the winning team. ESPN publishes no losing bids, so its leagues answer that
+there is no history.
 
 **What the screen holds back, Sensei holds back.** No bid predictions while
 `db/bid-predictions?` is off, and the instructions tell the model not to put a
