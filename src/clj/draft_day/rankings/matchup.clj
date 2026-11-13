@@ -33,6 +33,7 @@
   as `:starters`/`:bench` rows so the board can draw the best lineup rather than
   describe it."
   (:require [clojure.set :as set]
+            [clojure.tools.logging :as log]
             [draft-day.db :as db]
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.waiver :as waiver]))
@@ -61,8 +62,9 @@
 
   A player the universe cannot value keeps his seat and says so rather than
   vanishing, and his `:actual` still shows — that is the row a manager most
-  wants explained."
-  [slot p id points]
+  wants explained. `named` (`db/provider-player-index`) is what gives him a
+  name."
+  [slot p id points named]
   (if p
     (assoc (select-keys p row-keys)
            :slot slot
@@ -71,7 +73,7 @@
            ;; locks — with no scoreboard nothing is locked, which errs toward
            ;; advice the league may refuse rather than toward none at all.
            :locked? (true? (:kickoff/started? p)))
-    {:player-id id :slot slot :unvalued? true :actual points}))
+    (assoc (db/unvalued-row named id) :slot slot :actual points)))
 
 (defn points-by-player-id
   "A score's `:player-points` in the board's id space.
@@ -99,13 +101,13 @@
 (defn starter-rows
   "One row per seat, in the league's own lineup order, including the empty ones —
   omitting an unfilled seat would read as a shorter roster."
-  [slots lineup by-id points]
+  [slots lineup by-id points named]
   (vec (map-indexed
         (fn [i slot]
           (let [id (nth lineup i nil)]
             (if-not (filled? id)
               {:slot slot :empty? true}
-              (row slot (get by-id id) id (get points id)))))
+              (row slot (get by-id id) id (get points id) named))))
         slots)))
 
 (defn bench-rows
@@ -115,11 +117,11 @@
   the provider named starters the two come apart, and subtracting the list would
   drop a player off both halves. IR and taxi are included and flagged — the
   answer to \"why is he not in my optimal lineup\"."
-  [held seated active by-id points]
+  [held seated active by-id points named]
   (->> held
        (remove seated)
        (map (fn [id]
-              (assoc (row nil (get by-id id) id (get points id))
+              (assoc (row nil (get by-id id) id (get points id) named)
                      :parked? (not (contains? active id)))))
        (sort-by (juxt #(db/position-rank (:position %))
                       #(- (double (or (:week-points %) 0.0)))))
@@ -235,7 +237,7 @@
   lineup does, and only IR and taxi from the sync. The sync goes stale on anyone's
   claim; drawing the roster from it put a man picked up midweek in the lineup and
   nowhere among those who could start."
-  [team score xwalk by-id slots]
+  [team score xwalk by-id slots named]
   (let [points   (points-by-player-id score xwalk)
         synced   (waiver/held-ids team xwalk :player-ids)
         parked   (set/difference (set synced)
@@ -244,12 +246,12 @@
                    (waiver/held-ids score xwalk :player-ids)
                    synced)
         lineup   (week-lineup team score xwalk)
-        starters (starter-rows slots lineup by-id points)
+        starters (starter-rows slots lineup by-id points named)
         ;; Off the seats rather than off `lineup` — see `bench-rows`.
         seated   (set (keep :player-id starters))
         ;; A starter is startable whatever the sync says: the provider seated him.
         active   (into (set/difference (set held) parked) seated)
-        bench    (bench-rows held seated active by-id points)
+        bench    (bench-rows held seated active by-id points named)
         ;; A row with no position is out of *both* halves: `best-lineup` can
         ;; never seat it, so counting it as current would put a man who scored
         ;; well into `:out` and understate the gain by his whole line.
@@ -286,8 +288,16 @@
   round trip. `:teams` is a vector, not a map keyed by roster id: an integer key
   round-trips through JSON as a string and comes back keywordized."
   [board {:keys [league matchups scores slots provider provider-players]}]
-  (let [xwalk (db/provider->player-id board (or provider :sleeper) provider-players)
-        by-id (db/index-by-id board)]
+  (let [xwalk  (db/provider->player-id board (or provider :sleeper) provider-players)
+        by-id  (db/index-by-id board)
+        named  (db/provider-player-index provider-players)
+        teams  (mapv #(team-board % (get scores (:roster-id %)) xwalk by-id slots named)
+                     (:teams league))
+        unseen (->> teams
+                    (mapcat #(concat (:starters %) (:bench %)))
+                    (filter :unvalued?))]
+    (when (seq unseen)
+      (log/warn "matchup:" (count unseen) "rostered players the board cannot value:"
+                (mapv #(or (:player-name %) (:player-id %)) unseen)))
     {:matchups (vec matchups)
-     :teams    (mapv #(team-board % (get scores (:roster-id %)) xwalk by-id slots)
-                     (:teams league))}))
+     :teams    teams}))

@@ -120,7 +120,8 @@
   single lineup upgrade available would leave `stash-share` of his budget
   unallocated. Both weigh a claim over the free option (`over-free-option`), and
   `faab/market-cap` bounds every walk-away; what it holds back stays unspent."
-  (:require [draft-day.db :as db]
+  (:require [clojure.tools.logging :as log]
+            [draft-day.db :as db]
             [draft-day.rankings.faab :as faab]
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.replacement :as replacement]
@@ -512,6 +513,13 @@
   (when my-team
     (with-trend (keep #(get by-id %) (held-ids my-team xwalk :player-ids)))))
 
+(defn unvalued-ids
+  "The ids on `team`'s roster the board has no row for, in the board's id space,
+  which `my-roster-players` leaves out and the browser draws as unvalued."
+  [team xwalk by-id]
+  (when team
+    (remove #(contains? by-id %) (held-ids team xwalk :player-ids))))
+
 (defn league-roster-players
   "Every other team's roster as full board rows, `{roster-id [row]}`, for
   Sensei to compare the manager's team against a rival's or the league's. A
@@ -600,7 +608,13 @@
   [board {:keys [league my-roster-id include-rostered?] :as ctx}]
   (let [{:keys [teams waiver]} league
         {:keys [fas market my-team drop drop-costs xwalk by-id rostered owners players
-                levels claims-left bidding? habits]} (market-inputs board ctx)]
+                levels claims-left bidding? habits]} (market-inputs board ctx)
+        named    (db/provider-player-index (:provider-players league))
+        unvalued (unvalued-ids my-team xwalk by-id)]
+    (when (seq unvalued)
+      (log/warn "waivers: the board cannot value" (count unvalued)
+                "players on the manager's roster:"
+                (mapv #(or (:name (get named %)) %) unvalued)))
     {:players            (with-trend
                            (cond-> (faab/with-market fas market)
                              include-rostered?

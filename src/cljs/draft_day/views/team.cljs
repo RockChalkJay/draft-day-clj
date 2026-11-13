@@ -39,8 +39,7 @@
                            (:parked? p)  "IR"
                            :else         "BN")]
     :name (if (:unvalued? p)
-            [:td.player [:span.muted {:title (str "No player for id " (:player-id p))}
-                         (:player-id p)]]
+            [:td.player (util/unvalued-name p)]
             (cond-> (waivers/cell :name p week)
               (:drop? p) (conj [:span.drop-tag {:title "A claim would cost this seat"}
                                 " ↓ drop"])))

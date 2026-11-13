@@ -21,7 +21,9 @@
   has no business loading. `rankings.waiver` does the mapping where both halves
   are already in hand."
   (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [draft-day.ingestion.sleeper-http :as sleeper-http]
+            [draft-day.ingestion.sleeper-players :as sleeper-players]
             [jsonista.core :as json]
             [draft-day.json :refer [mapper]]
             [draft-day.ingestion.parallel :as parallel]
@@ -68,12 +70,23 @@
 ;; the answer, not a missing column — so the ex-info comes back out of
 ;; `parallel/all` wrapped in an ExecutionException. `league-sync/unwrap-execution`
 ;; peels it where the status is read, so no provider has to remember to.
+(defn fetch-directory
+  "Network: Sleeper's `{id {:name :position :team}}`, or nil. Unlike the
+  documents beside it, this one is a nicety, so a failure is logged and the sync
+  goes on with ids it cannot name."
+  []
+  (try (sleeper-players/load-directory)
+       (catch Exception e
+         (log/warn e "Sleeper player directory unavailable; roster ids go unnamed")
+         nil)))
+
 (defmethod league-sync/fetch-raw-rosters :sleeper
   [_ {:keys [league-id]}]
   (parallel/all
-   {:rosters (fn [] (fetch-json league-id "rosters"))
-    :users   (fn [] (fetch-json league-id "users"))
-    :league  (fn [] (import-sleeper/fetch-league league-id))}))
+   {:rosters   (fn [] (fetch-json league-id "rosters"))
+    :users     (fn [] (fetch-json league-id "users"))
+    :league    (fn [] (import-sleeper/fetch-league league-id))
+    :directory fetch-directory}))
 
 (defn normalize-user
   "Pure: Sleeper's user document -> `{:user-id :display-name :avatar}`.
@@ -206,8 +219,20 @@
     ("in_season" "complete") true
     nil))
 
+(defn provider-players
+  "Pure: `[{:id :name :position}]` for each rostered id `directory` knows, in
+  the shape ESPN's sync ships, so `db/provider->player-id` and the roster
+  views name a player the universe cannot. nil with no directory."
+  [directory rosters]
+  (when (seq directory)
+    (let [ids (into (sorted-set) (comp (mapcat :players) (remove nil?) (map str)) rosters)]
+      (into [] (keep (fn [id]
+                       (when-let [{:keys [name position]} (get directory id)]
+                         {:id id :name name :position position})))
+            ids))))
+
 (defmethod league-sync/normalize-rosters :sleeper
-  [_ {:keys [rosters users league]}]
+  [_ {:keys [rosters users league directory]}]
   (let [waiver (import-sleeper/waiver-settings league)
         names  (team-names users)]
     {:teams  (mapv #(normalize-roster names waiver %) rosters)
@@ -232,4 +257,5 @@
      ;; league drafted here opens in season before a week has been played.
      :drafted? (drafted? (:status league))
      :name   (:name league)
-     :season (:season league)}))
+     :season (:season league)
+     :provider-players (provider-players directory rosters)}))

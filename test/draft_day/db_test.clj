@@ -923,6 +923,16 @@
     (is (:unvalued? (second bench)) "an id nobody resolves keeps its row")
     (is (= ["00-ir"] (mapv :player-id parked)))))
 
+(deftest an-unvalued-id-the-sync-named-keeps-his-name
+  (let [team   {:player-ids ["99" "98"] :active-ids ["99" "98"]}
+        league {:provider "sleeper"
+                :provider-players [{:id "99" :name "Corey Kiner" :position "RB"}]}
+        rows   (into {} (map (juxt :player-id identity))
+                     (:bench (db/team-roster team league synced-xwalk synced-by-id)))]
+    (is (= {:player-id "99" :unvalued? true :player-name "Corey Kiner"} (get rows "99")))
+    (is (= {:player-id "98" :unvalued? true} (get rows "98"))
+        "an id the sync did not name stays a bare id")))
+
 (deftest an-espn-team-is-labelled-by-the-seats-it-names
   (let [team {:player-ids ["11" "22"] :active-ids ["11" "22"]
               :starter-ids ["22" "11"] :starter-slots ["FLEX" "QB"]}
