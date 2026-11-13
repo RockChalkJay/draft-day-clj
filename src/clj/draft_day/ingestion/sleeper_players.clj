@@ -154,6 +154,15 @@
 
 (defonce ^:private unseasoned-memo (atom nil))
 
+(defonce ^:private unseasoned-skip (atom nil))
+
+(defn- skip!
+  "Logs why stubs were skipped, once per reason: the universe is asked for on
+  every request, and a missing line would otherwise warn on each."
+  [reason]
+  (when (not= reason (first (reset-vals! unseasoned-skip reason)))
+    (log/warn "unseasoned players skipped: no" reason)))
+
 (defn- unseasoned-week
   "`week-fn`'s week when stubs apply to it, else nil: in season, after week one."
   [{:keys [source]} week-fn]
@@ -181,21 +190,22 @@
           memo      @unseasoned-memo]
       (cond
         (or (empty? lines) (empty? directory))
-        (do (log/warn "unseasoned players skipped: no"
-                      (if (empty? lines) "weekly line" "player directory"))
+        (do (skip! (if (empty? lines) "weekly line" "player directory"))
             env)
 
         (and (identical? (:base memo) env) (= week (:week memo))
              (= lines (:lines memo)) (= directory (:directory memo)))
-        (:joined memo)
+        (do (reset! unseasoned-skip nil)
+            (:joined memo))
 
         :else
         (let [stubs  (pipeline/unseasoned-players (:players env) lines directory)
               joined (if (seq stubs) (update env :players into stubs) env)]
+          (reset! unseasoned-skip nil)
           (when (seq stubs)
             (log/info "week" week "has a line for" (count stubs)
                       "players with no season line, added to the board:"
-                      (mapv :player-name stubs)))
+                      (str/join ", " (map :player-name stubs))))
           (reset! unseasoned-memo {:base env :week week :lines lines
                                    :directory directory :joined joined})
           joined)))

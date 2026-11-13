@@ -139,3 +139,24 @@
       (is (identical? (sp/with-unseasoned env 2026 (constantly 8))
                       (sp/with-unseasoned env 2026 (constantly 8)))
           "so `pipeline/with-realized`'s identity memo keeps working"))))
+
+(deftest a-missing-source-is-logged-once-until-the-reason-changes
+  (let [warned (atom [])]
+    (reset! @#'sp/unseasoned-skip nil)
+    (with-redefs [clojure.tools.logging/log* (fn [_ level _ msg] (when (= :warn level) (swap! warned conj msg)))]
+      (with-week {} kiner
+        (fn []
+          (sp/with-unseasoned env 2026 (constantly 8))
+          (sp/with-unseasoned env 2026 (constantly 8))
+          (is (= 1 (count @warned)) "the second request says nothing new")))
+      (with-week {"99999999" {}} nil
+        (fn []
+          (sp/with-unseasoned env 2026 (constantly 8))
+          (is (= 2 (count @warned)) "a different reason is news")))
+      (with-week {"99999999" {}} kiner
+        (fn []
+          (sp/with-unseasoned env 2026 (constantly 8))))
+      (with-week {} kiner
+        (fn []
+          (sp/with-unseasoned env 2026 (constantly 8))
+          (is (= 3 (count @warned)) "and so is the same one after it recovered"))))))
