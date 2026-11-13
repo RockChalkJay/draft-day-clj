@@ -157,6 +157,7 @@
 (deftest the-ceiling-reaches-the-model
   (let [note #(second (drop-while (fn [a] (not= "--append-system-prompt" a)) (chat/command %)))]
     (is (str/includes? (note {:port 1}) "up to 5 times"))
+    (is (str/includes? (note {:port 1}) "Before you say who to start or what to bid, search the web"))
     (is (str/includes? (note {:port 1 :searches 7}) "up to 7 times"))
     (is (not (str/includes? (note {:port 1 :searches 7}) "{searches}")))))
 
