@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [draft-day.db :as db]
+            [draft-day.ingestion.season :as season]
             [draft-day.sensei.context :as context]
             [draft-day.sensei.fixtures :as fx]
             [draft-day.sensei.tools :as tools]))
@@ -521,3 +522,50 @@
   (is (= 3 (tools/quantile [5 1 3 4 2] 0.5)))
   (is (= 5 (tools/quantile [5 1 3 4 2] 0.9)))
   (is (nil? (tools/quantile [] 0.5))))
+
+;; ---- accurate experts ----
+
+(def ^:private boards
+  "Three finished seasons' top tens, cut short. Thorman's name is spelled two
+  ways, as the vendor spells it."
+  {2025 [{:id 317 :rank 1 :name "Justin Boone" :outlet "Yahoo" :site "sports.yahoo.com" :pos-ranks {"RB" 5 "WR" 1}}
+         {:id 534 :rank 2 :name "Patrick Thorman" :outlet "Establish the Run" :site "establishtherun.com" :pos-ranks {"RB" 2 "WR" 2}}
+         {:id 125 :rank 5 :name "Jeff Ratcliffe" :outlet "FTN" :site "www.ftnfantasy.com" :pos-ranks {"RB" 16 "WR" 12}}]
+   2024 [{:id 120 :rank 3 :name "Sean Koerner" :outlet "The Action Network" :site "www.actionnetwork.com" :pos-ranks {"RB" 1 "WR" 9}}
+         {:id 534 :rank 4 :name "Pat Thorman" :outlet "Establish the Run" :site "establishtherun.com" :pos-ranks {"RB" 3 "WR" 4}}
+         {:id 125 :rank 5 :name "Jeff Ratcliffe" :outlet "FTN" :site "www.ftnfantasy.com" :pos-ranks {"RB" 2 "WR" 20}}]
+   2023 [{:id 120 :rank 1 :name "Sean Koerner" :outlet "The Action Network" :site "www.actionnetwork.com" :pos-ranks {"RB" 1 "WR" 1}}
+         {:id 534 :rank 4 :name "Pat Thorman" :outlet "Establish the Run" :site "establishtherun.com" :pos-ranks {"RB" 6 "WR" 3}}]})
+
+(defn- accuracy-deps [boards]
+  (fx/deps {:accuracy (fn [s] (some->> (get boards s) (hash-map :season s :experts)))}))
+
+(defn- experts-call [args boards]
+  (with-redefs [season/current (constantly 2026)]
+    (call "accurate_experts" args (accuracy-deps boards))))
+
+(deftest accurate-experts-are-those-who-repeat-in-the-top-ten
+  (let [{:keys [result]} (experts-call {} boards)
+        [thorman :as listed] (:experts result)]
+    (is (= ["Patrick Thorman" "Sean Koerner" "Jeff Ratcliffe"] (map :name listed))
+        "most finishes first, then best average rank")
+    (is (= {:name "Patrick Thorman" :outlet "Establish the Run" :site "establishtherun.com"
+            :top-ten 3 :ranks {"2025" 2 "2024" 4 "2023" 4} :avg-rank 3.3}
+           thorman)
+        "joined by id across spellings, named as the newest season names him")
+    (is (= [2025 2024 2023] (:seasons result)) "the three seasons before this one")
+    (is (= [{:name "Justin Boone" :outlet "Yahoo" :site "sports.yahoo.com" :rank 1}] (:last-season result))
+        "one top-ten season is shown beside them, not among them")))
+
+(deftest accurate-experts-at-a-position-are-ordered-by-it
+  (let [listed (:experts (:result (experts-call {:position "rb"} boards)))]
+    (is (= ["Sean Koerner" "Patrick Thorman" "Jeff Ratcliffe"] (map :name listed)))
+    (is (= {"2024" 1 "2023" 1} (:pos-ranks (first listed))))
+    (is (= 1.0 (:pos-avg (first listed))))))
+
+(deftest accurate-experts-say-which-season-they-could-not-read
+  (let [{:keys [result]} (experts-call {} (dissoc boards 2023))]
+    (is (= [2023] (:unread result)))
+    (is (= ["Patrick Thorman" "Jeff Ratcliffe"] (map :name (:experts result)))
+        "a season unread is a finish nobody can count"))
+  (is (re-find #"could not be read" (:error (experts-call {} {})))))

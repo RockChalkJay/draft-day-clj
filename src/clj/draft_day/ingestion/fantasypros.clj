@@ -16,6 +16,8 @@
      rankings pages, for the experts' view of a player from here on.
    - Weekly rank (`parse-weekly-ecr`): the same blob off the week's rankings
      pages, for the experts' view of a player this week alone.
+   - Expert accuracy (`parse-accuracy`): the `window.FP.reportConfig` blob off
+     the in-season accuracy leaderboard, for whose weekly calls to read.
    - AAV (`parse-aav`): scrapes FantasyPros' auction-value calculator (the
      draftwizard `#OverallTable`) for a raw market price per player."
   (:require [clojure.string :as str]
@@ -282,6 +284,75 @@
   `fetch-position-pages`."
   [week]
   (fetch-position-pages "weekly" weekly-url #(parse-weekly-ecr %1 %2 week)))
+
+;; --- expert accuracy ---
+
+(def accuracy-current-url
+  "The accuracy leaderboard of whichever season the vendor treats as current."
+  "https://www.fantasypros.com/nfl/accuracy/")
+
+(defn accuracy-url
+  "The in-season accuracy leaderboard of `season`, by year. Naming the season
+  the vendor treats as current answers an empty table; `fetch-accuracy` falls
+  back to `accuracy-current-url` for it."
+  [season]
+  (str accuracy-current-url "?year=" season))
+
+(defn report-config
+  "Pure: the `window.FP.reportConfig = {…};` blob of a report page as a map, or nil."
+  [html]
+  (try
+    (some->> (.select (Jsoup/parse html) "script")
+             (some #(second (re-find #"window\.FP\.reportConfig = (\{.*\});" (.html %))))
+             (#(json/read-value % mapper)))
+    (catch Exception _ nil)))
+
+(def accuracy-positions
+  {:qb "QB" :rb "RB" :wr "WR" :te "TE" :k "K" :dst "DST"})
+
+(defn- host [url]
+  (try (.getHost (java.net.URI. (str url))) (catch Exception _ nil)))
+
+(defn parse-accuracy
+  "Pure: an accuracy page -> `[{:id :rank :name :outlet :site :pos-ranks {\"QB\"
+  6 …}}]` for `season`, best first, or nil. Logged out, the vendor shows ten.
+
+  Nil unless the page really is the in-season leaderboard of `season` over the
+  whole season: a year with no table answers 200 with an empty one, and the
+  draft leaderboard has the same shape. `:site` is the outlet's host, since
+  the chat's fetch allows hosts exactly."
+  [html season]
+  (let [{:keys [type tabs filters table]} (report-config html)
+        selected (into {} (map (juxt :id :selected)) filters)]
+    (when (and (= "accuracy" type)
+               (= "in-season" (:selected tabs))
+               (= (str "_" season) (get selected "year"))
+               (= "ytd" (get selected "week")))
+      (->> (:rows table)
+           (keep (fn [{:keys [id rank expert] :as row}]
+                   (let [[name outlet] (map str/trim (str/split (str (:label expert)) #" - " 2))]
+                     (when (and id rank (not (str/blank? name)))
+                       {:id        id
+                        :rank      (->int rank)
+                        :name      name
+                        :outlet    outlet
+                        :site      (host (:url expert))
+                        :pos-ranks (into {} (keep (fn [[k pos]] (some->> (->int (get row k)) (vector pos))))
+                                         accuracy-positions)}))))
+           (sort-by :rank)
+           vec
+           not-empty))))
+
+(defn fetch-accuracy
+  "Network: the in-season accuracy leaderboard of a finished `season`, as
+  `parse-accuracy` reads it. A season just ended may still be the vendor's
+  current one until the next begins, when its year page is empty, so the bare
+  page is tried next and accepted only if it is that season's. Throws when
+  neither is that table."
+  [season]
+  (or (some-> (fetch-page (accuracy-url season)) (parse-accuracy season))
+      (some-> (fetch-page accuracy-current-url) (parse-accuracy season))
+      (throw (ex-info "accuracy page failed" {:season season}))))
 
 ;; --- AAV (auction values) ---
 

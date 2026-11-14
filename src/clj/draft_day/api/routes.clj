@@ -655,14 +655,15 @@
 
 (def sensei-server
   "What Sensei's tools read off this server: the waiver board, the universe, a
-  player's news, a league's cached bid history, the environment, where the
-  accounts are, and the port it listens on. Through vars, so a REPL
-  redefinition reaches the tools."
+  player's news, a league's cached bid history, a season's expert accuracy, the
+  environment, where the accounts are, and the port it listens on. Through vars,
+  so a REPL redefinition reaches the tools."
   {:waivers-reply #'waivers-reply
    :matchup-reply #'matchup-reply
    :players      #(:players (universe false))
    :news          #'espn-news/player-news
    :bid-history   #'transactions/cached-history
+   :accuracy      #'pipeline/load-accuracy
    :env           #(System/getenv)
    :port          #(deref bound-port)})
 
