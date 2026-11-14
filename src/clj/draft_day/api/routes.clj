@@ -30,6 +30,7 @@
             [draft-day.rankings.model :as model]
             [draft-day.rankings.injury :as injury]
             [draft-day.rankings.matchup :as matchup]
+            [draft-day.rankings.opponent :as opponent]
             [draft-day.rankings.pos-rank :as pos-rank]
             [draft-day.rankings.role :as role]
             [draft-day.rankings.ros :as ros]
@@ -447,6 +448,8 @@
             ros-ecr      (pipeline/load-ros-ecr season*)
             weekly-ecr   (pipeline/load-weekly-ecr season* week)
             adds         (trending/load-adds)
+            ;; Off the game logs, which `without-history` strips below.
+            allowed      (opponent/points-allowed players scoring* through-week)
             ctx      {:league             league
                       :my-roster-id       my-roster-id
                       :include-rostered?  include-rostered?
@@ -496,7 +499,9 @@
                          (pos-rank/with-pos-rank :season-points :season-pos-rank)
                          ;; Independent of the weekly line — see
                          ;; `pipeline/assoc-kickoffs`.
-                         (pipeline/assoc-kickoffs (:kickoffs weekly)))
+                         (pipeline/assoc-kickoffs (:kickoffs weekly))
+                         ;; After both joins that name this week's opponent.
+                         (opponent/with-opp-vs-pos allowed))
             out      (waiver/waiver-board board ctx)]
         (assoc out
                :players      (-> (:players out)
@@ -516,6 +521,7 @@
                                                     (without-preseason through-week))]))))
                :through-week through-week
                :season-games season-games
+               :defense-vs-position allowed
                ;; nil with no weekly line; the board then reads rest-of-season only.
                :week         (:week weekly)
                :week-fetched-at (:fetched-at weekly)
@@ -531,21 +537,22 @@
   [:fantasypros/ros-pos-rank :fantasypros/ros-rank-min :fantasypros/ros-rank-max
    :fantasypros/wk-pos-rank :fantasypros/wk-rank-min :fantasypros/wk-rank-max
    :fantasypros/wk-grade
-   :snap-share :snap-share-season :rz-rush :rz-tgt :rz-pass :role/since :role/vacated-by :role/vacated-status])
+   :snap-share :snap-share-season :rz-rush :rz-tgt :rz-pass :role/since :role/vacated-by :role/vacated-status
+   :opp-vs-pos])
 
 (defn without-sensei-only
-  "`reply` less what only Sensei reads: `:drop-costs`, `:league-roster-players`
-  and `sensei-only-keys`."
+  "`reply` less what only Sensei reads: `:drop-costs`, `:league-roster-players`,
+  `:defense-vs-position` and `sensei-only-keys`."
   [reply]
   (let [strip (fn [ps] (some->> ps (mapv #(apply dissoc % sensei-only-keys))))]
     (reduce (fn [r k] (cond-> r (contains? r k) (update k strip)))
-            (dissoc reply :drop-costs :league-roster-players)
+            (dissoc reply :drop-costs :league-roster-players :defense-vs-position)
             [:players :my-roster-players])))
 
 (defn waivers-handler
   "POST /api/waivers: `waivers-reply` as JSON, and a 400 for a body it cannot
-  price. `:drop-costs`, the experts' ranks and the snap and role facts are Sensei's and
-  the browser reads none of them."
+  price. `:drop-costs`, the experts' ranks, the snap and role facts and the
+  points each defense allowed are Sensei's and the browser reads none of them."
   [req]
   (try
     (let [reply (waivers-reply (read-json-body req))]
