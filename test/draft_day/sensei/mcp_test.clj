@@ -55,7 +55,7 @@
 
 (deftest tools-list-states-every-tool-read-only
   (let [tools (get-in (rpc (request 2 "tools/list")) [:json :result :tools])]
-    (is (= ["leagues" "my_team" "league_teams" "team_roster" "matchup" "waiver_targets" "evaluate_claim" "defense_vs_position" "league_bids" "accurate_experts" "player_news"] (map :name tools)))
+    (is (= ["leagues" "my_team" "league_teams" "team_roster" "matchup" "waiver_targets" "evaluate_claim" "defense_vs_position" "league_bids" "player_news"] (map :name tools)))
     (is (every? #(= "object" (get-in % [:inputSchema :type])) tools))
     (is (every? #(true? (get-in % [:annotations :readOnlyHint])) tools))))
 
@@ -92,7 +92,7 @@
     (is (str/includes? text "no `adds` means he is not trending") "an absent adds is not an unknown one")
     (is (str/includes? text "never present a bid as the engine's") "the bid model is still on hold")
     (is (str/includes? text "`league_bids`") "a bid starts from what this league paid")
-    (is (str/includes? text "`accurate_experts`") "the accurate experts are looked up, not named")))
+    (is (str/includes? text "accuracy leaderboard") "the accurate experts are looked up, not named")))
 
 (deftest the-instructions-send-matchups-and-start-sit-to-the-right-places
   (let [text (get-in (rpc (request 1 "initialize" {:protocolVersion "2025-06-18"})) [:json :result :instructions])]

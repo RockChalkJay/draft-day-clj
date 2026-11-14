@@ -830,18 +830,3 @@
 (deftest nobody-is-a-stub-when-the-universe-holds-everyone-the-week-projects
   (is (empty? (pipeline/unseasoned-players [{:player-id "00-1" :ids {:sleeper "100"}}]
                                            {"100" {}} {"100" {:name "A" :position "RB"}}))))
-
-(deftest accuracy-is-cached-per-season-and-not-loaded-offline
-  (let [path    (tmp "accuracy")
-        experts [{:id 120 :rank 1 :name "Sean Koerner"}]
-        calls   (atom 0)]
-    (pipeline/delete-cache! path)
-    (with-redefs [pipeline/accuracy-cache-path (fn [_] path)
-                  fantasypros/fetch-accuracy   (fn [_] (swap! calls inc) experts)]
-      (with-redefs [pipeline/offline? (constantly true)]
-        (is (nil? (pipeline/load-accuracy 2025))))
-      (with-redefs [pipeline/offline? (constantly false)
-                    nflverse-weekly/as-of-week (constantly 8)]
-        (is (= experts (:experts (pipeline/load-accuracy 2025))) "a finished season cannot leak a replayed week")
-        (pipeline/load-accuracy 2025)
-        (is (= 1 @calls) "the second read is the cache")))))

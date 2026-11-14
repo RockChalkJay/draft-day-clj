@@ -782,36 +782,6 @@
                               :fetched-at (now-iso)
                               :by-format  (fantasypros/fetch-weekly-ecr week)})})))
 
-(def accuracy-schema-version
-  "Version of the expert-accuracy cache envelope."
-  1)
-
-(defn accuracy-cache-path
-  "One file per finished season."
-  [season]
-  (format "%s/accuracy.v%d.%d.transit" paths/cache-root accuracy-schema-version season))
-
-(def accuracy-ttl-hours
-  "A month: a finished season's table is final, so this only bounds how long a
-  correction takes to show."
-  (* 24 30))
-
-(defn load-accuracy
-  "FantasyPros' in-season accuracy leaderboard of a finished `season`,
-  `{:season :fetched-at :experts}`, off a cache of its own. Nil offline and with
-  nothing cached when FantasyPros does not answer. A replayed week does not gate
-  it: a finished season's table cannot leak the week being replayed."
-  [season]
-  (when-not (offline?)
-    (load-ttl-cache
-     {:path           (accuracy-cache-path season)
-      :ttl-hours      accuracy-ttl-hours
-      :schema-version accuracy-schema-version
-      :label          "expert accuracy"
-      :fetch          (fn [] {:season     season
-                              :fetched-at (now-iso)
-                              :experts    (fantasypros/fetch-accuracy season)})})))
-
 (defn assoc-outlook
   "Join an outlook onto players by Sleeper id as `:outlook/games` and
   `:outlook/stats`, leaving a player Sleeper projects no remaining week unannotated."

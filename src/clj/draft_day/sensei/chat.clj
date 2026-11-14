@@ -76,7 +76,7 @@
 (def default-searches
   "How many web searches one answer may make unless `DRAFTDAY_SENSEI_SEARCHES`
   says otherwise. A start/sit call with a bid can want the experts' consensus,
-  two accurate experts and two FAAB sources, with room to spare."
+  the accuracy leaderboard, two of its experts and two FAAB sources."
   8)
 
 (defn search-limit

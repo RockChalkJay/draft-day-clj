@@ -18,7 +18,6 @@
   (:require [clojure.string :as str]
             [draft-day.db :as db]
             [draft-day.ingestion.match :as match]
-            [draft-day.ingestion.season :as season]
             [draft-day.providers :as providers]
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.opponent :as opponent]
@@ -41,11 +40,10 @@
   when a tool asks: `:found`, the accounts' leagues; `:body` and `:reply`, fns of
   a league entry giving its /api/waivers body and the waiver board for it;
   `:players`, the universe; `:news`, a fn of an ESPN id; `:bid-history`, the
-  cached auctions of a provider, league id and season; `:accuracy`, a fn of a
-  finished season giving FantasyPros' accuracy leaderboard; and `:accounts`,
-  whose secrets the reply is masked against. The server's half is
+  cached auctions of a provider, league id and season; and `:accounts`, whose
+  secrets the reply is masked against. The server's half is
   `routes/sensei-server`."
-  [{:keys [waivers-reply matchup-reply players news env bid-history accuracy]}]
+  [{:keys [waivers-reply matchup-reply players news env bid-history]}]
   (let [accounts (context/accounts (env))
         body     (per-league context/league-context)]
     {:accounts accounts
@@ -62,8 +60,7 @@
                                          (select-keys b [:scoring :league :roster :my-roster-id])))))))
      :players  (delay (players))
      :news     news
-     :bid-history bid-history
-     :accuracy accuracy}))
+     :bid-history bid-history}))
 
 (defn tool-error
   "A failure the model should read, as opposed to a bug."
@@ -752,80 +749,6 @@
                                                      [:unplaced    (unplaced last-season)]])))]
               [:bids          (vec (take max-bids (sort-by (juxt (comp - :week) (comp - #(or (:won %) 0))) rows)))]])))
 
-(def accuracy-seasons
-  "How many finished seasons `accurate_experts` reads."
-  3)
-
-(def min-finishes
-  "Top-ten finishes in those seasons that make an expert's accuracy a record
-  rather than one good year."
-  2)
-
-(def max-experts 5)
-
-(defn- mean [xs]
-  (when (seq xs) (/ (reduce + xs) (double (count xs)))))
-
-(defn expert-row
-  "One expert across `seasons` (newest first), off that expert's `rows`, one per
-  season listed, named as the newest names them. With `pos`, the rank at that
-  position too."
-  [seasons rows pos]
-  (let [latest (apply max-key :season rows)
-        in     (into {} (map (juxt :season identity)) rows)
-        by     (fn [f] (not-empty (compact (map (fn [s] [(str s) (some-> (in s) f)]) seasons))))]
-    (compact [[:id        (:id latest)]
-              [:name      (:name latest)]
-              [:outlet    (:outlet latest)]
-              [:site      (:site latest)]
-              [:top-ten   (count rows)]
-              [:ranks     (by :rank)]
-              [:avg-rank  (mean (map :rank rows))]
-              [:pos-ranks (when pos (by #(get-in % [:pos-ranks pos])))]
-              [:pos-avg   (when pos (mean (keep #(get-in % [:pos-ranks pos]) rows)))]])))
-
-(defn accurate-experts
-  "The experts in FantasyPros' in-season top ten in at least `min-finishes` of
-  `boards`, `{season experts}`, joined by FantasyPros' id since a name is
-  spelled differently from one season to the next: most finishes first, then
-  best average rank, or with `pos` best average rank at that position."
-  [boards pos]
-  (let [seasons (sort > (keys boards))]
-    (->> (mapcat (fn [[s es]] (map #(assoc % :season s) es)) boards)
-         (group-by :id)
-         vals
-         (filter #(>= (count %) min-finishes))
-         (map #(expert-row seasons % pos))
-         (sort-by (if pos
-                    (juxt #(or (:pos-avg %) Double/MAX_VALUE) :avg-rank)
-                    (juxt (comp - :top-ten) :avg-rank)))
-         (take max-experts)
-         vec)))
-
-(defn experts
-  "Whose weekly calls to read: the experts FantasyPros measured near the top of
-  its in-season accuracy leaderboard over several finished seasons, and last
-  season's top three beside them, since one season is a hot year."
-  [deps {:keys [position]}]
-  (let [pos     (position-arg position)
-        seasons (map #(- (season/current) %) (range 1 (inc accuracy-seasons)))
-        boards  (into {} (keep (fn [s] (some->> ((:accuracy deps) s) :experts (vector s)))) seasons)
-        _       (when (empty? boards)
-                  (throw (tool-error "FantasyPros' accuracy leaderboard could not be read; search for it instead")))
-        listed  (accurate-experts boards pos)
-        ids     (set (map :id listed))
-        latest  (reduce max (keys boards))]
-    (compact [[:source      "FantasyPros in-season accuracy, top ten per season"]
-              [:seasons     (vec (sort > (keys boards)))]
-              [:unread      (not-empty (vec (remove boards seasons)))]
-              [:position    pos]
-              [:experts     (mapv #(dissoc % :id) listed)]
-              [:last-season (->> (get boards latest)
-                                 (remove #(ids (:id %)))
-                                 (take 3)
-                                 (mapv #(compact [[:name (:name %)] [:outlet (:outlet %)]
-                                                  [:site (:site %)] [:rank (:rank %)]])))]])))
-
 (def default-news-items
   "Five, not the feed's ten: a note runs to a paragraph, and the older half
   rarely changes a call."
@@ -991,20 +914,6 @@
                                                      :description "Only the last this many weeks of auctions"}}
                    :additionalProperties false}
     :handler      league-bids}
-   {:name         "accurate_experts"
-    :title        "Accurate experts"
-    :description  (str "Whose start/sit calls to read: the experts in FantasyPros' in-season accuracy top "
-                       "ten in at least two of the last three finished seasons, with their rank each "
-                       "season (ranks), top-ten finishes and the outlet and site they publish on, and "
-                       "last season's top three beside them, since one season can be a hot year. "
-                       "Name a position to order them by their accuracy there (pos-ranks, pos-avg). "
-                       "Use it before searching for experts' calls, rather than searching for the "
-                       "leaderboard.")
-    :input-schema {:type                 "object"
-                   :properties           {:position {:type "string" :enum db/positions
-                                                     :description "Order by accuracy at this position"}}
-                   :additionalProperties false}
-    :handler      experts}
    {:name         "player_news"
     :title        "Player news"
     :description  (str "A player's latest news notes (Rotowire, via ESPN), newest first, and his "

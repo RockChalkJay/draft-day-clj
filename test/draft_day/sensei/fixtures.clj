@@ -99,7 +99,7 @@
 
 (defn deps
   "Tool deps over the fixtures, any of `:found`, `:body`, `:reply` (fns of a
-  league entry), `:news`, `:bid-history` and `:accuracy` replaced."
+  league entry), `:news` and `:bid-history` replaced."
   ([] (deps {}))
   ([overrides]
    (let [m (merge {:found {:leagues [entry] :errors []}
@@ -107,8 +107,7 @@
                    :reply (constantly reply)
                    :matchup (constantly matchup)
                    :news  news
-                   :bid-history (constantly nil)
-                   :accuracy (constantly nil)}
+                   :bid-history (constantly nil)}
                   overrides)]
      {:accounts []
       :found    (delay (:found m))
@@ -117,5 +116,4 @@
       :matchup  (:matchup m)
       :players  (delay players)
       :news     (:news m)
-      :bid-history (:bid-history m)
-      :accuracy (:accuracy m)})))
+      :bid-history (:bid-history m)})))
