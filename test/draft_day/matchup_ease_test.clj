@@ -27,10 +27,10 @@
   (is (== 0.0 (ease/ease-share {:rank 1 :of 32})))
   (is (== 1.0 (ease/ease-share {:rank 32 :of 32}))))
 
-(deftest the-middle-of-the-ramp-is-the-muted-grey
-  (is (= "color-mix(in oklab, var(--good), var(--muted) 0%)" (ease/ease-color 0.0)))
-  (is (= "color-mix(in oklab, var(--good), var(--muted) 100%)" (ease/ease-color 0.5)))
-  (is (= "color-mix(in oklab, var(--muted), var(--warn) 100%)" (ease/ease-color 1.0))))
+(deftest the-ramp-runs-from-the-green-to-the-red
+  (is (= "color-mix(in oklch, var(--good), var(--warn) 0%)" (ease/ease-color 0.0)))
+  (is (= "color-mix(in oklch, var(--good), var(--warn) 50%)" (ease/ease-color 0.5)))
+  (is (= "color-mix(in oklch, var(--good), var(--warn) 100%)" (ease/ease-color 1.0))))
 
 (deftest the-title-states-the-rank-in-words
   (is (= "BUF has allowed the 8th most points to RBs: 14.3 a game"

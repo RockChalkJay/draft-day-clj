@@ -1,8 +1,8 @@
 (ns draft-day.matchup-ease
   "How soft this week's opponent is at a player's position, read off
   `rankings.opponent/points-allowed`, and how the label naming that opponent says
-  so: a color running green (allowed the most) through the muted grey to red
-  (allowed the fewest), and a title stating the rank in words.
+  so: a color running green (allowed the most) through amber to red (allowed
+  the fewest), and a title stating the rank in words.
 
   Shared because the server words the rank for Sensei and the browser words the
   same rank for the hover. Display only, like the table it reads.")
@@ -45,14 +45,11 @@
   (if (> of 1) (/ (dec rank) (double (dec of))) 0.5))
 
 (defn ease-color
-  "A CSS color for `share`: green, through the muted grey at the middle, to red.
-  Mixed in OKLab, which keeps the grey grey; OKLCH swings its hue through purple
-  on the way."
+  "A CSS color for `share`: the app's green, through amber, to its red. Mixed in
+  OKLCH, whose hue runs the short way round through yellow; every step holds at
+  least 5.7:1 on the panel."
   [share]
-  (let [pct #(str (Math/round (* 100.0 %)) "%")]
-    (if (<= share 0.5)
-      (str "color-mix(in oklab, var(--good), var(--muted) " (pct (* 2 share)) ")")
-      (str "color-mix(in oklab, var(--muted), var(--warn) " (pct (* 2 (- share 0.5))) ")"))))
+  (str "color-mix(in oklch, var(--good), var(--warn) " (Math/round (* 100.0 share)) "%)"))
 
 (def position-plurals
   {"DST" "defenses" "DEF" "defenses" "K" "kickers"})

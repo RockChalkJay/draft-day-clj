@@ -1129,7 +1129,7 @@
                               {:defense-vs-position {:BUF {:RB {:rank 1 :of 32 :per-game 30.0 :games 9}}}}))
     (let [[_ attrs text] (opp nil)]
       (is (= "vs BUF" text))
-      (is (= "color-mix(in oklab, var(--good), var(--muted) 0%)" (get-in attrs [:style :color])))
+      (is (= "color-mix(in oklch, var(--good), var(--warn) 0%)" (get-in attrs [:style :color])))
       (is (= "BUF has allowed the 1st most points to RBs: 30.0 a game" (:title attrs))))
     (is (= [:span.p-opp "vs BUF"] (opp {:ease? false})) "the card head, on the team's colors")))
 
