@@ -518,12 +518,12 @@
   (is (nil? (:my-roster-players (routes/without-sensei-only {:players [] :my-roster-players nil})))
       "no team picked stays nil"))
 
-(deftest the-browser-is-not-sent-what-defenses-allowed
-  (let [line  {:rank 1 :of 32 :per-game 30.0 :team "NYG"}
+(deftest the-browser-is-sent-only-the-rank-of-what-defenses-allowed
+  (let [line  {:rank 1 :of 32 :per-game 30.0 :games 9 :points 270.0 :recent-per-game 28.0}
         reply (routes/without-sensei-only {:defense-vs-position {"NYG" {"WR" line}}
                                            :players             [{:player-id "a" :opp-vs-pos line}]
                                            :my-roster-players   [{:player-id "b" :opp-vs-pos line}]})]
-    (is (not (contains? reply :defense-vs-position)))
+    (is (= {"NYG" {"WR" {:rank 1 :of 32 :per-game 30.0 :games 9}}} (:defense-vs-position reply)))
     (is (not-any? #(contains? % :opp-vs-pos) (concat (:players reply) (:my-roster-players reply))))))
 
 (deftest the-browser-is-not-sent-the-experts-ranks

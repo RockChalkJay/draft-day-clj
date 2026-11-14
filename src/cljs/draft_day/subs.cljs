@@ -501,6 +501,11 @@
 (rf/reg-sub :waiver-meta :<- [:waivers]
   (fn [w _] (select-keys w [:through-week :season-games :week :week-fetched-at])))
 
+;; `{:BUF {:RB {:rank :of :per-game :games}}}`, what each defense allowed each
+;; position; nil until the waiver reply lands, which leaves opponents grey.
+(rf/reg-sub :defense-vs-position :<- [:waivers]
+  (fn [w _] (:defense-vs-position w)))
+
 ;; Which week the board is showing, as one of three answers — and three, not
 ;; two, is the point. `:waivers` is nil before the first reply and stays nil
 ;; after a failed one, so a boolean `(pos? (or through-week 0))` reports

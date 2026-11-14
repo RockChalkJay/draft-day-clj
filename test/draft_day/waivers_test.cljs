@@ -16,6 +16,7 @@
             [draft-day.views.board :as board]
             [draft-day.views.columns :as columns]
             [draft-day.views.header :as header]
+            [draft-day.views.util :as util]
             [draft-day.views.waivers :as waivers]
             [draft-day.events :as events]))
 
@@ -1117,6 +1118,20 @@
   ;; No week at all (preseason, or a weekly file that has not landed): a bye
   ;; cannot be claimed, so it is not.
   (is (= "–"   (waivers/week-matchup {:bye 6} nil))))
+
+(deftest the-opponent-is-colored-by-what-his-defense-allowed
+  (let [p    {:position "RB" :week/opponent "BUF" :week/home? true}
+        opp  (fn [opts] (some #(when (and (vector? %) (= :span.p-opp (first %))) %)
+                              (util/player-ident p 9 opts)))]
+    (reset! rdb/app-db (db/default-db))
+    (is (= [:span.p-opp "vs BUF"] (opp nil)) "no waiver reply yet")
+    (reset! rdb/app-db (assoc (db/default-db) :waivers
+                              {:defense-vs-position {:BUF {:RB {:rank 1 :of 32 :per-game 30.0 :games 9}}}}))
+    (let [[_ attrs text] (opp nil)]
+      (is (= "vs BUF" text))
+      (is (= "color-mix(in oklab, var(--good), var(--muted) 0%)" (get-in attrs [:style :color])))
+      (is (= "BUF has allowed the 1st most points to RBs: 30.0 a game" (:title attrs))))
+    (is (= [:span.p-opp "vs BUF"] (opp {:ease? false})) "the card head, on the team's colors")))
 
 (deftest week-cell-dashes-rather-than-zeroes
   ;; Not projected and projected to score nothing are different answers, and a
