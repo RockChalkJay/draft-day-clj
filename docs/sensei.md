@@ -285,7 +285,9 @@ outlasts the ranking that earned it.
 Logged out it shows ten experts per season, each with a stable id, the outlet's
 URL and a rank per position. The bare page serves the season in progress, and
 naming that season by year answers an empty table, so only finished seasons are
-read: the last three, cached a month each. An expert in the top ten in two of
+read: the last three, cached a month each. A season just ended may stay the
+vendor's current one until the next begins, so its year page falling empty
+sends the fetch to the bare page, accepted only if it is that season's. An expert in the top ten in two of
 the three is listed, most finishes first, then best average rank; a named
 position orders them by their rank there. Last season's top three are listed
 apart, since one season can be a hot year. Read live in week 10 of 2026:

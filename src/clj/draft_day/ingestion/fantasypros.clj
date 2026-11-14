@@ -287,12 +287,16 @@
 
 ;; --- expert accuracy ---
 
+(def accuracy-current-url
+  "The accuracy leaderboard of whichever season the vendor treats as current."
+  "https://www.fantasypros.com/nfl/accuracy/")
+
 (defn accuracy-url
-  "The in-season accuracy leaderboard of a finished `season`. The bare page
-  serves the season in progress, and naming that season by year answers an
-  empty table, so only a finished one is asked for."
+  "The in-season accuracy leaderboard of `season`, by year. Naming the season
+  the vendor treats as current answers an empty table; `fetch-accuracy` falls
+  back to `accuracy-current-url` for it."
   [season]
-  (str "https://www.fantasypros.com/nfl/accuracy/?year=" season))
+  (str accuracy-current-url "?year=" season))
 
 (defn report-config
   "Pure: the `window.FP.reportConfig = {…};` blob of a report page as a map, or nil."
@@ -341,9 +345,13 @@
 
 (defn fetch-accuracy
   "Network: the in-season accuracy leaderboard of a finished `season`, as
-  `parse-accuracy` reads it. Throws when the page fails or is not that table."
+  `parse-accuracy` reads it. A season just ended may still be the vendor's
+  current one until the next begins, when its year page is empty, so the bare
+  page is tried next and accepted only if it is that season's. Throws when
+  neither is that table."
   [season]
   (or (some-> (fetch-page (accuracy-url season)) (parse-accuracy season))
+      (some-> (fetch-page accuracy-current-url) (parse-accuracy season))
       (throw (ex-info "accuracy page failed" {:season season}))))
 
 ;; --- AAV (auction values) ---

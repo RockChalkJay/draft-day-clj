@@ -317,3 +317,15 @@
       (is (thrown? Exception (fp/fetch-accuracy 2024)) "the page answered for another season"))
     (with-redefs [fp/fetch-page (constantly nil)]
       (is (thrown? Exception (fp/fetch-accuracy 2025))))))
+
+(deftest fetch-accuracy-reads-a-season-the-vendor-still-calls-current-off-the-bare-page
+  (let [asked (atom [])
+        row   [[317 1 "Justin Boone - Yahoo" "https://sports.yahoo.com/fantasy/" 6 28]]]
+    (with-redefs [fp/fetch-page (fn [url]
+                                  (swap! asked conj url)
+                                  (if (str/includes? url "?year=")
+                                    (accuracy-page {:year 2026})
+                                    (accuracy-page {:year 2026 :rows row})))]
+      (is (= "Justin Boone" (:name (first (fp/fetch-accuracy 2026)))))
+      (is (= ["https://www.fantasypros.com/nfl/accuracy/?year=2026" "https://www.fantasypros.com/nfl/accuracy/"]
+             @asked)))))

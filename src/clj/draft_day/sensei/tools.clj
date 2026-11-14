@@ -767,14 +767,15 @@
   (when (seq xs) (/ (reduce + xs) (double (count xs)))))
 
 (defn expert-row
-  "One expert across `seasons` (newest first), off that expert's rows, joined by
-  FantasyPros' id since a name is spelled differently from one season to the
-  next. With `pos`, the rank at that position too."
+  "One expert across `seasons` (newest first), off that expert's `rows`, one per
+  season listed, named as the newest names them. With `pos`, the rank at that
+  position too."
   [seasons rows pos]
   (let [latest (apply max-key :season rows)
         in     (into {} (map (juxt :season identity)) rows)
         by     (fn [f] (not-empty (compact (map (fn [s] [(str s) (some-> (in s) f)]) seasons))))]
-    (compact [[:name      (:name latest)]
+    (compact [[:id        (:id latest)]
+              [:name      (:name latest)]
               [:outlet    (:outlet latest)]
               [:site      (:site latest)]
               [:top-ten   (count rows)]
@@ -785,8 +786,9 @@
 
 (defn accurate-experts
   "The experts in FantasyPros' in-season top ten in at least `min-finishes` of
-  `boards`, `{season experts}`: most finishes first, then best average rank, or
-  with `pos` best average rank at that position."
+  `boards`, `{season experts}`, joined by FantasyPros' id since a name is
+  spelled differently from one season to the next: most finishes first, then
+  best average rank, or with `pos` best average rank at that position."
   [boards pos]
   (let [seasons (sort > (keys boards))]
     (->> (mapcat (fn [[s es]] (map #(assoc % :season s) es)) boards)
@@ -811,15 +813,15 @@
         _       (when (empty? boards)
                   (throw (tool-error "FantasyPros' accuracy leaderboard could not be read; search for it instead")))
         listed  (accurate-experts boards pos)
-        names   (set (map :name listed))
+        ids     (set (map :id listed))
         latest  (reduce max (keys boards))]
     (compact [[:source      "FantasyPros in-season accuracy, top ten per season"]
               [:seasons     (vec (sort > (keys boards)))]
               [:unread      (not-empty (vec (remove boards seasons)))]
               [:position    pos]
-              [:experts     listed]
+              [:experts     (mapv #(dissoc % :id) listed)]
               [:last-season (->> (get boards latest)
-                                 (remove #(names (:name %)))
+                                 (remove #(ids (:id %)))
                                  (take 3)
                                  (mapv #(compact [[:name (:name %)] [:outlet (:outlet %)]
                                                   [:site (:site %)] [:rank (:rank %)]])))]])))
