@@ -75,8 +75,9 @@
 
 (def default-searches
   "How many web searches one answer may make unless `DRAFTDAY_SENSEI_SEARCHES`
-  says otherwise."
-  3)
+  says otherwise. A start/sit call with a bid can want the experts' consensus,
+  the accuracy leaderboard, two of its experts and two FAAB sources."
+  8)
 
 (defn search-limit
   "The most web searches one answer may make under `env`: the positive whole
@@ -109,10 +110,13 @@
 
 (def default-web-hosts
   "The hosts the chat's WebFetch may read: outlets that publish weekly waiver,
-  start/sit and sleeper articles. A permission rule matches one host exactly,
-  so `www.` is its own entry."
+  start/sit and sleeper articles, and the homes of the experts with the best
+  measured accuracy, each read by a measured `claude -p` fetch (docs/sensei.md
+  lists the ones that were not). A permission rule matches one host exactly, so
+  `www.` is its own entry."
   ["www.fantasypros.com" "www.rotoballer.com" "sports.yahoo.com" "bleacherreport.com"
-   "www.espn.com" "www.cbssports.com" "www.nbcsports.com"])
+   "www.espn.com" "www.cbssports.com" "www.nbcsports.com" "www.fantasylife.com"
+   "establishtherun.com" "www.actionnetwork.com" "www.draftsharks.com"])
 
 (defn web?
   "Does the chat get web tools? On unless `DRAFTDAY_SENSEI_WEB` is `off`."
