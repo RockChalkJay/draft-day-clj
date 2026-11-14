@@ -48,6 +48,14 @@
     (is (re-find #"2–0" html))
     (is (re-find #"\(You\)" html))))
 
+(deftest a-rivals-players-are-the-waiver-replys-rows-once-it-lands
+  (synced!)
+  (swap! rdb/app-db assoc :waivers
+         {:league-roster-players {:1 [{:player-id "00-wr" :player-name "Ja'Marr Chase"
+                                       :position "WR" :team "CIN" :week/opponent "BAL"}]}})
+  (is (= "BAL" (get-in (second @(rf/subscribe [:league-rosters])) [:starters 0 :week/opponent]))
+      "so every team's opponent is drawn, not only the manager's"))
+
 (deftest only-a-name-the-detail-modal-can-open-is-a-button
   (let [row (fn [p bench? openable?] (render (fn [] (league/player-row p bench? openable?))))]
     (is (re-find #"name-btn" (row {:player-id "a" :player-name "Mine"} false true)))

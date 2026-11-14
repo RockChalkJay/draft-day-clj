@@ -296,14 +296,13 @@
   "The opponent as `player-ident` draws it, `m` being `week-matchup`'s text.
   Colored green to red by how much that defense has allowed his position, with
   the rank in words on hover, once the waiver reply has brought the table; grey
-  before then, on a bye, or with `ease?` false."
-  [p m ease?]
+  before then or on a bye. `eased` lets the card head put the color on a pill."
+  [p m]
   (let [{:keys [opponent]} (matchup-source p)
-        line (when ease?
-               (matchup-ease/ease-line @(rf/subscribe [:defense-vs-position])
-                                       opponent (:position p)))]
+        line (matchup-ease/ease-line @(rf/subscribe [:defense-vs-position])
+                                     opponent (:position p))]
     (if line
-      [:span.p-opp {:style {:color (matchup-ease/ease-color (matchup-ease/ease-share line))}
+      [:span.p-opp.eased {:style {:color (matchup-ease/ease-color (matchup-ease/ease-share line))}
                     :title (matchup-ease/ease-title line opponent (:position p))}
        m]
       [:span.p-opp m])))
@@ -315,10 +314,9 @@
 
   `:on-click` makes the name a button; `:mirror?` puts the logo at the outer
   edge for a right-hand column; `:logo? false` leaves it off, as the player card
-  does since its head is already in the team's colours; `:ease? false` leaves
-  the opponent uncolored, as the card head does for the same reason; `:extra`
-  follows the opponent."
-  [p week {:keys [on-click mirror? extra logo? ease?] :or {logo? true ease? true}}]
+  does since its head is already in the team's colours; `:extra` follows the
+  opponent."
+  [p week {:keys [on-click mirror? extra logo?] :or {logo? true}}]
   (let [logo (when logo? (team-logo (:team p)))
         nm   (cond
                (:unvalued? p) (unvalued-name p)
@@ -328,7 +326,7 @@
                :else          [:span.p-name (:player-name p)])
         opp  (when week
                (let [m (week-matchup p week)]
-                 (when (not= "–" m) (opponent-label p m ease?))))
+                 (when (not= "–" m) (opponent-label p m))))
         parts (keep identity (concat [nm opp] extra))]
     (into [:span.p-ident]
           (if mirror? (concat parts [logo]) (cons logo parts)))))

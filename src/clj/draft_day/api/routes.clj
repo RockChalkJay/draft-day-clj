@@ -546,13 +546,14 @@
   [:rank :of :per-game :games])
 
 (defn without-sensei-only
-  "`reply` less what only Sensei reads: `:drop-costs`, `:league-roster-players`,
-  `sensei-only-keys`, and all of `:defense-vs-position` but
-  `browser-allowed-keys`."
+  "`reply` less what only Sensei reads: `:drop-costs`, `sensei-only-keys` on
+  every row, and all of `:defense-vs-position` but `browser-allowed-keys`."
   [reply]
   (let [strip (fn [ps] (some->> ps (mapv #(apply dissoc % sensei-only-keys))))]
     (reduce (fn [r k] (cond-> r (contains? r k) (update k strip)))
-            (cond-> (dissoc reply :drop-costs :league-roster-players)
+            (cond-> (dissoc reply :drop-costs)
+              (contains? reply :league-roster-players)
+              (update :league-roster-players #(some-> % (update-vals strip)))
               (contains? reply :defense-vs-position)
               (update :defense-vs-position
                       update-vals #(update-vals % (fn [line] (select-keys line browser-allowed-keys)))))
@@ -562,7 +563,8 @@
   "POST /api/waivers: `waivers-reply` as JSON, and a 400 for a body it cannot
   price. `:drop-costs`, the experts' ranks and the snap and role facts are
   Sensei's and the browser reads none of them; of the points each defense
-  allowed it reads the rank, which colors this week's opponent."
+  allowed it reads the rank, which colors this week's opponent, and every
+  team's rows draw the League tab."
   [req]
   (try
     (let [reply (waivers-reply (read-json-body req))]

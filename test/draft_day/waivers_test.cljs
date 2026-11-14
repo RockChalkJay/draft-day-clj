@@ -1121,17 +1121,17 @@
 
 (deftest the-opponent-is-colored-by-what-his-defense-allowed
   (let [p    {:position "RB" :week/opponent "BUF" :week/home? true}
-        opp  (fn [opts] (some #(when (and (vector? %) (= :span.p-opp (first %))) %)
-                              (util/player-ident p 9 opts)))]
+        opp  (fn [] (some #(when (and (vector? %) (#{:span.p-opp :span.p-opp.eased} (first %))) %)
+                          (util/player-ident p 9 nil)))]
     (reset! rdb/app-db (db/default-db))
-    (is (= [:span.p-opp "vs BUF"] (opp nil)) "no waiver reply yet")
+    (is (= [:span.p-opp "vs BUF"] (opp)) "no waiver reply yet")
     (reset! rdb/app-db (assoc (db/default-db) :waivers
                               {:defense-vs-position {:BUF {:RB {:rank 1 :of 32 :per-game 30.0 :games 9}}}}))
-    (let [[_ attrs text] (opp nil)]
+    (let [[tag attrs text] (opp)]
+      (is (= :span.p-opp.eased tag) "the card head draws an eased label on a pill")
       (is (= "vs BUF" text))
       (is (= "color-mix(in oklch, var(--good), var(--warn) 0%)" (get-in attrs [:style :color])))
-      (is (= "BUF has allowed the 1st most points to RBs: 30.0 a game" (:title attrs))))
-    (is (= [:span.p-opp "vs BUF"] (opp {:ease? false})) "the card head, on the team's colors")))
+      (is (= "BUF has allowed the 1st most points to RBs: 30.0 a game" (:title attrs))))))
 
 (deftest week-cell-dashes-rather-than-zeroes
   ;; Not projected and projected to score nothing are different answers, and a

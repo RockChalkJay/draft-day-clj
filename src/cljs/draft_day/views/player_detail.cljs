@@ -156,7 +156,7 @@
    ;; only one of them makes a request first.
    [face universe]
    [:div.pd-who
-    [:h2#pd-title.pd-name (util/player-ident p week {:logo? false :ease? false :extra [(compare/status-chip p)]})]
+    [:h2#pd-title.pd-name (util/player-ident p week {:logo? false :extra [(compare/status-chip p)]})]
     [:p.pd-meta (str/join " · " (meta-segments p week))]
     ;; From the universe, like the face: `:bio` is a static fact and this is the
     ;; document that carries them. nil for a player nobody knows anything about.
@@ -342,13 +342,15 @@
   "The modal for `id`, or nothing when neither the board nor the universe has
   him.
 
-  The board row leads for its week numbers, but it prices only free agents and
-  the manager's own players; anyone else (a Matchup opponent, a League tab
-  rival) opens on the universe entry. Nothing rather than an empty shell when
-  neither has him."
+  The board row leads for its week numbers: a free agent's or the manager's
+  own, else a rival team's off the same reply, else the universe entry (a
+  player nobody in the league holds, or a waiver reply still loading). Nothing
+  rather than an empty shell when none has him."
   [id]
   (let [universe (get @(rf/subscribe [:universe-by-id]) id)
-        p        (or (get @(rf/subscribe [:comparable-by-id]) id) universe)
+        p        (or (get @(rf/subscribe [:comparable-by-id]) id)
+                     (get @(rf/subscribe [:league-row-by-id]) id)
+                     universe)
         week     (:week @(rf/subscribe [:waiver-meta]))
         {:keys [season through-week]} @(rf/subscribe [:universe])
         scoring  @(rf/subscribe [:scoring-weights])

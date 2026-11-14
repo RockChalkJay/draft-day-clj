@@ -1229,6 +1229,10 @@ header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflo
 .p-ident > .name-btn, .p-ident > .p-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .p-opp { margin-left: 6px; font-size: 11px; color: var(--muted); font-weight: 400; }
 .pd-head .p-opp { color: rgba(255,255,255,.88); font-size: 13px; }
+/* A colored opponent on the team's own colors needs a dark backing, or the red
+   end vanishes on a red team. Near-opaque, so it reads as it does on a board. */
+.pd-head .p-opp.eased { background: rgba(15,17,21,.85); padding: 1px 8px; border-radius: 5px;
+  font-weight: 600; }
 
 /* ---- Sensei's chat: a panel docked right, beside the tab ---- */
 aside.sensei { position: sticky; top: var(--header-h, 49px); flex: none; width: var(--sensei-w, 380px);
