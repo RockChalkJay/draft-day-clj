@@ -446,3 +446,78 @@
   (is (re-find #"game logs are unavailable"
                (:error (call "defense_vs_position" {:position "WR"} (fx/deps))))
       "weeks were played but no log arrived: not the same as no games"))
+
+;; ---- league bids ----
+
+(def ^:private history
+  "This season's auctions and last season's, as `transactions/cached-history`
+  reads them: ids in Sleeper's space, owner ids on every bid."
+  {:seasons [{:season "2026" :league-id "123" :budget 100
+              :auctions [{:week 3 :player-id "f1"
+                          :bids [{:roster-id 2 :owner-id "u-rival" :amount 12 :won? true}
+                                 {:roster-id 1 :owner-id "u-me" :amount 9 :won? false}]}
+                         {:week 5 :player-id "f2"
+                          :bids [{:roster-id 1 :owner-id "u-me" :amount 30 :won? true}]}
+                         {:week 5 :player-id "f3"
+                          :bids [{:roster-id 2 :owner-id "u-rival" :amount 4 :won? true}
+                                 {:roster-id 1 :owner-id "u-me" :amount 3 :won? false}
+                                 {:roster-id 1 :owner-id "u-me" :amount 1 :won? false}]}
+                         {:week 6 :player-id "gone"
+                          :bids [{:roster-id 2 :owner-id "u-rival" :amount 2 :won? true}]}]}
+             {:season "2025" :league-id "99" :budget 100
+              :auctions [{:week 2 :player-id "f2"
+                          :bids [{:roster-id 2 :owner-id "u-rival" :amount 50 :won? true}]}]}]})
+
+(defn- bids-deps []
+  (fx/deps {:bid-history (fn [provider league-id season]
+                           (when (= ["sleeper" "123"] [provider league-id]) history))}))
+
+(deftest league-bids-states-what-each-auction-went-for
+  (let [{:keys [result]} (call "league_bids" {} (bids-deps))
+        [gone f2 f3 f1] (:bids result)]
+    (is (= "2026" (:season result)))
+    (is (= 100 (:budget result)))
+    (is (= 4 (:auctions result)))
+    (is (= [6 5 5 3] (map :week (:bids result))) "newest first, the bigger bid first within a week")
+    (is (= {:week 3 :name "Free One" :position "WR" :team "NE" :winner "Rival"
+            :won 12 :won-pct 12.0 :second 9 :bidders 2}
+           f1))
+    (is (= {:week 5 :name "Free Two" :position "RB" :team "NYJ" :winner "Mine"
+            :won 30 :won-pct 30.0 :bidders 1}
+           f2)
+        "an uncontested claim has no second bid")
+    (is (= 3 (:second f3)) "the runner-up is the best losing bid")
+    (is (= {:week 6 :name "gone" :unvalued true :winner "Rival" :won 2 :won-pct 2.0 :bidders 1} gone)
+        "a player the universe does not hold keeps his id")
+    (is (not (str/includes? (pr-str result) "u-rival")) "an owner id is never stated")))
+
+(deftest league-bids-summarize-each-position-and-last-season
+  (let [{:keys [result]} (call "league_bids" {} (bids-deps))]
+    (is (= [{:position "WR" :auctions 2 :median-pct 12.0 :p90-pct 12.0 :top-pct 12.0
+             :contested 2 :contested-median-pct 12.0}
+            {:position "RB" :auctions 1 :median-pct 30.0 :p90-pct 30.0 :top-pct 30.0
+             :contested 0}]
+           (:by-position result))
+        "most auctions first; an unvalued player has no position to count under")
+    (is (= 1 (:unplaced result)) "the player the universe lost is counted, not dropped silently")
+    (is (= {:by-position [{:position "RB" :auctions 1 :median-pct 50.0 :p90-pct 50.0 :top-pct 50.0 :contested 0}]}
+           (:last-season result)))))
+
+(deftest league-bids-narrow-by-position-and-weeks
+  (is (= ["Free One" "Free Three"]
+         (sort (map :name (:bids (:result (call "league_bids" {:position "WR"} (bids-deps))))))))
+  (is (= [6 5 5] (map :week (:bids (:result (call "league_bids" {:weeks 2} (bids-deps))))))
+      "weeks 5 and 6, the last two of a season whose latest auctions ran in week 6"))
+
+(deftest league-bids-say-why-there-are-none
+  (is (re-find #"no bid history is cached"
+               (:error (call "league_bids" {} (fx/deps)))))
+  (let [espn (fx/deps {:found {:leagues [fx/entry-2] :errors []}
+                       :body  (fn [_] (throw (ex-info "read the league" {})))})]
+    (is (re-find #"ESPN does not publish past waiver bids" (:error (call "league_bids" {} espn)))
+        "answered before the league is imported")))
+
+(deftest league-bids-quantiles-are-nearest-rank
+  (is (= 3 (tools/quantile [5 1 3 4 2] 0.5)))
+  (is (= 5 (tools/quantile [5 1 3 4 2] 0.9)))
+  (is (nil? (tools/quantile [] 0.5))))

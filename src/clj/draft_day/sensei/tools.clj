@@ -39,10 +39,11 @@
   "What the tools read for one request, each computed at most once and only
   when a tool asks: `:found`, the accounts' leagues; `:body` and `:reply`, fns of
   a league entry giving its /api/waivers body and the waiver board for it;
-  `:players`, the universe; `:news`, a fn of an ESPN id; and `:accounts`, whose
+  `:players`, the universe; `:news`, a fn of an ESPN id; `:bid-history`, the
+  cached auctions of a provider, league id and season; and `:accounts`, whose
   secrets the reply is masked against. The server's half is
   `routes/sensei-server`."
-  [{:keys [waivers-reply matchup-reply players news env]}]
+  [{:keys [waivers-reply matchup-reply players news env bid-history]}]
   (let [accounts (context/accounts (env))
         body     (per-league context/league-context)]
     {:accounts accounts
@@ -58,7 +59,8 @@
                                   (merge (select-keys entry [:provider :league-id :season :credentials])
                                          (select-keys b [:scoring :league :roster :my-roster-id])))))))
      :players  (delay (players))
-     :news     news}))
+     :news     news
+     :bid-history bid-history}))
 
 (defn tool-error
   "A failure the model should read, as opposed to a bug."
@@ -646,6 +648,107 @@
               [:starts-this-week (:seat week)]
               [:displaces        (some-> (:displaces week) row (select-keys [:name :player-id :position :week]))]])))
 
+(def max-bids
+  "The most auctions `league_bids` lists; its summary counts every one."
+  30)
+
+(defn quantile
+  "The nearest-rank `q` quantile of `xs`, or nil for none."
+  [xs q]
+  (when (seq xs)
+    (let [v (vec (sort xs))]
+      (v (min (dec (count v)) (int (Math/floor (* q (count v)))))))))
+
+(defn pct-of
+  "`amount` as a percent of `budget`, or nil without a budget."
+  [amount budget]
+  (when (and (number? amount) (number? budget) (pos? budget))
+    (* 100.0 (/ (double amount) budget))))
+
+(defn auction-row
+  "One auction as `league_bids` states it: who went, to whom, for what, against
+  how many bids. `player` and `team-name` read ids the way the board does."
+  [{:keys [week bids] :as auction} budget player team-name]
+  (let [winner (some #(when (:won? %) %) bids)
+        others (sort > (keep #(when-not (:won? %) (:amount %)) bids))
+        p      (player (:player-id auction))]
+    (compact [[:week     week]
+              [:name     (or (:player-name p) (:player-id auction))]
+              [:position (:position p)]
+              [:team     (:team p)]
+              [:unvalued (when-not p true)]
+              [:winner   (some-> winner :roster-id team-name)]
+              [:won      (:amount winner)]
+              [:won-pct  (pct-of (:amount winner) budget)]
+              [:second   (first others)]
+              [:bidders  (count bids)]])))
+
+(defn position-summary
+  "Per position: how many auctions were won and the median, 90th-percentile and
+  top winning bid as a percent of the budget, most auctions first. Most claims
+  are uncontested pickups at $0, which sink the median to nothing, so the
+  auctions two or more managers bid in get a count and a median of their own."
+  [rows]
+  (->> (group-by :position (filter :won-pct rows))
+       (keep (fn [[pos rs]]
+               (when pos
+                 (let [pcts      (map :won-pct rs)
+                       contested (map :won-pct (filter #(>= (:bidders %) 2) rs))]
+                   (compact [[:position   pos]
+                             [:auctions   (count rs)]
+                             [:median-pct (quantile pcts 0.5)]
+                             [:p90-pct    (quantile pcts 0.9)]
+                             [:top-pct    (reduce max pcts)]
+                             [:contested  (count contested)]
+                             [:contested-median-pct (quantile contested 0.5)]])))))
+       (sort-by (juxt (comp - :auctions) :position))
+       vec))
+
+(defn league-bids
+  "What this league's FAAB auctions have gone for, off the bid history the last
+  sync cached: the newest `max-bids` this season, a summary per position, and
+  last season's summary when it is cached. Recorded facts, not the bid model's
+  predictions, and no provider call: it reads what `/api/waivers` reads."
+  [deps {:keys [position weeks] :as args}]
+  (let [pos     (position-arg position)
+        entry   (the-league deps args)
+        _       (when-not (providers/bid-history? (keyword (:provider entry)))
+                  (throw (tool-error (str (providers/label (keyword (:provider entry)))
+                                          " does not publish past waiver bids, so this league has no bid history"))))
+        {:keys [league]} (checked ((:body deps) entry))
+        {:keys [provider league-id season]} league
+        history ((:bid-history deps) provider league-id season)
+        _       (when (nil? history)
+                  (throw (tool-error "no bid history is cached for this league yet; a re-sync fetches it")))
+        players (need deps :players)
+        xwalk   (db/provider->player-id players provider (:provider-players league))
+        by-id   (into {} (map (juxt :player-id identity)) players)
+        player  (fn [id] (by-id (get xwalk id id)))
+        names   (into {} (map (juxt :roster-id :name)) (:teams league))
+        rows-of (fn [{:keys [auctions budget]}]
+                  (let [budget (or budget (get-in league [:waiver :budget]))]
+                    (map #(auction-row % budget player names) auctions)))
+        wanted  (fn [rows] (filter #(or (nil? pos) (= pos (:position %))) rows))
+        ;; A player the universe no longer holds has no position to count under,
+        ;; and the model should know the summary left him out.
+        unplaced (fn [rows] (let [n (count (filter :unvalued rows))] (when (pos? n) n)))
+        [current previous] (:seasons history)
+        latest  (reduce max 0 (keep :week (:auctions current)))
+        season  (cond->> (rows-of current)
+                  (number? weeks) (filter #(> (:week %) (- latest (long weeks)))))
+        rows    (wanted season)
+        last-season (some-> previous rows-of)]
+    (compact [[:league        (named entry)]
+              [:season        (:season current)]
+              [:budget        (or (:budget current) (get-in league [:waiver :budget]))]
+              [:auctions      (count rows)]
+              [:by-position   (position-summary rows)]
+              [:unplaced      (unplaced season)]
+              [:last-season   (when last-season
+                                (not-empty (compact [[:by-position (not-empty (position-summary (wanted last-season)))]
+                                                     [:unplaced    (unplaced last-season)]])))]
+              [:bids          (vec (take max-bids (sort-by (juxt (comp - :week) (comp - #(or (:won %) 0))) rows)))]])))
+
 (def default-news-items
   "Five, not the feed's ten: a note runs to a paragraph, and the older half
   rarely changes a call."
@@ -696,7 +799,7 @@
   [{:name         "leagues"
     :title        "Leagues"
     :description  (str "The leagues the manager plays in, each with the key that the league argument of "
-                       "my_team, team_roster, matchup, waiver_targets and defense_vs_position takes. Call this first when the question does not "
+                       "my_team, team_roster, matchup, waiver_targets, defense_vs_position and league_bids takes. Call this first when the question does not "
                        "name a league.")
     :input-schema {:type "object" :properties {} :additionalProperties false}
     :handler      leagues}
@@ -792,6 +895,25 @@
                                                      :description "Teams to compare, e.g. [\"NYG\", \"Jets\"]"}}
                    :additionalProperties false}
     :handler      defense-vs-position}
+   {:name         "league_bids"
+    :title        "League bids"
+    :description  (str "What this league's FAAB waiver auctions have actually gone for this season, off the "
+                       "bid history the last sync cached: the newest auctions with the winning team, the "
+                       "winning bid (won, and won-pct of the season budget), the runner-up bid (second) and "
+                       "how many bid; a summary per position (median-pct, p90-pct, top-pct of budget, and "
+                       "contested-median-pct over the auctions two or more managers bid in, since most "
+                       "claims are uncontested $0 pickups); and last season's summary when cached. "
+                       "unplaced counts auctions for players the board no longer holds, which no "
+                       "position summary includes. Recorded bids, not a prediction. Position "
+                       "narrows it; weeks keeps the last few weeks of auctions.")
+    :input-schema {:type                 "object"
+                   :properties           {:league   league-property
+                                          :position {:type "string" :enum db/positions
+                                                     :description "Only this position"}
+                                          :weeks    {:type "integer" :minimum 1 :maximum 18
+                                                     :description "Only the last this many weeks of auctions"}}
+                   :additionalProperties false}
+    :handler      league-bids}
    {:name         "player_news"
     :title        "Player news"
     :description  (str "A player's latest news notes (Rotowire, via ESPN), newest first, and his "
