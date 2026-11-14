@@ -684,9 +684,10 @@
 
 (def waiver-views
   "The tabs drawn from the `/api/waivers` reply: My Team's rows, the board
-  itself, and on the League tab the manager's own roster rows. Opening one
-  loads the board if it has not loaded."
-  #{:team :waivers :rosters})
+  itself, on the League tab the manager's own roster rows, and on Matchup the
+  table that colors each opponent. Opening one loads the board if it has not
+  loaded."
+  #{:team :waivers :rosters :matchup})
 
 (defn matchup-view?
   "Whether `view` needs this week's matchup reply. Every season tab does: the
