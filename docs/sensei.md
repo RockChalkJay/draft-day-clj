@@ -277,8 +277,22 @@ top-ten finishes, and Sean Koerner (Action Network) has won three times. Each
 week FantasyPros publishes "Most Accurate Experts (Week N)", a consensus of only
 the best-measured rankers with start/sit grades, on a host the chat could
 already read; the instructions send a start/sit question there first, then to
-the leaderboard for whoever tops it now. They name no expert, since a name
+the experts `accurate_experts` lists. They name no expert, since a name
 outlasts the ranking that earned it.
+
+**`accurate_experts`.** The leaderboard is a JSON blob in the page
+(`window.FP.reportConfig`), `/nfl/accuracy/?year=N` for a finished season.
+Logged out it shows ten experts per season, each with a stable id, the outlet's
+URL and a rank per position. The bare page serves the season in progress, and
+naming that season by year answers an empty table, so only finished seasons are
+read: the last three, cached a month each. An expert in the top ten in two of
+the three is listed, most finishes first, then best average rank; a named
+position orders them by their rank there. Last season's top three are listed
+apart, since one season can be a hot year. Read live in week 10 of 2026:
+Thorman (2, 4, 4), Orginski, Ratcliffe, Koerner and Bond; Boone, first in 2025
+and in no other of the three, sits in the last-season list. Orginski and
+Ratcliffe write for FTN, whose pages refuse the chat's fetch, so their calls
+come from search results.
 
 **Which pages the chat can read.** One `claude -p` fetch per candidate, with
 the chat's flags:
