@@ -112,9 +112,11 @@
 (deftest opening-the-tab-fetches-once
   (connect!)
   (rf/dispatch-sync [:set-view :matchup])
-  (is (= [:fetch-matchup] (dispatched)))
+  (is (= [:fetch-waivers :fetch-matchup] (dispatched))
+      "the waiver reply carries the table that colors each opponent")
   (testing "and not again once it has a board"
     (rf/dispatch-sync [:matchup-loaded (:matchup-seq @rdb/app-db) reply])
+    (swap! rdb/app-db assoc :waivers {:players []})
     ;; The draft board has never been ranked in this db, and leaving for it is
     ;; that board's own first open — which is not this tab's business.
     (swap! rdb/app-db assoc :ranked {:players []})

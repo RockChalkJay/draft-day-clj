@@ -13,7 +13,7 @@
   The rank runs from the most allowed down, the way defense-vs-position tables
   on the web run it, and it is never stated as a bare number: `#1 defense` reads
   as the best one in football talk and as the softest matchup in a DvP table.
-  `rank-label` puts the direction in the words."
+  `matchup-ease/rank-label` puts the direction in the words."
   (:require [draft-day.scoring :as scoring]))
 
 (def recent-games
@@ -87,21 +87,6 @@
     (-> (allowed-rows players (scoring/resolve-buckets scoring) through-week)
         team-lines
         with-ranks)))
-
-(defn ordinal
-  "1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st."
-  [n]
-  (str n (if (<= 11 (mod n 100) 13)
-           "th"
-           (case (mod n 10) 1 "st" 2 "nd" 3 "rd" "th"))))
-
-(defn rank-label
-  "A rank with its direction in the words: `8th most` in the top half, `3rd
-  fewest` in the bottom, counted from that end."
-  [rank of]
-  (if (<= rank (quot (inc of) 2))
-    (str (ordinal rank) " most")
-    (str (ordinal (- (inc of) rank)) " fewest")))
 
 (defn with-opp-vs-pos
   "Assoc `:opp-vs-pos`, his opponent this week's line at his position from
