@@ -110,9 +110,9 @@
 
 (def default-web-hosts
   "The hosts the chat's WebFetch may read: outlets that publish weekly waiver,
-  start/sit and sleeper articles free to read, each read by a measured
-  `claude -p` fetch (docs/sensei.md lists the ones that were not). A permission rule matches one host exactly, so
-  `www.` is its own entry."
+  start/sit and sleeper articles, mostly free to read, each read by a measured
+  `claude -p` fetch (docs/sensei.md lists the ones that were not). A permission
+  rule matches one host exactly, so `www.` is its own entry."
   ["www.fantasypros.com" "www.rotoballer.com" "sports.yahoo.com" "bleacherreport.com"
    "www.espn.com" "www.cbssports.com" "www.nbcsports.com" "www.fantasylife.com"
    "www.actionnetwork.com" "www.draftsharks.com"])
