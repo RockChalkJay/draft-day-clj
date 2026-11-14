@@ -148,16 +148,17 @@
     (testing "the prompt is not on the command line"
       (is (not-any? #(str/includes? % "Manager:") argv)))))
 
-(deftest search-limit-is-five-unless-the-env-says-otherwise
-  (is (= 5 (chat/search-limit {})))
+(deftest search-limit-is-eight-unless-the-env-says-otherwise
+  (is (= 8 (chat/search-limit {})))
   (is (= 8 (chat/search-limit {"DRAFTDAY_SENSEI_SEARCHES" " 8 "})))
   (doseq [bad ["0" "-2" "many" "" "2.5"]]
-    (is (= 5 (chat/search-limit {"DRAFTDAY_SENSEI_SEARCHES" bad})) (str "falls back on " (pr-str bad)))))
+    (is (= 8 (chat/search-limit {"DRAFTDAY_SENSEI_SEARCHES" bad})) (str "falls back on " (pr-str bad)))))
 
 (deftest the-ceiling-reaches-the-model
   (let [note #(second (drop-while (fn [a] (not= "--append-system-prompt" a)) (chat/command %)))]
-    (is (str/includes? (note {:port 1}) "up to 5 times"))
-    (is (str/includes? (note {:port 1}) "Before you say who to start or what to bid, search the web"))
+    (is (str/includes? (note {:port 1}) "up to 8 times"))
+    (is (str/includes? (note {:port 1}) "Before you say who to start or what to bid, search the web")
+        "the persona says it too, but alone it did not make start/sit or a bid search")
     (is (str/includes? (note {:port 1 :searches 7}) "up to 7 times"))
     (is (not (str/includes? (note {:port 1 :searches 7}) "{searches}")))))
 

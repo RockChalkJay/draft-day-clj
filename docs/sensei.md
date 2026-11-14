@@ -146,7 +146,7 @@ season) and health (`inj`, news). They keep this week apart from the season, and
 say that a `lineup` of 0 is a stash or a role bet when the others agree, not a
 reason to pass. Where the model can search the web it is told to look up the
 week's waiver wire, start/sit and sleeper articles for the shortlist and the
-drop only, at most three searches (five in the in-app chat, where
+drop only, at most five searches (eight in the in-app chat, where
 `DRAFTDAY_SENSEI_SEARCHES` moves the ceiling and the model uses fewer on a
 narrow question), and to name the outlet behind each claim: an outlet's figure
 is never an engine number. A start/sit question, a matchup and a bid each have
@@ -276,7 +276,9 @@ years, Thorman has finished in the top four four years running, Boone has nine
 top-ten finishes, and Sean Koerner (Action Network) has won three times. Each
 week FantasyPros publishes "Most Accurate Experts (Week N)", a consensus of only
 the best-measured rankers with start/sit grades, on a host the chat could
-already read; the instructions send a start/sit question there first.
+already read; the instructions send a start/sit question there first, then to
+the leaderboard for whoever tops it now. They name no expert, since a name
+outlasts the ranking that earned it.
 
 **Which pages the chat can read.** One `claude -p` fetch per candidate, with
 the chat's flags:
@@ -340,11 +342,6 @@ league, after start/sit, matchups and bids got their own instructions:
 - The bid started from `league_bids` (QB claims here are $0 unless contested,
   and the four contested ones went for a median of $11), then quoted FF
   Beacon's range from search results as FF Beacon's.
-- Neither the start/sit nor the bid answer searched at first: the chat note's
-  "a narrow question needs one search or none" read as permission to skip the
-  experts. The persona's rule to search before either was not enough on its
-  own; it took the same rule in the chat note, which is appended to the system
-  prompt.
 
 ## Open questions
 
