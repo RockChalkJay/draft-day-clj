@@ -159,6 +159,7 @@
     (is (str/includes? (note {:port 1}) "up to 8 times"))
     (is (str/includes? (note {:port 1}) "Before you say who to start or what to bid, search the web")
         "the persona says it too, but alone it did not make start/sit or a bid search")
+    (is (str/includes? (note {:port 1}) "never that the manager should subscribe"))
     (is (str/includes? (note {:port 1 :searches 7}) "up to 7 times"))
     (is (not (str/includes? (note {:port 1 :searches 7}) "{searches}")))))
 
@@ -167,7 +168,7 @@
     (is (contains? rules "mcp__sensei"))
     (is (contains? rules "WebSearch"))
     (is (contains? rules "WebFetch(domain:www.fantasypros.com)"))
-    (is (contains? rules "WebFetch(domain:establishtherun.com)") "an accurate expert's home")
+    (is (not-any? #(str/includes? % "establishtherun") rules) "its rankings are paywalled")
     (is (not-any? #(str/includes? % "ffbeacon") rules) "it turns automated reads away")
     (is (not-any? #{"WebFetch" "Bash" "Read" "Write" "Edit"} rules)
         "no bare WebFetch, which would read any host"))
