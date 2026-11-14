@@ -275,17 +275,21 @@ five were Justin Boone (Yahoo), Pat Thorman (Establish the Run), Jamie Calandro
 years, Thorman has finished in the top four four years running, Boone has nine
 top-ten finishes, and Sean Koerner (Action Network) has won three times. Each
 week FantasyPros publishes "Most Accurate Experts (Week N)", a consensus of only
-the best-measured rankers with start/sit grades, on a host the chat could
-already read; the instructions send a start/sit question there first, then to
-the leaderboard for whoever tops it now. They name no expert, since a name
-outlasts the ranking that earned it.
+the best-measured rankers with start/sit grades, free and on a host the chat
+could already read; the instructions send a start/sit question there and no
+further. They once sent it on to the leaderboard's repeat leaders (#192, #193),
+but most of them sell their weekly calls (Establish the Run, FTN, Action
+Network PRO): asked for Thorman's, the chat found a paywall and told the
+manager to subscribe. Their ranks already feed the consensus and `wk-ecr`, so
+the instructions name no expert and read nothing behind a paywall or a login.
 
 **Which pages the chat can read.** One `claude -p` fetch per candidate, with
 the chat's flags:
 
 | Host | Fetch | Kept |
 | --- | --- | --- |
-| www.fantasylife.com, establishtherun.com, www.actionnetwork.com, www.draftsharks.com | read | added |
+| www.fantasylife.com, www.actionnetwork.com, www.draftsharks.com | read | added |
+| establishtherun.com | index read, rankings paywalled | removed |
 | www.fantasypros.com ("Most Accurate Experts") | read | already listed |
 | www.footballguys.com | index read, articles paywalled | no |
 | www.ftnfantasy.com | 403 | no |
@@ -384,7 +388,7 @@ league, after start/sit, matchups and bids got their own instructions:
   **Web access.** The panel can search the web and read pages from a list of
   outlets (`DRAFTDAY_SENSEI_WEB_HOSTS`, comma-separated exact hosts; default
   FantasyPros, RotoBaller, Yahoo Sports, Bleacher Report, ESPN, CBS Sports, NBC
-  Sports, Fantasy Life, Establish the Run, Action Network and Draft Sharks;
+  Sports, Fantasy Life, Action Network and Draft Sharks;
   `DRAFTDAY_SENSEI_WEB=off` removes it). The model holds league data
   and reads pages other people write, so a fetch is the risk: an instruction on a
   page could ask it to put a roster in a URL. Search runs on Anthropic's side and
