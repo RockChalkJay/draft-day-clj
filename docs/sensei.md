@@ -289,6 +289,7 @@ the chat's flags:
 | Host | Fetch | Kept |
 | --- | --- | --- |
 | www.fantasylife.com, www.actionnetwork.com, www.draftsharks.com | read | added |
+| sleeper.com | blog and home page read, player pages JSON (checked with curl, not `claude -p`) | added |
 | establishtherun.com | index read, rankings paywalled | removed |
 | www.fantasypros.com ("Most Accurate Experts") | read | already listed |
 | www.footballguys.com | index read, articles paywalled | no |

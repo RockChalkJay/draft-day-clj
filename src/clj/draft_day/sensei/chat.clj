@@ -115,7 +115,7 @@
   rule matches one host exactly, so `www.` is its own entry."
   ["www.fantasypros.com" "www.rotoballer.com" "sports.yahoo.com" "bleacherreport.com"
    "www.espn.com" "www.cbssports.com" "www.nbcsports.com" "www.fantasylife.com"
-   "www.actionnetwork.com" "www.draftsharks.com"])
+   "www.actionnetwork.com" "www.draftsharks.com" "sleeper.com"])
 
 (defn web?
   "Does the chat get web tools? On unless `DRAFTDAY_SENSEI_WEB` is `off`."
