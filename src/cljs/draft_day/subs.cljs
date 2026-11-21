@@ -283,8 +283,8 @@
 ;; through `:my-roster` the manager's own everywhere else. Read through
 ;; `db/team-roster`, the same id translation the server uses.
 ;;
-;; The manager's players are the waiver reply's full rows where it has loaded,
-;; so his card carries what My Team draws; everyone else's are the universe's.
+;; Every team's players are the waiver reply's full rows where it has loaded, so
+;; each carries this week's opponent, and his own card what My Team draws.
 ;;
 ;; nil until the universe has landed. Before then every id resolves to nobody,
 ;; and a card of raw ids reads exactly like the broken crosswalk that
@@ -294,7 +294,8 @@
   :<- [:waivers]
   (fn [[ls xwalk universe mine w] _]
     (when (and (seq (:teams ls)) (seq universe))
-      (let [by-id (into universe (map (juxt :player-id identity)) (:my-roster-players w))]
+      (let [by-id (into universe (map (juxt :player-id identity))
+                        (concat (mapcat val (:league-roster-players w)) (:my-roster-players w)))]
         (mapv (fn [t]
                 (assoc (db/team-roster t ls xwalk by-id)
                        :team t
@@ -501,6 +502,11 @@
 (rf/reg-sub :waiver-meta :<- [:waivers]
   (fn [w _] (select-keys w [:through-week :season-games :week :week-fetched-at])))
 
+;; `{:BUF {:RB {:rank :of :per-game :games}}}`, what each defense allowed each
+;; position; nil until the waiver reply lands, which leaves opponents grey.
+(rf/reg-sub :defense-vs-position :<- [:waivers]
+  (fn [w _] (:defense-vs-position w)))
+
 ;; Which week the board is showing, as one of three answers — and three, not
 ;; two, is the point. `:waivers` is nil before the first reply and stays nil
 ;; after a failed one, so a boolean `(pos? (or through-week 0))` reports
@@ -600,6 +606,13 @@
     (into {} (map (juxt :player-id identity))
           (concat (filter #(or show-rostered? (not (:owner %))) (:players w))
                   (:my-roster-players w)))))
+
+;; Every other team's priced rows by player id, for the player card of a rival's
+;; player; kept out of `:comparable-by-id` so the compare tile's pool is unchanged.
+(rf/reg-sub :league-row-by-id
+  :<- [:waivers]
+  (fn [w _]
+    (into {} (map (juxt :player-id identity)) (mapcat val (:league-roster-players w)))))
 
 (rf/reg-sub :compare-players
   :<- [:comparable-by-id]

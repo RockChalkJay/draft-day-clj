@@ -521,8 +521,8 @@
     (remove #(contains? by-id %) (held-ids team xwalk :player-ids))))
 
 (defn league-roster-players
-  "Every other team's roster as full board rows, `{roster-id [row]}`, for
-  Sensei to compare the manager's team against a rival's or the league's. A
+  "Every other team's roster as full board rows, `{roster-id [row]}`: Sensei
+  compares the manager's team against them, and the League tab draws them. A
   team's rows are `my-roster-players`' for it."
   [teams my-roster-id xwalk by-id]
   (into {}

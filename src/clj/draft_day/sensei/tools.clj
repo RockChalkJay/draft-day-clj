@@ -18,9 +18,9 @@
   (:require [clojure.string :as str]
             [draft-day.db :as db]
             [draft-day.ingestion.match :as match]
+            [draft-day.matchup-ease :as matchup-ease]
             [draft-day.providers :as providers]
             [draft-day.rankings.lineup :as lineup]
-            [draft-day.rankings.opponent :as opponent]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.sensei.context :as context]
             [draft-day.team-names :as team-names]))
@@ -158,7 +158,7 @@
   [p]
   (when-let [{:keys [rank of per-game]} (:opp-vs-pos p)]
     (when (and rank of (number? per-game))
-      (str (:position p) " " (opponent/rank-label rank of) " (" (format "%.1f" (double per-game)) "/g)"))))
+      (str (:position p) " " (matchup-ease/rank-label rank of) " (" (format "%.1f" (double per-game)) "/g)"))))
 
 (defn percent
   "A share as a whole percent, or nil."
@@ -423,7 +423,7 @@
   (compact [[:team team]
             [:name (team-names/full-name team)]
             [:position pos]
-            [:rank (opponent/rank-label rank of)]
+            [:rank (matchup-ease/rank-label rank of)]
             [:per-game per-game]
             [:recent recent-per-game]
             [:games games]]))

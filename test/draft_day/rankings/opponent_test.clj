@@ -61,15 +61,6 @@
     (is (= {:rank 1 :of 2} (select-keys (get-in table ["NYG" "WR"]) [:rank :of])))
     (is (= {:rank 2 :of 2} (select-keys (get-in table ["NYJ" "WR"]) [:rank :of])))))
 
-(deftest a-rank-says-which-way-it-runs
-  (is (= "1st most" (opponent/rank-label 1 32)))
-  (is (= "16th most" (opponent/rank-label 16 32)))
-  (is (= "16th fewest" (opponent/rank-label 17 32)))
-  (is (= "1st fewest" (opponent/rank-label 32 32)))
-  (is (= "2nd most" (opponent/rank-label 2 31)))
-  (is (= ["11th" "12th" "13th" "21st" "22nd" "23rd" "111th"]
-         (map opponent/ordinal [11 12 13 21 22 23 111]))))
-
 (deftest a-row-takes-its-opponents-line-at-his-position
   (let [table {"NYG" {"WR" {:rank 3 :of 32 :per-game 30.0}}}
         [wr rb bye] (opponent/with-opp-vs-pos

@@ -513,18 +513,25 @@
 
 (deftest a-refused-body-gains-no-keys-from-the-strip
   (is (= {:error "x"} (routes/without-sensei-only {:error "x"})))
-  (is (not (contains? (routes/without-sensei-only {:players [] :league-roster-players {2 []}})
-                      :league-roster-players)))
   (is (nil? (:my-roster-players (routes/without-sensei-only {:players [] :my-roster-players nil})))
-      "no team picked stays nil"))
+      "no team picked stays nil")
+  (is (nil? (:league-roster-players (routes/without-sensei-only {:players [] :league-roster-players nil})))))
 
-(deftest the-browser-is-not-sent-what-defenses-allowed
-  (let [line  {:rank 1 :of 32 :per-game 30.0 :team "NYG"}
-        reply (routes/without-sensei-only {:defense-vs-position {"NYG" {"WR" line}}
-                                           :players             [{:player-id "a" :opp-vs-pos line}]
-                                           :my-roster-players   [{:player-id "b" :opp-vs-pos line}]})]
-    (is (not (contains? reply :defense-vs-position)))
-    (is (not-any? #(contains? % :opp-vs-pos) (concat (:players reply) (:my-roster-players reply))))))
+(deftest the-browser-is-sent-every-teams-rows-without-sensei-s-keys
+  (let [reply (routes/without-sensei-only
+               {:players [] :league-roster-players {2 [{:player-id "c" :week/opponent "BUF" :snap-share 0.8}]}})]
+    (is (= {2 [{:player-id "c" :week/opponent "BUF"}]} (:league-roster-players reply)))))
+
+(deftest the-browser-is-sent-only-the-rank-of-what-defenses-allowed
+  (let [line  {:rank 1 :of 32 :per-game 30.0 :games 9 :points 270.0 :recent-per-game 28.0}
+        reply (routes/without-sensei-only {:defense-vs-position   {"NYG" {"WR" line}}
+                                           :players               [{:player-id "a" :opp-vs-pos line}]
+                                           :my-roster-players     [{:player-id "b" :opp-vs-pos line}]
+                                           :league-roster-players {2 [{:player-id "c" :opp-vs-pos line}]}})]
+    (is (= {"NYG" {"WR" {:rank 1 :of 32 :per-game 30.0 :games 9}}} (:defense-vs-position reply)))
+    (is (not-any? #(contains? % :opp-vs-pos)
+                  (concat (:players reply) (:my-roster-players reply)
+                          (mapcat val (:league-roster-players reply)))))))
 
 (deftest the-browser-is-not-sent-the-experts-ranks
   (let [env {:fetched-at "x" :by-format {:ppr {"rb0_rb" {:fantasypros/ros-pos-rank "RB3"}}}}

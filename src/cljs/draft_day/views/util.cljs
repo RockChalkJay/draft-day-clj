@@ -1,5 +1,7 @@
 (ns draft-day.views.util
-  (:require [draft-day.team-names :as team-names]))
+  (:require [re-frame.core :as rf]
+            [draft-day.matchup-ease :as matchup-ease]
+            [draft-day.team-names :as team-names]))
 
 (defn money [n]
   (if (and (number? n) (pos? n)) 
@@ -290,6 +292,21 @@
     [:span.muted {:title "Not on the board: no projection for this player"} nm]
     [:span.muted {:title (str "No player for id " (:player-id p))} (:player-id p)]))
 
+(defn opponent-label
+  "The opponent as `player-ident` draws it, `m` being `week-matchup`'s text.
+  Colored green to red by how much that defense has allowed his position, with
+  the rank in words on hover, once the waiver reply has brought the table; grey
+  before then or on a bye. `eased` lets the card head put the color on a pill."
+  [p m]
+  (let [{:keys [opponent]} (matchup-source p)
+        line (matchup-ease/ease-line @(rf/subscribe [:defense-vs-position])
+                                     opponent (:position p))]
+    (if line
+      [:span.p-opp.eased {:style {:color (matchup-ease/ease-color (matchup-ease/ease-share line))}
+                    :title (matchup-ease/ease-title line opponent (:position p))}
+       m]
+      [:span.p-opp m])))
+
 (defn player-ident
   "`logo name opponent` — the one way a player is named. Opponent reads off
   `week-matchup` and is dropped when `week` is nil (the draft half has none) or
@@ -309,7 +326,7 @@
                :else          [:span.p-name (:player-name p)])
         opp  (when week
                (let [m (week-matchup p week)]
-                 (when (not= "–" m) [:span.p-opp m])))
+                 (when (not= "–" m) (opponent-label p m))))
         parts (keep identity (concat [nm opp] extra))]
     (into [:span.p-ident]
           (if mirror? (concat parts [logo]) (cons logo parts)))))
