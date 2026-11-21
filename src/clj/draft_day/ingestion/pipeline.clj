@@ -307,7 +307,7 @@
 (def realized-schema-version
   "Version of the realized cache envelope. Not 4: a `realized.v4.transit` of
   another shape may be on a developer's disk."
-  6)
+  7)
 
 (def default-realized-cache-path
   (str paths/cache-root "/realized.v" realized-schema-version ".transit"))

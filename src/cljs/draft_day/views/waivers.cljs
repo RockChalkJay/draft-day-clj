@@ -33,6 +33,15 @@
 (defn format-trend [t]
   (if (number? t) (str (.toFixed t 2) "×") "–"))
 
+(defn format-epa
+  "EPA per play to two decimals with its sign, \"+0.12\", or a dash. Unlike
+  `util/signed` a zero prints: it is a rate, and 0.00 is an average play."
+  [n]
+  (if (number? n)
+    (let [s (.toFixed n 2)]
+      (if (and (pos? n) (not= s "0.00")) (str "+" s) s))
+    "–"))
+
 ;; ---- the bid ----
 
 (defn win-pct
@@ -211,6 +220,12 @@
     :typical   (bid-cell (:typical-bid p) (:typical-win p) (typical-title p bidding))
     :pts       [:td.num (board/format-one-decimal (:season-points p))]
     :avg       [:td.num (board/format-one-decimal (:season-ppg p))]
+    ;; Coloured by sign through the same rounded value the digits come from, so
+    ;; a +0.00 never wears green.
+    :epa       (let [n (db/epa-per-play p)]
+                 [:td.num {:class (when (number? n) (util/sign-class (/ (js/Math.round (* 100 n)) 100)))
+                           :title (when (number? n) (db/column-tip (db/waiver-columns-by-key :epa) (:position p)))}
+                  (format-epa n)])
     :rec       [:td.num.muted (board/format-whole (get-in p [:nflverse/season-to-date :stats :rec]))]
     :yds       [:td.num.muted (board/format-whole (db/season-yards p))]
     :td        [:td.num.muted (board/format-whole (db/season-tds p))]

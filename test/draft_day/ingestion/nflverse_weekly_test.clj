@@ -126,6 +126,17 @@
     (is (= 10.0 (get-in std [:usage :targets])))
     (is (= 28.0 (get-in std [:usage :carries])))))
 
+(deftest epa-totals-ride-in-the-season-line-without-entering-the-scoring-vocabulary
+  ;; `db/epa-per-play` reads these, and a blank week must not turn a total into
+  ;; a zero.
+  (let [rows  [(row "00-1" 1 "receiving_epa" "2.5" "sacks_suffered" "1")
+               (row "00-1" 2 "receiving_epa" "-1.0" "sacks_suffered" "")]
+        stats (get-in (acc-of rows) ["00-1" :nflverse/season-to-date :stats])]
+    (is (= 1.5 (:rec_epa stats)))
+    (is (= 1.0 (:sacked stats)))
+    (is (not-any? (set (vals weekly/display-columns)) (vals weekly/stat-columns))
+        "display keys stay out of the map the scoring test holds")))
+
 (deftest kickers-carry-the-two-columns-they-have
   (let [rows [(row "00-k" 1 "position" "K" "fg_made" "3" "pat_made" "2")]
         stats (get-in (acc-of rows) ["00-k" :nflverse/season-to-date :stats])]

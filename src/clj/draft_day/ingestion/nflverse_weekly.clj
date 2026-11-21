@@ -142,10 +142,19 @@
   "Columns the player card's season table shows that no weight reaches: attempts,
   carries and targets, under the keys Sleeper spells them with. Kept apart from
   `stat-columns` because that map is held to the scoring vocabulary by a test,
-  and a display key is the thing that test exists to keep out of it."
-  {"attempts" :pass_att
-   "carries"  :rush_att
-   "targets"  :rec_tgt})
+  and a display key is the thing that test exists to keep out of it.
+
+  The three EPA totals and `sacks_suffered` are here for `db/epa-per-play`.
+  Sacks ride along because `passing_epa` counts them while `attempts` does not
+  (a quarterback's sack-free week matched the play-by-play exactly), so a
+  dropback is attempts plus sacks."
+  {"attempts"        :pass_att
+   "carries"         :rush_att
+   "targets"         :rec_tgt
+   "sacks_suffered"  :sacked
+   "passing_epa"     :pass_epa
+   "rushing_epa"     :rush_epa
+   "receiving_epa"   :rec_epa})
 
 (def all-columns
   "`stat-columns` and `display-columns` together: everything a player's
