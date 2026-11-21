@@ -10,7 +10,23 @@
   `npx shadow-cljs compile test && node out/node-tests.js`."
   (:require [cljs.test :refer [deftest is]]
             [draft-day.db :as db]
-            [draft-day.views.metrics :as metrics]))
+            [draft-day.views.metrics :as metrics]
+            [draft-day.views.waivers :as waivers]))
+
+;; ---- EPA ----
+
+(deftest epa-prints-a-sign-and-two-decimals-and-keeps-its-zero
+  (is (= "+0.12" (waivers/format-epa 0.1234)))
+  (is (= "-0.08" (waivers/format-epa -0.081)))
+  (is (= "0.00" (waivers/format-epa 0)) "a rate: zero is an average play, not a gap")
+  (is (= "0.00" (waivers/format-epa 0.001)) "no plus sign on a rounded zero")
+  (is (= "–" (waivers/format-epa nil))))
+
+(deftest the-epa-row-reads-only-the-positions-that-have-it
+  (let [row (first (filter #(= "EPA / play" (:label %)) metrics/rows))
+        line {:nflverse/season-to-date {:stats {:rec_epa 3.0 :rec_tgt 30.0}}}]
+    (is (= 0.1 (metrics/row-value row (assoc line :position "WR"))))
+    (is (nil? (metrics/row-value row (assoc line :position "K"))))))
 
 ;; ---- derived metrics ----
 
@@ -80,6 +96,7 @@
    :adds      "Sleeper adds"
    :trend     "Trend"
    :form      "Form / game"
+   :epa       "EPA / play"
    :gp        "Games played"
    :risk      "Injury risk"})
 

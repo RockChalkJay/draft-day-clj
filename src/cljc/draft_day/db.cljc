@@ -538,6 +538,29 @@
        " (injury, benching, suspension). 1 = rarely misses, 5 = often. Blank for"
        " rookies. A serious injury status forces 5"))
 
+(def epa-min-plays
+  "Plays a player needs before his EPA per play is worth a number. Twenty: EPA
+  over three targets is one play's luck. A chosen constant, not a measured one,
+  like `nflverse-weekly/recent-window`."
+  20)
+
+(def epa-tips
+  "position -> what the EPA column's play is, so the Waivers column and the
+  card's row say it in one voice."
+  (let [tail (str ": each play judged against an average play in that situation."
+                  " Not opponent-adjusted, so not DVOA. Blank under "
+                  epa-min-plays " plays")]
+    {"QB" (str "Expected points added per dropback this season (passes, sacks and his runs)" tail)
+     "RB" (str "Expected points added per touch (carries and targets) this season" tail)
+     "WR" (str "Expected points added per target this season" tail)
+     "TE" (str "Expected points added per target this season" tail)}))
+
+(def epa-tip
+  "The general text for a mixed-position view, which states the split."
+  (str "Expected points added per play this season (a dropback, a touch or a"
+       " target by position), each judged against an average play in that"
+       " situation. Not opponent-adjusted, so not DVOA"))
+
 (defn applies?
   "Does a catalog entry or metric row (`spec`) say anything about `pos`? A spec
   with no `:positions` applies to all, and so does an unknown position."
@@ -1131,6 +1154,9 @@
    {:key :week      :label "Wk"     :tooltip "Projected points for this week's game. Blank on a bye or when he is not projected" :default? true :group :week}
    {:key :pts       :label "Pts"    :tooltip "Fantasy points so far this season, under your league's scoring" :default? true :group :stats}
    {:key :avg       :label "Avg"    :tooltip "Fantasy points per game played this season" :default? true :group :stats}
+   {:key :epa       :label "EPA"    :tooltip epa-tip
+    :tooltips epa-tips
+    :positions usage-positions :default? true :group :stats}
    {:key :gp        :label "GP"     :tooltip "Games played this season"   :default? true :group :stats}
    {:key :typical   :label "Bid"    :tooltip "What it usually takes to win him, and your chance of winning with that bid. Hover for the suggested bid and the rivals behind it. An estimate. Blank when the league does not run FAAB or your budget is spent" :default? true :group :bidding}
    {:key :rivals    :label "Rivals" :tooltip "How many other teams are expected to bid on him" :default? true :group :bidding}
@@ -1172,7 +1198,7 @@
 (def waiver-numeric-keys
   "The waiver columns whose cells are right-aligned numbers, so their headers
   are too."
-  #{:rank :bye :week :week-rank :lineup :upgrade :pts :avg :gp :rec :yds :td
+  #{:rank :bye :week :week-rank :lineup :upgrade :pts :avg :epa :gp :rec :yds :td
     :rivals :adds :trend :form :tgt :car :ros-vorp})
 
 (defn waiver-rank-key
@@ -1220,6 +1246,33 @@
 (defn season-yards [p] (season-stat-sum p [:pass_yd :rush_yd :rec_yd]))
 (defn season-tds [p] (season-stat-sum p [:pass_td :rush_td :rec_td]))
 
+(def epa-plays
+  "position -> `[epa-keys play-keys]` in the season-to-date `:stats`: the EPA
+  totals that position is judged on, over the plays they came from.
+
+  A quarterback's plays are dropbacks, and `:sacked` is in them because his
+  passing EPA counts sacks while his attempts do not. A back's are his touches
+  (carries and targets); a receiver's, his targets, which leaves out the few
+  runs he takes. Kickers and defenses are absent: nflverse has no EPA for a kick
+  and no row for a defense."
+  {"QB" [[:pass_epa :rush_epa] [:pass_att :sacked :rush_att]]
+   "RB" [[:rush_epa :rec_epa]  [:rush_att :rec_tgt]]
+   "WR" [[:rec_epa]            [:rec_tgt]]
+   "TE" [[:rec_epa]            [:rec_tgt]]})
+
+(defn epa-per-play
+  "Expected points added per play this season, or nil.
+
+  Nil for a position `epa-plays` does not cover, for a player with no
+  season-to-date line, and under `epa-min-plays`. Display only: it feeds nothing
+  in the engine. Not opponent-adjusted, which is the difference from DVOA."
+  [p]
+  (when-let [[epa-ks play-ks] (get epa-plays (:position p))]
+    (when-let [st (get-in p [:nflverse/season-to-date :stats])]
+      (let [plays (reduce + 0.0 (map #(get st % 0.0) play-ks))]
+        (when (and (>= plays epa-min-plays) (some #(contains? st %) epa-ks))
+          (/ (reduce + 0.0 (map #(get st % 0.0) epa-ks)) plays))))))
+
 (def waiver-sort-accessors
   "column key -> fn player -> sortable value. :rank is attached in the sub."
   {:rank      :rank
@@ -1237,6 +1290,7 @@
    :typical   :typical-bid
    :pts       :season-points
    :avg       :season-ppg
+   :epa       epa-per-play
    :rec       #(get-in % [:nflverse/season-to-date :stats :rec])
    :yds       season-yards
    :td        season-tds

@@ -1074,3 +1074,34 @@
     (is (= (count db/owner-hues) (count (set db/owner-hues))))
     (doseq [h db/owner-hues]
       (is (>= (gap h) 40) (str "hue " h " is too close to the manager's own accent")))))
+
+;; ---- EPA per play ----
+
+(defn- with-line [pos stats]
+  {:position pos :nflverse/season-to-date {:stats stats}})
+
+(deftest epa-per-play-counts-each-positions-own-plays
+  (testing "a receiver is judged per target, whatever he ran"
+    (is (= 0.1 (db/epa-per-play (with-line "WR" {:rec_epa 3.0 :rec_tgt 30.0 :rush_att 4.0})))))
+  (testing "a back is judged per carry and target together"
+    (is (= 0.1 (db/epa-per-play (with-line "RB" {:rush_epa 2.0 :rec_epa 1.0
+                                                 :rush_att 20.0 :rec_tgt 10.0})))))
+  (testing "a quarterback's dropbacks include the sacks his attempts leave out"
+    (is (= 0.25 (db/epa-per-play (with-line "QB" {:pass_epa 9.0 :rush_epa 1.0
+                                                  :pass_att 30.0 :sacked 4.0 :rush_att 6.0}))))))
+
+(deftest epa-per-play-says-nothing-it-cannot-back
+  (is (nil? (db/epa-per-play (with-line "WR" {:rec_epa 5.0 :rec_tgt 10.0})))
+      "under the minimum sample")
+  (is (nil? (db/epa-per-play (with-line "WR" {:rec_tgt 30.0})))
+      "targets with no EPA column is no opinion, not zero")
+  (is (nil? (db/epa-per-play {:position "WR"})) "no season line yet")
+  (is (nil? (db/epa-per-play (with-line "K" {:rec_epa 5.0 :rec_tgt 30.0}))) "a kicker")
+  (is (nil? (db/epa-per-play (with-line "DST" {:rec_epa 5.0 :rec_tgt 30.0}))) "a defense"))
+
+(deftest the-epa-column-follows-the-usage-positions
+  (let [col (db/waiver-columns-by-key :epa)]
+    (is (= db/usage-positions (:positions col)))
+    (is (contains? db/waiver-numeric-keys :epa))
+    (is (every? (:tooltips col) db/usage-positions))
+    (is (contains? db/waiver-sort-accessors :epa))))

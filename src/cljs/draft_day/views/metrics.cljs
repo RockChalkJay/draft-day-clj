@@ -144,6 +144,10 @@
     :tips {"RB" "Carries plus targets per game this season"
            "WR" "Targets per game this season"
            "TE" "Targets per game this season"}}
+   {:band :evidence :label "EPA / play"     :f db/epa-per-play :fmt waivers/format-epa
+    :positions db/usage-positions
+    :tip db/epa-tip
+    :tips db/epa-tips}
    {:band :evidence :label "Games played"   :bar? false
     :f #(or (:season-gp %) (get-in % [:nflverse/season-to-date :games]))
     :fmt number-or-dash}
