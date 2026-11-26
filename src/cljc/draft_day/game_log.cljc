@@ -18,13 +18,12 @@
   "A defense's columns: each of `stat-lines/dst-rows` the league weights, and
   the ones that always draw."
   [scoring]
-  (into []
-        (comp (filter (fn [[_ _ scored]]
-                        (let [weights (scoring/resolve-config scoring)]
-                          (or (empty? scored)
-                              (some #(not (zero? (scoring/usable-weight (get weights %)))) scored)))))
-              (map (fn [[label ks]] [label ks])))
-        sl/dst-rows))
+  (let [weights (scoring/resolve-config scoring)
+        scored? #(not (zero? (scoring/usable-weight (get weights %))))]
+    (into []
+          (comp (filter (fn [[_ _ scored]] (or (empty? scored) (some scored? scored))))
+                (map (fn [[label ks]] [label ks])))
+          sl/dst-rows)))
 
 (defn table
   "nil when there is nothing to draw: a position the log does not know, or a
