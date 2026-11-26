@@ -14,24 +14,11 @@
      :values   (mapv value columns)
      :points   (when entry (scoring/player-points {:stats stats} scoring))}))
 
-(defn dst-columns
-  "A defense's columns: each of `stat-lines/dst-rows` the league weights, and
-  the ones that always draw."
-  [scoring]
-  (let [weights (scoring/resolve-config scoring)
-        scored? #(not (zero? (scoring/usable-weight (get weights %))))]
-    (into []
-          (comp (filter (fn [[_ _ scored]] (or (empty? scored) (some scored? scored))))
-                (map (fn [[label ks]] [label ks])))
-          sl/dst-rows)))
-
 (defn table
   "nil when there is nothing to draw: a position the log does not know, or a
   season that has not started."
   [player through-week scoring]
-  (when-let [columns (if (= "DST" (:position player))
-                       (not-empty (dst-columns scoring))
-                       (get sl/position-rows (:position player)))]
+  (when-let [columns (get sl/position-rows (:position player))]
     (when (and through-week (pos? through-week))
       (let [by-week (into {} (map (juxt :week identity))
                           (or (:realized/game-log player)

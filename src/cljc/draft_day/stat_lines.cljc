@@ -27,8 +27,7 @@
   Keyed by the same Sleeper stat keys a projected `:stats` line uses, which is
   why a realized season and a projected one can share a row without translation.
 
-  QB/RB/WR/TE and K; a defense's columns follow the league's scoring and are
-  `dst-rows`. A row's optional third element is the header its column is drawn
+  QB/RB/WR/TE, K and DST. A row's optional third element is the header its column is drawn
   under, which a kicker's XP and FG each get. His attempts are makes plus
   misses by distance: Sleeper states the misses in full and the weekly nflverse
   file only from forty yards out, so that fallback reads low. The Season table
@@ -62,24 +61,16 @@
            ["0-29"  [:fgm_0_19 :fgm_20_29] "FG"]
            ["30-39" [:fgm_30_39] "FG"]
            ["40-49" [:fgm_40_49] "FG"]
-           ["50+"   [:fgm_50p] "FG"]]}))
-
-(def dst-rows
-  "The defense game log's candidate columns, `[label value-keys scored-keys]`.
-
-  A column is drawn only when the league weights one of its `scored-keys`; none
-  means always. The allowed columns read the game's raw total (`:pts_allow`,
-  `:yds_allow`) and always draw, since a preset prices no bucket and a bucket's
-  own column would be a 0/1 flag."
-  [["Sack"      [:sack]      [:sack]]
-   ["INT"       [:int]       [:int]]
-   ["Fum Rec"   [:fum_rec]   [:fum_rec]]
-   ["FF"        [:ff]        [:ff]]
-   ["Safety"    [:safe]      [:safe]]
-   ["Def TD"    [:def_td]    [:def_td]]
-   ["Blk Kick"  [:blk_kick]  [:blk_kick]]
-   ["Yds Allow" [:yds_allow] []]
-   ["Pts Allow" [:pts_allow] []]])
+           ["50+"   [:fgm_50p] "FG"]]
+     "DST" [["Sack"      [:sack]]
+            ["INT"       [:int]]
+            ["Fum Rec"   [:fum_rec]]
+            ["FF"        [:ff]]
+            ["Safety"    [:safe]]
+            ["Def TD"    [:def_td]]
+            ["Blk Kick"  [:blk_kick]]
+            ["Yds Allow" [:yds_allow]]
+            ["Pts Allow" [:pts_allow]]]}))
 
 (def season-rows
   "position -> ordered `[label stat-keys kind]` the player card's Season table

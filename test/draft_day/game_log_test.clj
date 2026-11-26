@@ -63,10 +63,6 @@
     (is (false? (:played? wk2)))
     (is (= [nil nil nil nil] (:values wk2)))))
 
-(deftest a-defense-always-gets-its-allowed-columns
-  (is (= ["Yds Allow" "Pts Allow"]
-         (mapv first (:columns (gl/table {:position "DST"} 5 {:rec 1.0}))))))
-
 (def aubrey
   {:position "K"
    :realized/game-log
@@ -127,13 +123,14 @@
    [{:week 1 :opponent "SF" :stats {:sack 3.0 :int 1.0 :pts_allow 17.0 :yds_allow 310.0}}
     {:week 3 :opponent "LA" :stats {:def_td 1.0 :pts_allow 20.0}}]})
 
-(deftest a-defense-log-has-a-column-per-scored-category
-  (let [{:keys [columns rows]} (gl/table seahawks 3 ppr)]
-    (is (= ["Sack" "INT" "Fum Rec" "FF" "Safety" "Def TD" "Yds Allow" "Pts Allow"] (mapv first columns)))
-    (is (= [3.0 1.0 0 0 0 0 310.0 17.0] (:values (first rows))))
-    (is (= 6.0 (:points (nth rows 2))) "def TD; week 3 is a played week")
-    (is (false? (:played? (second rows))))))
+(deftest a-defense-log-is-its-stats-whatever-the-league-scores
+  (doseq [scoring [ppr {:rec 1.0}]]
+    (let [{:keys [columns rows]} (gl/table seahawks 3 scoring)]
+      (is (= ["Sack" "INT" "Fum Rec" "FF" "Safety" "Def TD" "Blk Kick" "Yds Allow" "Pts Allow"]
+             (mapv first columns)))
+      (is (= [3.0 1.0 0 0 0 0 0 310.0 17.0] (:values (first rows))))
+      (is (false? (:played? (second rows)))))))
 
-(deftest a-defense-column-follows-the-weights
-  (let [cols (fn [s] (mapv first (:columns (gl/table seahawks 3 s))))]
-    (is (not-any? #{"Sack"} (cols (assoc ppr :sack 0.0))))))
+(deftest a-defenses-points-follow-the-leagues-weights
+  (is (= 6.0 (:points (nth (:rows (gl/table seahawks 3 ppr)) 2))) "def TD only")
+  (is (= 0.0 (:points (nth (:rows (gl/table seahawks 3 {:rec 1.0})) 2)))))
