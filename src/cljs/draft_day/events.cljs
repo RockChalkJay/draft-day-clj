@@ -359,13 +359,11 @@
   "A player card opens on the game log and asks for his news; every other modal
   is just shown."
   [db m]
-  (let [card? (= :player-detail (db/modal-kind m))
-        dst?  (some #(and (= (:player-id m) (:player-id %)) (= "DST" (:position %)))
-                    (:players db))]
+  (let [card? (= :player-detail (db/modal-kind m))]
     {:db (cond-> (assoc db :modal m)
            card? (assoc :player-detail-tab :game-log))
      :fx (cond-> []
-           (and card? (not dst?)) (conj [:dispatch [:fetch-player-news (:player-id m)]]))}))
+           card? (conj [:dispatch [:fetch-player-news (:player-id m)]]))}))
 
 (rf/reg-event-fx :show-modal
   (fn [{:keys [db]} [_ m]] (show-modal-effects db m)))

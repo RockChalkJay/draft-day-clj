@@ -637,10 +637,6 @@
     (is (= :game-log (:player-detail-tab db)) "every card opens on the game log")
     (is (= [[:dispatch [:fetch-player-news "p1"]]] fx))))
 
-(deftest a-defenses-card-asks-for-no-news
-  (swap! rdb/app-db assoc :players [{:player-id "d1" :position "DST"}])
-  (is (empty? (:fx (show-modal-effects {:kind :player-detail :player-id "d1"})))))
-
 (deftest fetching-news-asks-the-server-for-that-player
   (rf/dispatch-sync [:fetch-player-news "p1"])
   (is (= "/api/players/p1/news" (:url (last-http))))

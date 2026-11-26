@@ -355,13 +355,13 @@
         {:keys [season through-week]} @(rf/subscribe [:universe])
         scoring  @(rf/subscribe [:scoring-weights])
         season?  (= :in-season @(rf/subscribe [:season-phase]))
-        dst?     (= "DST" (:position p))
-        news     (when-not dst? (get @(rf/subscribe [:player-news]) id))
+        news?    (not= "DST" (:position p))
+        news     (when news? (get @(rf/subscribe [:player-news]) id))
         now      (js/Date.now)]
     (when p
       (let [log      (when universe (game-log-table universe through-week scoring))
             table    (when universe (player-stats/stat-table universe season {:in-season? season?}))
-            tabs     (tabs-for {:log? (boolean log) :season? (boolean table) :news? (not dst?)})
+            tabs     (tabs-for {:log? (boolean log) :season? (boolean table) :news? news?})
             shown    (shown-tab tabs @(rf/subscribe [:player-detail-tab]))
             latest   (latest-line universe news)
             strip    (tiles p week)]
