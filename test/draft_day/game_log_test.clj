@@ -63,9 +63,6 @@
     (is (false? (:played? wk2)))
     (is (= [nil nil nil nil] (:values wk2)))))
 
-(deftest a-defense-gets-no-table
-  (is (nil? (gl/table {:position "DST"} 5 ppr))))
-
 (def aubrey
   {:position "K"
    :realized/game-log
@@ -119,3 +116,21 @@
   (let [rows (:rows (gl/table nacua 2 ppr))]
     (is (= [6.0 2.0] (mapv #(first (:values %)) rows))))
   (is (nil? (gl/table (dissoc nacua :nflverse/game-log) nil ppr))))
+
+(def seahawks
+  {:position "DST"
+   :realized/game-log
+   [{:week 1 :opponent "SF" :stats {:sack 3.0 :int 1.0 :pts_allow 17.0 :yds_allow 310.0}}
+    {:week 3 :opponent "LA" :stats {:def_td 1.0 :pts_allow 20.0}}]})
+
+(deftest a-defense-log-is-its-stats-whatever-the-league-scores
+  (doseq [scoring [ppr {:rec 1.0}]]
+    (let [{:keys [columns rows]} (gl/table seahawks 3 scoring)]
+      (is (= ["Sack" "INT" "Fum Rec" "FF" "Safety" "Def TD" "Blk Kick" "Yds Allow" "Pts Allow"]
+             (mapv first columns)))
+      (is (= [3.0 1.0 0 0 0 0 0 310.0 17.0] (:values (first rows))))
+      (is (false? (:played? (second rows)))))))
+
+(deftest a-defenses-points-follow-the-leagues-weights
+  (is (= 6.0 (:points (nth (:rows (gl/table seahawks 3 ppr)) 2))) "def TD only")
+  (is (= 0.0 (:points (nth (:rows (gl/table seahawks 3 {:rec 1.0})) 2)))))
