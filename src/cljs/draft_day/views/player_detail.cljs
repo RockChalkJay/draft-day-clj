@@ -251,13 +251,13 @@
       (= :failed (:state news))  {:kind :failed :text "News unavailable"})))
 
 (defn tabs-for
-  "`[[key label]]` in display order: the game log when there is one, News always
-  (its empty state says why it is empty), and the Season table when the universe
-  has arrived. Left to right in that order on purpose."
-  [{:keys [log? season?]}]
+  "`[[key label]]` in display order: the game log when there is one, News unless
+  `:news?` is false (a defense has none; otherwise its empty state says why it is
+  empty), and the Season table when the universe has arrived. Left to right in that order on purpose."
+  [{:keys [log? season? news?] :or {news? true}}]
   (cond-> []
     log?     (conj [:game-log "Game log"])
-    true     (conj [:news "News"])
+    news?    (conj [:news "News"])
     season?  (conj [:season "Season"])))
 
 (defn shown-tab
@@ -355,12 +355,13 @@
         {:keys [season through-week]} @(rf/subscribe [:universe])
         scoring  @(rf/subscribe [:scoring-weights])
         season?  (= :in-season @(rf/subscribe [:season-phase]))
-        news     (get @(rf/subscribe [:player-news]) id)
+        dst?     (= "DST" (:position p))
+        news     (when-not dst? (get @(rf/subscribe [:player-news]) id))
         now      (js/Date.now)]
     (when p
       (let [log      (when universe (game-log-table universe through-week scoring))
             table    (when universe (player-stats/stat-table universe season {:in-season? season?}))
-            tabs     (tabs-for {:log? (boolean log) :season? (boolean table)})
+            tabs     (tabs-for {:log? (boolean log) :season? (boolean table) :news? (not dst?)})
             shown    (shown-tab tabs @(rf/subscribe [:player-detail-tab]))
             latest   (latest-line universe news)
             strip    (tiles p week)]

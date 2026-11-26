@@ -181,6 +181,10 @@
       "News is always there: its empty state says why it is empty")
   (is (= [:news "News"] (second (pd/tabs-for {:log? true :season? false})))))
 
+(deftest a-defense-has-no-news-tab
+  (is (= [[:game-log "Game log"] [:season "Season"]]
+         (pd/tabs-for {:log? true :season? true :news? false}))))
+
 (deftest a-tab-that-is-not-offered-falls-back-to-the-first
   (let [tabs (pd/tabs-for {:log? false :season? true})]
     (is (= :season (pd/shown-tab tabs :season)))
