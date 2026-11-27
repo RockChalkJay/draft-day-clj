@@ -354,7 +354,7 @@
         opp  (when week
                (let [m (week-matchup p week)]
                  (when (not= "–" m) (opponent-label p m))))
-        kick (when (and opp (not= "Bye" (week-matchup p week)))
+        kick (when opp
                (when-let [t (upcoming-kickoff-label p)]
                  [:span.p-kick t]))
         text (into [:span.p-text
