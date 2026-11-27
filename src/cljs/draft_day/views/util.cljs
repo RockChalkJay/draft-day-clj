@@ -249,6 +249,29 @@
         (.toLocaleString d js/undefined
                          #js {:weekday "short" :hour "numeric" :minute "2-digit"})))))
 
+(def ^:private weekday-names ["Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"])
+
+(defn kickoff-short-label
+  "An ISO kickoff stamp as `Sun 2:05 pm` in the manager's own wall clock, for
+  the line beside an opponent. nil for a missing or unparseable stamp."
+  [iso]
+  (when iso
+    (let [d (js/Date. iso)]
+      (when-not (js/isNaN (.getTime d))
+        (let [h   (.getHours d)
+              m   (.getMinutes d)
+              h12 (if (zero? (mod h 12)) 12 (mod h 12))]
+          (str (nth weekday-names (.getDay d)) " " h12 ":"
+               (when (< m 10) "0") m
+               (if (< h 12) " am" " pm")))))))
+
+(defn upcoming-kickoff-label
+  "`kickoff-short-label` of a player's game, or nil once ESPN says it is under
+  way or over: a time that has passed is not his next game."
+  [p]
+  (when (or (nil? (:kickoff/status p)) (= "STATUS_SCHEDULED" (:kickoff/status p)))
+    (kickoff-short-label (:kickoff/at p))))
+
 (defn kickoff-status-label
   "ESPN's own word for a game that is not still ahead of us, or nil."
   [status detail]
@@ -315,7 +338,11 @@
   `:on-click` makes the name a button; `:mirror?` puts the logo at the outer
   edge for a right-hand column; `:logo? false` leaves it off, as the player card
   does since its head is already in the team's colours; `:extra` follows the
-  opponent."
+  name.
+
+  Two lines beside the logo, the name over the opponent and kickoff, so a long
+  name or a time never widens a narrow column. The draft half has no opponent
+  and draws the name alone."
   [p week {:keys [on-click mirror? extra logo?] :or {logo? true}}]
   (let [logo (when logo? (team-logo (:team p)))
         nm   (cond
@@ -327,6 +354,13 @@
         opp  (when week
                (let [m (week-matchup p week)]
                  (when (not= "–" m) (opponent-label p m))))
-        parts (keep identity (concat [nm opp] extra))]
-    (into [:span.p-ident]
-          (if mirror? (concat parts [logo]) (cons logo parts)))))
+        kick (when (and opp (not= "Bye" (week-matchup p week)))
+               (when-let [t (upcoming-kickoff-label p)]
+                 [:span.p-kick t]))
+        text (into [:span.p-text
+                    (into [:span.p-line nm] (keep identity extra))]
+                   (when opp [[:span.p-sub opp kick]]))]
+    [:span.p-ident
+     (if mirror?
+       (list text logo)
+       (list logo text))]))

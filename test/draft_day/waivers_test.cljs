@@ -1122,7 +1122,7 @@
 (deftest the-opponent-is-colored-by-what-his-defense-allowed
   (let [p    {:position "RB" :week/opponent "BUF" :week/home? true}
         opp  (fn [] (some #(when (and (vector? %) (#{:span.p-opp :span.p-opp.eased} (first %))) %)
-                          (util/player-ident p 9 nil)))]
+                          (tree-seq coll? seq (util/player-ident p 9 nil))))]
     (reset! rdb/app-db (db/default-db))
     (is (= [:span.p-opp "vs BUF"] (opp)) "no waiver reply yet")
     (reset! rdb/app-db (assoc (db/default-db) :waivers
