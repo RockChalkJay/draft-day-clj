@@ -23,7 +23,10 @@
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.sensei.context :as context]
-            [draft-day.team-names :as team-names]))
+            [draft-day.team-names :as team-names])
+  (:import (java.time Instant ZoneId)
+           (java.time.format DateTimeFormatter DateTimeParseException)
+           (java.util Locale)))
 
 (defn per-league
   "`f` of a league entry, computed at most once per league for as long as the
@@ -119,13 +122,29 @@
        (apply concat)
        (apply array-map)))
 
+(def ^:private kickoff-format
+  (DateTimeFormatter/ofPattern "EEE h:mm a" Locale/US))
+
+(defn kickoff-time
+  "His game's start as `Sun 1:00 PM`, in this machine's zone (the endpoint is
+  loopback, so that is the owner's), or nil once ESPN says the game is under
+  way or over, or for a stamp that does not parse."
+  [p]
+  (when (and (:kickoff/at p)
+             (contains? #{nil "STATUS_SCHEDULED"} (:kickoff/status p)))
+    (try (.format kickoff-format
+                  (.atZone (Instant/parse (:kickoff/at p))
+                           (ZoneId/systemDefault)))
+         (catch DateTimeParseException _ nil))))
+
 (defn opponent
-  "`vs SEA` or `@ SEA`, off either source `util/week-matchup` reads; nil on a
-  bye or before a schedule."
+  "`vs SEA` or `@ SEA`, off either source `util/week-matchup` reads, followed by
+  the kickoff time while the game is ahead; nil on a bye or before a schedule."
   [p]
   (when-let [opp (or (:week/opponent p) (:kickoff/opponent p))]
     (let [home? (if (some? (:week/home? p)) (:week/home? p) (:kickoff/home? p))]
-      (str (case home? true "vs " false "@ " "") opp))))
+      (str (case home? true "vs " false "@ " "") opp
+           (some->> (kickoff-time p) (str " "))))))
 
 (defn injury
   "Sleeper's designation with the body part, e.g. `Questionable (Hamstring)`."
@@ -219,7 +238,7 @@
                        (str "- " (name k) ": " tip))))
        (into ["- on: waiver_targets only, the boards that list him (lineup, adds, form, role, experts)"
               "- pos-rank: his rank at his position on fantasy points so far (preseason rank before week 1)"
-              "- opp: this week's opponent"
+              "- opp: this week's opponent, then when the game kicks off (`vs SEA Sun 1:00 PM`) while it is still ahead"
               "- opp-vs-pos: what this week's opponent has allowed his position a game this season under this league's scoring, ranked among the 32 from the most allowed (the softest matchup) to the fewest"
               "- inj: Sleeper's injury designation"
               "- outlook: Sleeper's projected points a game over the weeks he has left, under this league's scoring"

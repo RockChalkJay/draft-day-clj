@@ -113,6 +113,22 @@
   (is (nil? (util/kickoff-label nil)))
   (is (nil? (util/kickoff-label "not a date"))))
 
+(deftest a-short-kickoff-reads-day-time-and-am-pm
+  (let [on-hour (util/kickoff-short-label "2026-09-13T17:00:00Z")
+        quarter (util/kickoff-short-label "2026-09-13T17:15:00Z")]
+    (is (re-matches #"[A-Z][a-z]{2} \d{1,2}:00 [ap]m" on-hour) "zone-loose: the runner's zone")
+    (is (re-matches #"[A-Z][a-z]{2} \d{1,2}:15 [ap]m" quarter)))
+  (is (nil? (util/kickoff-short-label nil)))
+  (is (nil? (util/kickoff-short-label "not a date"))))
+
+(deftest only-a-game-still-ahead-has-an-upcoming-time
+  (let [p {:kickoff/at "2026-09-13T17:00:00Z"}]
+    (is (some? (util/upcoming-kickoff-label p)) "no status yet: still ahead")
+    (is (some? (util/upcoming-kickoff-label (assoc p :kickoff/status "STATUS_SCHEDULED"))))
+    (is (nil? (util/upcoming-kickoff-label (assoc p :kickoff/status "STATUS_IN_PROGRESS"))))
+    (is (nil? (util/upcoming-kickoff-label (assoc p :kickoff/status "STATUS_FINAL"))))
+    (is (nil? (util/upcoming-kickoff-label {})) "no stamp, no time")))
+
 (deftest a-scheduled-game-needs-no-status-word
   (is (nil? (util/kickoff-status-label "STATUS_SCHEDULED" "9/13 - 1:00 PM EDT"))))
 
@@ -160,6 +176,16 @@
     (is (re-find #"Cooper Kupp" s))
     (is (re-find #"@ SEA" s))
     (is (< (.indexOf s "team-logo") (.indexOf s "Cooper Kupp") (.indexOf s "@ SEA"))))
+  (testing "the kickoff follows the opponent while the game is ahead"
+    (let [p {:player-name "A" :team "LAR" :week/opponent "SEA" :week/home? false
+             :kickoff/at "2026-09-13T17:00:00Z" :kickoff/status "STATUS_SCHEDULED"}
+          s (pr-str (util/player-ident p 3 nil))]
+      (is (re-find #"p-kick" s))
+      (is (< (.indexOf s "@ SEA") (.indexOf s "p-kick")))
+      (is (not (re-find #"p-kick" (pr-str (util/player-ident
+                                            (assoc p :kickoff/status "STATUS_FINAL") 3 nil)))))
+      (is (not (re-find #"p-kick" (pr-str (util/player-ident (dissoc p :kickoff/at) 3 nil)))))
+      (is (not (re-find #"p-kick" (pr-str (util/player-ident p nil nil)))) "no week, no time")))
   (testing "no week, no opponent"
     (is (not (re-find #"p-opp" (pr-str (util/player-ident {:player-name "A" :team "LAR"
                                                           :week/opponent "SEA"} nil nil))))))

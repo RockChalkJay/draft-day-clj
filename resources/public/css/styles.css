@@ -541,7 +541,7 @@ table.board th.player, table.board td.player { position: sticky; left: 0; z-inde
 table.board th.player { background: var(--panel2); z-index: 2; }
 table.board tbody tr:hover td.player { background: var(--panel2); }
 table.board tbody tr.selected td.player { background: #1d2a44; }
-table.board td.player .p-ident > .name-btn { max-width: 150px; }
+table.board td.player .p-ident .name-btn { max-width: 150px; }
 
 /* Reuses .roster-panel / table.roster wholesale — the draft board's My Roster
    box is the same object answering the same question, and a second roster style
@@ -1224,11 +1224,18 @@ header.top .status { flex: 1 1 0; min-width: 4ch; overflow: hidden; text-overflo
 .mu-side.r .team-logo { margin: 0 0 0 6px; }
 
 /* A player's identity: logo, name, opponent. One shape on every surface. */
-.p-ident { display: inline-flex; align-items: baseline; min-width: 0; }
+.p-ident { display: inline-flex; align-items: center; min-width: 0; }
 .p-ident > * { flex-shrink: 0; }
-.p-ident > .name-btn, .p-ident > .p-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.p-opp { margin-left: 6px; font-size: 11px; color: var(--muted); font-weight: 400; }
+.p-ident > .p-text { flex-shrink: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.p-line { display: flex; align-items: baseline; max-width: 100%; min-width: 0; }
+.p-line > * { flex-shrink: 0; }
+.p-line > .name-btn, .p-line > .p-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.p-sub { display: flex; align-items: baseline; white-space: nowrap; }
+.mu-side.r .p-text { align-items: flex-end; }
+.p-opp { font-size: 11px; color: var(--muted); font-weight: 400; }
+.p-kick { margin-left: 8px; font-size: 10px; color: var(--muted); font-weight: 400; white-space: nowrap; }
 .pd-head .p-opp { color: rgba(255,255,255,.88); font-size: 13px; }
+.pd-head .p-kick { color: rgba(255,255,255,.55); font-size: 11px; }
 /* A colored opponent on the team's own colors needs a dark backing, or the red
    end vanishes on a red team. Near-opaque, so it reads as it does on a board. */
 .pd-head .p-opp.eased { background: rgba(15,17,21,.85); padding: 1px 8px; border-radius: 5px;

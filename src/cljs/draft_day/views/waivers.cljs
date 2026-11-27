@@ -193,7 +193,10 @@
     ;; column is that "WR19" means something where "4.2" does not.
     :week-rank (let [n (:week-pos-rank p)]
                  [:td.num.muted (if n (str (:position p) n) "–")])
-    :opp       [:td.muted {:title (kickoff-title p)} (week-matchup p week)]
+    :opp       [:td.muted {:title (kickoff-title p)}
+                (week-matchup p week)
+                (when-let [t (util/upcoming-kickoff-label p)]
+                  [:span.p-kick t])]
     ;; The headline. Signed, because a free agent worse than the man you would
     ;; drop is not an add — and flattening that to zero would make the whole
     ;; tail of the pool look equally plausible.

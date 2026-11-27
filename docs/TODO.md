@@ -13,6 +13,15 @@ for the known gaps between a league's real rules and what the board can score.
   `--help`, and a bad flag exits 1. The `parse-args` tests in `snapshot_test.clj`
   and `trends_test.clj` pin today's return shapes and will need updating.
 
+- **Investigate adopting `tick` for dates and times.** Time handling is plain
+  `java.time` interop on the JVM (`sensei/tools.clj`'s `kickoff-time`,
+  `ingestion/season.clj`, `espn_news.clj`) and hand-rolled `js/Date` formatting
+  in the browser (`views/util.cljs`'s `kickoff-label` and `kickoff-short-label`).
+  `tick` runs on both sides, so one kickoff formatter could replace the two
+  copies, which today agree only by test. Worth it only if it removes more
+  interop than the dependency costs; `clojure.java-time` is JVM-only and
+  `clj-time` is deprecated.
+
 - **Remove the 🚨 for tier cliffs. Postion views with tier coloring accomplish the same thing in a clean way.**
 
 - **Warn when a nominated player would make 3 or more shared bye weeks at one

@@ -9,6 +9,13 @@
 (defn- call [tool-name args deps]
   (tools/run (tools/by-name tool-name) deps args))
 
+(deftest the-opponent-carries-the-kickoff-while-the-game-is-ahead
+  (let [p (assoc (first fx/free-agents) :kickoff/at "2026-09-13T17:00:00Z")]
+    (is (re-matches #"@ NYJ [A-Z][a-z]{2} \d{1,2}:\d\d [AP]M" (:opp (tools/row p)))
+        "zone-loose: this machine's zone")
+    (is (= "@ NYJ" (:opp (tools/row (assoc p :kickoff/status "STATUS_FINAL")))))
+    (is (= "@ NYJ" (:opp (tools/row (assoc p :kickoff/at "garbage")))))))
+
 (deftest a-row-is-compact-and-formatted
   (let [r (tools/row (first fx/free-agents))]
     (is (= "@ NYJ" (:opp r)))
