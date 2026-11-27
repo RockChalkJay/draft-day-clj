@@ -269,7 +269,8 @@
   "`kickoff-short-label` of a player's game, or nil once ESPN says it is under
   way or over: a time that has passed is not his next game."
   [p]
-  (when (or (nil? (:kickoff/status p)) (= "STATUS_SCHEDULED" (:kickoff/status p)))
+  (when (or (nil? (:kickoff/status p))
+            (= "STATUS_SCHEDULED" (:kickoff/status p)))
     (kickoff-short-label (:kickoff/at p))))
 
 (defn kickoff-status-label

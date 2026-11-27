@@ -23,7 +23,10 @@
             [draft-day.rankings.lineup :as lineup]
             [draft-day.rankings.waiver :as waiver]
             [draft-day.sensei.context :as context]
-            [draft-day.team-names :as team-names]))
+            [draft-day.team-names :as team-names])
+  (:import (java.time Instant ZoneId)
+           (java.time.format DateTimeFormatter DateTimeParseException)
+           (java.util Locale)))
 
 (defn per-league
   "`f` of a league entry, computed at most once per league for as long as the
@@ -120,7 +123,7 @@
        (apply array-map)))
 
 (def ^:private kickoff-format
-  (java.time.format.DateTimeFormatter/ofPattern "EEE h:mm a" java.util.Locale/US))
+  (DateTimeFormatter/ofPattern "EEE h:mm a" Locale/US))
 
 (defn kickoff-time
   "His game's start as `Sun 1:00 PM`, in this machine's zone (the endpoint is
@@ -130,9 +133,9 @@
   (when (and (:kickoff/at p)
              (contains? #{nil "STATUS_SCHEDULED"} (:kickoff/status p)))
     (try (.format kickoff-format
-                  (.atZone (java.time.Instant/parse (:kickoff/at p))
-                           (java.time.ZoneId/systemDefault)))
-         (catch java.time.format.DateTimeParseException _ nil))))
+                  (.atZone (Instant/parse (:kickoff/at p))
+                           (ZoneId/systemDefault)))
+         (catch DateTimeParseException _ nil))))
 
 (defn opponent
   "`vs SEA` or `@ SEA`, off either source `util/week-matchup` reads, followed by
